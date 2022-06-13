@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+      "allowJs": true,
+      "checkJs": true,
+      "baseUrl": "..",
+      "module": "CommonJS",
+      "target": "es2022"
+  },
+  "include": [
+      "index.mjs",
+      "lib/**/*.js",
+      "lib/**/*.d.ts"
+  ],
+  "typedocOptions": {
+      "entryPoints": "index.mjs",
+      "out": "./docs"
+  }
+}

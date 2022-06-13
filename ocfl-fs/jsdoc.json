@@ -1,0 +1,20 @@
+{
+  "source": {
+    "include": ["lib"],
+    "exclude": ["node_modules"]
+  },
+  "plugins": ["plugins/markdown"],
+  "templates": {
+    "cleverLinks": true,
+    "monospaceLinks": true
+  },
+  "opts": {
+    "recurse": true,
+    "destination": "./docs/",
+    "readme": "./README.md",
+    "template": "../node_modules/clean-jsdoc-theme",
+    "theme_opts": {
+      "theme": "light"
+    }
+  }
+}

@@ -1,0 +1,3 @@
+type TestType = {
+  name: string;
+};

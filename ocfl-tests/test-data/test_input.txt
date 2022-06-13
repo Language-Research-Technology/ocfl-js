@@ -1,0 +1,3 @@
+This Oxford Common File Layout (OCFL) specification describes an application-independent 
+approach to the storage of digital objects in a structured, transparent, and predictable manner. 
+It is designed to promote long-term access and management of digital objects within digital repositories

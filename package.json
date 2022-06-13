@@ -1,0 +1,28 @@
+{
+  "name": "ocfl",
+  "version": "1.1.0",
+  "description": "Oxford Common File Layout (OCFL) JS client library",
+  "keywords": [
+    "ocfl",
+    "Oxford Common File Layout",
+    "preservation",
+    "storage",
+    "filesystem"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Arkisto-Platform/ocfl-js"
+  },
+  "author": "Alvin Sebastian (https://orcid.org/0000-0002-9086-1722)",
+  "contributors": [
+    "Moises Sacal Bonequi (https://orcid.org/0000-0002-4438-2755)",
+    "Peter Sefton (https://orcid.org/0000-0002-3545-944X)"
+  ],
+  "license": "GPL-3.0-or-later",
+  "workspaces": [
+    "ocfl",
+    "ocfl-extensions",
+    "ocfl-fs",
+    "ocfl-tests"
+  ]
+}

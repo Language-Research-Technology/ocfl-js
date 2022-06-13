@@ -1,0 +1,4 @@
+[submodule "ocfl-tests/test-data/fixtures"]
+	path = ocfl-tests/test-data/fixtures
+	url = https://github.com/OCFL/fixtures
+	branch = main
