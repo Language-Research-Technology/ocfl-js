@@ -1,36 +1,14 @@
 //@ts-check
 'use strict';
 
-const { Transform } = require("stream");
+const path = require('path');
+const validation = require('./validation.js');
+const { OCFL_VERSIONS, NAMASTE_T } = require('./constants').OcflConstants;
 
-const setImmediate = (1, eval)('this').setImmediate
-  || function (fn) { setTimeout(fn, 0) }
 
-/**
-* Effectively a PassThrough stream that taps to chunks flow
-* and accumulating the hash
-*/
-function HashThrough(createHash) {
-  const hashThrough = new Transform();
-
-  const hash = createHash()
-
-  hashThrough._transform = function (chunk, encoding, cb) {
-    setImmediate(_ => {
-      try {
-        hash.update(chunk)
-        cb(null, chunk)
-      } catch (err) {
-        cb(err)
-      }
-    })
-  }
-
-  // bind the digest function to hash object
-  hashThrough.digest = format => hash.digest(format)
-
-  return hashThrough
-}
+/** 
+ * @typedef {import('./store').OcflStore} OcflStore
+ */
 
 /**
  * 
@@ -53,7 +31,7 @@ function dataSourceAsIterable(data) {
  * @param {function(T):Promise} asyncFn - An async function that will be run in parallel
  * @param {number} count - Maximum number of concurrency
  */
-async function parallelize(inputStack, asyncFn, count=10) {
+async function parallelize(inputStack, asyncFn, count = 10) {
   let promises = [];
   let len = inputStack.length > count ? count : inputStack.length;
   let result = [];
@@ -69,13 +47,46 @@ async function parallelize(inputStack, asyncFn, count=10) {
           result[index] = error;
         }
       }
-    })().catch(err=>{}));
+    })().catch(err => { }));
   }
   await Promise.all(promises);
   return result;
 }
 
+async function isDirEmpty(store, dirPath) {
+  let dir, de;
+  try {
+    dir = await store.opendir(dirPath);
+    de = await dir.read();
+    await dir.close();
+  } catch (error) {
+    return error.code === 'ENOENT';
+  }
+  return !!de;
+}
+
+/**
+ * Check if there is any valid namaste in the rootPath and return the version number
+ * @param {OcflStore} store 
+ * @param {string} prefix 
+ * @param {string} rootPath 
+ */
+async function findNamasteVersion(store, prefix, rootPath) {
+  let namastePath = path.join(rootPath, NAMASTE_T + prefix);
+  let version;
+  try {
+    version = await Promise.any(OCFL_VERSIONS.map(async (v) =>
+      /**@type {string}*/(await store.readFile(namastePath + v, 'utf8')) === prefix + v + '\n' ? v : null));
+    if (!version) return ''; // namaste exists but invalid
+  } catch (error) {
+    if (!error.errors || error.errors.some(e => e.code !== 'ENOENT')) throw error;
+  }
+  return version;
+}
+
 module.exports = {
   parallelize,
-  dataSourceAsIterable
+  dataSourceAsIterable,
+  isDirEmpty,
+  findNamasteVersion
 };

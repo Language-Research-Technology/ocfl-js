@@ -12,6 +12,7 @@ const { INVENTORY_NAME } = require('./constants').OcflConstants;
 
 /**
  * @typedef {import('./object').OcflObjectImpl} OcflObjectImpl
+ * @typedef {import('./store').OcflStore} OcflStore
  * @typedef {import('./inventory').OcflObjectInventoryMut} OcflObjectInventoryMut
  * @typedef {import('stream').Writable} Writable
  * @typedef {import('stream').StreamOptions} StreamOptions
@@ -56,7 +57,7 @@ class OcflObjectTransaction {
    * @abstract
    * @param {string} logicalPath - A path relative to the object content directory
    * @param {*} data - The same data as https://nodejs.org/api/fs.html#fs_fs_writefile_file_data_options_callback
-   * @param {Object|string} options - The same options as https://nodejs.org/api/fs.html#fs_fs_writefile_file_data_options_callback
+   * @param {Object|string} [options] - The same options as https://nodejs.org/api/fs.html#fs_fs_writefile_file_data_options_callback
    */
   async write(logicalPath, data, options) { throw new Error('Not Implemented'); }
 
@@ -101,14 +102,14 @@ class OcflObjectTransaction {
   * Remove a file or directory
   * @abstract
   * @param {string} logicalPath - A path relative to the object content directory
-  * @param {Object} options
+  * @param {Object} [options]
   */
   async remove(logicalPath, options) { throw new Error('Not Implemented'); }
 
   /**
    * Remove a file or directory
    * @param {string} logicalPath - A path relative to the object content directory
-   * @param {Object} options
+   * @param {Object} [options]
    */
   async delete(logicalPath, options) { return this.remove(logicalPath, options); }
 
@@ -147,15 +148,17 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   /**
    * 
    * @param {OcflObjectImpl} ocflObject 
+   * @param {OcflStore} ocflStore 
    * @param {OcflObjectInventoryMut} inventory 
    * @param {string} workspaceVersionPath 
    * @param {string} createdDir 
    */
-  constructor(ocflObject, inventory, workspaceVersionPath, createdDir) {
+  constructor(ocflObject, ocflStore, inventory, workspaceVersionPath, createdDir) {
     super();
     this._workspaceVersionPath = workspaceVersionPath;
     this._contentRoot = path.join(workspaceVersionPath, inventory.contentDirectory);
     this._object = ocflObject;
+    this._store = ocflStore;
     this._inventory = inventory;
     this._createdDir = createdDir;
     this._queue = [];
@@ -170,7 +173,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   async rollback() {
     if (!this._committed) {
       await Promise.all(this._queue);
-      await this._object._remove(this._createdDir);
+      await this._store.remove(this._createdDir);
       this._committed = true;
     }
   }
@@ -211,13 +214,13 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     // calculate digest
     let digest = this._inventory.digest() + ' ' + INVENTORY_NAME;
     // write inventory.json to workspace
-    await this._object._writeFile(invPath, this._inventory.toString());
-    await this._object._writeFile(invDigestPath, digest);
+    await this._store.writeFile(invPath, this._inventory.toString());
+    await this._store.writeFile(invDigestPath, digest);
     if (workspaceVersionPath !== objectVersionPath) {
       try {
         await this._object._ensureNamaste();
-        await this._object._move(workspaceVersionPath, objectVersionPath);
-        await this._object._remove(this._createdDir);
+        await this._store.move(workspaceVersionPath, objectVersionPath);
+        await this._store.remove(this._createdDir);
       } catch (error) {
         await this.rollback();
         throw error;
@@ -230,10 +233,10 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     invPath = path.join(objectVersionPath, INVENTORY_NAME);
     invDigestPath = invPath + '.' + this._inventory.digestAlgorithm;
     let rootInvDigestPath = rootInvPath + '.' + this._inventory.digestAlgorithm;
-    await this._object._copyFile(invPath, rootInvPath + '.tmp');
+    await this._store.copyFile(invPath, rootInvPath + '.tmp');
     await Promise.all([
-      this._object._move(rootInvPath + '.tmp', rootInvPath),
-      this._object._copyFile(invDigestPath, rootInvDigestPath)]);
+      this._store.move(rootInvPath + '.tmp', rootInvPath),
+      this._store.copyFile(invDigestPath, rootInvDigestPath)]);
 
   }
 
@@ -245,7 +248,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
    */
   async createWriteStream(logicalPath, options) {
     let realPath = this._getRealPath(logicalPath);
-    let ws = await this._object._createWriteStream(realPath, options);
+    let ws = await this._store.createWriteStream(realPath, options);
     let hs = OcflDigest.createStream(this._inventory.digestAlgorithm);
     const wwrite = ws.write;
     function nwrite(chunk, encoding, cb) {
@@ -255,7 +258,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     ws.write = nwrite;
     ws.on('close', async () => {
       let digest = hs.digest('hex');
-      if (this._inventory.getContentPath(digest)) await this._object._remove(realPath);
+      if (this._inventory.getContentPath(digest)) await this._store.remove(realPath);
       this._inventory.add(logicalPath, digest);
     });
     return ws;
@@ -270,16 +273,16 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       digest = await OcflDigest.digestAsync(this._inventory.digestAlgorithm, dataSrc);
       if (!this._inventory.getContentPath(digest)) {
         // no digest yet, write the file to storage backend
-        await this._object._writeFile(realPath, data, options);
+        await this._store.writeFile(realPath, data, options);
       }
     } else {
       // save the stream first
       let hs = OcflDigest.createStreamThrough(this._inventory.digestAlgorithm);
       data.pipe(hs);
-      await this._object._writeFile(realPath, hs, options);
+      await this._store.writeFile(realPath, hs, options);
       digest = hs.digest();
       // already exists, delete temp file
-      if (this._inventory.getContentPath(digest)) await this._object._remove(realPath);
+      if (this._inventory.getContentPath(digest)) await this._store.remove(realPath);
     }
     this._inventory.add(logicalPath, digest);
     // console.log(this._inventory.toString());
@@ -291,7 +294,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     let digest = await OcflDigest.digestFromFile(this._inventory.digestAlgorithm, source);
 
     if (!this._inventory.getContentPath(digest)) {
-      await this._object._copyFile(source, realPath);
+      await this._store.copyFile(source, realPath);
     }
     this._inventory.add(target, digest);
   }
@@ -318,7 +321,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     try {
       let realSource = this._getRealPath(source);
       let realTarget = this._getRealPath(target);
-      await this._object._move(realSource, realTarget);
+      await this._store.move(realSource, realTarget);
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }
@@ -331,7 +334,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     // if (count) {
     //   // ensure no existing file with the same logical path in the workspace
     //   try {
-    //     await this._object._remove(this._getRealPath(logicalPath));
+    //     await this._store.remove(this._getRealPath(logicalPath));
     //   } catch (error) {
     //     if (error.code !== 'ENOENT') throw error;
     //   }
@@ -342,9 +345,8 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   async remove(logicalPath, options) {
     if (this._inventory.delete(logicalPath)) {
       try {
-        await this._object._remove(this._getRealPath(logicalPath));
+        await this._store.remove(this._getRealPath(logicalPath));
       } catch (error) {
-
       }
     }
   }

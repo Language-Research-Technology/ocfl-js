@@ -9,7 +9,6 @@ const { Enum } = require('./enum.js');
 const { Transform } = require('stream');
 
 /**
- * @extends {Enum<string>}
  */
 class CONTENT extends Enum {
   static sha256 = new this('sha256');

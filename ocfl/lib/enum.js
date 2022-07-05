@@ -2,7 +2,6 @@
  * Enumeration tool for working with a set of options 
  * @module enum
  */
-//@ts-check
 
 /**
  * Create enumeration type by extending the Enum class and 
@@ -10,20 +9,31 @@
  * @template V
  */
 class Enum {
+  /** @type {string} */
+  #name;
   /** @type {V} */
   #value;
 
   /**
    * Return an existing constant that represents the specified value
-   * @template V
-   * @param {V} value
-   * @return {Enum.<V>}
+   * @type {<T extends typeof Enum>(this: T, value: any) => InstanceType<T>}
    */
-  static of(value, c=this) {
+  static of = function (value, c=this) {
     //if (value instanceof c) return value;
     for (let name in c) {
       if (c[name].value === value) return c[name];
     }
+  }
+
+  /**
+   * Check if the Enum type contains an Enum instance
+   * @param {Enum} instance 
+   */
+  static has(instance) {
+    for (let name in this) {
+      if (this[name] === instance) return true;
+    }
+    return false;
   }
 
   static ofOrdinal(index, c=this) {
@@ -43,7 +53,7 @@ class Enum {
   }
 
   /** 
-   * @param {V} value
+   * @param {V} [value]
    */
   constructor(value) {
     let c = this.constructor;
@@ -54,22 +64,20 @@ class Enum {
     this.#value = value;
     this.ordinal = c['_enums'].length;
     c['_enums'].push(this);
-    Object.defineProperty(this, '', {value:{}});
     Object.freeze(this);
   }
 
   get name() {
-    let meta = this[''];
-    if (!meta.name) {
+    if (!this.#name) {
       let ec = this.constructor;
       for (let key in ec) {
         if (ec[key] === this) {
-          meta.name = key;
+          this.#name = key;
           break;
         }
       }
     }
-    return meta.name;
+    return this.#name;
   }
 
   get value() {

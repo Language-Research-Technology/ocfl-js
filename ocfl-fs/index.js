@@ -1,11 +1,10 @@
 //@ts-check
-const { createObject } = require('./lib/object.js');
-const { OcflConstants } = require('ocfl');
-// ...require('./lib/storage.js')
+const { OcflFsStore } = require('./lib/store.js');
+const { Ocfl } = require('ocfl');
+//const { default: ocfl } = require('./index.mjs');
 
-module.exports = {
-  OcflConstants,
-  createObject,
-  //createStorage
-}
-module.exports.default = module.exports;
+/** @type {import('./lib/store.js').OcflFsStoreConfig} */
+let defaultOptions;
+
+module.exports = new Ocfl(OcflFsStore, defaultOptions);
+//module.exports.default = module.exports;

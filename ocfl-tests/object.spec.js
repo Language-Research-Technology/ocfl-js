@@ -3,20 +3,19 @@ const path = require("path");
 const fs = require("fs");
 const hasha = require("hasha");
 const { Readable } = require("node:stream");
-const ocfl = require("ocfl");
+const { Ocfl, OcflObject } = require("ocfl");
 const { createHash } = require('crypto');
 
-
-/** @param {ocfl.createObject} createObjectImpl */
-module.exports = function (createObjectImpl) {
-
-  /** @type {ocfl.OcflObject} */
+/** 
+ * @param {Ocfl} ocfl
+ */
+module.exports = function (ocfl) {
   let object;
   let objcount = 0;
 
   /**
    * 
-   * @param {ocfl.OcflObject} object 
+   * @param {OcflObject} object 
    * @param {string} srcPath 
    * @param {string} logicalPath 
    */
@@ -32,28 +31,25 @@ module.exports = function (createObjectImpl) {
   }
 
   before(function () {
-    object = createObjectImpl({ root: '/data/objects/object-1' });
+    object = ocfl.object({ root: '/data/objects/object-1' });
   });
 
-  describe("object encapsulation", function () {
-    it("cannot access protected properties", function () {
-      //console.log();
-      //console.log(object._getInventory);
-      // @ts-ignore
-      assert.equal(object._getInventory, null);
-    });
-  });
+  // describe("object encapsulation", function () {
+  //   it("cannot access protected properties", function () {
+  //     assert.equal(object._getInventory, null);
+  //   });
+  // });
 
   describe("constructor", function () {
     it("can create new object", function () {
       let object;
-      object = createObjectImpl({ root: '/data/objects/object-1' });
+      object = ocfl.object({ root: '/data/objects/object-1' });
       assert.equal(object.root, '/data/objects/object-1');
-      object = createObjectImpl({ root: '/data/objects/object-1', digestAlgorithm: "sha256", id: "object-1" });
+      object = ocfl.object({ root: '/data/objects/object-1', digestAlgorithm: "sha256", id: "object-1" });
       assert.equal(object.root, '/data/objects/object-1');
       assert.equal(object.id, 'object-1');
       assert.throws(() => {
-        object = createObjectImpl({ root: '/data/objects/object-1', workspace: '/data/objects/object-1' });
+        object = ocfl.object({ root: '/data/objects/object-1', workspace: '/data/objects/object-1' });
       });
     });
 
@@ -64,7 +60,7 @@ module.exports = function (createObjectImpl) {
     let invRaw, invRawFiles;
     before(async function () {
       config = { root: path.join(__dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full') };
-      object = createObjectImpl(config);
+      object = ocfl.object(config);
       invRaw = JSON.parse(await fs.promises.readFile(path.join(config.root, 'inventory.json'), 'utf8'));
       invRawFiles = Object.values(invRaw.versions[invRaw.head].state).flat();
     });
@@ -102,13 +98,13 @@ module.exports = function (createObjectImpl) {
   describe("update", function () {
     let datadir = path.join(__dirname, 'test-data');
     let tempdir = path.join(datadir, 'temp');
-    /** @type {ocfl.OcflObject} */
+    /** @type {OcflObject} */
     let objectx;
 
     function createObject(id, useWorkspace, ocflVersion) {
       let config = { id, root: path.join(tempdir, id), ocflVersion };
       if (useWorkspace) config.workspace = config.root + '-tmp';
-      return createObjectImpl(config);
+      return ocfl.object(config);
     }
 
     before(async function () {
@@ -133,7 +129,7 @@ module.exports = function (createObjectImpl) {
     });
 
     for (let useWorkspace of [true, false]) {
-      for (let ocflVersion of ocfl.OcflConstants.OCFL_VERSIONS) {
+      for (let ocflVersion of ocfl.OCFL_VERSIONS) {
         it(`can create correct namaste and inventory, with${useWorkspace ? '' : 'out'} workspace, with version ${ocflVersion}`, async function () {
           objcount++;
           let o = createObject('object-' + objcount, useWorkspace, ocflVersion);
@@ -158,7 +154,7 @@ module.exports = function (createObjectImpl) {
           assert.strictEqual(inv.manifest[hash][0], 'v1/content/test.txt');
           assert.strictEqual(inv.versions.v1.created, inventory.created);
           assert.strictEqual(inv.versions.v1.message, inventory.message);
-          assert.strictEqual(inv.versions.v1.user.name, inventory.user.name);
+          assert.strictEqual(inv.versions.v1.user.name, inventory.user?.name);
           assert.strictEqual(inv.versions.v1.state[hash][0], 'test.txt');
           // sidecar
           let sidecar = await fs.promises.readFile(path.join(o.root, 'inventory.json.sha512'), 'utf8');

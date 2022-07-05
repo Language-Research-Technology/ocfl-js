@@ -1,7 +1,7 @@
 "use strict";
 
 const assert = require("assert");
-const {Enum} = require("../lib/enum.js");
+const Enum = require("../lib/enum.js");
 
 
 describe("Enum class", function () {
@@ -31,12 +31,6 @@ describe("Enum class", function () {
     assert.strictEqual(DIGEST_FIXITY.sha512, Enum.of('sha512', DIGEST_FIXITY));
     assert.strictEqual(DIGEST_FIXITY.blake2b512, DIGEST_FIXITY.of('blake2b-512'));
     assert.strictEqual(undefined, DIGEST_FIXITY.of('a'));
-  });
-
-  it("can check if enum contains a constant", function() {
-    assert.ok(DIGEST_FIXITY.has(DIGEST_FIXITY.md5));
-    assert.ok(DIGEST_FIXITY.has(DIGEST_FIXITY.blake2b512));
-    assert.ok(!DIGEST.has(DIGEST_FIXITY.blake2b512));
   });
 
   it("can inherit other enum correctly", function() {

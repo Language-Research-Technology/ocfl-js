@@ -3,10 +3,10 @@
 const {OcflExtension} = require("../extension");
 const crypto = require('crypto');
 const blake2 = require('blake2');
-var instance;
 
 class DigestAlgorithm extends OcflExtension {
-  static EXTENSION_NAME = '0001-digest-algorithms';
+  static get NAME() { return '0001-digest-algorithms' }
+
   // static create() {
   //   if (!instance) instance = new DigestAlgorithm();
   //   return instance;
@@ -25,7 +25,7 @@ class DigestAlgorithm extends OcflExtension {
       static ['sha512-256'] = new this('sha512/256');
     };
     OcflDigest.FIXITY = FIXITY_EX;
-    //console.log(OcflDigest.FIXITY);
+    console.log(OcflDigest.FIXITY);
     for (let len of [160, 256, 384]) {
       OcflDigest.algorithms['blake2b-' + len] = function() { 
         return blake2.createHash('blake2b', {digestLength: len/8}); 
@@ -37,6 +37,5 @@ class DigestAlgorithm extends OcflExtension {
     //console.log(OcflDigest.algorithms);
   }
 }
-
 
 module.exports = { DigestAlgorithm };
