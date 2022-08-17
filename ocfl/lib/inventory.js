@@ -335,7 +335,10 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     let pairs = srcList.map(src => [src, destPrefix + src.slice(srcPrefix.length)]);
     if (pairs.length === 0) pairs.push([srcLogicalPath, destLogicalPath]);
     for (let [src, dest] of pairs) {
+      if (!dest) throw new Error(`Target logical path cannot be empty`);
       let digest = this.#byPath[src];
+      if (!digest) throw new Error(`Source logical path "${src}" does not exist in object [${this.id}]`);
+      //console.log(this.state);
       let files = this.state[digest];
       let index = files?.indexOf(dest);
       if (index >= 0) {

@@ -12,12 +12,12 @@ create a new Storage instance with the right config, for example:
 #### Filesystem backend
 
     const ocfl = require('ocfl-fs');
-    const storage = new ocfl.Storage({root: '/var/data/myocfl'});
+    const storage = ocfl.storage({root: '/var/data/myocfl'});
 
 #### S3 backend
 
     const ocfl = require('ocfl-s3');
-    const storage = new ocfl.Storage({
+    const storage = ocfl.storage({
       root: '/myocfl'
       bucket: "test-bucket3",
       accessKeyId: "minio",
@@ -25,18 +25,39 @@ create a new Storage instance with the right config, for example:
       endpoint: "http://localhost:9000",
     });
 
-### Creating a new repository
-    // create it
-    await storage.create();
+### Creating or load a new repository
+    
+    // Check if path is a repository
+    if (await storage.exists()) {
+      // Load an existing repository
+      await storage.load();
+    } else {
+      // Create a new repository
+      await storage.create();
+    }
 
-### Open an existing repository
-    // create it
-    let storage = await ocfl.Storage.create();
+### Create an object and import files
 
-### Check if path is a repository
+    if (await storage.load()) {
+        let o = storage.object('test-object');
 
-    // check for namaste file and return true or false
-    await storage.exist()
+        // import from one directory
+        await o.import('/var/data/dir1');
+
+        // import from multiple directories
+        await o.import(['/var/data/dir2', '/var/data/dir3', '/var/data/dir4']);
+
+        // import from multiple files and directories to specific logical paths
+        // use an array of [source, target] where source is the path to source file or directory
+        // and target is the logical path of the file in the object. 
+        // To put files under a source directory in the root of object, set target to empty string ('')
+        await o.import([
+          ['/var/data/file1', 'test1/file1'],
+          ['/var/data2/file1', 'test2/file1'],
+          ['/var/data2/dir1', 'test2/dir1'],
+          ['/var/data2/dir2', '']
+        ]);
+    } 
 
 
 ## Object

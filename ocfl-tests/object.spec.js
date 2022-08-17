@@ -23,15 +23,14 @@ module.exports = function (ocfl) {
     let content = await fs.promises.readFile(srcPath);
     let digest = hasha(content, { algorithm: 'sha512' });
     let inv = await object.getInventory();
-    assert.strictEqual(inv.manifest[digest].length, 1);
-    //console.log(inv.state[digest]);
+    assert.strictEqual(inv.manifest[digest]?.length, 1);
     assert.ok(inv.state[digest].includes(logicalPath));
     assert.strictEqual(content.toString(), await object.getAsString({ digest }));
     assert.strictEqual(content.toString(), await object.getAsString({ logicalPath }));
   }
 
   before(function () {
-    object = ocfl.object({ root: '/data/objects/object-1' });
+    //object = ocfl.object({ root: '/data/objects/object-1' });
   });
 
   // describe("object encapsulation", function () {
@@ -195,7 +194,7 @@ module.exports = function (ocfl) {
       let f2 = path.join(datadir, 'fixtures/1.1/content/spec-ex-full/v3');
       await objectx.update(async t => {
         // file
-        await assert.rejects(t.import(f1, ''));
+        await assert.rejects(t.import(f1, '')); // target path cannot be empty string
         await t.import(f1);
         // directory
         await t.import(f2, '');
@@ -296,6 +295,31 @@ module.exports = function (ocfl) {
       let files = [...await objectx.files()].map(f => f.logicalPath).sort();
       assert.strictEqual(inv.head, 'v7');
       await assert.rejects(fs.promises.access(path.join(objectx.root, 'v8')));
+    });
+
+    it("can add a directory without using transaction directly", async function () {
+      let f1 = path.join(datadir, 'fixtures/1.1/content/spec-ex-full/v3');
+      let o = createObject('object-import-1', true);
+      await o.import(f1);
+      let inv = JSON.parse(await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8'));
+      assert.strictEqual(inv.head, 'v1');
+      await validateFile(o, path.join(f1, 'foo/bar.xml'), 'foo/bar.xml');
+      await validateFile(o, path.join(f1, 'empty2.txt'), 'empty2.txt');
+      await validateFile(o, path.join(f1, 'image.tiff'), 'image.tiff');
+    });
+
+    it("can add directories without using transaction directly", async function () {
+      let f1 = path.join(datadir, 'fixtures/1.1/content/spec-ex-full/v3');
+      let f2 = path.join(datadir, 'fixtures/1.1/content/spec-ex-diff-paths/v1');
+      let o = createObject('object-import-2', true);
+      await o.import([f1, f2]);
+      let inv = JSON.parse(await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8'));
+      assert.strictEqual(inv.head, 'v1');
+      await validateFile(o, path.join(f1, 'foo/bar.xml'), 'foo/bar.xml');
+      await validateFile(o, path.join(f1, 'empty2.txt'), 'empty2.txt');
+      await validateFile(o, path.join(f1, 'image.tiff'), 'image.tiff');
+      await validateFile(o, path.join(f2, 'a file.wxy'), 'a file.wxy');
+      await validateFile(o, path.join(f2, 'another file.xyz'), 'another file.xyz');
     });
 
     //@todo: check delete, rename, reinstate non existant logical path

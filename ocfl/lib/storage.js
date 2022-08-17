@@ -1,5 +1,5 @@
 //@ts-check
-
+//@todo add default layout
 const path = require("path");
 const validation = require('./validation.js');
 const { NotImplementedError } = require("./error");
@@ -200,7 +200,7 @@ class OcflStorageImpl extends OcflStorage {
   }
 
   async exists() {
-    return !isDirEmpty(this.#store, this.root);
+    return !(await isDirEmpty(this.#store, this.root));
   }
 
   async load() {
@@ -237,7 +237,7 @@ class OcflStorageImpl extends OcflStorage {
    */
   async create(options) {
     if (await this.exists()) {
-      //cannot create storage root already exists .
+      //cannot create, storage root already exists .
       throw new Error('[OcflStorage] Cannot create storage root in a non-empty directory');
     } else {
       await this.#store.mkdir(this.root);
@@ -253,9 +253,9 @@ class OcflStorageImpl extends OcflStorage {
       this.#layout = DEFAULT_LAYOUT.create();
     }
     let layout = { extension: this.#layout.name, description: this.#layout.description };
-    await this.#store.writeFile(path.join(this.root, OCFL_LAYOUT), JSON.stringify(layout), 'utf8');
+    await this.#store.writeFile(path.join(this.root, OCFL_LAYOUT), JSON.stringify(layout, null, 2), 'utf8');
     if (this.#layout.config) {
-      await this.#store.writeFile(path.join(this.root, EXTENSIONS_DIR, EXTENSION_CONFIG), JSON.stringify(this.#layout.config), 'utf8');
+      await this.#store.writeFile(path.join(this.root, EXTENSIONS_DIR, EXTENSION_CONFIG), JSON.stringify(this.#layout.config, null, 2), 'utf8');
     }
 
     // todo: create other extensions

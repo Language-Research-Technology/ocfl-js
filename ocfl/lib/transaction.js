@@ -74,7 +74,7 @@ class OcflObjectTransaction {
   async import(source, target) { throw new Error('Not Implemented'); }
 
   /**
-   * Duplicate the logical path `source` as a different logical path `target`, both will then point
+   * Duplicate the logical path `source` as a different logical path `target`, both paths will then point
    * to the same content path and bitstreams.
    * @abstract
    * @param {string} source - The logical path to be copied
@@ -173,7 +173,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   async rollback() {
     if (!this._committed) {
       await Promise.all(this._queue);
-      await this._store.remove(this._createdDir);
+      if (this._createdDir) await this._store.remove(this._createdDir);
       this._committed = true;
     }
   }

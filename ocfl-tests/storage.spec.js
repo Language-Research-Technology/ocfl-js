@@ -77,8 +77,11 @@ module.exports = function (ocfl) {
       await o.update(async t => {
         await t.write('test.txt', 'test');
       });
+      await o.import(path.join(datadir, 'fixtures/1.1/content/spec-ex-full/v3'));
       let test = await fs.promises.readFile(path.join(o.root, 'v1', 'content', 'test.txt'), 'utf8');
       assert.strictEqual(test, 'test');
+      test = await fs.promises.readFile(path.join(o.root, 'v2', 'content', 'empty2.txt'), 'utf8');
+      assert.strictEqual(test, '');
     });
     after(async function () {
       // delete temp dir

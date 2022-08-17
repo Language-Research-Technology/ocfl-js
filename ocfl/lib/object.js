@@ -86,18 +86,24 @@ class OcflObject {
   async update(updater, mode = UPDATE_MODE.MERGE) { throw new NotImplementedError() }
 
   /**
-   * Add one or more content files or directories to the object 
+   * Import one or more content files or directories to the object 
    * in one transaction and commit the changes as a new version. 
-   * @param {string|string[]|string[][]} content - The path to source or an array of a tuple [source, logical path]
+   * Use this method to simplify copying all contents of a directory 
+   * in local filesystem to the OCFL Object content directory
+   * @param {string|string[]|string[][]} content - The source path(s) or an array of a tuple [source, logical path]
    * @param {ObjectUpdateMode} [mode=UPDATE_MODE.MERGE] - Update mode.
    */
-  async add(content, mode = UPDATE_MODE.MERGE) {
-    let entries = /**@type {string[][]}*/(content);
-    if (typeof content === 'string') entries = [[content, '']];
-    else if (typeof content[0] === 'string') entries = [/**@type {string[]}*/(content)];
+  async import(content, mode = UPDATE_MODE.MERGE) {
+    //let entries = /**@type {string[][]}*/(content);
+    if (typeof content === 'string') content = [[content, '']];
+    //else if (typeof content[0] === 'string') entries = /**@type {string[]}*/(content).map(src => [src, '']);
 
     await this.update(async (t) => {
-      let res = await parallelize(entries, async ([source, target]) => t.copy(source, target));
+      let res = await parallelize(/**@type {string[][]}*/(content), async (p) => {
+        if (typeof p === 'string') p = [p, ''];
+        let [source, target] = p;
+        return t.import(source, target);
+      });
       let errors = [];
       for (let i = 0; i < res.length; ++i) {
         if (res[i] instanceof Error) errors.push(content[i][0]);
@@ -110,12 +116,11 @@ class OcflObject {
   }
 
   /**
-   * Copy all contents of a directory in local filesystem to the OCFL Object content directory
-   * @param {string} sourceDir - A directory in which the content will be copied from.
-   * @param {ObjectUpdateMode} [mode=UPDATE_MODE.MERGE] - Update mode.
+   * Alias for import
+   * @see {@link OcflObject.import}
    */
-  async import(sourceDir, mode = UPDATE_MODE.MERGE) {
-    await this.add(sourceDir, mode);
+  async add(sourceDir, mode = UPDATE_MODE.MERGE) {
+    await this.import(sourceDir, mode);
   }
 
   async load() {
@@ -372,7 +377,7 @@ class OcflObjectImpl extends OcflObject {
   async export(targetDir, version) { }
 
   async exists() {
-    return !isDirEmpty(this.#store, this.root);
+    return !(await isDirEmpty(this.#store, this.root));
   }
 
   /**

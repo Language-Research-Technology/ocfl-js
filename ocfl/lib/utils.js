@@ -62,7 +62,7 @@ async function isDirEmpty(store, dirPath) {
   } catch (error) {
     return error.code === 'ENOENT';
   }
-  return !!de;
+  return !de;
 }
 
 /**
