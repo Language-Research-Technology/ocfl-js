@@ -4,8 +4,8 @@
  * Test ES module import export
  */
 import assert from 'assert';
-import ocfl from 'ocfl';
-import {OcflObject, OcflObjectImpl} from 'ocfl';
+import ocfl from '@ocfl/ocfl';
+import {OcflObject, OcflObjectImpl} from '@ocfl/ocfl';
 
 describe("ES module import", function () {
   it("can use default import", function() {

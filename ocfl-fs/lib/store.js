@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { mkdir, copyFile, rename, unlink } = fs.promises;
 
-const { OcflStore, OcflConstants } = require('ocfl');
+const { OcflStore, OcflConstants } = require('@ocfl/ocfl');
 const { INVENTORY_NAME } = OcflConstants;
 
 /**
@@ -47,7 +47,7 @@ class OcflFsStore extends OcflStore {
   }
 
   async createReadStream(filePath, options) {
-    await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    //await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     return this.fs.createReadStream(filePath, options);
   }
 
@@ -85,11 +85,11 @@ class OcflFsStore extends OcflStore {
 
   async move(source, target) {
     try {
-      await this.fs.promises.rename(source, target);
+      return this.fs.promises.rename(source, target);
     } catch (error) {
       if (error.code === 'EXDEV') {
         await this.fs.promises.cp(source, path.dirname(target), { recursive: true, preserveTimestamps: true });
-        await this.fs.promises.rm(target, { recursive: true, force: true });
+        return this.fs.promises.rm(target, { recursive: true, force: true });
       } else {
         throw error;
       }
@@ -97,7 +97,7 @@ class OcflFsStore extends OcflStore {
   }
 
   async remove(filePath) {
-    this.fs.promises.rm(filePath, { recursive: true, force: true })
+    return this.fs.promises.rm(filePath, { recursive: true, force: true });
   }
 
 

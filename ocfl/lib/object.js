@@ -11,6 +11,7 @@ const { OcflStore } = require('./store.js');
 const { OcflExtension } = require('./extension.js');
 const { NotImplementedError } = require('./error.js');
 const { parallelize, dataSourceAsIterable, isDirEmpty, findNamasteVersion } = require('./utils');
+const { format } = require('util');
 const { OCFL_VERSION, OCFL_VERSIONS, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = require('./constants').OcflConstants;
 
 class UPDATE_MODE extends Enum {
@@ -32,17 +33,85 @@ const DIGEST = OcflDigest.CONTENT;
  * @property {OcflExtension[]} [extensions] - Reference to existing extensions defined outside of the object, such as in the storage root.
  */
 /**
- * @typedef {{logicalPath: string; digest: string; contentPath: string;}} FileRef
- */
-/**
  * @typedef {UPDATE_MODE | ('MERGE' | 'REPLACE') } ObjectUpdateMode
+ * 
+ * @typedef {{logicalPath?: string, digest?: string, contentPath?: string, version?: string}} FileRef
+ * @typedef {{logicalPath: string, version?: string}} FileRefLogical
+ * @typedef {{digest: string}} FileRefDigest
+ * @typedef {{contentPath: string}} FileRefContent
  */
-/**
- *
- */
-const defaultConfig = {
-  ocflVersion: OCFL_VERSION
-};
+
+class OcflObjectFile {
+  #ocflObject;
+  /**
+   * 
+   * @param {OcflObjectImpl} ocflObject 
+   * @param {FileRef} fileRef 
+   */
+  constructor(ocflObject, fileRef) {
+    this.#ocflObject = ocflObject;
+    // for (const key in ['logicalPath', 'version', 'digest', 'contentPath']) {
+    //   if (fileRef[key]) this[key] = fileRef[key];
+    // }
+    if (fileRef.logicalPath) this.logicalPath = fileRef.logicalPath;
+    if (fileRef.contentPath) this.contentPath = fileRef.contentPath;
+    if (fileRef.digest) this.digest = fileRef.digest;
+    if (fileRef.version) this.version = fileRef.version;
+  }
+
+  /**
+   * Resolve contentPath given either the `logicalPath` and `version`, `digest`, or `contentPath`.
+   */
+  async #resolveContentPath() {
+    let contentPath = this.contentPath;
+    if (!contentPath) {
+      let inv = await this.#ocflObject.getInventory();
+      let version = !this.version || this.version === 'latest' ? inv.head : this.version;
+      let digest = this.digest || inv.getDigest(this.logicalPath, version);
+      contentPath = inv.getContentPath(digest);
+      if (!contentPath) throw new Error(`Cannot find content "${this.toString()}" in the OCFL Object "${this.#ocflObject.id}" version "${this.version || 'latest'}"`);
+    }
+    return contentPath;
+  }
+
+  toString() {
+    let o = {};
+    for (const key in ['logicalPath', 'version', 'digest', 'contentPath']) {
+      if (this[key]) o[key] = this[key];
+    }
+    return format('%O', o);
+  }
+
+  /**
+   * Get the file content as a buffer
+   * @param {*} [options] Options to be passed to underlying data store specific implementation
+
+   * @return {Promise<Buffer>}
+   */
+  async asBuffer(options) {
+    return this.#ocflObject.readFile(await this.#resolveContentPath(), options);
+  }
+
+  /**
+   * Get the file content as a string
+   * @param {BufferEncoding} [encoding='utf8'] String encoding, default to utf8
+   * @return {Promise<string>}
+   */
+  async asString(encoding = 'utf8') {
+    // @ts-ignore
+    return this.asBuffer(encoding);
+  }
+
+  /**
+   * Get the file content as a stream
+   * @param {*} [options] Options to be passed to underlying data store specific implementation
+   * @return {Promise<NodeJS.ReadableStream>}
+   */
+  async asStream(options) {
+    return this.#ocflObject.createReadStream(await this.#resolveContentPath(), options);
+  }
+}
+
 
 /**
  * Interface class representing OCFL Object
@@ -66,8 +135,6 @@ class OcflObject {
 
   toJSON() { return { root: this.root, id: this.id }; }
 
-  async inventory(id, dir) { }
-
   /**
    * If a cache exists, return the cached inventory. Otherwise read it from the storage and cache it.
    * @param {string} [version] - Full name of the version, eg: v1, v2, v3  
@@ -83,7 +150,7 @@ class OcflObject {
    * @param {ObjectUpdateMode} [mode=UPDATE_MODE.MERGE]
    * @return {Promise<?OcflObjectTransaction>}
    */
-  async update(updater, mode = UPDATE_MODE.MERGE) { throw new NotImplementedError() }
+  async update(updater, mode) { throw new NotImplementedError() }
 
   /**
    * Import one or more content files or directories to the object 
@@ -124,6 +191,7 @@ class OcflObject {
   }
 
   async load() {
+    this._inventory = {};
     await this.getInventory();
     //await this.loadExtensions();
     return;
@@ -131,47 +199,33 @@ class OcflObject {
 
   /**
    * Iterate through the content files contained in the specified version. 
-   * Returns an array of logical paths in no particular order
+   * Returns an Iterator that contains FileRef which consists of logical path, content path, and digest, in no particular order.
+   * The iterator is implemented as a generator.
    * @param {string} [version]
-   * @return {Promise<Generator<FileRef, void, unknown>>}
+   * @return {Promise<Generator<OcflObjectFile, void, unknown>>}
    */
   async files(version) { throw new Error('Not Implemented'); }
 
   /**
-  * Get content file as buffer. Either one of the logicalPath, contentPath, or digest parameters must be specified.
-  * @param {Object} opt
-  * @param {string} [opt.logicalPath] - Logical path of the file, eg: `test`
-  * @param {string} [opt.contentPath] - Content path of the file, eg: `v1/content/test`
-  * @param {string} [opt.digest] - Digest of the file content
-  * @param {string} [opt.version] - Version name
-  * @param {*} [opt.options] - Options to be passed to underlying fs
-  * @return {Promise<Buffer>}
-  */
-  async getAsBuffer(opt) { throw new Error('Not Implemented'); }
-
-  /**
-   * Get content file as string
-   * @param {Object} opt
-   * @param {string} [opt.logicalPath]
-   * @param {string} [opt.contentPath] 
-   * @param {string} [opt.digest] 
-   * @param {string} [opt.version] 
-   * @param {BufferEncoding} [opt.encoding] 
-   * @return {Promise<string>}
+   * Get a file by its logical path and version. If version is omitted, it defaults to the last version.
+   * @callback GetFileByLogical 
+   * @param {string} logicalPath Logical path of the file, eg: 'test'
+   * @param {string} [version='latest'] The object version name, eg: 'v1', 'v2'. Default to 'latest'
+   * @returns {OcflObjectFile}
    */
-  async getAsString(opt) { throw new Error('Not Implemented'); }
-
   /**
-   * Get content file as a stream. Either one of the logicalPath, contentPath, or digest parameters must be specified.
-   * @param {Object} opt
-   * @param {string} [opt.logicalPath] - Logical path of the file, eg: `test`
-   * @param {string} [opt.contentPath] - Content path of the file, eg: `v1/content/test`
-   * @param {string} [opt.digest] - Digest of the file content
-   * @param {string} [opt.version] - Version name
-   * @param {*} [opt.options] - Options to be passed to underlying fs
-   * @return {Promise<NodeJS.ReadableStream>}
+   * Get a file by either the [logical path and version], digest, or content path.
+   * @callback GetFileByOpt
+   * @param { FileRefLogical | FileRefDigest | FileRefContent } opt A choice of logical path (eg: 'test') and version (eg: 'v1'), 
+   * digest of the file content, or content path (eg: 'v1/content/test')
+   * @returns {OcflObjectFile}
    */
-  async getAsStream(opt) { throw new Error('Not Implemented'); }
+  /**
+   * Retrieve the content of a file either as string, buffer, or stream.
+   * @type { GetFileByLogical & GetFileByOpt }
+   */
+  // @ts-ignore
+  getFile = function (opt, version) { }
 
   /**
    * Count the number of files contained in this object
@@ -187,7 +241,9 @@ class OcflObject {
    * The existing directory may or may not be a valid OCFL Object.
    * @return {Promise<boolean>}
    */
-   async exists() { throw new Error('Not Implemented'); }
+  async exists() { throw new Error('Not Implemented'); }
+
+  //async inventory(version = 'latest') { }
 
 }
 
@@ -298,18 +354,8 @@ class OcflObjectImpl extends OcflObject {
     return t;
   }
 
-  /**
-   * Return absolute path to the `contentPath` given either the `logicalPath`, `digest` or `contentPath` with a specific version 
-   * @param {*} param0 
-   * @returns 
-   */
-  async _resolveContentPath({ logicalPath = '', contentPath = '', digest = '', version = '' }) {
-    if (!contentPath) {
-      let inv = await this.getInventory();
-      version = version || inv.head;
-      contentPath = inv.getContentPath(digest || inv.getDigest(logicalPath, version));
-    }
-    return contentPath;
+  async createReadStream(filePath, options) {
+    return this.#store.createReadStream(path.join(this.root, filePath), options);
   }
 
   /** 
@@ -321,54 +367,44 @@ class OcflObjectImpl extends OcflObject {
   }} ReadFileFn
    */
   /** 
-   * Read a file inside an object. 
-   * @param filePath - The file path relative to the object root.
+   * Read a file inside an object.
+   * @type {ReadFileFn} abc
+   * @param {string} relPath - The file path relative to the object root.
    * @param options - Options to be passed to the underlying method
-   * @type ReadFileFn
    */
-  readFile = async function (filePath, options) {
-    return this.#store.readFile(path.join(this.root, filePath), options);
+  readFile = async function (relPath, options) {
+    return this.#store.readFile(path.join(this.root, relPath), options);
   }
 
-  /**
-   * 
-   * @param {Object} opt
-   * @param {string} [opt.logicalPath]
-   * @param {string} [opt.contentPath] 
-   * @param {string} [opt.digest] 
-   * @param {string} [opt.version] 
-   * @param {*} [opt.options] 
-   */
-  async getAsBuffer(opt) {
-    let p = await this._resolveContentPath(opt);
-    if (!p) throw new Error(`Cannot find content "${opt.logicalPath || opt.contentPath || opt.digest}" in the OCFL Object "${this.#id}" version "${opt.version || 'latest'}"`);
-    return this.readFile(p, opt.options);
+  getFile = function (opt, version) {
+    var obj = this;
+    var opt_ = typeof opt === 'string' ? { logicalPath: opt, version: version } : opt;
+    return new OcflObjectFile(this, opt_);
   }
 
-  /**
-   * 
-   * @param {Object} opt
-   * @param {string} [opt.logicalPath]
-   * @param {string} [opt.contentPath] 
-   * @param {string} [opt.digest] 
-   * @param {string} [opt.version] 
-   * @param {BufferEncoding} [opt.encoding]
-   * @return {Promise<string>} 
-   */
-  async getAsString(opt) {
-    // @ts-ignore
-    return this.getAsBuffer({ ...opt, options: opt.encoding || 'utf8' });
-  }
+  // async _resolveContentPath({ logicalPath = '', contentPath = '', digest = '', version = '' }) {
+  //   if (!contentPath) {
+  //     let inv = await this.getInventory();
+  //     version = version && version !== 'latest' ? version : inv.head;
+  //     contentPath = inv.getContentPath(digest || inv.getDigest(logicalPath, version));
+  //   }
+  //   return contentPath;
+  // }
 
-  async createReadStream(filePath, options) {
-    return this.#store.createReadStream(path.join(this.root, filePath), options);
-  }
-
-  async getAsStream(opt) {
-    let p = await this._resolveContentPath(opt);
-    if (!p) throw new Error(`Cannot find content "${opt.logicalPath || opt.contentPath || opt.digest}" in the OCFL Object "${this.#id}" version "${opt.version || 'latest'}"`);
-    return this.#store.createReadStream(p, opt.options);
-  }
+  // async getAsBuffer(opt) {
+  //   let p = await this._resolveContentPath(opt);
+  //   if (!p) throw new Error(`Cannot find content "${opt.logicalPath || opt.contentPath || opt.digest}" in the OCFL Object "${this.#id}" version "${opt.version || 'latest'}"`);
+  //   return this.readFile(p, opt.options);
+  // }
+  // async getAsString(opt) {
+  //   // @ts-ignore
+  //   return this.getAsBuffer({ ...opt, options: opt.encoding || 'utf8' });
+  // }
+  // async getAsStream(opt) {
+  //   let p = await this._resolveContentPath(opt);
+  //   if (!p) throw new Error(`Cannot find content "${opt.logicalPath || opt.contentPath || opt.digest}" in the OCFL Object "${this.#id}" version "${opt.version || 'latest'}"`);
+  //   return this.createReadStream(p, opt.options);
+  // }
 
   /**
    * Copy all content of this Object to a directory in local filesystem
@@ -385,7 +421,13 @@ class OcflObjectImpl extends OcflObject {
    */
   async files(version) {
     let inv = await this.getInventory();
-    return inv.files(version);
+    let o = this;
+    function* files() {
+      for (const f of inv.files(version)) {
+        yield new OcflObjectFile(o, f);
+      }
+    }
+    return files();
   }
 
 
@@ -461,7 +503,6 @@ class OcflObjectImpl extends OcflObject {
   }
 
   async isObject(aPath) { }
-  async importDir(id, sourceDir) { }
   getVersionString(i) { }
   async determineVersion() { }
   nameVersion(version) {

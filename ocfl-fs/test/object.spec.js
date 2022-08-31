@@ -10,6 +10,6 @@ describe("OcflObject class using OcflFsStore", function () {
   //   assert.strictEqual(DIGEST_FIXITY.size(), 5);
   // });
 
-  require('ocfl-tests/object.spec')(ocfl);
+  require('@ocfl/ocfl-tests').object(ocfl);
 });
 

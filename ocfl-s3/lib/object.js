@@ -1,6 +1,6 @@
 //@ts-check
 
-const ocfl = require('ocfl');
+const ocfl = require('@ocfl/ocfl');
 
 /**
  * OCFL Object backed by Amazon Simple Storage Service (S3)

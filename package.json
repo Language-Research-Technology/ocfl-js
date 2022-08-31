@@ -1,6 +1,6 @@
 {
   "name": "ocfl",
-  "version": "1.1.0",
+  "version": "0.1.0",
   "description": "Oxford Common File Layout (OCFL) JS client library",
   "keywords": [
     "ocfl",
@@ -21,8 +21,9 @@
   "license": "GPL-3.0-or-later",
   "workspaces": [
     "ocfl",
-    "ocfl-extensions",
     "ocfl-fs",
     "ocfl-tests"
-  ]
+  ],
+  "scripts": {
+  }
 }

@@ -7,8 +7,8 @@ const { OcflStorageLayout } = require("./extension");
 const { HashedNTupleStorageLayout } = require("./extensions/0004-hashed-n-tuple-storage-layout");
 const { OcflObject, OcflObjectImpl } = require("./object");
 const { isDirEmpty, findNamasteVersion } = require("./utils.js");
-const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT, 
-  EXTENSIONS_DIR, EXTENSION_CONFIG, 
+const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT,
+  EXTENSIONS_DIR, EXTENSION_CONFIG,
   NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = require('./constants').OcflConstants;
 const DIGEST = require('./digest').OcflDigest.CONTENT;
 
@@ -21,7 +21,8 @@ const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
  */
 
 class OcflStorage {
-  static LAYOUT;
+  //static LAYOUT;
+  ocflVersion;
 
   /**
    * Get the storage root
@@ -65,41 +66,44 @@ class OcflStorage {
    * Create the storage root in the underlying storage backend
    * @param {Object} [options] - Additional options for creating storage root
    * @param {boolean} [options.ocflSpecText=false] - If true, create a copy of the OCFL specification text in the storage root
+   * @return {Promise<OcflStorage>}
    */
   async create(options) { throw new NotImplementedError(); }
 
   /**
-   * Check if the storage root path points to an existing file or non-empty directory in the underlying backend store.
-   * The existing directory may or may not be a valid OCFL Storage.
-   * @return {Promise<boolean>}
-   */
-  async exists() { throw new NotImplementedError(); }
-
-  /**
    * Check namaste, retrieve storage layout extension, and read its config file.
-   * @return {Promise<boolean>}
+   * @return {Promise<OcflStorage>}
    */
   async load() { throw new NotImplementedError(); }
 
   /**
+  * Check if the storage root path points to an existing file or non-empty directory in the underlying backend store.
+  * The existing directory may or may not be a valid OCFL Storage.
+  * @return {Promise<boolean>}
+  */
+  async exists() { throw new NotImplementedError(); }
+
+  /**
    * 
-   * @return {AsyncIterator<OcflObject>}
+   * @return {AsyncIterableIterator<OcflObject>}
    */
   [Symbol.asyncIterator]() { throw new NotImplementedError(); }
 
   /**
-   * Return all OCFL objects under this storage as array
-   * @return {Promise<OcflObject[]>}
+   * Return a new AsyncIterator that contains all the OCFL objects in this Storage.
+   * @return {AsyncIterableIterator<OcflObject>}
    */
-  async objects() {
-    const objects = []; 
-    for await(const o of this) objects.push(o); 
-    return objects;
+  objects() {
+    return this[Symbol.asyncIterator]();
+    // const objects = [];
+    // for await (const o of this) objects.push(o);
+    // return objects;
   }
 
   async delete(id) {
     return this.remove(id);
   }
+
   async purge(id) {
     return this.remove(id);
   }
@@ -148,8 +152,8 @@ class OcflStorageImpl extends OcflStorage {
     this.#store = store;
     const { root, workspace, layout, ocflVersion, ...objectConfig } = config;
     this.#root = path.resolve(root);
-    this.#workspace = workspace ? path.resolve(workspace) : undefined;
-    if (this.#workspace && this.#workspace.startsWith(this.#root + path.sep)) {
+    this.#workspace = workspace ? path.resolve(workspace) : path.join(this.#root, 'extensions/workspace');
+    if (this.#workspace && this.#workspace.startsWith(this.#root + path.sep) && !this.#workspace.startsWith(this.#root + path.sep + 'extensions' + path.sep)) {
       throw new Error('[OcflStorage] config.workspace cannot be the same as or a subpath of config.root');
     }
     this.#layout = layout instanceof OcflStorageLayout ? layout : this.#createLayout(layout);
@@ -186,7 +190,7 @@ class OcflStorageImpl extends OcflStorage {
   object(opt) {
     let id, root;
     if (typeof opt === 'string') id = opt;
-    else ({id, root} = opt);
+    else ({ id, root } = opt);
     let relObjectRoot = root || this.objectRoot(id);
     return new OcflObjectImpl({
       id,
@@ -211,7 +215,7 @@ class OcflStorageImpl extends OcflStorage {
     ];
     // @ts-ignore
     let [ocflVersion, layout] = (await Promise.allSettled(tasks)).map(r => r.value);
-    if (!ocflVersion) return false;//throw validation.createError(67, this.root);
+    if (!ocflVersion) throw new Error('Invalid storage root');//throw validation.createError(67, this.root);
     let layoutName, layoutConfig;
     // load layout
     try {
@@ -220,7 +224,7 @@ class OcflStorageImpl extends OcflStorage {
     }
     // load ext config if exists
     try {
-      let cfgstr = await this.#store.readFile(path.join(this.root, EXTENSIONS_DIR, layout, EXTENSION_CONFIG), 'utf8');
+      let cfgstr = await this.#store.readFile(path.join(this.root, EXTENSIONS_DIR, layoutName, EXTENSION_CONFIG), 'utf8');
       layoutConfig = JSON.parse(/**@type{string}*/(cfgstr));
     } catch (error) {
     }
@@ -228,7 +232,7 @@ class OcflStorageImpl extends OcflStorage {
 
     //@todo: load storage level extensions
 
-    return true;
+    return this;
   }
 
   /**
@@ -250,23 +254,21 @@ class OcflStorageImpl extends OcflStorage {
 
     // create layout
     if (!this.#layout) {
-      this.#layout = DEFAULT_LAYOUT.create();
+      this.#layout = new DEFAULT_LAYOUT();
     }
     let layout = { extension: this.#layout.name, description: this.#layout.description };
     await this.#store.writeFile(path.join(this.root, OCFL_LAYOUT), JSON.stringify(layout, null, 2), 'utf8');
     if (this.#layout.config) {
-      await this.#store.writeFile(path.join(this.root, EXTENSIONS_DIR, EXTENSION_CONFIG), JSON.stringify(this.#layout.config, null, 2), 'utf8');
+      await this.#store.writeFile(path.join(this.root, EXTENSIONS_DIR, this.#layout.name, EXTENSION_CONFIG), JSON.stringify(this.#layout.config, null, 2), 'utf8');
     }
 
     // todo: create other extensions
     if (options?.ocflSpecText) {
 
     }
+    return this;
   }
 
-  /**
-   * @return {AsyncIterator<OcflObject, OcflObject>}
-   */
   [Symbol.asyncIterator]() {
     let store = this.#store;
     let workspace = this.#workspace;
@@ -274,6 +276,7 @@ class OcflStorageImpl extends OcflStorage {
     let root = this.root;
     let stack = [this.#store.opendir(this.root)];
     return {
+      [Symbol.asyncIterator]() { return this; },
       async next() {
         let dirp;
         while ((dirp = stack.pop())) {

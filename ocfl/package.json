@@ -1,6 +1,6 @@
 {
-  "name": "ocfl",
-  "version": "1.1.0",
+  "name": "@ocfl/ocfl",
+  "version": "0.1.3",
   "description": "Oxford Common File Layout (OCFL) JS library",
   "main": "index.js",
   "exports": {
@@ -15,6 +15,9 @@
   },
   "scripts": {
     "test": "mocha",
+    "preversion": "npm test",
+    "version": "echo 'version'",
+    "postversion": "echo 'postversion'",
     "build-docs": "jsdoc -c jsdoc.json"
   },
   "keywords": [
@@ -25,7 +28,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Arkisto-Platform/ocfl-js"
+    "url": "git+https://github.com/Arkisto-Platform/ocfl-js.git"
   },
   "author": "Alvin Sebastian (https://orcid.org/0000-0002-9086-1722)",
   "contributors": [
@@ -50,5 +53,14 @@
   },
   "dependencies": {
     "blake2": "^4.1.1"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/Arkisto-Platform/ocfl-js/issues"
+  },
+  "homepage": "https://github.com/Arkisto-Platform/ocfl-js#readme",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "files": [ "index.js", "index.mjs", "lib", "resources" ]
 }

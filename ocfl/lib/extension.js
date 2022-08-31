@@ -12,8 +12,17 @@ const storageLayout = {};
 
 /** @typedef {{ extensionName?: string;[key: string]: any; }} OcflExtensionConfig */
 
+// class OcflExtensionConfig {
+//   /** User defined config */
+//   definedConfig;
+//   constructor(config) {
+//     this.definedConfig = config;
+//   }
+  
+// }
+
 /**
- * @extends {OcflExtensionBase}
+ * @template {{}} C
  */
 class OcflExtension {
   static #object = {};
@@ -73,10 +82,10 @@ class OcflExtension {
    * @this {T}
    * @return {InstanceType<T>}
    */
-  //  static create(config){
-  //   if (!config?.extensionName || this.NAME === config.extensionName) return /**@type {InstanceType<T>}*/(new this(config));
-  //   return OcflExtension.class(config.extensionName).create(config);
-  // }
+   static create2(config){
+    if (!config?.extensionName || this.NAME === config.extensionName) return /**@type {InstanceType<T>}*/(new this(config));
+    return OcflExtension.class(config.extensionName).create2(config);
+  }
   /**
    * Create an instance of the extension
    * @type {<T extends typeof OcflExtension>(this: T, config?: OcflExtensionConfig) => InstanceType<T>}
@@ -93,22 +102,58 @@ class OcflExtension {
   static setup(ocfl) { };
   static get NAME() { return '0000-example-extension' }
   static get DESCRIPTION() { return 'Example extension' }
+
   /**
    * 
    * @param {OcflExtensionConfig} [config]
+   * @param {C} [defaultConfig]
    */
-  constructor(config) { 
-    if (config) this.config = config;
+  constructor(config, defaultConfig) {
+    /** @type {C} */
+    this.parameters = defaultConfig ? Object.create(/**@type{object}*/(defaultConfig)) : {};
+    if (typeof config === 'object') {
+      for (let k in config) {
+        if (k in defaultConfig) this.parameters[k] = config[k];
+      }
+    }
   }
+
+  /** Return all the parameters in which the value has been set to non-default value */
+  get config() {
+    let paramNames = Object.keys(this.parameters);
+    if (paramNames.length > 0) {
+      return paramNames.reduce( (params, name) => (params[name] = this.parameters[name], params), {extensionName: this.name});
+    } 
+  }
+
+  get p() { return this.parameters; }
+  
+  /** Extension registered name */
   get name() { return /** @type {typeof OcflExtension}*/(this.constructor).NAME }
   get description() { return /** @type {typeof OcflExtension}*/(this.constructor).DESCRIPTION }
   get minOcflVersion() { return "1.0" }
   get version() { return "1.0" }
-
+  
+  /**
+   * Get the specified parameter value
+   * @param {string} param - The extension parameter name
+   * @return {*}
+   */
+  get(param) { return this.parameters[param]; }
+  
+  /**
+   * Set the specified parameter value
+   * @param {string} param  - The extension parameter name
+   * @param {*} value - The extension parameter value
+   */
+  set(param, value) { if (param in this.parameters) this.parameters[param] = value; }
 }
 
 
-
+/**
+ * @template {{}} C
+ * @extends {OcflExtension<C>}
+ */
 class OcflStorageLayout extends OcflExtension {
 
   static get layout() {
@@ -143,8 +188,9 @@ class OcflStorageLayout extends OcflExtension {
   /**
    * 
    * @param {OcflExtensionConfig} [config] 
+   * @param {C} [defaultConfig]
    */
-  constructor(config) { super(config); }
+  constructor(config, defaultConfig) { super(config, defaultConfig); }
 
   /**
    * Map an object identifier to a path

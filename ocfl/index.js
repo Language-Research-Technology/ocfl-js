@@ -73,7 +73,7 @@ class Ocfl {
   get StorageLayout() { return OcflStorageLayout.layout }
 
   /**
-   * Create a storage layout from extension name or config
+   * Instantiate a storage layout from extension name or config
    * @param {string|OcflExtensionConfig} config - Layout name or config
    */
   storageLayout(config) {
@@ -90,7 +90,7 @@ class Ocfl {
   }
 
   /**
-   * Create an OCFL Object
+   * Instantiate an OCFL Object object
    * @param {OcflObjectConfig} config
    * @param {SO} [storeOptions]
    * @return {OcflObject}
@@ -100,7 +100,7 @@ class Ocfl {
   }
 
   /**
-   * Create an OCFL Storage
+   * Instantiate an OCFL Storage object
    * @param {OcflStorageConfig} config
    * @param {SO} [storeOptions]
    * @return {OcflStorage}
@@ -108,7 +108,29 @@ class Ocfl {
   storage(config, storeOptions = this.#defaultOptions) {
     return new OcflStorageImpl(config, this.#store.getInstance(storeOptions));
   }
+
+  /**
+   * Create a new OCFL Storage
+   * @param {OcflStorageConfig} config
+   * @param {SO} [storeOptions]
+   * @return {Promise<OcflStorage>}
+   */
+  async createStorage(config, storeOptions = this.#defaultOptions) {
+    return (new OcflStorageImpl(config, this.#store.getInstance(storeOptions))).create();
+  }
+
+  /**
+   * Load an existing OCFL Storage
+   * @param {OcflStorageConfig} config
+   * @param {SO} [storeOptions]
+   * @return {Promise<OcflStorage>}
+   */
+  async loadStorage(config, storeOptions = this.#defaultOptions) {
+    return (new OcflStorageImpl(config, this.#store.getInstance(storeOptions))).load();
+  }
 }
+
+
 
 module.exports = {
   OcflConstants,

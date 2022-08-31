@@ -1,6 +1,6 @@
 //@ts-check
 const { OcflFsStore } = require('./lib/store.js');
-const { Ocfl } = require('ocfl');
+const { Ocfl } = require('@ocfl/ocfl');
 //const { default: ocfl } = require('./index.mjs');
 
 /** @type {import('./lib/store.js').OcflFsStoreConfig} */

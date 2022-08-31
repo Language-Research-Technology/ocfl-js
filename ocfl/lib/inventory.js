@@ -155,13 +155,20 @@ class OcflObjectInventory {
    * @param {string} [version] - The version name 
    */
   *files(version) {
-    let state = (!version || version === 'latest') ? this.state : this.versions[version]?.state;
+    let state;
+    if (!version || version === 'latest') {
+      state = this.state;
+      version = this.head;
+    } else {
+      state = this.versions[version]?.state;
+    }
     for (let digest in state) {
       let files = state[digest];
       let contentPath = this.getContentPath(digest);
       for (let logicalPath of files) {
         yield {
           logicalPath,
+          version,
           digest,
           contentPath
         };
@@ -283,13 +290,12 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
       if (mf && mf.length > 0) {
         // this is a reinstatement
       } else {
-        if (this.#byPath[logicalPath]) {
-          // this is an update, remove old digest
-          this.delete(logicalPath);
-        } else {
-          // normal addition
-        }
+        // normal addition
         this.manifest[digest] = [path.join(this.head, this.contentDirectory, logicalPath)];
+      }
+      if (this.#byPath[logicalPath]) {
+        // this is an update, remove old digest
+        this.delete(logicalPath);
       }
       state[digest] = [logicalPath];
     }
@@ -350,6 +356,10 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     }
   }
 
+  /**
+   * Delete a file
+   * @param {string} logicalPath 
+   */
   delete(logicalPath) {
     let prefix = logicalPath.endsWith('/') ? logicalPath : logicalPath + '/';
     let names = this.getDigest(logicalPath) ? [logicalPath] :

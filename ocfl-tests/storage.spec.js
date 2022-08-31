@@ -3,7 +3,7 @@
 const assert = require("assert");
 const path = require("path");
 const fs = require("fs");
-const { Ocfl, OcflStorage } = require("ocfl");
+const { Ocfl, OcflStorage } = require("@ocfl/ocfl");
 
 /** 
  * @param {Ocfl} ocfl
@@ -30,7 +30,7 @@ module.exports = function (ocfl) {
     let objects = [
       { root: path.join(repo.root, 'object_1'), id: 'http://example.org/minimal_no_content' }
     ];
-    it("can list objects via async interator", async function () {
+    it("can list objects via async iterator", async function () {
       let i = 0;
       for await(let o of repo) {
         assert.strictEqual(o.root, objects[i].root);
@@ -40,8 +40,10 @@ module.exports = function (ocfl) {
         ++i;
       }
     });
-    it("can list objects as array", async function () {
-      let objarr = await repo.objects();
+    it("can list objects via objects() method", async function () {
+      const objarr = [];
+      for await(let o of repo.objects()) { objarr.push(o) }
+      //const objarr = Promise.all(iter);
       assert.strictEqual(objarr.length, 1);
       assert.strictEqual(objarr[0].root, objects[0].root);
 

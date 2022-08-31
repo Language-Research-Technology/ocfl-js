@@ -13,6 +13,9 @@ const DefaultConfig = {
   numberOfTuples: 3,
 };
 
+/**
+ * @extends {OcflStorageLayout<typeof DefaultConfig>}
+ */
 class HashAndIdNTupleStorageLayout extends OcflStorageLayout {
   static get NAME() { return DefaultConfig.extensionName }
   static get DESCRIPTION() {
@@ -22,14 +25,16 @@ class HashAndIdNTupleStorageLayout extends OcflStorageLayout {
       " Finally, the OCFL object identifier is percent-encoded to create a directory name for the OCFL object root.";
   }
 
+  /**
+   * @param {Partial<typeof DefaultConfig>} [config] 
+   */
   constructor(config) {
-    /** @type {DefaultConfig} */
-    let c = Object.assign(Object.create(DefaultConfig), config);
+    super(config, DefaultConfig);
+    let c = this.parameters;
     if (!OcflDigest.FIXITY.of(c.digestAlgorithm)) throw new Error('Invalid digestAlgorithm');
     let digest = OcflDigest.digestSync(c.digestAlgorithm, 'test');
     let p = c.numberOfTuples * c.tupleSize
     if (p > digest.length) throw new Error('Product of numberOfTuples and tupleSize is greater than the number of characters in the hex encoded digest.');
-    super(c);
   }
 
   /**
@@ -37,10 +42,10 @@ class HashAndIdNTupleStorageLayout extends OcflStorageLayout {
    * @return {string} 
    */
   map(id) {
-    let digest = OcflDigest.digestSync(this.config.digestAlgorithm, id);
+    let digest = OcflDigest.digestSync(this.parameters.digestAlgorithm, id);
     let segments = [];
-    let s = this.config.tupleSize;
-    let n = this.config.numberOfTuples;
+    let s = this.parameters.tupleSize;
+    let n = this.parameters.numberOfTuples;
     let i;
     for (i = 0; i < n; ++i) {
       segments.push(digest.slice(s * i, s * i + s));

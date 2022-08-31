@@ -197,7 +197,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     }
 
   }
-  //todo: commit message and user
+
   async _commit(options = {}) {
     // set commit info
     this._inventory.created = (new Date()).toISOString();

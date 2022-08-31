@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const hasha = require("hasha");
 const { Readable } = require("node:stream");
-const { Ocfl, OcflObject } = require("ocfl");
+const { Ocfl, OcflObject } = require("@ocfl/ocfl");
 const { createHash } = require('crypto');
 
 /** 
@@ -25,8 +25,8 @@ module.exports = function (ocfl) {
     let inv = await object.getInventory();
     assert.strictEqual(inv.manifest[digest]?.length, 1);
     assert.ok(inv.state[digest].includes(logicalPath));
-    assert.strictEqual(content.toString(), await object.getAsString({ digest }));
-    assert.strictEqual(content.toString(), await object.getAsString({ logicalPath }));
+    assert.strictEqual(content.toString(), await object.getFile({ digest }).asString());
+    assert.strictEqual(content.toString(), await object.getFile({ logicalPath }).asString());
   }
 
   before(function () {
@@ -55,10 +55,11 @@ module.exports = function (ocfl) {
   });
 
   describe("access existing object", function () {
-    let config;
     let invRaw, invRawFiles;
+    let object = ocfl.object({ root: '/tmp/dummy' });
+
     before(async function () {
-      config = { root: path.join(__dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full') };
+      let config = { root: path.join(__dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full') };
       object = ocfl.object(config);
       invRaw = JSON.parse(await fs.promises.readFile(path.join(config.root, 'inventory.json'), 'utf8'));
       invRawFiles = Object.values(invRaw.versions[invRaw.head].state).flat();
@@ -82,15 +83,28 @@ module.exports = function (ocfl) {
     });
     //list non existant object
 
-    it("can read files", async function () {
-      let fileContent = {};
-      fileContent['image.tiff'] = await fs.promises.readFile(path.join(config.root, 'v1/content/image.tiff'));
-      fileContent['foo/bar.xml'] = await fs.promises.readFile(path.join(config.root, 'v2/content/foo/bar.xml'));
-      fileContent['empty2.txt'] = await fs.promises.readFile(path.join(config.root, 'v1/content/empty.txt'));
-      for (let f of await object.files()) {
-        let content = await object.getAsBuffer(f);
-        assert.equal(content.compare(fileContent[f.logicalPath]), 0);
-      }
+    it("can read a file as string", async function () {
+      let actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'), 'utf8');
+      let content = await object.getFile('foo/bar.xml').asString();
+      assert.equal(content, actualContent);
+    });
+    it("can read a file as buffer", async function () {
+      let actualContent = await fs.promises.readFile(path.join(object.root, 'v1/content/image.tiff'));
+      let content = await object.getFile('image.tiff').asBuffer();
+      assert.equal(content.compare(actualContent), 0);
+    });
+    it("can read a file as stream", async function () {
+      let actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'));
+      //fileContent['empty2.txt'] = await fs.promises.readFile(path.join(config.root, 'v1/content/empty.txt'));
+      // for (let f of await object.files()) {
+      //   let content = await object.getAsBuffer(f);
+      //   assert.equal(content.compare(fileContent[f.logicalPath]), 0);
+      // }
+      let stream = await object.getFile('foo/bar.xml').asStream();
+      let buffers = []
+      for await (const data of stream) buffers.push(/** @type {Buffer} */(data));
+      let content = Buffer.concat(buffers);
+      assert.equal(content.compare(actualContent), 0);
     });
   });
 
@@ -239,8 +253,8 @@ module.exports = function (ocfl) {
       let inv = await objectx.getInventory();
       assert.strictEqual(inv.head, 'v4');
       assert.strictEqual(c2, c1 - 2);
-      await assert.rejects(objectx.getAsString({ logicalPath: 'test.txt' }));
-      await assert.rejects(objectx.getAsString({ logicalPath: 'bar/bar.xml' }));
+      await assert.rejects(objectx.getFile('test.txt').asString());
+      await assert.rejects(objectx.getFile('bar/bar.xml').asString());
     });
 
     it("can reinstate files", async function () {
@@ -295,6 +309,37 @@ module.exports = function (ocfl) {
       let files = [...await objectx.files()].map(f => f.logicalPath).sort();
       assert.strictEqual(inv.head, 'v7');
       await assert.rejects(fs.promises.access(path.join(objectx.root, 'v8')));
+    });
+
+    it("can correctly create versions", async function () {
+      let f1 = path.join(datadir, 'fixtures/1.1/content/spec-ex-full/v3');
+      let o = createObject('object-version-1', true);
+      let c;
+      await o.update(async t => {
+        await t.write('test', 'test');
+      });
+      c = await fs.promises.readFile(path.join(o.root, 'v1/content/test'), 'utf8');
+      assert.strictEqual(c, 'test');
+      assert.strictEqual(await o.getFile('test').asString(), 'test');
+      await o.update(async t => {
+        await t.write('test', 'testv2');
+      });
+      c = await fs.promises.readFile(path.join(o.root, 'v2/content/test'), 'utf8');
+      assert.strictEqual(c, 'testv2');
+      assert.strictEqual(await o.getFile('test').asString(), 'testv2');
+      await o.update(async t => {
+        await t.write('test', 'test');
+      });
+      //console.log(o._inventory.latest.toString());
+      //console.log(o._inventory.v3.toString());
+      await assert.rejects(fs.promises.readFile(path.join(o.root, 'v3/content/test'), 'utf8'));
+      assert.strictEqual(await o.getFile('test').asString(), 'test');
+      await o.update(async t => {
+        await t.write('test', 'testv4');
+      });
+      c = await fs.promises.readFile(path.join(o.root, 'v4/content/test'), 'utf8');
+      assert.strictEqual(c, 'testv4');
+      assert.strictEqual(await o.getFile('test').asString(), 'testv4');
     });
 
     it("can add a directory without using transaction directly", async function () {

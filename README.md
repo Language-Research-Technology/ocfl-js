@@ -2,71 +2,72 @@
 Node.js library for creating and manipulating Oxford Common File Layout(OCFL) storage and object.
 The library consists of common components and implementations for different storage backend.
 
-# Usage
-## Storage
-### Creating storage
+## Usage
 
-Import the corresponding module of the chosen backend and then 
-create a new Storage instance with the right config, for example:
+### Storage
 
-#### Filesystem backend
+Import the corresponding module of the chosen backend and then create a new Storage instance with the right config. For more details, please refer to the documentation of the specific backend implementation. For example:
 
-    const ocfl = require('ocfl-fs');
+    // Use filesystem backend
+    const ocfl = require('@ocfl/ocfl-fs');
     const storage = ocfl.storage({root: '/var/data/myocfl'});
 
-#### S3 backend
+    // Use S3 backend, assuming the required S3 credentials are set as env vars
+    const ocfl = require('@ocfl/ocfl-s3');
+    const storage = ocfl.storage({root: '/var/data/myocfl', bucket: "test-bucket"});
 
-    const ocfl = require('ocfl-s3');
-    const storage = ocfl.storage({
-      root: '/myocfl'
-      bucket: "test-bucket3",
-      accessKeyId: "minio",
-      secretAccessKey: "minio_pass",
-      endpoint: "http://localhost:9000",
-    });
-
-### Creating or load a new repository
+Before any OCFL object can be created in the storage, either the `create` or `load` methods must be be called first.
+Alternatively, use the `createStorage` and `loadStorage` methods to create a new storage or load an existing storage as follows:
     
-    // Check if path is a repository
-    if (await storage.exists()) {
-      // Load an existing repository
-      await storage.load();
-    } else {
-      // Create a new repository
-      await storage.create();
+    let storage;
+    let config = {root: '/var/data/myocfl'};
+    try {
+      storage = await ocfl.createStorage(config);
+    } catch (error) {
+      try {
+        storage = await ocfl.loadStorage(config);
+      } catch (error) {
+        console.error('invalid storage root');
+      }
     }
+    // Do something with the storage here
 
-### Create an object and import files
+Use the `storage` instance to create an object and import files:
 
-    if (await storage.load()) {
-        let o = storage.object('test-object');
+    let o = storage.object('test-object');
 
-        // import from one directory
-        await o.import('/var/data/dir1');
+    // import from one directory
+    await o.import('/var/data/dir1');
 
-        // import from multiple directories
-        await o.import(['/var/data/dir2', '/var/data/dir3', '/var/data/dir4']);
+    // import from multiple directories
+    await o.import(['/var/data/dir2', '/var/data/dir3', '/var/data/dir4']);
 
-        // import from multiple files and directories to specific logical paths
-        // use an array of [source, target] where source is the path to source file or directory
-        // and target is the logical path of the file in the object. 
-        // To put files under a source directory in the root of object, set target to empty string ('')
-        await o.import([
-          ['/var/data/file1', 'test1/file1'],
-          ['/var/data2/file1', 'test2/file1'],
-          ['/var/data2/dir1', 'test2/dir1'],
-          ['/var/data2/dir2', '']
-        ]);
-    } 
+    // import from multiple files and directories to specific logical paths
+    // use an array of [source, target] where source is the path to source file or directory
+    // and target is the logical path of the file in the object. 
+    // To put files under a source directory in the root of object, set target to empty string ('')
+    await o.import([
+      ['/var/data/file1', 'test1/file1'],
+      ['/var/data2/file1', 'test2/file1'],
+      ['/var/data2/dir1', 'test2/dir1'],
+      ['/var/data2/dir2', '']
+    ]);
+
+OCFL objects inside the OCFL storage can be iterated with `for ... of` construct:
+
+    for await (const obj of repo) { 
+      console.log(await obj.count())
+    }
 
 
 ## Object
-The OCFL Object class can be used with the storage root as described above. It can also be used directly without
-the storage root. For example, if you want to manipulate an an ocfl object directory that is not associated with a storage layout.
 
-Create a new object
+The OCFL Object can be instantiated by the storage root as described above. It can also be used directly without
+the storage root. For example, if you want to manipulate an ocfl object directory that is not associated with a storage layout.
 
-    let object = new Object({path:})
+To create a new object or read an existing object that is not part of any storage:
+
+    const object = ocfl.object({root: '/var/data/myocflobject'})
 
 Add a content to the object from a directory in the local file system. This will create a new version `v1`.
 
@@ -79,17 +80,10 @@ Add multiple files from different sources as one transaction. All changes will b
       t.copy()
     });
 
-Accessing existing object
-
-    let object = new Object({path:'', id:''})
-
 List all existing files in the object
 
     for await (let f of object.files()) {
         // f is the logical path of the file
-        let fileContent = object.get(f);
+        let fileContent = await object.getFile(f).asString();
     }
 
-Modify existing object
-
-    object.add();
