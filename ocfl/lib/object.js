@@ -123,13 +123,19 @@ class OcflObject {
    * Identifier of the OCFL Object
    * @return {string} 
    */
-  get id() { throw new NotImplementedError() }
+  get id() { throw new NotImplementedError(); }
 
   /** 
-  * The non-storage specific absolute path to the root of this OCFL Object
+  * The absolute path to the root of this OCFL Object
   * @return {string} 
   */
-  get root() { throw new NotImplementedError() }
+  get root() { throw new NotImplementedError(); }
+
+  /** 
+  * The absolute path to the temporary workspace of this OCFL Object
+  * @return {string} 
+  */
+  get workspace() { throw new NotImplementedError(); }
 
   toString() { return `OcflObject { root: ${this.root}, id: ${this.id} }`; }
 
@@ -140,7 +146,7 @@ class OcflObject {
    * @param {string} [version] - Full name of the version, eg: v1, v2, v3  
    * @returns {Promise<OcflObjectInventory>}
    */
-  async getInventory(version = 'latest') { throw new NotImplementedError() }
+  async getInventory(version = 'latest') { throw new NotImplementedError(); }
 
   /**
    * Update the content files or directories as one transaction and commit the changes as a new version.
@@ -150,7 +156,7 @@ class OcflObject {
    * @param {ObjectUpdateMode} [mode=UPDATE_MODE.MERGE]
    * @return {Promise<?OcflObjectTransaction>}
    */
-  async update(updater, mode) { throw new NotImplementedError() }
+  async update(updater, mode) { throw new NotImplementedError(); }
 
   /**
    * Import one or more content files or directories to the object 
@@ -225,7 +231,7 @@ class OcflObject {
    * @type { GetFileByLogical & GetFileByOpt }
    */
   // @ts-ignore
-  getFile = function (opt, version) { }
+  getFile = function (opt, version) { };
 
   /**
    * Count the number of files contained in this object
@@ -259,6 +265,8 @@ class OcflObjectImpl extends OcflObject {
   /** @type {string} */
   #root;
   /** @type {string} */
+  #workspace;
+  /** @type {string} */
   #id;
   /** @type {OcflExtension[]} */
   #extensions;
@@ -284,13 +292,14 @@ class OcflObjectImpl extends OcflObject {
     this.digestAlgorithm = DIGEST.of(config.digestAlgorithm || 'sha512');
     if (!this.digestAlgorithm) throw new Error('Invalid digest algorithm. Must be one of `sha256` or `sha512`.');
     //this.fixityDigest = config.fixityDigest ?? this.digestAlgorithm;
-    this.workspace = config.workspace ? path.resolve(config.workspace) : undefined;
+    this.#workspace = config.workspace ? path.resolve(config.workspace) : undefined;
     this.contentDirectory = config.contentDirectory ?? 'content';
     /** @type Object.<string, OcflObjectInventory> */
     this._inventory = {};
   }
   get id() { return this._inventory?.latest?.id || this.#id; }
   get root() { return this.#root; }
+  get workspace() { return this.#workspace; }
 
   async getInventory(version = 'latest') {
     if (!this._inventory[version]) {
@@ -325,7 +334,7 @@ class OcflObjectImpl extends OcflObject {
       OcflDigest.digestAsync(data.digestAlgorithm, datastr)
     ]));
     digest = digest.match(/[^\s]+/)?.[0];
-    if (digest !== actualDigest) throw new Error('corrupted file');
+    if (digest !== actualDigest) throw new Error(`Inventory file ${this.root}/${invPath} digest mismatch: recorded=${digest} actual=${actualDigest}`);
     //return new OcflObjectInventory({ data, digest });
     return new OcflObjectInventory(data);
   }
@@ -374,13 +383,13 @@ class OcflObjectImpl extends OcflObject {
    */
   readFile = async function (relPath, options) {
     return this.#store.readFile(path.join(this.root, relPath), options);
-  }
+  };
 
   getFile = function (opt, version) {
     var obj = this;
     var opt_ = typeof opt === 'string' ? { logicalPath: opt, version: version } : opt;
     return new OcflObjectFile(this, opt_);
-  }
+  };
 
   // async _resolveContentPath({ logicalPath = '', contentPath = '', digest = '', version = '' }) {
   //   if (!contentPath) {
@@ -478,6 +487,7 @@ class OcflObjectImpl extends OcflObject {
       // workspace dir exists, abort update
       throw new Error('Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt');
     }
+    await this._validateObjectPath();
     let createdDir = await this.#store.mkdir(workspacePath);
     if (!this.workspace) await this._ensureNamaste();
     return createTransactionProxy(new OcflObjectTransactionImpl(this, this.#store, inventory, workspaceVersionPath, createdDir));
@@ -492,16 +502,27 @@ class OcflObjectImpl extends OcflObject {
       return;
     }
     // namaste not found, check if object root is not empty
+    let files;
     try {
-      let files = await this.#store.readdir(this.root);
-      if (files.length > 0) throw new Error('Cannot create an OCFL Object in a non-empty directory');
+      files = await this.#store.readdir(this.root);
     } catch (error) {
     }
+    if (files && files.length > 0) throw new Error('Cannot create an OCFL Object in a non-empty directory');
     //create the namaste file
     let filePath = path.join(this.root, NAMASTE_T + prefix + this.ocflVersion);
     await this.#store.writeFile(filePath, prefix + this.ocflVersion + '\n', 'utf8');
   }
 
+  // all the parent directories cannot be an ocfl object
+  async _validateObjectPath() {
+    var p = this.root;
+    while (p !== '.' && p !== '/' ) {
+      p = path.dirname(p);
+      let nv = await findNamasteVersion(this.#store, NAMASTE_PREFIX_OBJECT, p);
+      if (nv) throw new Error(`Object root cannot be nested under another object ${p}`);
+    }
+  }
+  
   async isObject(aPath) { }
   getVersionString(i) { }
   async determineVersion() { }
@@ -540,7 +561,7 @@ const proxyHandler = {
       }
     }
   }
-}
+};
 
 /**
  * Return any OcflObject implementation as OcflObject.

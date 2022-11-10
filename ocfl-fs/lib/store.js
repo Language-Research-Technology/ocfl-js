@@ -18,11 +18,6 @@ class OcflFsStore extends OcflStore {
   /** @type {Map<Object, OcflFsStore>} */
   static instances = new Map();
 
-  /**
-   * 
-   * @param {Object} options 
-   * @param {typeof fs} [options.fs]
-   */
   // static getInstance({fs = require('fs')} = {}) {
   //   let store = OcflFsStore.instances.get(fs);
   //   if (!store) {

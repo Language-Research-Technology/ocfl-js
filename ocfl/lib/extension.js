@@ -110,7 +110,7 @@ class OcflExtension {
    */
   constructor(config, defaultConfig) {
     /** @type {C} */
-    this.parameters = defaultConfig ? Object.create(/**@type{object}*/(defaultConfig)) : {};
+    this.parameters = typeof defaultConfig === 'object' ? Object.create(/**@type{object}*/(defaultConfig)) : {};
     if (typeof config === 'object') {
       for (let k in config) {
         if (k in defaultConfig) this.parameters[k] = config[k];

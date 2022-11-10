@@ -101,7 +101,7 @@ module.exports = function (ocfl) {
       //   assert.equal(content.compare(fileContent[f.logicalPath]), 0);
       // }
       let stream = await object.getFile('foo/bar.xml').asStream();
-      let buffers = []
+      let buffers = [];
       for await (const data of stream) buffers.push(/** @type {Buffer} */(data));
       let content = Buffer.concat(buffers);
       assert.equal(content.compare(actualContent), 0);
@@ -128,17 +128,44 @@ module.exports = function (ocfl) {
 
     it("can detect error of unfinished operations", async function () {
       let ow = createObject('object-we1', true);
-      let p = ow.update(t => { // missing async
+      await ow.update(async t => t.write('a.txt', 'a'));
+      let p1 = ow.update(t => { // missing async
         // wrong, must use await
         t.write('test.txt', 'test');
       });
-      await assert.rejects(p);
+      await assert.rejects(p1);
       ow = createObject('object-we2', true);
       let p2 = ow.update(async (t) => {
-        // wrong, must use await
+        // wrong, must use await or return as a promise
         t.write('test.txt', 'test');
       });
       await assert.rejects(p2);
+    });
+
+    it("can clean up after error", async function () {
+      let o = createObject('object-we3', true);
+      await assert.rejects(fs.promises.access(o.workspace));
+      try {
+        await o.update(async t => {
+          await t.write('test.txt', 'test');
+          await fs.promises.access(o.workspace);
+          throw new Error('test');
+        });
+      } catch (e) {}
+      await assert.rejects(fs.promises.access(o.workspace));
+      await assert.rejects(fs.promises.access(o.root));
+    });
+
+    it("does not allow nested objects", async function () {
+      let o = createObject('object-we4', true);
+      await o.update(async t => {
+        await t.write('test.txt', 'test');
+      });
+      assert.strictEqual(await fs.promises.readFile(path.join(o.root, 'v1/content/test.txt'), 'utf8'), 'test');
+      let o1 = createObject('object-we4/object-we5', true);
+      let o2 = createObject('object-we4/test/object-we5', true);
+      await assert.rejects(o1.update(async t => t.write('test.txt', 'test')));
+      await assert.rejects(o2.update(async t => t.write('test.txt', 'test')));
     });
 
     for (let useWorkspace of [true, false]) {
@@ -374,7 +401,7 @@ module.exports = function (ocfl) {
       await fs.promises.rm(tempdir, { recursive: true, force: true });
     });
   });
-}
+};
 
 
 //ocfl.OcflExtension.register(require('ocfl-extensions'));

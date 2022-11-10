@@ -1,6 +1,16 @@
 # ocfl-js - An OCFL implementation in Node.js
 Node.js library for creating and manipulating Oxford Common File Layout(OCFL) storage and object.
-The library consists of common components and implementations for different storage backend.
+The library consists of common components and implementations for different storage backends.
+
+## Installation
+
+Install the library:
+
+    // For filesystem backend
+    npm install @ocfl/ocfl-fs
+
+    // For s3 backend
+    npm install @ocfl/ocfl-s3
 
 ## Usage
 

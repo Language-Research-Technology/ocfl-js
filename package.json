@@ -24,6 +24,5 @@
     "ocfl-fs",
     "ocfl-tests"
   ],
-  "scripts": {
-  }
+  "scripts": {}
 }
