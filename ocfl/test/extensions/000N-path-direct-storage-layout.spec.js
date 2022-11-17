@@ -18,7 +18,7 @@ describe("PathDirectStorageLayout class", function () {
       ['file:///temp/a/b', 'temp/a/b/__object__'],
       ['file://temp/a/b', 'temp/a/b/__object__'],
       ['https://doi.org/10.3897/rio.8.e93937', 'https_doi.org/10.3897/rio.8.e93937/__object__'],
-      ['doi:10.3897/rio.8.e93937', 'doi/10.3897/rio.8.e93937/__object__']
+      ['doi:/10.3897/rio.8.e93937', 'doi/10.3897/rio.8.e93937/__object__']
     ];
     for (let c of cases) {
       assert.strictEqual(layout.map(c[0]), c[1]);
@@ -55,7 +55,7 @@ describe("PathDirectStorageLayout class", function () {
   });
 
   it("can omit schema", function () {
-    let layout = new PathDirectStorageLayout({omitSchema: true});
+    let layout = new PathDirectStorageLayout({omitScheme: true});
     let cases = [
       ['https://www.ausnc.org.au/corpora', 'www.ausnc.org.au/corpora/__object__'],
       ['doi:10.3897/rio.8.e93937', '10.3897/rio.8.e93937/__object__']        
