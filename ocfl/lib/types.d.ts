@@ -42,3 +42,12 @@ interface ReadFile {
       | BufferEncoding
   ): Promise<string>;
 }
+
+type StorageLayout = {
+  FlatDirectStorageLayout: typeof import('./extensions/0002-flat-direct-storage-layout').FlatDirectStorageLayout
+  HashAndIdNTupleStorageLayout: typeof import('./extensions/0003-hash-and-id-n-tuple-storage-layout').HashAndIdNTupleStorageLayout
+  HashedNTupleStorageLayout: typeof import('./extensions/0004-hashed-n-tuple-storage-layout').HashedNTupleStorageLayout
+  FlatOmitPrefixStorageLayout: typeof import('./extensions/0006-flat-omit-prefix-storage-layout').FlatOmitPrefixStorageLayout
+  NTupleOmitPrefixStorageLayout: typeof import('./extensions/0007-n-tuple-omit-prefix-storage-layout').NTupleOmitPrefixStorageLayout
+  PathDirectStorageLayout: typeof import('./extensions/000N-path-direct-storage-layout').PathDirectStorageLayout
+}

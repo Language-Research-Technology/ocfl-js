@@ -7,7 +7,7 @@ const { NotImplementedError } = require("./error");
 const extensionByName = {};
 /** Index by extension class name */
 const extensionByClassName = {};
-/** @type {Object.<string, typeof OcflStorageLayout>} */
+
 const storageLayout = {};
 
 /** @typedef {{ extensionName?: string;[key: string]: any; }} OcflExtensionConfig */
@@ -157,7 +157,7 @@ class OcflExtension {
 class OcflStorageLayout extends OcflExtension {
 
   static get layout() {
-    return storageLayout;
+    return /** @type StorageLayout */(storageLayout);
   }
 
   /**

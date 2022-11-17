@@ -42,6 +42,21 @@ Alternatively, use the `createStorage` and `loadStorage` methods to create a new
     }
     // Do something with the storage here
 
+To choose a different storage layout, pass the layout name, config, or instance:
+
+    // Use class name
+    storage = ocfl.createStorage({ root: '/var/data/myocfl', layout: 'FlatDirectStorageLayout' });
+    
+    // Use official extension name and specify parameters
+    storage = ocfl.createStorage({ root: '/var/data/myocfl', layout: { 
+      extensionName: '0003-hash-and-id-n-tuple-storage-layout',
+      tupleSize: 1
+    }});
+    
+    // Instantiate the class directly
+    let layout = new ocfl.StorageLayout.PathDirectStorageLayout({omitScheme: true});
+    storage = ocfl.createStorage({ root: '/var/data/myocfl', layout });
+
 Use the `storage` instance to create an object and import files:
 
     let o = storage.object('test-object');

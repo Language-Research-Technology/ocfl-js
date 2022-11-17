@@ -21,11 +21,12 @@ const { OcflConstants, OcflDigest, OcflExtension, OcflStorageLayout, OcflStore,
 
 /**
  * @typedef {Object} StorageLayout
- * @property {typeof extensions.FlatDirectStorageLayout} [FlatDirectStorageLayout]
- * @property {typeof extensions.FlatOmitPrefixStorageLayout} [FlatOmitPrefixStorageLayout]
- * @property {typeof extensions.HashAndIdNTupleStorageLayout} [HashAndIdNTupleStorageLayout]
- * @property {typeof extensions.HashedNTupleStorageLayout} [HashedNTupleStorageLayout]
- * @property {typeof extensions.NTupleOmitPrefixStorageLayout} [NTupleOmitPrefixStorageLayout]
+ * @property {typeof extensions.FlatDirectStorageLayout} FlatDirectStorageLayout
+ * @property {typeof extensions.FlatOmitPrefixStorageLayout} FlatOmitPrefixStorageLayout
+ * @property {typeof extensions.HashAndIdNTupleStorageLayout} HashAndIdNTupleStorageLayout
+ * @property {typeof extensions.HashedNTupleStorageLayout} HashedNTupleStorageLayout
+ * @property {typeof extensions.NTupleOmitPrefixStorageLayout} NTupleOmitPrefixStorageLayout
+ * @property {typeof extensions.PathDirectStorageLayout} PathDirectStorageLayout
  */
 /** @typedef {import('./lib/extension.js').OcflExtensionConfig} OcflExtensionConfig */
 
