@@ -1,0 +1,54 @@
+# Publish docs to github pages and publish library to npm
+name: Publish
+
+on: 
+  workflow_run:
+    workflows: [Run Tests]
+    types: [completed]
+    branches: [master, main]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [ocfl, ocfl-fs]
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          registry-url: 'https://registry.npmjs.org'
+      - uses: ButlerLogic/action-autotag@1.1.1
+        with:
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          root: ./${{ matrix.package }}
+          tag_prefix: "${{ matrix.package }}-v"
+        id: create_tag
+      # - run: echo ${{ steps.create_tag.outputs.tagname }}
+      # - run: echo ${{ steps.create_tag.outputs.version }}
+      - name: Check if a new tag is created
+        run: "[[ '${{ steps.create_tag.outputs.tagname }}' ]]"
+      - name: get major-minor version
+        id: docver
+        run: echo "DOCVER=${TAGNAME%.*}" >> $GITHUB_ENV 
+        env:
+          TAGNAME: ${{ steps.create_tag.outputs.tagname }}
+      - run: npm ci
+      # - run: npm run build-docs
+      # - run: mkdir _docs && mv docs _docs/${{ env.DOCVER }} && mv _docs docs
+      # - run: |
+      #     echo $'---\nlayout: redirect\ntarget: ./${{ env.DOCVER }}\n---' > docs/index.md
+      # - name: Deploy docs to GitHub Pages
+      #   uses: JamesIves/github-pages-deploy-action@v4
+      #   with:
+      #     folder: docs
+      #     target-folder: docs
+      #     single-commit: true
+      #     clean: false
+      - name: Publish package on NPM
+        run: npm publish --access public -w ${{ matrix.package }}

@@ -4,7 +4,7 @@ const path = require("path");
 
 const DefaultConfig = {
   extensionName: '000N-path-direct-storage-layout',
-  omitSchema: false,
+  omitScheme: false,
   /** @type {any} */
   replace: [],
   suffix: '/__object__'
@@ -42,7 +42,7 @@ class PathDirectStorageLayout extends OcflStorageLayout {
     try {
       let u = new URL(p);
       let parts = [];
-      if (!this.parameters.omitSchema && u.protocol !== 'file:') {
+      if (!this.parameters.omitScheme && u.protocol !== 'file:') {
         parts.push(u.protocol.replace(':', ''));
       }
       if (u.hostname) {
