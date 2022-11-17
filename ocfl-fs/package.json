@@ -41,10 +41,14 @@
     "jsdoc": "^3.6.10",
     "mocha": "^10.0.0",
     "typedoc": "^0.22.15",
-    "@ocfl/ocfl-tests": "0.1.*"
+    "@ocfl/ocfl-tests": "*"
   },
   "dependencies": {
     "@ocfl/ocfl": "0.2.0"
   },
-  "files": [ "index.js", "index.mjs", "lib" ]
+  "files": [
+    "index.js",
+    "index.mjs",
+    "lib"
+  ]
 }
