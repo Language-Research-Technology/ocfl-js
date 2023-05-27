@@ -1,5 +1,7 @@
-module.exports = {
-  Storage: require('./lib/storage.js').Storage,
-  Object: require('./lib/object.js').Object
-}
-module.exports.default = module.exports;
+const { OcflS3Store } = require('./lib/store.js');
+const { Ocfl } = require('@ocfl/ocfl');
+
+/** @type {import('./lib/store.js').OcflS3StoreConfig} */
+let defaultOptions;
+
+module.exports = new Ocfl(OcflS3Store, defaultOptions);

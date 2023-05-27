@@ -1,7 +1,7 @@
 {
   "name": "@ocfl/ocfl-fs",
   "version": "0.2.0",
-  "description": "Oxford Common File Layout (OCFL) JS client library for filesystem storage",
+  "description": "Oxford Common File Layout (OCFL) JS client library for S3 storage",
   "main": "index.js",
   "exports": {
     ".": [
@@ -27,7 +27,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Arkisto-Platform/ocfl-js"
+    "url": "https://github.com/Language-Research-Technology/ocfl-js"
   },
   "author": "Alvin Sebastian (https://orcid.org/0000-0002-9086-1722)",
   "contributors": [
