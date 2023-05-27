@@ -28,24 +28,11 @@ class OcflStore {
   constructor(options) { }
 
   /**
-   * Get file information.
-   * @param {string} filePath 
-   * @return {Promise<import('fs').Stats>}
-   */
-  async stat(filePath) { throw new Error('Not Implemented'); }
-
-  /**
    * Check if file exists
-   * @param {string} filePath 
+   * @param {string} filePath
+   * @return {Promise<Boolean>}
    */
-  async exists(filePath) {
-    try {
-      await this.stat(filePath);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
+  async exists(filePath) { throw new Error('Not Implemented'); }
 
   /**
   * Create a readable stream to get the content of a file

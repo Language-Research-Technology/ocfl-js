@@ -37,8 +37,17 @@ class OcflFsStore extends OcflStore {
     this.fs = config?.fs ?? fs;
   }
 
-  async stat(filePath) { 
-    return this.fs.promises.stat(filePath);    
+  /**
+   * Check if file exists
+   * @param {string} filePath
+   */
+  async exists(filePath) {
+    try {
+      await this.fs.promises.stat(filePath);
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
 
   async createReadStream(filePath, options) {
