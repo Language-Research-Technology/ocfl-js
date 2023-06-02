@@ -333,7 +333,7 @@ class OcflObjectImpl extends OcflObject {
       this.readFile(invPath + '.' + data.digestAlgorithm, 'utf8'),
       OcflDigest.digestAsync(data.digestAlgorithm, datastr)
     ]));
-    digest = digest.match(/[^\s]+/)?.[0];
+    digest = digest.toString().match(/[^\s]+/)?.[0];
     if (digest !== actualDigest) throw new Error(`Inventory file ${this.root}/${invPath} digest mismatch: recorded=${digest} actual=${actualDigest}`);
     //return new OcflObjectInventory({ data, digest });
     return new OcflObjectInventory(data);
