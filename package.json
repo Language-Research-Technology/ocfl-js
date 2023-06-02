@@ -21,6 +21,7 @@
   "license": "GPL-3.0-or-later",
   "workspaces": [
     "ocfl",
+    "ocfl-s3",
     "ocfl-fs",
     "ocfl-tests"
   ],

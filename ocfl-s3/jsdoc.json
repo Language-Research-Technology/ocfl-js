@@ -1,6 +1,6 @@
 {
   "source": {
-    "include": ["lib"],
+    "include": ["src"],
     "exclude": ["node_modules"]
   },
   "plugins": ["plugins/markdown"],
