@@ -24,5 +24,7 @@
     "ocfl-fs",
     "ocfl-tests"
   ],
-  "scripts": {}
+  "scripts": {
+    "test": "npm test --workspaces --if-present"
+  }
 }

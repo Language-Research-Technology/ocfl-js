@@ -40,8 +40,7 @@
     "clean-jsdoc-theme": "^3.3.4",
     "jsdoc": "^3.6.10",
     "mocha": "^10.0.0",
-    "typedoc": "^0.22.15",
-    "@ocfl/ocfl-tests": "*"
+    "typedoc": "^0.22.15"
   },
   "dependencies": {
     "@ocfl/ocfl": "0.2.0"
