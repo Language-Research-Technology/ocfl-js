@@ -9,7 +9,7 @@ const { createHash } = require('crypto');
 /** 
  * @param {Ocfl} ocfl
  */
-module.exports = function (ocfl) {
+module.exports = function (ocfl, storeConfig, helpers) {
   let object;
   let objcount = 0;
 
@@ -42,13 +42,13 @@ module.exports = function (ocfl) {
   describe("constructor", function () {
     it("can create new object", function () {
       let object;
-      object = ocfl.object({ root: '/data/objects/object-1' });
+      object = ocfl.object({ root: '/data/objects/object-1' }, storeConfig);
       assert.equal(object.root, '/data/objects/object-1');
-      object = ocfl.object({ root: '/data/objects/object-1', digestAlgorithm: "sha256", id: "object-1" });
+      object = ocfl.object({ root: '/data/objects/object-1', digestAlgorithm: "sha256", id: "object-1" }, storeConfig);
       assert.equal(object.root, '/data/objects/object-1');
       assert.equal(object.id, 'object-1');
       assert.throws(() => {
-        object = ocfl.object({ root: '/data/objects/object-1', workspace: '/data/objects/object-1' });
+        object = ocfl.object({ root: '/data/objects/object-1', workspace: '/data/objects/object-1' }, storeConfig);
       });
     });
 
@@ -56,11 +56,11 @@ module.exports = function (ocfl) {
 
   describe("access existing object", function () {
     let invRaw, invRawFiles;
-    let object = ocfl.object({ root: '/tmp/dummy' });
+    let object = ocfl.object({ root: '/tmp/dummy' }, storeConfig);
 
     before(async function () {
       let config = { root: path.join(__dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full') };
-      object = ocfl.object(config);
+      object = ocfl.object(config, storeConfig);
       invRaw = JSON.parse(await fs.promises.readFile(path.join(config.root, 'inventory.json'), 'utf8'));
       invRawFiles = Object.values(invRaw.versions[invRaw.head].state).flat();
     });
@@ -117,7 +117,7 @@ module.exports = function (ocfl) {
     function createObject(id, useWorkspace, ocflVersion) {
       let config = { id, root: path.join(tempdir, id), ocflVersion };
       if (useWorkspace) config.workspace = config.root + '-tmp';
-      return ocfl.object(config);
+      return ocfl.object(config, storeConfig);
     }
 
     before(async function () {
@@ -161,7 +161,7 @@ module.exports = function (ocfl) {
       await o.update(async t => {
         await t.write('test.txt', 'test');
       });
-      assert.strictEqual(await fs.promises.readFile(path.join(o.root, 'v1/content/test.txt'), 'utf8'), 'test');
+      assert.strictEqual(await helpers.getFile(path.join(o.root, 'v1/content/test.txt')), 'test');
       let o1 = createObject('object-we4/object-we5', true);
       let o2 = createObject('object-we4/test/object-we5', true);
       await assert.rejects(o1.update(async t => t.write('test.txt', 'test')));
@@ -182,9 +182,9 @@ module.exports = function (ocfl) {
           });
           let inventory = await o.getInventory();
           // namaste
-          assert.strictEqual(`ocfl_object_${ocflVersion}\n`, await fs.promises.readFile(path.join(o.root, `0=ocfl_object_${ocflVersion}`), 'utf8'));
+          assert.strictEqual(`ocfl_object_${ocflVersion}\n`, await helpers.getFile(path.join(o.root, `0=ocfl_object_${ocflVersion}`)));
           // inventory
-          let invstr = await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8');
+          let invstr = await helpers.getFile(path.join(o.root, 'inventory.json'));
           let inv = JSON.parse(invstr);
           //assert.strictEqual(await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8'), inventory.toString());
           assert.strictEqual(inv.id, 'object-' + objcount);
@@ -197,8 +197,8 @@ module.exports = function (ocfl) {
           assert.strictEqual(inv.versions.v1.user.name, inventory.user?.name);
           assert.strictEqual(inv.versions.v1.state[hash][0], 'test.txt');
           // sidecar
-          let sidecar = await fs.promises.readFile(path.join(o.root, 'inventory.json.sha512'), 'utf8');
-          let invhash = await hasha.fromFile(path.join(o.root, 'inventory.json'), { algorithm: 'sha512' });
+          let sidecar = await helpers.getFile(path.join(o.root, 'inventory.json.sha512'));
+          let invhash = await hasha(await helpers.getFile(path.join(o.root, 'inventory.json')), { algorithm: 'sha512' });
           assert.strictEqual(sidecar, invhash + ' inventory.json');
 
           //await fs.promises.rm(o.root, { recursive: true, force: true });
@@ -219,13 +219,13 @@ module.exports = function (ocfl) {
       });
       let hash = hasha(content, { algorithm: 'sha512' });
       // inventory
-      let inv = JSON.parse(await fs.promises.readFile(path.join(objectx.root, 'inventory.json'), 'utf8'));
+      let inv = JSON.parse(await helpers.getFile(path.join(objectx.root, 'inventory.json'), 'utf8'));
       assert.strictEqual(inv.head, 'v1');
       assert.strictEqual(inv.manifest[hash][0], 'v1/content/test.txt');
       assert.strictEqual(inv.manifest[hash].length, 1);
 
       // content
-      assert.strictEqual(content.toString(), await fs.promises.readFile(path.join(objectx.root, 'v1/content/test.txt'), 'utf8'));
+      assert.strictEqual(content.toString(), await helpers.getFile(path.join(objectx.root, 'v1/content/test.txt'), 'utf8'));
       await assert.rejects(fs.promises.readFile(path.join(objectx.root, 'v1/content/a/test.txt'), 'utf8'));
       await assert.rejects(fs.promises.readFile(path.join(objectx.root, 'v1/content/b/test.txt'), 'utf8'));
     });
@@ -241,7 +241,7 @@ module.exports = function (ocfl) {
         await t.import(f2, '');
         await t.copy('foo', 'foo2');
       });
-      let inv = JSON.parse(await fs.promises.readFile(path.join(objectx.root, 'inventory.json'), 'utf8'));
+      let inv = JSON.parse(await helpers.getFile(path.join(objectx.root, 'inventory.json'), 'utf8'));
       assert.strictEqual(inv.head, 'v2');
       await validateFile(objectx, f1, 'file.txt');
       await validateFile(objectx, path.join(f2, 'foo/bar.xml'), 'foo/bar.xml');
@@ -313,7 +313,7 @@ module.exports = function (ocfl) {
       assert.strictEqual(inv.head, 'v6');
       let files = [...await objectx.files()].map(f => f.logicalPath).sort();
       assert.deepStrictEqual(files, ['test_input.txt', 'sample_dir/data1', 'sample_dir/data2'].sort());
-      await assert.doesNotReject(fs.promises.access(path.join(objectx.root, 'v6')));
+      await assert.doesNotReject(helpers.getFile(path.join(objectx.root, 'v6/inventory.json')));
     });
 
     it("should only add actual file content if it does not exist", async function () {
@@ -323,9 +323,9 @@ module.exports = function (ocfl) {
       });
       let inv = await objectx.getInventory();
       assert.strictEqual(inv.head, 'v7');
-      await assert.doesNotReject(fs.promises.access(path.join(objectx.root, 'v1/content/test.txt')));
-      await assert.rejects(fs.promises.access(path.join(objectx.root, 'v7/content/test_input.txt')));
-      await assert.rejects(fs.promises.access(path.join(objectx.root, 'v7/content/test2.txt')));
+      await assert.doesNotReject(helpers.getFile(path.join(objectx.root, 'v1/content/test.txt')));
+      await assert.rejects(helpers.getFile(path.join(objectx.root, 'v7/content/test_input.txt')));
+      await assert.rejects(helpers.getFile(path.join(objectx.root, 'v7/content/test2.txt')));
     });
 
     it("should only create new version if there is actual changes", async function () {
@@ -345,13 +345,13 @@ module.exports = function (ocfl) {
       await o.update(async t => {
         await t.write('test', 'test');
       });
-      c = await fs.promises.readFile(path.join(o.root, 'v1/content/test'), 'utf8');
+      c = await helpers.getFile(path.join(o.root, 'v1/content/test'));
       assert.strictEqual(c, 'test');
       assert.strictEqual(await o.getFile('test').asString(), 'test');
       await o.update(async t => {
         await t.write('test', 'testv2');
       });
-      c = await fs.promises.readFile(path.join(o.root, 'v2/content/test'), 'utf8');
+      c = await helpers.getFile(path.join(o.root, 'v2/content/test'));
       assert.strictEqual(c, 'testv2');
       assert.strictEqual(await o.getFile('test').asString(), 'testv2');
       await o.update(async t => {
@@ -364,7 +364,7 @@ module.exports = function (ocfl) {
       await o.update(async t => {
         await t.write('test', 'testv4');
       });
-      c = await fs.promises.readFile(path.join(o.root, 'v4/content/test'), 'utf8');
+      c = await helpers.getFile(path.join(o.root, 'v4/content/test'), 'utf8');
       assert.strictEqual(c, 'testv4');
       assert.strictEqual(await o.getFile('test').asString(), 'testv4');
     });
@@ -373,7 +373,7 @@ module.exports = function (ocfl) {
       let f1 = path.join(datadir, 'fixtures/1.1/content/spec-ex-full/v3');
       let o = createObject('object-import-1', true);
       await o.import(f1);
-      let inv = JSON.parse(await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8'));
+      let inv = JSON.parse(await helpers.getFile(path.join(o.root, 'inventory.json')));
       assert.strictEqual(inv.head, 'v1');
       await validateFile(o, path.join(f1, 'foo/bar.xml'), 'foo/bar.xml');
       await validateFile(o, path.join(f1, 'empty2.txt'), 'empty2.txt');
@@ -385,7 +385,7 @@ module.exports = function (ocfl) {
       let f2 = path.join(datadir, 'fixtures/1.1/content/spec-ex-diff-paths/v1');
       let o = createObject('object-import-2', true);
       await o.import([f1, f2]);
-      let inv = JSON.parse(await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8'));
+      let inv = JSON.parse(await helpers.getFile(path.join(o.root, 'inventory.json')));
       assert.strictEqual(inv.head, 'v1');
       await validateFile(o, path.join(f1, 'foo/bar.xml'), 'foo/bar.xml');
       await validateFile(o, path.join(f1, 'empty2.txt'), 'empty2.txt');

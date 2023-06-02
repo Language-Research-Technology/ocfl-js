@@ -8,25 +8,25 @@ const { Ocfl, OcflStorage } = require("@ocfl/ocfl");
 /** 
  * @param {Ocfl} ocfl
  */
-module.exports = function (ocfl) {
+module.exports = function (ocfl, storeConfig) {
   describe("constructor", function () {
     it("can create new storage", function () {
       let storage;
-      storage = ocfl.storage({ root: '/data/storage-1' });
+      storage = ocfl.storage({ root: '/data/storage-1' }, storeConfig);
       assert.equal(storage.root, '/data/storage-1');
 
       assert.throws(() => {
-        storage = ocfl.storage({ root: '/data/storage-1', layout: ocfl.storageLayout("test") });
+        storage = ocfl.storage({ root: '/data/storage-1', layout: ocfl.storageLayout("test") }, storeConfig);
       });
 
       assert.throws(() => {
-        storage = ocfl.storage({ root: '/data/storage-1', workspace: '/data/storage-1/temp' });
+        storage = ocfl.storage({ root: '/data/storage-1', workspace: '/data/storage-1/temp' }, storeConfig);
       });
     });
 
   });
   describe("access existing storage", function () {
-    let repo = ocfl.storage({root: path.join(__dirname, 'test-data/storage')});
+    let repo = ocfl.storage({root: path.join(__dirname, 'test-data/storage')}, storeConfig);
     let objects = [
       { root: path.join(repo.root, 'object_1'), id: 'http://example.org/minimal_no_content' }
     ];
@@ -64,7 +64,7 @@ module.exports = function (ocfl) {
 
     it("can create new storage with default layout", async function () {
       let storage;
-      storage = ocfl.storage({ root: path.join(tempdir, 'storage') });
+      storage = ocfl.storage({ root: path.join(tempdir, 'storage') }, storeConfig);
       await storage.create();
       let namaste = await fs.promises.readFile(path.join(storage.root, `0=ocfl_${storage.ocflVersion}`), 'utf8');
       // namaste
@@ -73,7 +73,7 @@ module.exports = function (ocfl) {
 
     it("can create object in the storage", async function () {
       let storage;
-      storage = ocfl.storage({ root: path.join(tempdir, 'storage') });
+      storage = ocfl.storage({ root: path.join(tempdir, 'storage') }, storeConfig);
       await storage.load();
       let o = storage.object('http://ocfl.io/examples/object-1');
       await o.update(async t => {
@@ -94,4 +94,4 @@ module.exports = function (ocfl) {
     it("can create new storage", function () {
     });
   });
-};  
+};
