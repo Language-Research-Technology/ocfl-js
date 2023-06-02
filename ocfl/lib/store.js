@@ -82,8 +82,9 @@ class OcflStore {
   async writeFile(filePath, data, options) {
     var source = dataSourceAsIterable(data);
     await this.mkdir(path.dirname(filePath));
-    const target = await this.createWriteStream(filePath, options);
+    const { ws: target, promise } = await this.createWriteStream(filePath, options);
     await pipeline(source, target);
+    await promise;
   }
 
   /**

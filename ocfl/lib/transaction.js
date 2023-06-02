@@ -248,7 +248,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
    */
   async createWriteStream(logicalPath, options) {
     let realPath = this._getRealPath(logicalPath);
-    let ws = await this._store.createWriteStream(realPath, options);
+    let { ws, promise } = await this._store.createWriteStream(realPath, options);
     let hs = OcflDigest.createStream(this._inventory.digestAlgorithm);
     const wwrite = ws.write;
     function nwrite(chunk, encoding, cb) {
@@ -261,7 +261,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       if (this._inventory.getContentPath(digest)) await this._store.remove(realPath);
       this._inventory.add(logicalPath, digest);
     });
-    return ws;
+    return { ws, promise };
   }
 
   async write(logicalPath, data, options) {
@@ -359,9 +359,9 @@ const methodWrapper = {
   createWriteStream: async function (logicalPath, options) {
     if (this._committed) throw new Error('Transaction already commited');
     this._unfinished++;
-    let result = await this.createWriteStream(logicalPath, options);
-    result.on('close', () => --this._unfinished);
-    return result;
+    let { ws, promise } = await this.createWriteStream(logicalPath, options);
+    ws.on('close', () => --this._unfinished);
+    return { ws, promise };
   }
 };
 ['write', 'import', 'copy', 'rename', 'remove', 'reinstate'].forEach(name => {

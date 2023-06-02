@@ -57,7 +57,10 @@ class OcflFsStore extends OcflStore {
 
   async createWriteStream(filePath, options) { 
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    return this.fs.createWriteStream(filePath, options);
+    const ws = this.fs.createWriteStream(filePath, options);
+    const promise = Promise.resolve();
+
+    return { ws, promise };
   }
 
   async readFile(filePath, options) {
