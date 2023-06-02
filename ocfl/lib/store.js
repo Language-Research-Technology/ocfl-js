@@ -63,10 +63,10 @@ class OcflStore {
     for await (const chunk of rs) {
       chunks.push(chunk);
     }
-    if (typeof options === 'string' || options.encoding) {
-      return Buffer.concat(chunks);
-    } else {
+    if (typeof options === 'string' || options?.encoding) {
       return chunks.join('');
+    } else {
+      return Buffer.concat(chunks);
     }
   }
 
