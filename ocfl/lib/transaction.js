@@ -220,7 +220,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       try {
         await this._object._ensureNamaste();
         await this._store.move(workspaceVersionPath, objectVersionPath);
-        await this._store.remove(this._createdDir);
+        if (this._createdDir) await this._store.remove(this._createdDir);
       } catch (error) {
         await this.rollback();
         throw error;
