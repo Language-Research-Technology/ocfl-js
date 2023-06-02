@@ -294,7 +294,8 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     let digest = await OcflDigest.digestFromFile(this._inventory.digestAlgorithm, source);
 
     if (!this._inventory.getContentPath(digest)) {
-      await this._store.copyFile(source, realPath);
+      const rs = createReadStream(source);
+      await this._store.writeFile(realPath, rs);
     }
     this._inventory.add(target, digest);
   }
