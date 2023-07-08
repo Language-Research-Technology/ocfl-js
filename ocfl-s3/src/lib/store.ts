@@ -12,7 +12,7 @@ import { Upload } from '@aws-sdk/lib-storage';
 
 import { OcflStore } from '@ocfl/ocfl';
 
-import { SystemError } from './error';
+import { SystemError } from './error.js';
 
 const s3 = new S3Client({});
 
