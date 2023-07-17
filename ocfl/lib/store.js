@@ -38,7 +38,7 @@ class OcflStore {
   * Create a readable stream to get the content of a file
   * @param {string} filePath - Absolute path
   * @param {*} options 
-  * @return {Promise<import('fs').ReadStream>}
+  * @return {Promise<import('stream').Readable>}
   */
   async createReadStream(filePath, options) { throw new Error('Not Implemented'); }
 
@@ -46,7 +46,7 @@ class OcflStore {
    * Create a stream that writes data to {@link relPath}. 
    * @param {string} relPath 
    * @param {*} options 
-   * @return {Promise<import('fs').WriteStream>}
+   * @return {Promise<import('stream').Writeable>}
    */
   async createWriteStream(relPath, options) { throw new Error('Not Implemented'); }
 
