@@ -127,7 +127,7 @@ class OcflObjectTransaction {
    * @abstract
    * @param {string} logicalPath 
    * @param {BufferEncoding|StreamOptions} [options] 
-   * @return {Promise<import('stream').Writable>} 
+   * @return {Promise<{ ws: import('stream').Writable, promise: Promise<any> }>}
    */
   async createWriteStream(logicalPath, options) { throw new Error('Not Implemented'); }
 
@@ -220,7 +220,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       try {
         await this._object._ensureNamaste();
         await this._store.move(workspaceVersionPath, objectVersionPath);
-        await this._store.remove(this._createdDir);
+        if (this._createdDir) await this._store.remove(this._createdDir);
       } catch (error) {
         await this.rollback();
         throw error;
@@ -244,11 +244,11 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
    * 
    * @param {string} logicalPath 
    * @param {Object} options
-   * @return {Promise<import('stream').Writable>} 
+   * @return {Promise<{ ws: import('stream').Writable, promise: Promise<any> }>}
    */
   async createWriteStream(logicalPath, options) {
     let realPath = this._getRealPath(logicalPath);
-    let ws = await this._store.createWriteStream(realPath, options);
+    let { ws, promise } = await this._store.createWriteStream(realPath, options);
     let hs = OcflDigest.createStream(this._inventory.digestAlgorithm);
     const wwrite = ws.write;
     function nwrite(chunk, encoding, cb) {
@@ -261,7 +261,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       if (this._inventory.getContentPath(digest)) await this._store.remove(realPath);
       this._inventory.add(logicalPath, digest);
     });
-    return ws;
+    return { ws, promise };
   }
 
   async write(logicalPath, data, options) {
@@ -294,7 +294,8 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     let digest = await OcflDigest.digestFromFile(this._inventory.digestAlgorithm, source);
 
     if (!this._inventory.getContentPath(digest)) {
-      await this._store.copyFile(source, realPath);
+      const rs = createReadStream(source);
+      await this._store.writeFile(realPath, rs);
     }
     this._inventory.add(target, digest);
   }
@@ -359,9 +360,9 @@ const methodWrapper = {
   createWriteStream: async function (logicalPath, options) {
     if (this._committed) throw new Error('Transaction already commited');
     this._unfinished++;
-    let result = await this.createWriteStream(logicalPath, options);
-    result.on('close', () => --this._unfinished);
-    return result;
+    let { ws, promise } = await this.createWriteStream(logicalPath, options);
+    ws.on('close', () => --this._unfinished);
+    return { ws, promise };
   }
 };
 ['write', 'import', 'copy', 'rename', 'remove', 'reinstate'].forEach(name => {

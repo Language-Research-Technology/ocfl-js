@@ -1,20 +1,10 @@
 {
-  "compilerOptions": {
-    "allowJs": true,
-    "checkJs": true,
-    "baseUrl": "..",
-    "module": "CommonJS",
-    "target": "es2022",
-    "outDir": "dist"
-  },
-  "include": [
-    "index.js",
-    "index.mjs",
-    "lib/**/*.js",
-    "lib/**/*.d.ts"
+  "extends": [
+    "@tsconfig/strictest/tsconfig.json",
+    "@tsconfig/node18/tsconfig.json",
   ],
-  "typedocOptions": {
-    "entryPoints": "index.mjs",
-    "out": "./docs"
-  }
+  "compilerOptions": {
+    "outDir": "dist/csm",
+  },
+  "include": ["src"]
 }

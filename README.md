@@ -112,3 +112,26 @@ List all existing files in the object
         let fileContent = await object.getFile(f).asString();
     }
 
+## Development
+
+Setup the development environment
+
+```bash
+npm install --workspaces
+
+# Set up the fixtures (only do this once)
+git submodule init
+git submodule update
+```
+
+NOTE: You only need to run ```npm install``` at the root ofthe git respository as we are using workspaces.
+
+### Tests
+
+```bash
+# To run tests for all packages
+npm test
+
+# To run tests for one package
+cd ocfl-fs; npm test
+```

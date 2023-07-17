@@ -126,7 +126,10 @@ const OcflDigest = {
 };
 
 module.exports = {
-  OcflDigest
+  OcflDigest,
+  CONTENT,
+  FIXITY,
+  HashThrough,
   // DIGEST,
   // DIGEST_FIXITY,
   // digestSync,

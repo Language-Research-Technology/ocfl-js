@@ -37,8 +37,17 @@ class OcflFsStore extends OcflStore {
     this.fs = config?.fs ?? fs;
   }
 
-  async stat(filePath) { 
-    return this.fs.promises.stat(filePath);    
+  /**
+   * Check if file exists
+   * @param {string} filePath
+   */
+  async exists(filePath) {
+    try {
+      await this.fs.promises.stat(filePath);
+      return true;
+    } catch (error) {
+      return false;
+    }
   }
 
   async createReadStream(filePath, options) {
@@ -48,7 +57,10 @@ class OcflFsStore extends OcflStore {
 
   async createWriteStream(filePath, options) { 
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    return this.fs.createWriteStream(filePath, options);
+    const ws = this.fs.createWriteStream(filePath, options);
+    const promise = Promise.resolve();
+
+    return { ws, promise };
   }
 
   async readFile(filePath, options) {

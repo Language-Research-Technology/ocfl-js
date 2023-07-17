@@ -28,30 +28,17 @@ class OcflStore {
   constructor(options) { }
 
   /**
-   * Get file information.
-   * @param {string} filePath 
-   * @return {Promise<import('fs').Stats>}
-   */
-  async stat(filePath) { throw new Error('Not Implemented'); }
-
-  /**
    * Check if file exists
-   * @param {string} filePath 
+   * @param {string} filePath
+   * @return {Promise<Boolean>}
    */
-  async exists(filePath) {
-    try {
-      await this.stat(filePath);
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
+  async exists(filePath) { throw new Error('Not Implemented'); }
 
   /**
   * Create a readable stream to get the content of a file
   * @param {string} filePath - Absolute path
   * @param {*} options 
-  * @return {Promise<import('fs').ReadStream>}
+  * @return {Promise<import('stream').Readable>}
   */
   async createReadStream(filePath, options) { throw new Error('Not Implemented'); }
 
@@ -59,7 +46,7 @@ class OcflStore {
    * Create a stream that writes data to {@link relPath}. 
    * @param {string} relPath 
    * @param {*} options 
-   * @return {Promise<import('fs').WriteStream>}
+   * @return {Promise<{ ws: import('stream').Writable, promise: Promise<any> }>}
    */
   async createWriteStream(relPath, options) { throw new Error('Not Implemented'); }
 
@@ -76,10 +63,10 @@ class OcflStore {
     for await (const chunk of rs) {
       chunks.push(chunk);
     }
-    if (typeof options === 'string' || options.encoding) {
-      return Buffer.concat(chunks);
-    } else {
+    if (typeof options === 'string' || options?.encoding) {
       return chunks.join('');
+    } else {
+      return Buffer.concat(chunks);
     }
   }
 
@@ -95,8 +82,9 @@ class OcflStore {
   async writeFile(filePath, data, options) {
     var source = dataSourceAsIterable(data);
     await this.mkdir(path.dirname(filePath));
-    const target = await this.createWriteStream(filePath, options);
+    const { ws: target, promise } = await this.createWriteStream(filePath, options);
     await pipeline(source, target);
+    await promise;
   }
 
   /**

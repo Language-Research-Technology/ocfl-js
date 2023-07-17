@@ -149,6 +149,7 @@ class OcflExtension {
   set(param, value) { if (param in this.parameters) this.parameters[param] = value; }
 }
 
+/** @typedef {Object} StorageLayout */
 
 /**
  * @template {{}} C
