@@ -3,6 +3,7 @@
   "version": "0.2.0",
   "description": "Oxford Common File Layout (OCFL) JS library",
   "main": "index.js",
+  "types": "./types/index.d.ts",
   "exports": {
     ".": [
       {
@@ -15,7 +16,9 @@
   },
   "scripts": {
     "test": "mocha",
-    "build-docs": "jsdoc -c jsdoc.json"
+    "build-docs": "jsdoc -c jsdoc.json",
+    "build": "rm -rf types; tsc",
+    "prepare": "npm run build"
   },
   "keywords": [
     "ocfl",

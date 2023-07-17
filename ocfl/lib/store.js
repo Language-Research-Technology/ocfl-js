@@ -46,7 +46,7 @@ class OcflStore {
    * Create a stream that writes data to {@link relPath}. 
    * @param {string} relPath 
    * @param {*} options 
-   * @return {Promise<import('stream').Writeable>}
+   * @return {Promise<{ ws: import('stream').Writable, promise: Promise<any> }>}
    */
   async createWriteStream(relPath, options) { throw new Error('Not Implemented'); }
 

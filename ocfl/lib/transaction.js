@@ -127,7 +127,7 @@ class OcflObjectTransaction {
    * @abstract
    * @param {string} logicalPath 
    * @param {BufferEncoding|StreamOptions} [options] 
-   * @return {Promise<import('stream').Writable>} 
+   * @return {Promise<{ ws: import('stream').Writable, promise: Promise<any> }>}
    */
   async createWriteStream(logicalPath, options) { throw new Error('Not Implemented'); }
 
@@ -244,7 +244,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
    * 
    * @param {string} logicalPath 
    * @param {Object} options
-   * @return {Promise<import('stream').Writable>} 
+   * @return {Promise<{ ws: import('stream').Writable, promise: Promise<any> }>}
    */
   async createWriteStream(logicalPath, options) {
     let realPath = this._getRealPath(logicalPath);

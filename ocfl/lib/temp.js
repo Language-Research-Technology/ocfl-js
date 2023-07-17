@@ -1,7 +1,6 @@
 const fs = require('fs-extra');
 const path = require('path');
 const hasha = require('hasha');
-const uuidv5 = require('uuid/v5');
 const _ = require('lodash');
 const DIGEST_ALGORITHM = 'sha512';
 
@@ -104,8 +103,8 @@ class OcflObject {
 
   async getInventory() {
     const inventoryPath = path.join(this.path, "inventory.json");
-    if (await fs.exists(inventoryPath)) {
-      return await JSON.parse(fs.readFileSync(inventoryPath));
+    if (fs.existsSync(inventoryPath)) {
+      return await JSON.parse(fs.readFileSync(inventoryPath).toString());
     }
     else {
       return null;

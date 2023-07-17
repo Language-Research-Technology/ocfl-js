@@ -20,7 +20,7 @@ const { OcflConstants, OcflDigest, OcflExtension, OcflStorageLayout, OcflStore,
 /** @typedef {import('./lib/storage.js').OcflStorageConfig} OcflStorageConfig */
 
 /**
- * @typedef {Object} StorageLayout
+ * @typedef {import('./lib/extension.js').StorageLayout} StorageLayout
  * @property {typeof extensions.FlatDirectStorageLayout} FlatDirectStorageLayout
  * @property {typeof extensions.FlatOmitPrefixStorageLayout} FlatOmitPrefixStorageLayout
  * @property {typeof extensions.HashAndIdNTupleStorageLayout} HashAndIdNTupleStorageLayout

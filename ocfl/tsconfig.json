@@ -5,13 +5,16 @@
     "baseUrl": "..",
     "module": "CommonJS",
     "target": "es2022",
-    "outDir": "dist",
+    "outDir": "./types",
+    "emitDeclarationOnly": true,
+    "declaration": true
   },
   "include": [
     "index.js",
-    "index.mjs",
-    "lib/**/*.js",
-    "lib/**/*.d.ts"
+    "lib/**/*.js"
+  ],
+  "exclude": [
+    "./types/**/*",
   ],
   "typedocOptions": {
     "entryPoints": "index.mjs",
