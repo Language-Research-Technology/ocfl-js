@@ -25,7 +25,7 @@ export type OcflS3StoreConfig = {
  * OCFL Object backed by S3 storage
  */
 export class OcflS3Store extends OcflStore {
-  static instances = new Map();
+  static override instances = new Map();
 
   bucketName: string;
 
@@ -35,7 +35,7 @@ export class OcflS3Store extends OcflStore {
    * Create a new backend S3 store
    */
   constructor(config: OcflS3StoreConfig) {
-    super();
+    super(config);
 
     if (!config.bucketName) {
       throw new Error('bucket is required');
@@ -45,7 +45,7 @@ export class OcflS3Store extends OcflStore {
     this.s3 = config.s3 || s3;
   }
 
-  async exists(filePath: string) {
+  override async exists(filePath: string) {
     const command = new HeadObjectCommand({
       Bucket: this.bucketName,
       Key: filePath.replace(/^\//, ''),
@@ -63,7 +63,7 @@ export class OcflS3Store extends OcflStore {
     }
   }
 
-  async createReadStream(filePath: string, _options: object) { // eslint-disable-line @typescript-eslint/no-unused-vars
+  override async createReadStream(filePath: string, _options: object) { // eslint-disable-line @typescript-eslint/no-unused-vars
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
       Key: filePath.replace(/^\//, ''),
@@ -72,7 +72,7 @@ export class OcflS3Store extends OcflStore {
     try {
       const object = await this.s3.send(command);
 
-      return object.Body;
+      return object.Body as stream.Readable;
     } catch (error) {
       if (error instanceof Error && ['NoSuchKey', 'NotFound'].includes(error.name)) {
         throw new SystemError(`Object not found: ${filePath}`, 'ENOENT', -34);
@@ -81,7 +81,7 @@ export class OcflS3Store extends OcflStore {
     }
   }
 
-  async createWriteStream(filePath: string, _options: object) { // eslint-disable-line @typescript-eslint/no-unused-vars
+  override async createWriteStream(filePath: string, _options: object) { // eslint-disable-line @typescript-eslint/no-unused-vars
     const ws = new stream.PassThrough();
 
     const command = {
@@ -105,7 +105,7 @@ export class OcflS3Store extends OcflStore {
   //   // return this.fs.promises.opendir(filePath, options);
   // }
 
-  async readdir(filePath: string, _options: object) { // eslint-disable-line @typescript-eslint/no-unused-vars
+  override async readdir(filePath: string, _options: object) { // eslint-disable-line @typescript-eslint/no-unused-vars
     const command = new ListObjectsV2Command({
       Bucket: this.bucketName,
       MaxKeys: 1000, // TODO: Deal with pagination
@@ -117,15 +117,15 @@ export class OcflS3Store extends OcflStore {
     const keys = response.Contents?.map((content) => content.Key) || [];
     keys.push(...response.CommonPrefixes?.map((prefix) => prefix.Prefix) || []);
 
-    return keys;
+    return keys.filter(Boolean) as string[];
   }
 
-  async mkdir(filePath: string, _options = { recursive: true }) { // eslint-disable-line @typescript-eslint/no-unused-vars, class-methods-use-this
+  override async mkdir(filePath: string, _options = { recursive: true }) { // eslint-disable-line @typescript-eslint/no-unused-vars, class-methods-use-this
     // This is a noop on S3
     return filePath;
   }
 
-  async move(source: string, target: string) {
+  override async move(source: string, target: string) {
     let keys: string[] = [];
 
     if (await this.exists(source)) {
@@ -158,7 +158,7 @@ export class OcflS3Store extends OcflStore {
   }
 
   // FIXME: Does the API ever assume you remove directories and we need to remove the sub paths?
-  async remove(filePath: string) {
+  override async remove(filePath: string) {
     const command = new DeleteObjectCommand({
       Bucket: this.bucketName,
       Key: filePath.replace(/^\//, ''),
