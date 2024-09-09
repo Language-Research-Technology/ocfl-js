@@ -1,6 +1,6 @@
 {
   "name": "@ocfl/ocfl-fs",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Oxford Common File Layout (OCFL) JS client library for filesystem storage",
   "main": "index.js",
   "exports": {
@@ -37,9 +37,10 @@
   "license": "GPL-3.0-or-later",
   "devDependencies": {
     "@types/fs-extra": "^9.0.13",
-    "clean-jsdoc-theme": "^3.3.4",
-    "jsdoc": "^3.6.10",
-    "mocha": "^10.0.0",
+    "@types/node": "^17.0.33",
+    "clean-jsdoc-theme": "^4.3.0",
+    "jsdoc": "^4.0.3",
+    "mocha": "^10.7.3",
     "typedoc": "^0.22.15",
     "@ocfl/ocfl-tests": "*"
   },

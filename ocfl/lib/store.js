@@ -52,6 +52,7 @@ class OcflStore {
   * @param {string} filePath - Absolute path
   * @param {*} options 
   * @return {Promise<import('fs').ReadStream>}
+  * @deprecated
   */
   async createReadStream(filePath, options) { throw new Error('Not Implemented'); }
 
@@ -60,8 +61,25 @@ class OcflStore {
    * @param {string} relPath 
    * @param {*} options 
    * @return {Promise<import('fs').WriteStream>}
+   * @deprecated
    */
   async createWriteStream(relPath, options) { throw new Error('Not Implemented'); }
+
+  /**
+  * Create a ReadableStream to get the content of a file
+  * @param {string} filePath - Absolute path
+  * @param {*} options 
+  * @return {Promise<ReadableStream>}
+  */
+  async createReadable(filePath, options) { throw new Error('Not Implemented'); }
+
+  /**
+   * Create a WritableStream that writes data to {@link relPath}. 
+   * @param {string} relPath 
+   * @param {*} options 
+   * @return {Promise<WritableStream>}
+   */
+  async createWritable(relPath, options) { throw new Error('Not Implemented'); }
 
   /**
    * Provide a common interface to read a file inside an object. 

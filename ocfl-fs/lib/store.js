@@ -2,6 +2,7 @@
 const path = require('path');
 const fs = require('fs');
 const { mkdir, copyFile, rename, unlink } = fs.promises;
+const { Readable, Writable } = require('node:stream');
 
 const { OcflStore, OcflConstants } = require('@ocfl/ocfl');
 const { INVENTORY_NAME } = OcflConstants;
@@ -49,6 +50,15 @@ class OcflFsStore extends OcflStore {
   async createWriteStream(filePath, options) { 
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     return this.fs.createWriteStream(filePath, options);
+  }
+
+  async createReadable(filePath, options) {
+    return Readable.toWeb(this.fs.createReadStream(filePath, options));
+  }
+
+  async createWritable(filePath, options) {
+    await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    return Writable.toWeb(this.fs.createReadStream(filePath, options));
   }
 
   async readFile(filePath, options) {

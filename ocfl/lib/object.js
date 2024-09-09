@@ -11,7 +11,6 @@ const { OcflStore } = require('./store.js');
 const { OcflExtension } = require('./extension.js');
 const { NotImplementedError } = require('./error.js');
 const { parallelize, dataSourceAsIterable, isDirEmpty, findNamasteVersion } = require('./utils');
-const { format } = require('util');
 const { OCFL_VERSION, OCFL_VERSIONS, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = require('./constants').OcflConstants;
 
 class UPDATE_MODE extends Enum {
@@ -75,11 +74,11 @@ class OcflObjectFile {
   }
 
   toString() {
-    let o = {};
+    let props = [];
     for (const key in ['logicalPath', 'version', 'digest', 'contentPath']) {
-      if (this[key]) o[key] = this[key];
+      if (this[key]) props.push(key + ": '" + this[key] + "'");
     }
-    return format('%O', o);
+    return `{ ${props.join(', ')} }`;
   }
 
   /**
@@ -106,9 +105,19 @@ class OcflObjectFile {
    * Get the file content as a stream
    * @param {*} [options] Options to be passed to underlying data store specific implementation
    * @return {Promise<NodeJS.ReadableStream>}
+   * @deprecated
    */
   async asStream(options) {
     return this.#ocflObject.createReadStream(await this.#resolveContentPath(), options);
+  }
+
+  /**
+   * Get the file content as a ES Streams standard ReadableStream
+   * @param {*} [options] Options to be passed to underlying data store specific implementation
+   * @return {Promise<ReadableStream>}
+   */
+  async stream(options) {
+    return this.#ocflObject.createReadable(await this.#resolveContentPath(), options);
   }
 }
 
@@ -363,8 +372,13 @@ class OcflObjectImpl extends OcflObject {
     return t;
   }
 
+  /** @deprecated */
   async createReadStream(filePath, options) {
     return this.#store.createReadStream(path.join(this.root, filePath), options);
+  }
+
+  async createReadable(filePath, options) {
+    return this.#store.createReadable(path.join(this.root, filePath), options);
   }
 
   /** 

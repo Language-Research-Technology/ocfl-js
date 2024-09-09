@@ -106,6 +106,14 @@ module.exports = function (ocfl) {
       let content = Buffer.concat(buffers);
       assert.equal(content.compare(actualContent), 0);
     });
+    it("can read a file as web stream", async function () {
+      let actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'));
+      let stream = await object.getFile('foo/bar.xml').stream();
+      let buffers = [];
+      for await (const data of stream) buffers.push(/** @type {Buffer} */(data));
+      let content = Buffer.concat(buffers);
+      assert.equal(content.compare(actualContent), 0);
+    });
   });
 
   describe("update", function () {
