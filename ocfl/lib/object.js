@@ -65,6 +65,7 @@ class OcflObjectFile {
     let contentPath = this.contentPath;
     if (!contentPath) {
       let inv = await this.#ocflObject.getInventory();
+      if (!inv) throw new Error(`OCFL Object "${this.#ocflObject.id}" does not exist`);
       let version = !this.version || this.version === 'latest' ? inv.head : this.version;
       let digest = this.digest || inv.getDigest(this.logicalPath, version);
       contentPath = inv.getContentPath(digest);
