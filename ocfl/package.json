@@ -25,7 +25,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Arkisto-Platform/ocfl-js.git"
+    "url": "git+https://github.com/Language-Research-Technology/ocfl-js.git"
   },
   "author": "Alvin Sebastian (https://orcid.org/0000-0002-9086-1722)",
   "contributors": [
@@ -51,9 +51,12 @@
     "recursive": true
   },
   "bugs": {
-    "url": "https://github.com/Arkisto-Platform/ocfl-js/issues"
+    "url": "https://github.com/Language-Research-Technology/ocfl-js/issues"
   },
-  "homepage": "https://github.com/Arkisto-Platform/ocfl-js#readme",
+  "homepage": "https://github.com/Language-Research-Technology/ocfl-js#readme",
+  "engines" : { 
+    "node" : ">=17.0.0"
+  },
   "directories": {
     "lib": "lib",
     "test": "test"

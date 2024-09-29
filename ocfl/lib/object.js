@@ -88,8 +88,14 @@ class OcflObjectFile {
 
    * @return {Promise<Buffer>}
    */
-  async asBuffer(options) {
+  async buffer(options) {
     return this.#ocflObject.readFile(await this.#resolveContentPath(), options);
+  }
+  /**
+   * @deprecated
+   */
+  async asBuffer(options) {
+    return this.buffer(options);
   }
 
   /**
@@ -97,13 +103,20 @@ class OcflObjectFile {
    * @param {BufferEncoding} [encoding='utf8'] String encoding, default to utf8
    * @return {Promise<string>}
    */
+  async text(encoding = 'utf8') {
+    // @ts-ignore
+    return this.buffer(encoding);
+  }
+  /**
+   * @deprecated
+   */
   async asString(encoding = 'utf8') {
     // @ts-ignore
-    return this.asBuffer(encoding);
+    return this.text(encoding);
   }
 
   /**
-   * Get the file content as a stream
+   * Get the file content as a NodeJS stream
    * @param {*} [options] Options to be passed to underlying data store specific implementation
    * @return {Promise<NodeJS.ReadableStream>}
    * @deprecated

@@ -107,7 +107,7 @@ Add multiple files from different sources as one transaction. All changes will b
 
 List all existing files in the object
 
-    for await (let f of object.files()) {
+    for await (let f of await object.files()) {
         // f is the logical path of the file
         let fileContent = await object.getFile(f).asString();
     }
