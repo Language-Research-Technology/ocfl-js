@@ -144,6 +144,18 @@ class OcflStore {
   async readdir(filePath, options) { throw new Error('Not Implemented'); }
 
   /**
+   * List all files contained in a directory including the metadata such as size and last modified date.
+   * The returned file.path is a relative path to the dirPath
+   * @param {string} dirPath 
+   * @param {object} [options]
+   * @param {BufferEncoding} [options.encoding]
+   * @param {number} [options.bufferSize]
+   * @param {boolean} [options.recursive]
+   * @return {Promise<AsyncIterableIterator<{name: string, path: string, size: number, lastModified: Date}>> }
+   */
+  async list(dirPath, { encoding='utf8', bufferSize=32, recursive=false} = {}) { throw new Error('Not Implemented'); }
+
+  /**
   * Recursively create a directory if the storage backend supports it, otherwise do nothing
   * @param {string} filePath - The directory path
   * @param {*} [options] - Options to be passed to the underlying method

@@ -15,7 +15,9 @@ const DIGEST = require('./digest').OcflDigest.CONTENT;
 
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 
-/** 
+/**
+ * An abstraction to represent the OCFL Storage Root, which is
+ * a base directory used to store OCFL Objects, identified by a [NAMASTE] file “0=ocfl_1.1”.
  * @typedef {import('./extension').OcflExtensionConfig} OcflExtensionConfig
  * @typedef {import('./store').OcflStore} OcflStore
  */

@@ -1,3 +1,5 @@
-type TestType = {
-  name: string;
-};
+interface OpenDirOptions {
+  encoding?: BufferEncoding | undefined;
+  bufferSize?: number | undefined;
+  recursive?: boolean | undefined;
+}

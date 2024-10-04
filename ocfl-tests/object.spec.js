@@ -81,7 +81,17 @@ module.exports = function (ocfl) {
       let files = [...await object.files()].map(f => f.logicalPath);
       assert.deepStrictEqual(files, invRawFiles);
     });
-    //list non existant object
+    //todo: list non existant object
+    it("can list files with metadata", async function () {
+      await object.load();
+      const { manifest } = invRaw;
+      for await (const f of await object.files()) {
+        let s = await fs.promises.stat(path.join(object.root, f.contentPath));
+        assert.ok(manifest[f.digest].includes(f.contentPath));
+        assert.strictEqual(f.size, s.size);
+        assert.strictEqual(f.lastModified, s.mtime.getTime());
+      }
+    });
 
     it("can read a file as string", async function () {
       let actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'), 'utf8');

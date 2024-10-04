@@ -1,10 +1,10 @@
 //@ts-check
 const path = require('path');
-const fs = require('fs');
-const { mkdir, copyFile, rename, unlink } = fs.promises;
+const fs = require('node:fs');
 const { Readable, Writable } = require('node:stream');
 
 const { OcflStore, OcflConstants } = require('@ocfl/ocfl');
+const { opendir } = require('./utils.js');
 const { INVENTORY_NAME } = OcflConstants;
 
 /**
@@ -38,8 +38,8 @@ class OcflFsStore extends OcflStore {
     this.fs = config?.fs ?? fs;
   }
 
-  async stat(filePath) { 
-    return this.fs.promises.stat(filePath);    
+  async stat(filePath) {
+    return this.fs.promises.stat(filePath);
   }
 
   async createReadStream(filePath, options) {
@@ -47,7 +47,7 @@ class OcflFsStore extends OcflStore {
     return this.fs.createReadStream(filePath, options);
   }
 
-  async createWriteStream(filePath, options) { 
+  async createWriteStream(filePath, options) {
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     return this.fs.createWriteStream(filePath, options);
   }
@@ -58,7 +58,7 @@ class OcflFsStore extends OcflStore {
 
   async createWritable(filePath, options) {
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    return Writable.toWeb(this.fs.createReadStream(filePath, options));
+    return Writable.toWeb(this.fs.createWriteStream(filePath, options));
   }
 
   async readFile(filePath, options) {
@@ -77,11 +77,54 @@ class OcflFsStore extends OcflStore {
   }
 
   async opendir(filePath, options) {
-    return this.fs.promises.opendir(filePath, options); 
+    return this.fs.promises.opendir(filePath, options);
   }
 
   async readdir(filePath, options) {
-    return this.fs.promises.readdir(filePath, options); 
+    return this.fs.promises.readdir(filePath, options);
+  }
+
+  /**
+   * @param {string} dirPath 
+   * @param {OpenDirOptions} [options]
+   * @return {Promise<AsyncIterableIterator<{name: string, path: string, size: number, lastModified: Date}>> }
+   */
+  async list(dirPath, { encoding = 'utf8', bufferSize = 32, recursive = false } = {}) {
+    const {opendir, stat} = this.fs.promises;
+    const maxBuffer = bufferSize || 1;
+    async function* generator() {
+      /** @type Promise<{ name: string, path: string, size: number, lastModified: Date}>[] */
+      let buffer = [];
+      let dirp;
+      const dirQueue = [opendir(dirPath, { encoding, bufferSize })];
+      while (dirp = dirQueue.shift()) {
+        const dir = await dirp;
+        for await (const de of dir) {
+          const cdp = path.join(dir.path, de.name);
+          if (recursive && de.isDirectory()) {
+            dirQueue.push(opendir(cdp, { encoding, bufferSize }));
+          } else {
+            let f = stat(cdp).then(stats => ({
+              name: de.name,
+              path: path.relative(dirPath, cdp),
+              size: stats.size,
+              lastModified: stats.mtime
+            }));
+            if (buffer.length < maxBuffer) {
+              buffer.push(f);
+            } else {
+              yield buffer.shift();
+              buffer.push(f);
+            }
+          }
+        }
+      }
+      let file;
+      while (file = buffer.shift()) {
+        yield file;
+      }
+    }
+    return generator();
   }
 
   async mkdir(filePath, options = { recursive: true }) {

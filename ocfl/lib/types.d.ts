@@ -1,5 +1,5 @@
 
-type OcflExtensionCreate = <T extends typeof import('./extension').OcflExtension>(this: T, config?: OcflExtensionConfig) => InstanceType<T>;
+//type OcflExtensionCreate = <T extends typeof import('./extension').OcflExtension>(this: T, config?: OcflExtensionConfig) => InstanceType<T>;
 
 
 // import { Abortable } from "events";
@@ -51,3 +51,45 @@ type StorageLayout = {
   NTupleOmitPrefixStorageLayout: typeof import('./extensions/0007-n-tuple-omit-prefix-storage-layout').NTupleOmitPrefixStorageLayout
   PathDirectStorageLayout: typeof import('./extensions/000N-path-direct-storage-layout').PathDirectStorageLayout
 }
+
+interface InventoryDigests {
+  [key:string]: string[];
+}
+
+interface InventoryVersion {
+  created: string;
+  message?: string;
+  state: InventoryDigests;
+  user?: {
+    name: string;
+    address?: string;
+  };
+}
+
+interface Inventory {
+  /** A unique identifier for the OCFL Object. */
+  id: string;
+  /** The URI of the inventory section of the specification version matching the object conformance declaration. */
+  type: 'https://ocfl.io/1.0/spec/#inventory' | 'https://ocfl.io/1.1/spec/#inventory';
+  /** 
+   * The algorithm used for calculating digests for content-addressing 
+   * within the OCFL Object and for the Inventory Digest. 
+   * This MUST be the algorithm used in the manifest and state blocks 
+   */
+  digestAlgorithm: 'sha256' | 'sha512';
+  /** The version directory name of the most recent version of the object. */
+  head: string;
+  manifest: InventoryDigests;
+  versions: {
+    [key:string]: InventoryVersion;
+  };
+  fixity?: {
+    [key in 'md5'|'sha1'|'sha256'|'sha512'|'blake2b-512']: {};
+  };
+  /** 
+   * The name of the designated content directory within the version directories.
+   * @default content
+   */
+  contentDirectory?: string;
+}
+

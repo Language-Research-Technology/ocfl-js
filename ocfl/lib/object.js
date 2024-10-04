@@ -23,9 +23,9 @@ const DIGEST = OcflDigest.CONTENT;
 
 /**
  * @typedef {Object} OcflObjectConfig
- * @property {string} root - Absolute path to the ocfl object root
- * @property {string} [workspace] - Absolute path to object workspace directory
- * @property {('sha256' | 'sha512')} [digestAlgorithm] - Digest algorithm for content-addressing, must use either sha512 or sha256
+ * @property {string} root - Absolute path to the ocfl object root.
+ * @property {string} [workspace] - Absolute path to object workspace directory.
+ * @property {('sha256' | 'sha512')} [digestAlgorithm] - Digest algorithm for content-addressing, must use either sha512 or sha256.
  * @property {string} [id] - Identifier for the object.  Only be used in a newly created object.
  * @property {string} [contentDirectory='content'] - Content directory name. Only applies to a newly created object.
  * @property {string} [ocflVersion=c.OCFL_VERSION] - Ocfl version. Only applies to a newly created object.
@@ -34,14 +34,26 @@ const DIGEST = OcflDigest.CONTENT;
 /**
  * @typedef {UPDATE_MODE | ('MERGE' | 'REPLACE') } ObjectUpdateMode
  * 
- * @typedef {{logicalPath?: string, digest?: string, contentPath?: string, version?: string}} FileRef
+ * @typedef {Object} FileRef
+ * @property {string} [contentPath] - Actual path to the file location relative to the ocfl object root.
+ * @property {string} [logicalPath] - A path that represents a file’s location in the logical state of an object.
+ * @property {string} [digest] - An algorithmic characterization of the contents of a file conforming to a standard digest algorithm.
+ * @property {string} [version] - Version of the OCFL object.
+ * @property {string} [lastModified] - Last modified date of the file.
+ * @property {string} [size] - Size of the file in bytes.
  * @typedef {{logicalPath: string, version?: string}} FileRefLogical
  * @typedef {{digest: string}} FileRefDigest
  * @typedef {{contentPath: string}} FileRefContent
  */
 
+/**
+ * Represent a file in an OCFL object
+ */
 class OcflObjectFile {
   #ocflObject;
+  #lastModified;
+  #size;
+
   /**
    * 
    * @param {OcflObjectImpl} ocflObject 
@@ -56,6 +68,8 @@ class OcflObjectFile {
     if (fileRef.contentPath) this.contentPath = fileRef.contentPath;
     if (fileRef.digest) this.digest = fileRef.digest;
     if (fileRef.version) this.version = fileRef.version;
+    if (fileRef.lastModified != null) this.#lastModified = fileRef.lastModified;
+    if (fileRef.size != null) this.#size = fileRef.size;
   }
 
   /**
@@ -73,6 +87,16 @@ class OcflObjectFile {
     }
     return contentPath;
   }
+
+  /**
+   * Returns the last modified time of the file, in millisecond since the UNIX epoch (January 1st, 1970 at Midnight).
+   */
+  get lastModified() { return this.#lastModified  }
+  
+  /**
+   * Returns the file size in bytes.
+   */
+  get size() { return this.#size }
 
   toString() {
     let props = [];
@@ -219,12 +243,7 @@ class OcflObject {
     await this.import(sourceDir, mode);
   }
 
-  async load() {
-    this._inventory = {};
-    await this.getInventory();
-    //await this.loadExtensions();
-    return;
-  }
+  async load() { throw new NotImplementedError(); }
 
   /**
    * Iterate through the content files contained in the specified version. 
@@ -351,7 +370,7 @@ class OcflObjectImpl extends OcflObject {
       //inventory does not exist yet
       return;
     }
-    let data = /** @type import('./inventory.js').Inventory */(JSON.parse(datastr));
+    let data = /** @type Inventory */(JSON.parse(datastr));
     let [digest, actualDigest] = /** @type [string,string] */ (await Promise.all([
       this.readFile(invPath + '.' + data.digestAlgorithm, 'utf8'),
       OcflDigest.digestAsync(data.digestAlgorithm, datastr)
@@ -360,6 +379,23 @@ class OcflObjectImpl extends OcflObject {
     if (digest !== actualDigest) throw new Error(`Inventory file ${this.root}/${invPath} digest mismatch: recorded=${digest} actual=${actualDigest}`);
     //return new OcflObjectInventory({ data, digest });
     return new OcflObjectInventory(data);
+  }
+
+  async load() {
+    this._inventory = {};
+    const inv = await this.getInventory();
+    //await this.loadExtensions();
+
+    //load file metadata from underlying storage
+    const metadata = inv.metadata = {};
+    for await (const file of await this.#store.list(this.root, { recursive: true })) {
+      const contentPath = file.path;
+      metadata[contentPath] = {
+        size: file.size,
+        lastModified: file.lastModified.getTime()
+      }
+    }
+    return;
   }
 
   /**

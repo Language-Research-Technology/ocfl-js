@@ -27,31 +27,6 @@ function prevVersion(currentVersion) {
  */
 
 /**
- * @typedef {Object.<string, string[]>} InventoryState
- */
-
-/**
- * @typedef {Object} InventoryVersion
- * @property {string} [created]
- * @property {InventoryState} state
- * @property {string} [message]
- * @property {{name:string, address:string}} [user]
- */
-
-/**
- * @typedef {Object} Inventory
- * @property {string} id - A unique identifier for the OCFL Object.
- * @property {string} type - The URI of the inventory section of the specification version matching the object conformance declaration.
- * @property {string} digestAlgorithm - The digest algorithm used for calculating digests for content-addressing within the OCFL Object and for the Inventory Digest.
- * @property {string} head - The version directory name of the most recent version of the object.
- * @property {string} [contentDirectory='content'] - The name of the designated content directory within the version directories.
- * @property {InventoryState} manifest
- * @property {Object.<string, InventoryVersion>} versions
- * @property {Object} [fixity]
- */
-
-
-/**
  * Wrapper class for inventory data
  */
 class OcflObjectInventory {
@@ -59,18 +34,10 @@ class OcflObjectInventory {
   #data;
   /** @type {InventoryVersion} */
   #version;
-
+  metadata;
   /**
    * Create a mutable inventory and increase the inventory version number
-   * @param {Object} data
-   * @param {string} data.id
-   * @param {string} data.type
-   * @param {string} data.digestAlgorithm
-   * @param {string} [data.head]
-   * @param {string} [data.contentDirectory]
-   * @param {Object.<string, string[]>} [data.manifest]
-   * @param {Object.<string, InventoryVersion>} [data.versions]
-   * @param {Object} [data.fixity]
+   * @param {Inventory} data
    * @param {boolean} [cleanState] 
    */
   static newVersion(data, cleanState) {
@@ -170,7 +137,8 @@ class OcflObjectInventory {
           logicalPath,
           version,
           digest,
-          contentPath
+          contentPath,
+          ...this.metadata?.[contentPath]
         };
       }
     }
@@ -212,7 +180,7 @@ class OcflObjectInventory {
    * Compare the differences between the state of two versions
    * @param {string} version0
    * @param {string} version1 
-   * @return {[InventoryState, InventoryState]} - A tuple of [A, B] where A contains files
+   * @return {[InventoryDigests, InventoryDigests]} - A tuple of [A, B] where A contains files
    *     that are in `version0` but not in `version1` and B contains files
    *     that are in `version1` but not in `version0`
    */
@@ -237,7 +205,7 @@ class OcflObjectInventory {
       return Object.fromEntries(r);
     });
 
-    return /** @type {[InventoryState, InventoryState]} */(result);
+    return /** @type {[InventoryDigests, InventoryDigests]} */(result);
   }
 }
 
