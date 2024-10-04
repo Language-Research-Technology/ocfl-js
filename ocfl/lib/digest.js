@@ -58,17 +58,18 @@ for (let algo of FIXITY) {
  */
 function createStream(algorithm) {
   const hash = algorithms[algorithm || 'sha512']();
-  hash.setEncoding('hex');
+  //hash.setEncoding('hex');
   return hash;
 }
 
 /**
  * 
- * @param {string} algorithm 
+ * @param {string} [algorithm] 
+ * @param {object} [options] 
  */
-function createStreamThrough(algorithm, options) {
-  const hash = algorithms[algorithm || 'sha512']();
-  hash.setEncoding('hex');
+function createStreamThrough(algorithm = 'sha512', options) {
+  const hash = algorithms[algorithm]();
+  //hash.setEncoding('hex');
   return new HashThrough(hash, options);
 }
 

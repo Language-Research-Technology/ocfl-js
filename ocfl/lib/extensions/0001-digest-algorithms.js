@@ -2,7 +2,8 @@
 
 const {OcflExtension} = require("../extension");
 const crypto = require('crypto');
-const blake2 = require('blake2');
+//const blake2 = require('blake2');
+const { createBLAKE2b } = require('hash-wasm');
 
 class DigestAlgorithm extends OcflExtension {
   static get NAME() { return '0001-digest-algorithms' }
@@ -15,7 +16,7 @@ class DigestAlgorithm extends OcflExtension {
    * 
    * @param {import('ocfl')} ocfl 
    */
-  static setup(ocfl) {
+  static async setup(ocfl) {
     let {OcflDigest} = ocfl;
     let { FIXITY } = OcflDigest;
     class FIXITY_EX extends FIXITY {
@@ -26,9 +27,13 @@ class DigestAlgorithm extends OcflExtension {
     };
     OcflDigest.FIXITY = FIXITY_EX;
     //console.log(OcflDigest.FIXITY);
-    for (let len of [160, 256, 384]) {
-      OcflDigest.algorithms['blake2b-' + len] = function() { 
-        return blake2.createHash('blake2b', {digestLength: len/8}); 
+    const blake2b = Object.fromEntries(await Promise.all([160, 256, 384].map(bits => [bits, createBLAKE2b(bits)])));
+    
+    for (let bits of [160, 256, 384]) {
+      OcflDigest.algorithms['blake2b-' + bits] = function() { 
+        //return blake2.createHash('blake2b', {digestLength: len/8}); 
+        blake2b[bits].init();
+        return blake2b[bits];
       }
     }
     OcflDigest.algorithms['sha512/256'] = function() { 

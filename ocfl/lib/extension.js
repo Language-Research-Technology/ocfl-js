@@ -99,7 +99,7 @@ class OcflExtension {
 
   static get forObject() { return false; }
   static get forStorage() { return false; }
-  static setup(ocfl) { };
+  static async setup(ocfl) { };
   static get NAME() { return '0000-example-extension' }
   static get DESCRIPTION() { return 'Example extension' }
 
