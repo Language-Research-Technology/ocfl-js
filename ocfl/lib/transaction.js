@@ -63,7 +63,7 @@ class OcflObjectTransaction {
 
   /**
    * Import content by recursively copying a file or directory from local file system to the 
-   * OCFL Object content. For example, `copy('/home/john/data/b','data/b')` will
+   * OCFL Object content. For example, `object.import('/home/john/data/b','data/b')` will
    * copy `/home/john/data/b` from the local filesystem to the content `data/b` in the OFCL Object.
    * Set target to empty string ('') to copy a directory content to the object's content root.
    * If target is not specified, the base name of the source will be used.

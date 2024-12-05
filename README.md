@@ -85,7 +85,7 @@ OCFL objects inside the OCFL storage can be iterated with `for ... of` construct
     }
 
 
-## Object
+### Object
 
 The OCFL Object can be instantiated by the storage root as described above. It can also be used directly without
 the storage root. For example, if you want to manipulate an ocfl object directory that is not associated with a storage layout.
@@ -100,15 +100,28 @@ Add a content to the object from a directory in the local file system. This will
 
 Add multiple files from different sources as one transaction. All changes will be saved as one new version `v2`).
 
-    await object.update(async (t)=>{
-      t.add()
-      t.copy()
+    await object.update(async (t) => {
+      // create a new text file test.txt
+      t.write('test.txt', 'abc');
+      // add a file or folder '/home/john/data/b' to 'data/b'
+      t.import('/home/john/data/b','data/b');
     });
 
 List all existing files in the object
 
     for await (let f of await object.files()) {
         // f is the logical path of the file
-        let fileContent = await object.getFile(f).asString();
+        let fileContent = await f.text();
     }
 
+## Development
+
+Clone the Git repo with submodules included:
+
+    git clone --recursive https://github.com/Language-Research-Technology/ocfl-js
+
+The project is structured as a monorepo with multiple packages set up as npm workspaces.
+Install the dependencies for all workspaces:
+
+    cd ocfl-js
+    npm install
