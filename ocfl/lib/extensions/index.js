@@ -1,6 +1,6 @@
 
 module.exports = {
-  ...require('./0001-digest-algorithms'),
+  ...require('./0009-digest-algorithms'),
   ...require('./0002-flat-direct-storage-layout'),
   ...require('./0003-hash-and-id-n-tuple-storage-layout'),
   ...require('./0004-hashed-n-tuple-storage-layout'),
