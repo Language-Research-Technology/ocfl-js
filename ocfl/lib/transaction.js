@@ -245,6 +245,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
    * @param {string} logicalPath 
    * @param {Object} options
    * @return {Promise<import('stream').Writable>} 
+   * @deprecated Use createWritable() instead
    */
   async createWriteStream(logicalPath, options) {
     let realPath = this._getRealPath(logicalPath);
@@ -262,6 +263,17 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       this._inventory.add(logicalPath, digest);
     });
     return ws;
+  }
+  /**
+   * 
+   * @param {string} logicalPath 
+   * @param {Object} options
+   * @return {Promise<WritableStream>} 
+   */
+  async createWritable(logicalPath, options) {
+    let realPath = this._getRealPath(logicalPath);
+    let ws = await this._store.createWritable(realPath, options);
+
   }
 
   async write(logicalPath, data, options) {

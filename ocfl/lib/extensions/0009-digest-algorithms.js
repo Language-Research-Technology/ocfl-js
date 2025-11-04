@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { createBLAKE2b } = require('hash-wasm');
 
 class DigestAlgorithm extends OcflExtension {
-  static get NAME() { return '0001-digest-algorithms' }
+  static get NAME() { return '0009-digest-algorithms' }
 
   // static create() {
   //   if (!instance) instance = new DigestAlgorithm();
@@ -24,7 +24,9 @@ class DigestAlgorithm extends OcflExtension {
       static blake2b256 = new this('blake2b-256');
       static blake2b384 = new this('blake2b-384');
       static ['sha512-256'] = new this('sha512/256');
+      static sizea = new this('size');
     };
+    FIXITY.
     OcflDigest.FIXITY = FIXITY_EX;
     //console.log(OcflDigest.FIXITY);
     const blake2b = Object.fromEntries(await Promise.all([160, 256, 384].map(bits => [bits, createBLAKE2b(bits)])));

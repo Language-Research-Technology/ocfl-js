@@ -4,7 +4,7 @@
  */
 
 /**
- * Create enumeration type by extending the Enum class and 
+ * Create enumeration type by passing the class to the constructor 
  * defining the name and value of each constant as static fields.
  * @template V
  */
