@@ -1,6 +1,6 @@
 const path = require('path');
 const { pipeline } = require('stream/promises');
-const { parallelize, dataSourceAsIterable } = require('./utils');
+const { parallelize } = require('./utils');
 
 const emptyOptions = {};
 
@@ -9,6 +9,7 @@ const emptyOptions = {};
  * such as local file system and cloud storage
  */
 class OcflStore {
+  /** @type {Map<Object, OcflStore>} */
   static instances;
 
   /**
@@ -84,24 +85,24 @@ class OcflStore {
   /**
    * Provide a common interface to read a file inside an object. 
    * A concrete subclass MAY implement this method to provide read access to its underlying storage backend.
-   * The default implementation uses the {@linkcode OcflStore#createReadStream} method.
+   * The default implementation uses the {@linkcode OcflStore#createReadable} method.
    * @param {string} filePath 
    * @param {*} [options] 
    */
   async readFile(filePath, options) {
-    let rs = await this.createReadStream(filePath, options);
+    let rs = await this.createReadable(filePath, options);
     let chunks = [];
     for await (const chunk of rs) {
       chunks.push(chunk);
     }
     if (typeof options === 'string' || options.encoding) {
-      return Buffer.concat(chunks);
-    } else {
       return chunks.join('');
+    } else {
+      return Buffer.concat(chunks);
     }
   }
 
-  /** @typedef {string|Buffer|NodeJS.ArrayBufferView|AsyncIterable|Iterable|import('stream').Readable} WriteFileData */
+  /** @typedef {string|Buffer|Uint8Array|DataView|AsyncIterable|Iterable|ReadableStream} WriteFileData */
   /**
    * Provide a common interface to write a file inside an object. 
    * A concrete subclass MAY implement this method to provide write access to its underlying storage backend.
@@ -111,10 +112,15 @@ class OcflStore {
    * @param {Object|string} options 
    */
   async writeFile(filePath, data, options) {
-    var source = dataSourceAsIterable(data);
     await this.mkdir(path.dirname(filePath));
-    const target = await this.createWriteStream(filePath, options);
-    await pipeline(source, target);
+    const target = await this.createWritable(filePath, options);
+    if (data instanceof ReadableStream) {
+      await data.pipeTo(target);
+    } else {
+      const w = target.getWriter();
+      await w.write(data);
+      await w.close();
+    }
   }
 
   /**

@@ -6,7 +6,7 @@ const { OcflConstants, OcflDigest, OcflExtension, OcflStorageLayout, OcflStore,
   OcflObject, OcflObjectImpl,
   OcflObjectInventory, OcflObjectTransactionImpl,
   OcflStorage, OcflStorageImpl,
-  createObjectProxy, createTransactionProxy,
+  createObjectProxy,
   extensions
 } = require('./lib/index.js');
 
@@ -143,7 +143,6 @@ module.exports = {
   OcflObjectInventory,
   OcflObjectTransactionImpl,
   createObjectProxy,
-  createTransactionProxy,
   OcflStorage, OcflStorageImpl,
   Ocfl,
   extensions

@@ -4,9 +4,14 @@
 const assert = require("assert");
 const { readFile } = require("fs/promises");
 const { OcflObjectInventory } = require("../lib/inventory");
+const { OcflDigest } = require("../lib/digest");
 
 describe("OcflObjectInventory class", function () {
   let data;
+  before(async function() {
+    await OcflDigest.load();
+  });
+  
   beforeEach(function(){
     data = {
       id: 'id1',
@@ -123,16 +128,16 @@ describe("OcflObjectInventory class", function () {
 
   it("can detect state change", function () {
     let inv = OcflObjectInventory.newVersion(data);
-    assert.ok(!inv.isChanged);
+    assert.ok(inv.isChanged);
+    inv = OcflObjectInventory.newVersion(inv);
     inv.add('test.txt', 'aabbccddeeff');
     assert.ok(inv.isChanged);
-    inv = OcflObjectInventory.newVersion(inv.toJSON());
+    inv = OcflObjectInventory.newVersion(inv);
     assert.ok(!inv.isChanged);
     inv.add('test.txt', 'aabbccddeeff');
     assert.ok(!inv.isChanged);
     inv.add('test1.txt', 'aabbccddeeff');
     assert.ok(inv.isChanged);
-
   });
 
   it("can iterate files", async function () {
@@ -143,4 +148,17 @@ describe("OcflObjectInventory class", function () {
     assert.strictEqual(files[1].contentPath, 'v1/content/empty.txt');
     assert.strictEqual(files[2].contentPath, 'v1/content/image.tiff');
   });
+
+  it("can reinstate removed file from older version", function () {
+    let inv = OcflObjectInventory.newVersion(data);
+    inv.add('test.txt', 'aabbccddeeff');
+    assert.strictEqual(inv.versions.v1.state['aabbccddeeff'][0], 'test.txt');
+    inv = OcflObjectInventory.newVersion(inv);
+    inv.delete('test.txt');
+    assert(!inv.versions.v2.state['aabbccddeeff']);
+    inv = OcflObjectInventory.newVersion(inv);
+    inv.reinstate('test.txt', 'v1');
+    assert(inv.versions.v3.state['aabbccddeeff']);
+  });
+
 });

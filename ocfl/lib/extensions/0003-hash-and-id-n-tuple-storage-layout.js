@@ -1,5 +1,6 @@
 const { OcflStorageLayout } = require("../extension");
 const { OcflDigest } = require("../digest");
+const { enumeration } = require("../enum");
 const path = require("path");
 
 function encodeIdentifier(id) {
@@ -31,8 +32,9 @@ class HashAndIdNTupleStorageLayout extends OcflStorageLayout {
   constructor(config) {
     super(config, DefaultConfig);
     let c = this.parameters;
-    if (!OcflDigest.FIXITY.of(c.digestAlgorithm)) throw new Error('Invalid digestAlgorithm');
-    let digest = OcflDigest.digestSync(c.digestAlgorithm, 'test');
+    const algo = enumeration.of(OcflDigest.FIXITY, c.digestAlgorithm)?.name;
+    if (!algo) throw new Error('Invalid digestAlgorithm');
+    let digest = OcflDigest.digestSync(algo, 'test');
     let p = c.numberOfTuples * c.tupleSize
     if (p > digest.length) throw new Error('Product of numberOfTuples and tupleSize is greater than the number of characters in the hex encoded digest.');
   }

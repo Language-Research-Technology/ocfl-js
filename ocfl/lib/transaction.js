@@ -1,9 +1,8 @@
 //@ts-check
 /** Models a set of ocfl object modifying operations as a transaction that is as close as atomic as possible */
-const { createReadStream } = require('fs');
-const { stat, readdir } = require('fs/promises');
+//todo: replace path module with a more generic path module that works in both node and browser
 const path = require('path');
-const { parallelize, dataSourceAsIterable } = require('./utils');
+const { parallelize } = require('./utils');
 const { OcflDigest } = require('./digest');
 const { INVENTORY_NAME } = require('./constants').OcflConstants;
 
@@ -39,6 +38,7 @@ class OcflObjectTransaction {
    * @param {Object} [options.user] - Identify the user or agent that created the current Version
    * @param {string} options.user.name - Any readable name of the user, e.g., a proper name, user ID, agent ID.
    * @param {string} [options.user.address] - A URI: either a mailto URI [RFC6068] with the e-mail address of the user or a URL to a personal identifier, e.g., an ORCID iD.
+   * @param {boolean} [options.force=false] - If true, force to commit. Use it after a purge.
    */
   async commit(options) { throw new Error('Not Implemented'); }
 
@@ -51,12 +51,11 @@ class OcflObjectTransaction {
     return await this.remove(logicalPath, { purge: true });
   }
 
-
   /**
    * Write data to a file at `logicalPath`
    * @abstract
    * @param {string} logicalPath - A path relative to the object content directory
-   * @param {*} data - The same data as https://nodejs.org/api/fs.html#fs_fs_writefile_file_data_options_callback
+   * @param {string|Uint8Array|DataView|ArrayBuffer|ReadableStream} data - Data to be written to the file
    * @param {Object|string} [options] - The same options as https://nodejs.org/api/fs.html#fs_fs_writefile_file_data_options_callback
    */
   async write(logicalPath, data, options) { throw new Error('Not Implemented'); }
@@ -67,6 +66,9 @@ class OcflObjectTransaction {
    * copy `/home/john/data/b` from the local filesystem to the content `data/b` in the OFCL Object.
    * Set target to empty string ('') to copy a directory content to the object's content root.
    * If target is not specified, the base name of the source will be used.
+   * For examples:
+   * To copy '/src/data' directory as 'data' use import('/src/data', 'data'). 
+   * To copy all files inside '/src/data' directory to the logical root, use import('/src/data', ''). 
    * @abstract
    * @param {string} source - A path to a file or directory in the local filesystem to be copied
    * @param {string} [target] - A logical path in the OCFL Object content.
@@ -84,7 +86,7 @@ class OcflObjectTransaction {
 
   /**
   * Changes the logical path of existing content. This is similar to move operation in file systems
-  * This operation will NOT rename the actual file name referenced by the manifest.
+  * Unless renaming files that are not yet commited, this operation will NOT rename the actual file name referenced by the manifest.
   * @abstract
   * @param {*} source 
   * @param {*} target 
@@ -92,7 +94,7 @@ class OcflObjectTransaction {
   async rename(source, target) { throw new Error('Not Implemented'); }
 
   /**
-   * Changes the file path of existing content. This is similar to move operation in file systems
+   * Alias of {@link rename()}
    * @param {*} source 
    * @param {*} target 
    */
@@ -103,11 +105,12 @@ class OcflObjectTransaction {
   * @abstract
   * @param {string} logicalPath - A path relative to the object content directory
   * @param {Object} [options]
+  * @param {boolean} [options.purge=false] - If true, completely remove the content from all versions
   */
   async remove(logicalPath, options) { throw new Error('Not Implemented'); }
 
   /**
-   * Remove a file or directory
+   * Remove a file or directory. Alias of {@link remove()}
    * @param {string} logicalPath - A path relative to the object content directory
    * @param {Object} [options]
    */
@@ -123,14 +126,23 @@ class OcflObjectTransaction {
   async reinstate(logicalPath, versionName) { throw new Error('Not Implemented'); }
 
   /**
-   * Create a writable stream
+   * Create a NodeJS writable stream
    * @abstract
    * @param {string} logicalPath 
    * @param {BufferEncoding|StreamOptions} [options] 
    * @return {Promise<import('stream').Writable>} 
+   * @deprecated Use {@link createWritable()} instead
    */
   async createWriteStream(logicalPath, options) { throw new Error('Not Implemented'); }
 
+  /**
+   * Create a writable stream
+   * @abstract
+   * @param {string} logicalPath 
+   * @param {*} [options] 
+   * @return {Promise<WritableStream>} 
+   */
+  async createWritable(logicalPath, options) { throw new Error('Not Implemented'); }
 }
 
 
@@ -142,8 +154,6 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   _object;
   _inventory;
   _committed = false;
-  _unfinished = 0;
-
 
   /**
    * 
@@ -161,7 +171,27 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     this._store = ocflStore;
     this._inventory = inventory;
     this._createdDir = createdDir;
+    /** @type {(Promise<any> & { done?: boolean})[]} */
     this._queue = [];
+  }
+
+  /**
+   * Create a new transaction instance.
+   * @param {OcflObjectImpl} ocflObject 
+   * @param {OcflStore} ocflStore 
+   * @param {OcflObjectInventoryMut} inventory 
+   * @param {string} workspacePath 
+   */
+  static async create(ocflObject, ocflStore, inventory, workspacePath) {
+    // @todo: validate existing object
+    // check existing 
+    let workspaceVersionPath = path.join(workspacePath, inventory.head);
+    if (await ocflStore.exists(workspaceVersionPath)) {
+      // workspace dir exists, abort update
+      throw new Error('Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt');
+    }
+    await ocflStore.mkdir(workspacePath);
+    return new OcflObjectTransactionImpl(ocflObject, ocflStore, inventory, workspaceVersionPath, workspacePath);
   }
 
   _getRealPath(logicalPath) {
@@ -182,13 +212,13 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     // console.log('commit');
     // console.log(this._inventory.toString());
     if (!this._committed) {
-      let count = this._unfinished;
+      let count = this._queue.filter(p => !p.done).length;
       if (count > 0) {
         await this.rollback();
         throw new Error(`Unfinished operations detected (${count}). Make sure that updater callback is async function and there are no floating promises inside.`);
       }
       // if there is no changes, abort commit
-      if (!this._inventory.isChanged) {
+      if (!options?.force && !this._inventory.isChanged) {
         return await this.rollback();
       }
       await this._commit(options);
@@ -244,66 +274,75 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
    * 
    * @param {string} logicalPath 
    * @param {Object} options
-   * @return {Promise<import('stream').Writable>} 
-   * @deprecated Use createWritable() instead
-   */
-  async createWriteStream(logicalPath, options) {
-    let realPath = this._getRealPath(logicalPath);
-    let ws = await this._store.createWriteStream(realPath, options);
-    let hs = OcflDigest.createStream(this._inventory.digestAlgorithm);
-    const wwrite = ws.write;
-    function nwrite(chunk, encoding, cb) {
-      hs.update(chunk, encoding);
-      return wwrite.apply(ws, arguments);
-    };
-    ws.write = nwrite;
-    ws.on('close', async () => {
-      let digest = hs.digest('hex');
-      if (this._inventory.getContentPath(digest)) await this._store.remove(realPath);
-      this._inventory.add(logicalPath, digest);
-    });
-    return ws;
-  }
-  /**
-   * 
-   * @param {string} logicalPath 
-   * @param {Object} options
    * @return {Promise<WritableStream>} 
    */
   async createWritable(logicalPath, options) {
-    let realPath = this._getRealPath(logicalPath);
-    let ws = await this._store.createWritable(realPath, options);
+    if (this._committed) throw new Error('Transaction already commited');
+    const realPath = this._getRealPath(logicalPath);
+    const writer = (await this._store.createWritable(realPath, options)).getWriter();
+    const hs = await OcflDigest.createStream(this._inventory.digestAlgorithm);
+    const inv = this._inventory;
+    const store = this._store;
+    const ws = new WritableStream({
+      write(chunk, controller) {
+        hs.update(chunk);
+        return writer.write(chunk);
+      },
+      async close() {
+        await writer.close();
+        const digest = hs.digest('hex');
+        if (inv.getContentPath(digest)) await store.remove(realPath);
+        inv.add(logicalPath, digest);
+      }
+    });
+    /** @type {Promise<any> & { done?: boolean }} */
+    const p = writer.closed;
+    p.finally(() => { p.done = true; });
+    this._queue.push(p);
 
+    return ws;
   }
 
   async write(logicalPath, data, options) {
-    let realPath = this._getRealPath(logicalPath);
-    let dataSrc = dataSourceAsIterable(data);
-    let digest;
-    if (Array.isArray(dataSrc)) {
-      // if data is not stream, check digest first
-      digest = await OcflDigest.digestAsync(this._inventory.digestAlgorithm, dataSrc);
-      if (!this._inventory.getContentPath(digest)) {
-        // no digest yet, write the file to storage backend
-        await this._store.writeFile(realPath, data, options);
+    return this._transact(async () => {
+      let realPath = this._getRealPath(logicalPath);
+      let digest;
+      if (typeof data === 'string' || ArrayBuffer.isView(data)) {
+        if (ArrayBuffer.isView(data) && !(data instanceof Uint8Array || data instanceof Uint16Array || data instanceof Uint32Array)) {
+          data = new Uint8Array(data.buffer)
+        }
+        // if data is not stream, check digest first
+        digest = await OcflDigest.digest(this._inventory.digestAlgorithm, data);
+        if (!this._inventory.getContentPath(digest)) {
+          // no digest yet, write the file to storage backend
+          await this._store.writeFile(realPath, data, options);
+        }
+      } else if (data instanceof ReadableStream) {
+        // save the stream first
+        const hs = await OcflDigest.createStreamThrough(this._inventory.digestAlgorithm);
+        const rs = data.pipeThrough(hs);
+        await this._store.writeFile(realPath, rs, options);
+        digest = hs.digest();
+        // already exists, delete temp file
+        if (this._inventory.getContentPath(digest)) await this._store.remove(realPath);
+      } else {
+        throw new TypeError('Unsupported data type ', data);
       }
-    } else {
-      // save the stream first
-      let hs = OcflDigest.createStreamThrough(this._inventory.digestAlgorithm);
-      data.pipe(hs);
-      await this._store.writeFile(realPath, hs, options);
-      digest = hs.digest();
-      // already exists, delete temp file
-      if (this._inventory.getContentPath(digest)) await this._store.remove(realPath);
-    }
-    this._inventory.add(logicalPath, digest);
-    // console.log(this._inventory.toString());
+      this._inventory.add(logicalPath, digest);
+      // console.log(this._inventory.toString());
+    });
   }
 
+  /**
+   * Import a single file from source. This is a helper method for {@link OcflObjectTransaction.import | import()} method.
+   * @param {*} source 
+   * @param {*} target 
+   */
   async importFile(source, target) {
     if (!target) throw new TypeError('Target logical path must not be empty if source is a file.');
-    let realPath = this._getRealPath(target);
-    let digest = await OcflDigest.digestFromFile(this._inventory.digestAlgorithm, source);
+    const realPath = this._getRealPath(target);
+    const rs = await this._store.createReadable(source);
+    const digest = await OcflDigest.digest(this._inventory.digestAlgorithm, rs);
 
     if (!this._inventory.getContentPath(digest)) {
       await this._store.copyFile(source, realPath);
@@ -312,32 +351,38 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   }
 
   async import(source, target) {
-    target = target ?? path.basename(source);
-    let srcStat = await stat(source);
-    if (srcStat.isFile()) {
-      await this.importFile(source, target);
-    } else if (srcStat.isDirectory()) {
-      const files = await readdir(source);
-      await parallelize(files, async (filename) => {
-        await this.import(path.join(source, filename), path.join(target, filename));
-      });
-    }
+    return this._transact(async () => {
+      target = target ?? path.basename(source);
+      let srcStat = await this._store.stat(source);
+      if (srcStat.isFile()) {
+        await this.importFile(source, target);
+      } else if (srcStat.isDirectory()) {
+        const files = await this._store.readdir(source);
+        await parallelize(files, async (filename) => {
+          await this.import(path.join(source, filename), path.join(target, filename));
+        });
+      }
+    });
   }
 
   async copy(source, target) {
-    return this._inventory.copy(source, target);
+    return this._transact(async () => {
+      return this._inventory.copy(source, target);
+    });
   }
 
   async rename(source, target) {
-    // if file already exists in the workspace, rename the actual file
-    try {
-      let realSource = this._getRealPath(source);
-      let realTarget = this._getRealPath(target);
-      await this._store.move(realSource, realTarget);
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error;
-    }
-    return this._inventory.rename(source, target);
+    return this._transact(async () => {
+      // if file already exists in the workspace, rename the actual file
+      try {
+        let realSource = this._getRealPath(source);
+        let realTarget = this._getRealPath(target);
+        await this._store.move(realSource, realTarget);
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error;
+      }
+      return this._inventory.rename(source, target);
+    });
   }
 
   async reinstate(logicalPath, versionName) {
@@ -355,71 +400,42 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   }
 
   async remove(logicalPath, options) {
-    if (this._inventory.delete(logicalPath)) {
-      try {
-        await this._store.remove(this._getRealPath(logicalPath));
-      } catch (error) {
+    return this._transact(async () => {
+      if (options?.purge) {
+        // completely remove content from all versions
+        let ver = this._inventory.prevVersion;
+        while (ver) {
+          this._inventory.currentVersion = ver;
+          this._inventory.delete(logicalPath);
+          await this._store.remove(this._getRealPath(logicalPath));
+          ver = this._inventory.prevVersion;
+        }
+        this._inventory.currentVersion = this._inventory.head;
       }
-    }
+      if (this._inventory.delete(logicalPath)) {
+        return this._store.remove(this._getRealPath(logicalPath));
+      }
+    });
   }
 
-}
-
-
-const transactionInterface = new OcflObjectTransaction();
-const methodWrapper = {
-  createWriteStream: async function (logicalPath, options) {
-    if (this._committed) throw new Error('Transaction already commited');
-    this._unfinished++;
-    let result = await this.createWriteStream(logicalPath, options);
-    result.on('close', () => --this._unfinished);
-    return result;
-  }
-};
-['write', 'import', 'copy', 'rename', 'remove', 'reinstate'].forEach(name => {
-  methodWrapper[name] = async function () {
-    if (this._committed) throw new Error('Transaction already commited');
-    this._unfinished++;
-    let p = this[name](...arguments);
-    this._queue.push(p);
-    try {
-      let result = await p;
-      this._unfinished--;
-      return result;
-    } catch (error) {
-      this._unfinished--;
-      throw error;
-    }
-  };
-});
-const proxyHandler = {
   /**
-   * @param {OcflObjectTransactionImpl} target 
-   * @param {string} prop 
+   * A function wrapper to provide safe mutating operation that 
+   * will check if a transaction is already committed and track any unfinished promises. 
+   * @template T
+   * @param {() => Promise<T>} op
    */
-  get(target, prop) {
-    if (prop in transactionInterface) {
-      let p = target[prop];
-      if (typeof p === 'function') {
-        return methodWrapper[prop]?.bind(target) ?? p.bind(target);
-      } else {
-        return p;
-      }
-    }
+  async _transact(op) {
+    if (this._committed) throw new Error('Transaction already commited');
+    /** @type {Promise<any> & { done?: boolean }} */
+    const p = op();
+    p.finally(() => { p.done = true; });
+    this._queue.push(p);
+    return p;
   }
-}
 
-/**
- * Return any OcflObjectTransactionImpl implementation as OcflObjectTransaction.
- * @param {OcflObjectTransactionImpl} impl
- * @return {OcflObjectTransaction}
- */
-function createTransactionProxy(impl) {
-  return new Proxy(impl, proxyHandler);
 }
 
 module.exports = {
-  createTransactionProxy,
   OcflObjectTransaction,
   OcflObjectTransactionImpl
 };

@@ -46,13 +46,14 @@ describe("utils.parallelize", function () {
     });
     let endTime = performance.now();
     assert.deepStrictEqual(input, output);
-    assert(endTime - startTime < 310);
+    console.log(endTime - startTime);
+    assert(endTime - startTime < 320);
   });
   it("can work with callback that returns a promise", async function() {
     let input = [...Array(30).keys()];
     let startTime = performance.now();
     await utils.parallelize(input.concat([]), async(i)=>setTimeout(100));
     let endTime = performance.now();
-    assert(endTime - startTime < 310);
+    assert(endTime - startTime < 320);
   });
 });

@@ -3,37 +3,34 @@
 
 const path = require('path');
 const validation = require('./validation.js');
-const { Enum } = require('./enum.js');
+const { enumeration } = require('./enum.js');
 const { OcflObjectInventory, OcflObjectInventoryMut } = require('./inventory.js');
 const { OcflDigest } = require('./digest.js');
-const { createTransactionProxy, OcflObjectTransaction, OcflObjectTransactionImpl } = require('./transaction.js');
+const { OcflObjectTransaction, OcflObjectTransactionImpl } = require('./transaction.js');
 const { OcflStore } = require('./store.js');
 const { OcflExtension } = require('./extension.js');
 const { NotImplementedError } = require('./error.js');
-const { parallelize, dataSourceAsIterable, isDirEmpty, findNamasteVersion } = require('./utils');
+const { parallelize, isDirEmpty, findNamasteVersion } = require('./utils');
 const { OCFL_VERSION, OCFL_VERSIONS, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = require('./constants').OcflConstants;
 
-class UPDATE_MODE extends Enum {
-  /** Merge all changes with the last version during update */
-  static MERGE = new this();
-  /** New version will assume that all existing files are removed first before adding new ones */
-  static REPLACE = new this();
-};
+const UPDATE_MODES = /** @type { const } */(['MERGE', 'REPLACE']);
+const UPDATE_MODE = enumeration(UPDATE_MODES);
 const DIGEST = OcflDigest.CONTENT;
+
+/** @typedef {(typeof UPDATE_MODES)[number]} UpdateModeStr **/
+/** @typedef { InstanceType<typeof UPDATE_MODE> | UpdateModeStr} UpdateMode **/
 
 /**
  * @typedef {Object} OcflObjectConfig
  * @property {string} root - Absolute path to the ocfl object root.
  * @property {string} [workspace] - Absolute path to object workspace directory.
- * @property {('sha256' | 'sha512')} [digestAlgorithm] - Digest algorithm for content-addressing, must use either sha512 or sha256.
+ * @property {('sha256' | 'sha512')} [digestAlgorithm] - Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'.
  * @property {string} [id] - Identifier for the object.  Only be used in a newly created object.
  * @property {string} [contentDirectory='content'] - Content directory name. Only applies to a newly created object.
  * @property {string} [ocflVersion=c.OCFL_VERSION] - Ocfl version. Only applies to a newly created object.
  * @property {OcflExtension[]} [extensions] - Reference to existing extensions defined outside of the object, such as in the storage root.
  */
 /**
- * @typedef {UPDATE_MODE | ('MERGE' | 'REPLACE') } ObjectUpdateMode
- * 
  * @typedef {Object} FileRef
  * @property {string} [contentPath] - Actual path to the file location relative to the ocfl object root.
  * @property {string} [logicalPath] - A path that represents a file’s location in the logical state of an object.
@@ -197,10 +194,12 @@ class OcflObject {
 
   /**
    * Update the content files or directories as one transaction and commit the changes as a new version.
+   * After obtaining the OcflObjectTransaction instance, make sure to either call the
+   * {@link OcflObjectTransaction#commit} or {@link OcflObjectTransaction#rollback} method to complete the transaction.
    * If callback function `cb` is provided, all update operations can be done in the callback function
    * and all changes are automatically commited at the end of the function.
    * @param {function(OcflObjectTransaction):*} [updater]
-   * @param {ObjectUpdateMode} [mode=UPDATE_MODE.MERGE]
+   * @param {UpdateMode} [mode=UPDATE_MODE.MERGE]
    * @return {Promise<?OcflObjectTransaction>}
    */
   async update(updater, mode) { throw new NotImplementedError(); }
@@ -211,7 +210,7 @@ class OcflObject {
    * Use this method to simplify copying all contents of a directory 
    * in local filesystem to the OCFL Object content directory
    * @param {string|string[]|string[][]} content - The source path(s) or an array of a tuple [source, logical path]
-   * @param {ObjectUpdateMode} [mode=UPDATE_MODE.MERGE] - Update mode.
+   * @param {UpdateMode} [mode=UPDATE_MODE.MERGE] - Update mode.
    */
   async import(content, mode = UPDATE_MODE.MERGE) {
     //let entries = /**@type {string[][]}*/(content);
@@ -331,7 +330,7 @@ class OcflObjectImpl extends OcflObject {
     //this.contentVersion = null; // No content yet
     this.#id = config.id;
     this.#extensions = config.extensions;
-    this.digestAlgorithm = DIGEST.of(config.digestAlgorithm || 'sha512');
+    this.digestAlgorithm = enumeration.of(DIGEST, config.digestAlgorithm || 'sha512');
     if (!this.digestAlgorithm) throw new Error('Invalid digest algorithm. Must be one of `sha256` or `sha512`.');
     //this.fixityDigest = config.fixityDigest ?? this.digestAlgorithm;
     this.#workspace = config.workspace ? path.resolve(config.workspace) : undefined;
@@ -400,13 +399,18 @@ class OcflObjectImpl extends OcflObject {
 
   /**
    * @param {function(OcflObjectTransaction):Promise<*>} [updater]
-   * @param {ObjectUpdateMode} [mode=UPDATE_MODE.MERGE]
+   * @param {UpdateMode} [mode_=UPDATE_MODE.MERGE]
    */
-  async update(updater, mode = UPDATE_MODE.MERGE) {
-    if (typeof mode === 'string') mode = UPDATE_MODE.of(mode.toUpperCase());
-    if (!mode || !UPDATE_MODE.has(mode)) throw new TypeError(`Invalid mode '${mode.toString()}'`);
+  async update(updater, mode_ = UPDATE_MODE.MERGE) {
+    let mode = enumeration.of(UPDATE_MODE, mode_);
+    if (!mode) throw new TypeError(`Invalid mode '${mode.toString()}'`);
     let inv = await this.getInventory();
-    let newInv = await this._createInventory(inv, mode === UPDATE_MODE.REPLACE);
+    let newInv = await OcflObjectInventory.newVersion(inv ?? {
+      id: this.id,
+      digestAlgorithm: /** @type {any} */(this.digestAlgorithm.toString()),
+      type: /** @type {any} */(`https://ocfl.io/${this.ocflVersion}/spec/#inventory`),
+      contentDirectory: this.contentDirectory || 'content'
+    }, mode === UPDATE_MODE.REPLACE);
     let t = await this.#createTransaction(newInv);
     if (typeof updater === 'function') {
       try {
@@ -503,29 +507,6 @@ class OcflObjectImpl extends OcflObject {
     return files();
   }
 
-
-  /**
-   * Create a new inventory from the object config or clone an existing inventory.
-   * @param {OcflObjectInventory} [inventory]
-   * @param {boolean} [cleanState]
-   * @return {OcflObjectInventoryMut}
-   */
-  _createInventory(inventory, cleanState) {
-    /** @type {Object} */
-    let data;
-    if (inventory) {
-      data = inventory.toJSON();
-    } else {
-      data = {
-        id: this.id,
-        digestAlgorithm: this.digestAlgorithm.value,
-        type: `https://ocfl.io/${this.ocflVersion}/spec/#inventory`
-      };
-      if (this.contentDirectory !== 'content') data.contentDirectory = this.contentDirectory;
-    }
-    return OcflObjectInventory.newVersion(data, cleanState);
-  }
-
   /**
    * 
    * @param {string} absOrRelPath 
@@ -542,19 +523,10 @@ class OcflObjectImpl extends OcflObject {
    * @return {Promise<OcflObjectTransaction>}
    */
   async #createTransaction(inventory) {
-    // @todo: validate existing object
-    // check existing 
-    let workspacePath = this.workspace || this.root;
-    let workspaceVersionPath = path.join(workspacePath, inventory.head);
-
-    if (await this.#store.exists(workspaceVersionPath)) {
-      // workspace dir exists, abort update
-      throw new Error('Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt');
-    }
     await this._validateObjectPath();
-    let createdDir = await this.#store.mkdir(workspacePath);
     if (!this.workspace) await this._ensureNamaste();
-    return createTransactionProxy(new OcflObjectTransactionImpl(this, this.#store, inventory, workspaceVersionPath, createdDir));
+    let workspacePath = this.workspace || this.root;
+    return OcflObjectTransactionImpl.create(this, this.#store, inventory, workspacePath);
   }
 
   async _ensureNamaste() {
@@ -650,7 +622,6 @@ module.exports = {
   OcflObjectInventory,
   //OcflObjectTransaction,
   OcflObjectTransactionImpl,
-  createTransactionProxy,
   createObjectProxy,
   createObject
 };
