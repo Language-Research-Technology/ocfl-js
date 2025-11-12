@@ -6,7 +6,6 @@ const { setTimeout } = require('timers/promises');
 const { performance } = require('perf_hooks');
 
 
-
 describe("utils.parallelize", function () {
   it("can accept empty array", async function() {
     let input = [];
@@ -56,4 +55,23 @@ describe("utils.parallelize", function () {
     let endTime = performance.now();
     assert(endTime - startTime < 320);
   });
+});
+
+describe("utils.joinTypedArray", function () {
+  it("can join Uint8Array", async function() {
+    let a = new Uint8Array([1,2,3]);
+    let b = new Uint8Array([4,5,6]);
+    let joined = utils.joinTypedArray(a, b);
+    assert.deepStrictEqual(Array.from(joined), [1,2,3,4,5,6]);
+  });
+  it("can join by resizing", async function() {
+    let ab = new ArrayBuffer(0, { maxByteLength: 16 * 1024 });
+    let a = new Uint8Array(ab);
+    let b = new Uint8Array([1,2,3]);
+    let c = new Uint8Array([4,5,6]);
+    let joined = utils.joinTypedArray(a, b);
+    joined = utils.joinTypedArray(joined, c);
+    assert.deepStrictEqual(Array.from(joined), [1,2,3,4,5,6]);
+  });
+  //
 });

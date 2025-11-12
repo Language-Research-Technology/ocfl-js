@@ -1,6 +1,5 @@
 const path = require('path');
-const { pipeline } = require('stream/promises');
-const { parallelize } = require('./utils');
+const { parallelize, joinTypedArray } = require('./utils');
 
 const emptyOptions = {};
 
@@ -90,16 +89,19 @@ class OcflStore {
    * @param {*} [options] 
    */
   async readFile(filePath, options) {
-    let rs = await this.createReadable(filePath, options);
-    let chunks = [];
+    const rs = await this.createReadable(filePath, options);
+    let buffer = (typeof options === 'string' || options.encoding) ? '' : new Uint8Array(new ArrayBuffer(0, { maxByteLength: 16 * 1024 }));
     for await (const chunk of rs) {
-      chunks.push(chunk);
+      if (typeof chunk === 'string') {
+        if (typeof buffer !== 'string') buffer = new TextDecoder().decode(buffer);
+        buffer += chunk;
+      } else {
+        if (typeof buffer === 'string') buffer = new TextEncoder().encode(buffer);
+        // @ts-ignore
+        buffer = joinTypedArray(buffer, chunk);
+      }
     }
-    if (typeof options === 'string' || options.encoding) {
-      return chunks.join('');
-    } else {
-      return Buffer.concat(chunks);
-    }
+    return buffer;
   }
 
   /** @typedef {string|Buffer|Uint8Array|DataView|AsyncIterable|Iterable|ReadableStream} WriteFileData */
