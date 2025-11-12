@@ -53,7 +53,7 @@ class OcflFsStore extends OcflStore {
   }
 
   async createReadable(filePath, options) {
-    return Readable.toWeb(this.fs.createReadStream(filePath, options));
+    return /** @type {ReadableStream} */ (Readable.toWeb(this.fs.createReadStream(filePath, options)));
   }
 
   async createWritable(filePath, options) {
@@ -68,6 +68,7 @@ class OcflFsStore extends OcflStore {
 
   async writeFile(filePath, data, options) {
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    if (data instanceof ReadableStream) data = fs.ReadStream.fromWeb(data);
     await this.fs.promises.writeFile(filePath, data, options);
   }
 
@@ -133,6 +134,7 @@ class OcflFsStore extends OcflStore {
 
   async move(source, target) {
     try {
+      await this.fs.promises.mkdir(path.dirname(target), { recursive: true });
       return this.fs.promises.rename(source, target);
     } catch (error) {
       if (error.code === 'EXDEV') {

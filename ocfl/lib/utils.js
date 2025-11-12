@@ -84,9 +84,12 @@ async function findNamasteVersion(store, prefix, rootPath) {
   return version;
 }
 
+const testSymbol = Symbol('testSymbol');
+
 module.exports = {
   parallelize,
   dataSourceAsIterable,
   isDirEmpty,
-  findNamasteVersion
+  findNamasteVersion,
+  testSymbol
 };

@@ -93,3 +93,5 @@ interface Inventory {
   contentDirectory?: string;
 }
 
+//type Enum<T extends readonly string[]> = {[key in T[number]]: ReturnType<typeof enumeration<T>>};
+//declare function enumeration<T extends readonly string[]>(arr:  T): Enum<T>;

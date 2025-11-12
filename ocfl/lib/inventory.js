@@ -15,11 +15,12 @@ function nextVersion(currentVersion) {
 
 function prevVersion(currentVersion) {
   let zeroPaddingLength = 0;
-  let currentVer = currentVersion.replace('v', '');
+  const currentVer = currentVersion.replace('v', '');
   if (currentVer.startsWith('0')) zeroPaddingLength = currentVer.length;
-  let prevVer = '' + (parseInt(currentVer) - 1);
-  prevVer = 'v' + (zeroPaddingLength ? prevVer.padStart(zeroPaddingLength, '0') : prevVer);
-  return prevVer;
+  let prevVer = parseInt(currentVer) - 1;
+  if (prevVer > 0) {
+    return 'v' + (zeroPaddingLength ? (prevVer+'').padStart(zeroPaddingLength, '0') : prevVer);
+  }
 }
 
 /**
@@ -32,15 +33,19 @@ function prevVersion(currentVersion) {
 class OcflObjectInventory {
   /** @type {Inventory} */
   #data;
-  /** @type {InventoryVersion} */
-  #version;
+  /** @type {string} */
+  #cv;
   metadata;
   /**
-   * Create a mutable inventory and increase the inventory version number
-   * @param {Inventory} data
+   * Create a new mutable OcflObjectInventory from the object config or clone an existing inventory,
+   * and increase the inventory version number.
+   * @param {Partial<Inventory> | OcflObjectInventory} data
    * @param {boolean} [cleanState] 
    */
   static newVersion(data, cleanState) {
+    if (data instanceof OcflObjectInventory) {
+      data = data.toJSON();
+    }
     if (!data.id || !data.digestAlgorithm || !data.type) throw new Error('Inventory must have an id, digestAlgorithm and type.');
     data.manifest = data.manifest || {};
     data.versions = data.versions || {};
@@ -65,32 +70,38 @@ class OcflObjectInventory {
    * @param {string} [version] - Set the version, default to data.head
    */
   constructor(data, version) {
+    this.#cv = version || data.head;
     this.#data = data;
-    this.#version = data.versions[version || data.head];
   }
 
   get id() { return this.#data.id }
   get type() { return this.#data.type }
   get digestAlgorithm() { return this.#data.digestAlgorithm }
   get head() { return this.#data.head }
+  get currentVersion() { return this.#cv || this.head; }
+  set currentVersion(v) { this.#cv = v; }
   get contentDirectory() { return this.#data.contentDirectory || 'content' }
   get manifest() { return this.#data.manifest }
   get versions() { return this.#data.versions }
+  get version() { return this.versions[this.currentVersion] }
   get fixity() { return this.#data.fixity }
-  get state() { return this.#version.state }
-  get created() { return this.#version.created }
-  get message() { return this.#version.message }
-  get user() { return this.#version.user }
-  get prevVersion() { return prevVersion(this.head); }
+  get state() { return this.version.state }
+  get created() { return this.version.created }
+  get message() { return this.version.message }
+  get user() { return this.version.user }
+  get nextVersion() { return nextVersion(this.currentVersion); }
+  get prevVersion() { return prevVersion(this.currentVersion); }
 
   /** Return true if there has been actual change to the state of current version compared to the previous version */
   get isChanged() {
-    let diff = this.diffState(this.head, prevVersion(this.head));
+    const prev = prevVersion(this.head);
+    if (!prev) return true;
+    let diff = this.diffState(this.head, prev);
     return Object.keys(diff[0]).length > 0 || Object.keys(diff[1]).length > 0;
   }
-  set created(val) { this.#version.created = val; }
-  set message(val) { this.#version.message = val; }
-  set user(val) { this.#version.user = val; }
+  set created(val) { this.version.created = val; }
+  set message(val) { this.version.message = val; }
+  set user(val) { this.version.user = val; }
 
   /**
    * Return the state of the specified version
@@ -219,9 +230,15 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   constructor(data) {
     super(data);
+    this.currentVersion = this.head;
+  }
+
+  get currentVersion() { return super.currentVersion; } 
+  set currentVersion(v) {
+    super.currentVersion = v;
     //index logicalPaths
     let byPath = this.#byPath = {};
-    let state = this.state;
+    let state = this.state || {};
     for (let d in state) {
       let files = state[d];
       for (let lp of files) {
@@ -330,7 +347,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    */
   delete(logicalPath) {
     let prefix = logicalPath.endsWith('/') ? logicalPath : logicalPath + '/';
-    let names = this.getDigest(logicalPath) ? [logicalPath] :
+    let names = this.getDigest(logicalPath, this.currentVersion) ? [logicalPath] :
       Object.keys(this.#byPath).filter(p => p.startsWith(prefix));
     let count = 0;
     for (let lp of names) {
@@ -356,7 +373,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     let state = this.state;
     let count = 0;
     for (let f of files) {
-      if (this.getDigest(f.logicalPath)) {
+      if (this.getDigest(f.logicalPath, this.currentVersion)) {
         let c = this.delete(f.logicalPath);
       }
       state[f.digest] = [f.logicalPath];
