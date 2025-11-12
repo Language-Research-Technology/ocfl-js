@@ -84,6 +84,37 @@ async function findNamasteVersion(store, prefix, rootPath) {
   return version;
 }
 
+/** @typedef {ArrayLike<number> & { buffer: ArrayBuffer, byteLength: number, set(array: ArrayLike<number>, offset?: number): void }} TypedArray */
+/**
+ * @param {any} obj 
+ * @returns {obj is TypedArray}
+ */
+function isTypedArray(obj) {
+  return ArrayBuffer.isView(obj) && !(obj instanceof DataView);  
+} 
+
+/**
+ * 
+ * @param {ArrayBuffer|TypedArray} target 
+ * @param {ArrayBuffer|TypedArray} source 
+ * @returns {TypedArray}
+ */
+function joinTypedArray(target, source) {
+  const sourceArray = isTypedArray(source) ? source : new Uint8Array(source);
+  const [targetBuffer, targetArray] = isTypedArray(target) ? [/** @type {ArrayBuffer}*/(target.buffer), target] : [target, new Uint8Array(target)];
+  const targetLength = targetArray.byteLength;
+  const totalSize = targetLength + sourceArray.byteLength;
+  let mergedArray = targetArray;
+  if (targetBuffer.resizable && targetBuffer.maxByteLength >= totalSize) {
+    targetBuffer.resize(totalSize);
+  } else {
+    mergedArray = new Uint8Array(totalSize);
+    mergedArray.set(targetArray, 0);
+  }
+  mergedArray.set(sourceArray, targetLength);
+  return mergedArray;
+}
+
 const testSymbol = Symbol('testSymbol');
 
 module.exports = {
@@ -91,5 +122,6 @@ module.exports = {
   dataSourceAsIterable,
   isDirEmpty,
   findNamasteVersion,
+  joinTypedArray,
   testSymbol
 };
