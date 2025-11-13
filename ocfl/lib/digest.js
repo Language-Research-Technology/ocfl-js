@@ -130,6 +130,7 @@ function digestSync(algorithm, input) {
  * 
  * @param {string} algorithm 
  * @param {IDataType | ReadableStream} input 
+ * @return {Promise<string>}
  */
 async function digest(algorithm, input) {
   if (input instanceof ReadableStream) {

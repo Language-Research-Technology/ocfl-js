@@ -1,8 +1,5 @@
+'use strict';
 //@ts-check
-
-const path = require('path');
-const { digestSync } = require('./digest.js').OcflDigest;
-//const {createHash} = require('crypto');
 
 function nextVersion(currentVersion) {
   let zeroPaddingLength = 0;
@@ -19,7 +16,7 @@ function prevVersion(currentVersion) {
   if (currentVer.startsWith('0')) zeroPaddingLength = currentVer.length;
   let prevVer = parseInt(currentVer) - 1;
   if (prevVer > 0) {
-    return 'v' + (zeroPaddingLength ? (prevVer+'').padStart(zeroPaddingLength, '0') : prevVer);
+    return 'v' + (zeroPaddingLength ? (prevVer + '').padStart(zeroPaddingLength, '0') : prevVer);
   }
 }
 
@@ -85,6 +82,7 @@ class OcflObjectInventory {
   get versions() { return this.#data.versions }
   get version() { return this.versions[this.currentVersion] }
   get fixity() { return this.#data.fixity }
+  set fixity(val) { this.#data.fixity = val; }
   get state() { return this.version.state }
   get created() { return this.version.created }
   get message() { return this.version.message }
@@ -114,11 +112,6 @@ class OcflObjectInventory {
 
   toString() {
     return JSON.stringify(this.#data, null, 2);
-  }
-
-  /** Compute digest from current state of this inventory object*/
-  digest() {
-    return digestSync(this.#data.digestAlgorithm, this.toString());
   }
 
   /**
@@ -233,7 +226,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     this.currentVersion = this.head;
   }
 
-  get currentVersion() { return super.currentVersion; } 
+  get currentVersion() { return super.currentVersion; }
   set currentVersion(v) {
     super.currentVersion = v;
     //index logicalPaths
@@ -262,10 +255,18 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * Add a new file to the inventory or update the digest of an existing file
    * @param {string} digest
    * @param {string} logicalPath 
+   * @param {{[x: string]: string}} [fixity]
    * @return {boolean} - true if the state is changed
    */
-  add(logicalPath, digest) {
-    let state = this.state;
+  add(logicalPath, digest, fixity) {
+    const state = this.state;
+    const contentPath = this.head + '/' + this.contentDirectory + '/' + logicalPath;
+    // add fixity info
+    if (fixity) {
+      for (const digestName in fixity) {
+        this.addFixity(contentPath, digestName, fixity[digestName]);
+      }
+    }
     if (state[digest]) {
       // this is a file with identical content but different name
       if (state[digest].indexOf(logicalPath) < 0) state[digest].push(logicalPath);
@@ -276,7 +277,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
         // this is a reinstatement
       } else {
         // normal addition
-        this.manifest[digest] = [path.join(this.head, this.contentDirectory, logicalPath)];
+        this.manifest[digest] = [contentPath];
       }
       if (this.#byPath[logicalPath]) {
         // this is an update, remove old digest
@@ -286,6 +287,25 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     }
     this.#byPath[logicalPath] = digest;
     return true;
+  }
+
+  /**
+   * Low-level method to add a set of digest entries associated to file into the fixity block
+   * @param {string} contentPath 
+   * @param {string} digestName
+   * @param {string} digestValue
+   */
+  addFixity(contentPath, digestName, digestValue) {
+    if (!digestValue || !digestName) return;
+    const fixityBlock = this.fixity = this.fixity || {};
+    const digestBlock = fixityBlock[digestName] = fixityBlock[digestName] || {};
+    if (digestBlock[digestValue]) {
+      if (!digestBlock[digestValue].includes(contentPath)) {
+        digestBlock[digestValue].push(contentPath);
+      }
+    } else {
+      digestBlock[digestValue] = [contentPath];
+    }
   }
 
   /**

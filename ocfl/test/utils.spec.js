@@ -45,7 +45,7 @@ describe("utils.parallelize", function () {
     });
     let endTime = performance.now();
     assert.deepStrictEqual(input, output);
-    console.log(endTime - startTime);
+    //console.log(endTime - startTime);
     assert(endTime - startTime < 320);
   });
   it("can work with callback that returns a promise", async function() {

@@ -229,22 +229,26 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   }
 
   async _commit(options = {}) {
+    const inventory = this._inventory;
+    const digestAlgorithm = inventory.digestAlgorithm;
     // set commit info
-    this._inventory.created = (new Date()).toISOString();
-    if (options.message) this._inventory.message = options.message;
-    if (options.user) this._inventory.user = options.user;
+    inventory.created = (new Date()).toISOString();
+    if (options.message) inventory.message = options.message;
+    if (options.user) inventory.user = options.user;
 
     let workspaceVersionPath = this._workspaceVersionPath;
-    let objectVersionPath = path.join(this._object.root, this._inventory.head);
+    let objectVersionPath = path.join(this._object.root, inventory.head);
     /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json */
     let invPath = path.join(workspaceVersionPath, INVENTORY_NAME);
     /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json.sha512 */
-    let invDigestPath = invPath + '.' + this._inventory.digestAlgorithm;
+    let invDigestPath = invPath + '.' + digestAlgorithm;
 
     // calculate digest
-    let digest = this._inventory.digest() + ' ' + INVENTORY_NAME;
+    const inventoryContent = inventory.toString();
+    let digest = (await OcflDigest.digest(digestAlgorithm, inventoryContent)) + ' ' + INVENTORY_NAME;
+
     // write inventory.json to workspace
-    await this._store.writeFile(invPath, this._inventory.toString());
+    await this._store.writeFile(invPath, inventoryContent);
     await this._store.writeFile(invDigestPath, digest);
     if (workspaceVersionPath !== objectVersionPath) {
       try {
@@ -258,11 +262,11 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     }
     // replace root inventory
     /* eg: /data/aa/bb/cc/object-1/inventory.json */
-    let rootInvPath = path.join(this._object.root, INVENTORY_NAME);
+    const rootInvPath = path.join(this._object.root, INVENTORY_NAME);
     /* eg: /data/aa/bb/cc/object-1/v1/inventory.json */
     invPath = path.join(objectVersionPath, INVENTORY_NAME);
-    invDigestPath = invPath + '.' + this._inventory.digestAlgorithm;
-    let rootInvDigestPath = rootInvPath + '.' + this._inventory.digestAlgorithm;
+    invDigestPath = invPath + '.' + digestAlgorithm;
+    let rootInvDigestPath = rootInvPath + '.' + digestAlgorithm;
     await this._store.copyFile(invPath, rootInvPath + '.tmp');
     await Promise.all([
       this._store.move(rootInvPath + '.tmp', rootInvPath),

@@ -84,7 +84,10 @@ interface Inventory {
     [key:string]: InventoryVersion;
   };
   fixity?: {
-    [key in 'md5'|'sha1'|'sha256'|'sha512'|'blake2b-512']: {};
+    [key:string]: {
+      [key:string]: string[];
+    };
+    // [key in 'md5'|'sha1'|'sha256'|'sha512'|'blake2b-512'|'blake2b-160'|'blake2b-256'|'blake2b-384'|'sha512-256'|'size'|'crc32']: {};
   };
   /** 
    * The name of the designated content directory within the version directories.
