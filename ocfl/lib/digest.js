@@ -1,103 +1,129 @@
 //@ts-check
 
-//const hasha = require("hasha");
-//const crypto = require("crypto");
 const hashWasm = require('hash-wasm');
-const fs = require("fs");
-const stream = require("stream/promises");
 //const worker = require('node:worker_threads');
 const { enumeration } = require('./enum.js');
 const { testSymbol } = require('./utils.js');
-//const { Transform } = require('stream');
 
 const CONTENT = enumeration(['sha256', 'sha512']);
 const FIXITY = enumeration(['sha256', 'sha512', 'md5', 'sha1', 'blake2b-512']);
 
 /**
- * A pass through stream that pass data as it is and calculate the digest as data pass through.
+ * @typedef { import('hash-wasm').IHasher } IHasher
+ * @typedef {import('hash-wasm').IDataType} IDataType
+ * @typedef {((outputType: "binary") => Uint8Array) & ((outputType?: "hex") => string)} IDigest
+ * @typedef {((outputType: "binary") => {[key:string]: Uint8Array}) & ((outputType?: "hex") => {[key:string]: string})} IMultiDigest
+ * @typedef {WritableStream & { update(data: IDataType): void, digest: IMultiDigest }} WritableStreamHash 
  */
-// class HashThrough extends Transform {
-//   constructor(hash, streamOptions) {
-//     super(streamOptions);
-//     this.hash = hash;
-//   }
-//   _transform(chunk, encoding, cb) {
-//     try {
-//       this.hash.update(chunk, encoding);
-//       cb(null, chunk);
-//     } catch (err) {
-//       cb(err)
-//     }
-//   }
-//   digest(encoding) {
-//     return this.hash.digest(encoding || 'hex');
-//   }
-// }
 
-/**
- * @type { Object.<string, import('hash-wasm').IHasher[]>}
+/** 
+ * @type { Object.<string, CommonHasher[]> }
  */
-const algorithms = {};
+const hasherCache = {};
 // for (let algo of FIXITY) {
 //   algorithms[algo] = function () { return crypto.createHash(algo); }
 // }
 
+/** @type { WeakMap<CommonHasher, boolean>} */
+const hasherPending = new WeakMap();
+
+/** @type { {[key: string]: () => Promise<IHasher>} } */
+const hasherFactory = {};
+function registerHasherFactory(name, factory) {
+  if (typeof factory === 'function') {
+    hasherFactory[name] = factory;
+  }
+}
+
+function hasAlgorithm(name) {
+  return name in hasherFactory;
+}
+
+(function init() {
+  for (let algo of FIXITY) {
+    if (algo === 'blake2b-512') {
+      registerHasherFactory(algo, async () => hashWasm.createBLAKE2b(512));
+    } else {
+      registerHasherFactory(algo, hashWasm['create' + algo.toUpperCase()]);
+    }
+  }
+})();
+
 /**
- * 
+ * Create a hasher instance for the given algorithm or get it from cache if available.
  * @param {string} algorithm 
  */
-async function createHash(algorithm) {
-  let hash = algorithms[algorithm]?.pop();
+async function createHasher(algorithm) {
+  const cacheArray = hasherCache[algorithm];
+  let hash = (cacheArray ?? []).find(hasher => !hasherPending.get(hasher));
   if (!hash) {
-    let hp;
-    if (algorithm === 'blake2b-512') hp = hashWasm.createBLAKE2b(512);
-    else hp = hashWasm['create' + algorithm.toUpperCase()]?.();
-    if (!hp) throw new Error(`Unsupported digest algorithm: ${algorithm}`);
-    hash = await hp;
+    const factory = hasherFactory[algorithm];
+    if (!factory) throw new Error(`Unsupported digest algorithm: ${algorithm}`);
+    hash = await factory();
+    if (cacheArray) cacheArray.push(hash);
+    else hasherCache[algorithm] = [hash];
   }
-  if (hash) {
-    return hash.init();
-  }
+  hasherPending.set(hash, true);
+  hash.init();
+  return hash;
 }
 
-function cacheHash(algorithm, hashInstance) {
-  const a = algorithms[algorithm] ??= [];
-  if (!a.includes(hashInstance)) a.push(hashInstance);
-  return hashInstance;
+/**
+ * Create a hasher instance for calculating multiple types of digest in one go.
+ * @param {string|string[]} algorithms 
+ */
+async function createMultiHasher(algorithms) {
+  const algoNames = Array.isArray(algorithms) ? (algorithms.length ? [...(new Set(algorithms))] : ['sha512']) : [algorithms];
+  const hashes = await Promise.all(algoNames.map(createHasher));
+  return /** @type { MultiHasher } */({
+    update(data) {
+      for (const hash of hashes) {
+        hash.update(data);
+      }
+      return this;
+    },
+    digest(encoding) {
+      const result = {};
+      for (let i = 0; i < hashes.length; i++) {
+        hasherPending.set(hashes[i], false);
+        result[algoNames[i]] = hashes[i].digest(encoding);
+      }
+      return result;
+    }
+  });
 }
 
-/** 
- * @typedef {import('hash-wasm').IDataType} IDataType
- * @typedef {((outputType: "binary") => Uint8Array) & ((outputType?: "hex") => string)} IDigest
- * @typedef {WritableStream & { update(data: IDataType): void, digest: IDigest }} WritableStreamHash 
- * */
 /**
  * Create a hash instance that implements WritableStream.
- * @param {string} algorithm 
+ * @param {string|string[]} algorithm One or more digest algorithm names
  * @return {Promise<WritableStreamHash>}
  */
-async function createStream(algorithm) {
-  const hash = await createHash(algorithm || 'sha512');
+async function createStream(algorithm = 'sha512') {
+  const hash = await createMultiHasher(algorithm);
   /** @type {any} */
   const ws = new WritableStream({
     write(chunk) {
       hash.update(chunk);
     }
   });
-  ws.update = (data) => hash.update(data);
-  ws.digest = (encoding) => cacheHash(algorithm, hash).digest(encoding);
+  ws.update = function (data) {
+    hash.update(data);
+  };
+  ws.digest = function (encoding) {
+    return hash.digest(encoding);
+  }
   return ws;
 }
 
-/** @typedef {TransformStream & { digest: IDigest }} StreamThroughHash */
+/** @typedef {TransformStream & { digest: IMultiDigest }} StreamThroughHash */
 /**
  * Create a pass through stream that pass data as it is and calculate the digest as data pass through.
- * @param {string} [algorithm] 
+ * @param {string|string[]} [algorithm] 
  * @param {object} [options]
  * @return {Promise<StreamThroughHash>}
  */
 async function createStreamThrough(algorithm = 'sha512', options) {
-  const hash = await createHash(algorithm);
+  const hash = await createMultiHasher(algorithm);
   const { writableStrategy, readableStrategy } = options || {};
   //hash.setEncoding('hex');
   /** @type {any} */
@@ -107,48 +133,26 @@ async function createStreamThrough(algorithm = 'sha512', options) {
       hash.update(chunk);
     }
   }, writableStrategy, readableStrategy);
-  ts.digest = (encoding) => cacheHash(algorithm, hash).digest(encoding);
+  ts.digest = function (encoding) {
+    return hash.digest(encoding);
+  }
   return ts;
 }
 
 /**
- * Before using this function, make sure to call createHash and cacheHash first to create and cache hash instances.
- * @param {string} algorithm 
- * @param {IDataType} input 
- * @return {string}
- */
-function digestSync(algorithm, input) {
-  const hash = algorithms[algorithm || 'sha512']?.[0];
-  if (hash) {
-    hash.init();
-    hash.update(input);
-    return hash.digest();
-  }
-}
-
-/**
  * 
- * @param {string} algorithm 
+ * @param {string|string[]} algorithm 
  * @param {IDataType | ReadableStream} input 
- * @return {Promise<string>}
+ * @return {Promise<{[key:string]: string}>}
  */
 async function digest(algorithm, input) {
   if (input instanceof ReadableStream) {
-    let hash = await createStream(algorithm);
+    const hash = await createStream(algorithm);
     await input.pipeTo(hash);
     return hash.digest();
   } else {
-    if (algorithm === 'blake2b-512') return hashWasm.blake2b(input, 512);
-    else return hashWasm[algorithm]?.(input);
-  }
-}
-
-async function load() {
-  for (const algo of FIXITY) {
-    if (!algorithms[algo]?.length) {
-      const hash = await createHash(algo);
-      cacheHash(algo, hash);
-    }
+    const hash = await createMultiHasher(algorithm);
+    return hash.update(input).digest();
   }
 }
 
@@ -156,15 +160,14 @@ const OcflDigest = {
   CONTENT,
   FIXITY,
   // algorithms,
-  createStream, createStreamThrough,
-  digest, digestSync,
-  cacheHash, createHash, load
+  createStream, createStreamThrough, digest,
+  registerHasherFactory, hasAlgorithm
 };
 
 module.exports = {
   OcflDigest,
   [testSymbol]: {
-    algorithms
+    hasherCache
   }
   // DIGEST,
   // DIGEST_FIXITY,

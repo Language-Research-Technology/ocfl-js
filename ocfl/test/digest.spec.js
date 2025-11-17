@@ -28,7 +28,7 @@ describe("OcflDigest", function () {
   describe("digest", async function () {
     it("can calculate hash from a string", async function () {
       const hash = await OcflDigest.digest('sha512', inputData);
-      assert.strictEqual(controlDigest, hash);
+      assert.strictEqual(controlDigest, hash.sha512);
     });
   });
 
@@ -38,13 +38,13 @@ describe("OcflDigest", function () {
       const w = hs.getWriter();
       w.write(inputData);
       w.close();
-      assert.strictEqual(controlDigest, hs.digest());
+      assert.strictEqual(controlDigest, hs.digest().sha512);
     });
     it("can be piped from readable stream", async function () {
       const r = createReadable();
       const hs = await OcflDigest.createStream('sha512');
       const rs = await r.pipeTo(hs);
-      assert.strictEqual(controlDigest, hs.digest());
+      assert.strictEqual(controlDigest, hs.digest().sha512);
     });
   });
 
@@ -58,7 +58,7 @@ describe("OcflDigest", function () {
         outputData += chunk;
       }
       assert.strictEqual(inputData, outputData);
-      assert.strictEqual(controlDigest, hs.digest());
+      assert.strictEqual(controlDigest, hs.digest().sha512);
     });
     it("can be piped from readable stream with buffer chunk", async function () {
       const r = createReadable();
@@ -70,13 +70,13 @@ describe("OcflDigest", function () {
       }
       let outputData = Buffer.concat(buffers).toString('utf8');
       assert.strictEqual(inputData, outputData);
-      assert.strictEqual(controlDigest, hs.digest());
+      assert.strictEqual(controlDigest, hs.digest().sha512);
     });
   });
 
   describe("digest instances", async function () {
     it("can reuse the same hash instances", async function () {
-      const cache = digest_[testSymbol].algorithms;
+      const cache = digest_[testSymbol].hasherCache;
       let hs = await OcflDigest.createStream('sha512');
       hs.update(inputData);
       hs.digest();
@@ -88,7 +88,7 @@ describe("OcflDigest", function () {
       assert.strictEqual(cache['sha512'].length, 1);
       assert.strictEqual(h1, h2);
     });
-    it("can creating multiple of the same hash instances", async function () {
+    it("can create multiple of the same hash instances", async function () {
       const p = [];
       for (let i = 0; i < 10; ++i) {
         const hs = await OcflDigest.createStream('sha512');
@@ -98,7 +98,7 @@ describe("OcflDigest", function () {
         hs.update(inputData);
         hs.digest();
       }
-      const cache = digest_[testSymbol].algorithms;
+      const cache = digest_[testSymbol].hasherCache;
       assert.strictEqual(cache['sha512'].length, 10);
       assert.notEqual(cache['sha512'][0], cache['sha512'][1]);
       //assert.strictEqual(controlDigest, hash);

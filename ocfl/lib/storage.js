@@ -122,6 +122,7 @@ class OcflStorage {
  * @property {('sha256' | 'sha512')} [digestAlgorithm] - Digest algorithm for content-addressing, must use either sha512 or sha256
  * @property {string} [contentDirectory='content'] - Content directory name. Only applies to a newly created object.
  * @property {string} [ocflVersion=c.OCFL_VERSION] - Ocfl version. Only applies to a newly created object.
+ * @property {string[]} [fixity] - A default list of digest algorithm names to be added to the fixity block of objects under this storage.
  */
 
 /**

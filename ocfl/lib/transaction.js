@@ -282,9 +282,12 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
    */
   async createWritable(logicalPath, options) {
     if (this._committed) throw new Error('Transaction already commited');
+    const digestAlgo = this._inventory.digestAlgorithm;
+    const digestAlgos = [digestAlgo, ...(this._object.fixity || [])];
+    const hs = await OcflDigest.createStream(digestAlgos);
     const realPath = this._getRealPath(logicalPath);
     const writer = (await this._store.createWritable(realPath, options)).getWriter();
-    const hs = await OcflDigest.createStream(this._inventory.digestAlgorithm);
+    //const hs = await OcflDigest.createStream(this._inventory.digestAlgorithm);
     const inv = this._inventory;
     const store = this._store;
     const ws = new WritableStream({
@@ -294,9 +297,10 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       },
       async close() {
         await writer.close();
-        const digest = hs.digest('hex');
+        //const digest = hs.digest('hex');
+        const {[digestAlgo]: digest, ...fixity} = hs.digest();
         if (inv.getContentPath(digest)) await store.remove(realPath);
-        inv.add(logicalPath, digest);
+        inv.add(logicalPath, digest, fixity);
       }
     });
     /** @type {Promise<any> & { done?: boolean }} */
@@ -310,29 +314,32 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   async write(logicalPath, data, options) {
     return this._transact(async () => {
       let realPath = this._getRealPath(logicalPath);
-      let digest;
+      const digestAlgo = this._inventory.digestAlgorithm;
+      const digestAlgos = [digestAlgo, ...(this._object.fixity || [])];
+      let digest, fixity;
       if (typeof data === 'string' || ArrayBuffer.isView(data)) {
+        // if data is not stream, check digest first
         if (ArrayBuffer.isView(data) && !(data instanceof Uint8Array || data instanceof Uint16Array || data instanceof Uint32Array)) {
           data = new Uint8Array(data.buffer)
         }
-        // if data is not stream, check digest first
-        digest = await OcflDigest.digest(this._inventory.digestAlgorithm, data);
+        const test = await OcflDigest.digest(digestAlgos, data);
+        ({[digestAlgo]: digest, ...fixity} = test);
         if (!this._inventory.getContentPath(digest)) {
           // no digest yet, write the file to storage backend
           await this._store.writeFile(realPath, data, options);
         }
       } else if (data instanceof ReadableStream) {
         // save the stream first
-        const hs = await OcflDigest.createStreamThrough(this._inventory.digestAlgorithm);
+        const hs = await OcflDigest.createStreamThrough(digestAlgos);
         const rs = data.pipeThrough(hs);
         await this._store.writeFile(realPath, rs, options);
-        digest = hs.digest();
+        ({[digestAlgo]: digest, ...fixity} = hs.digest());
         // already exists, delete temp file
         if (this._inventory.getContentPath(digest)) await this._store.remove(realPath);
       } else {
         throw new TypeError('Unsupported data type ', data);
       }
-      this._inventory.add(logicalPath, digest);
+      this._inventory.add(logicalPath, digest, fixity);
       // console.log(this._inventory.toString());
     });
   }
@@ -346,12 +353,14 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     if (!target) throw new TypeError('Target logical path must not be empty if source is a file.');
     const realPath = this._getRealPath(target);
     const rs = await this._store.createReadable(source);
-    const digest = await OcflDigest.digest(this._inventory.digestAlgorithm, rs);
+    const digestAlgo = this._inventory.digestAlgorithm;
+    const digestAlgos = [digestAlgo, ...(this._object.fixity || [])];
+    const {[digestAlgo]: digest, ...fixity} = await OcflDigest.digest(digestAlgos, rs);
 
     if (!this._inventory.getContentPath(digest)) {
       await this._store.copyFile(source, realPath);
     }
-    this._inventory.add(target, digest);
+    this._inventory.add(target, digest, fixity);
   }
 
   async import(source, target) {

@@ -32,9 +32,6 @@ describe("OcflTransactionImpl class", function () {
     async _ensureNamaste() { }
   };
 
-  before(async function () {
-    await OcflDigest.load();
-  });
   beforeEach(async function () {
     fs = createFsFromVolume(Volume.fromJSON(volInit));
     store = OcflFsStore.getInstance({ fs });

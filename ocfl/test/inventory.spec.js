@@ -4,14 +4,9 @@
 const assert = require("assert");
 const { readFile } = require("fs/promises");
 const { OcflObjectInventory } = require("../lib/inventory");
-const { OcflDigest } = require("../lib/digest");
 
 describe("OcflObjectInventory class", function () {
   let data;
-  before(async function() {
-    await OcflDigest.load();
-  });
-  
   beforeEach(function(){
     data = {
       id: 'id1',

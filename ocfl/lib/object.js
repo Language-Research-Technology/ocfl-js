@@ -29,6 +29,7 @@ const DIGEST = OcflDigest.CONTENT;
  * @property {string} [contentDirectory='content'] - Content directory name. Only applies to a newly created object.
  * @property {string} [ocflVersion=c.OCFL_VERSION] - Ocfl version. Only applies to a newly created object.
  * @property {OcflExtension[]} [extensions] - Reference to existing extensions defined outside of the object, such as in the storage root.
+ * @property {string[]} [fixity] - Additional digest algorithms to be calculated for each file and added to the fixity block.
  */
 /**
  * @typedef {Object} FileRef
@@ -112,8 +113,9 @@ class OcflObjectFile {
   async buffer(options) {
     return this.#ocflObject.readFile(await this.#resolveContentPath(), options);
   }
+
   /**
-   * @deprecated
+   * @deprecated Use {@link buffer()}
    */
   async asBuffer(options) {
     return this.buffer(options);
@@ -313,6 +315,8 @@ class OcflObjectImpl extends OcflObject {
   #extensions;
   /** @type {OcflStore} */
   #store;
+  /** @type {string[]} */
+  fixity;
 
   /**
    * Create a new OCFL Object
@@ -337,6 +341,7 @@ class OcflObjectImpl extends OcflObject {
     this.contentDirectory = config.contentDirectory ?? 'content';
     /** @type Object.<string, OcflObjectInventory> */
     this._inventory = {};
+    this.fixity = config.fixity;
   }
   get id() { return this._inventory?.latest?.id || this.#id; }
   get root() { return this.#root; }

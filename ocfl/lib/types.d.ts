@@ -1,7 +1,6 @@
 
 //type OcflExtensionCreate = <T extends typeof import('./extension').OcflExtension>(this: T, config?: OcflExtensionConfig) => InstanceType<T>;
 
-
 // import { Abortable } from "events";
 // import { ObjectEncodingOptions, OpenMode, PathLike } from "fs";
 // import { FileHandle } from "fs/promises";
@@ -53,7 +52,7 @@ type StorageLayout = {
 }
 
 interface InventoryDigests {
-  [key:string]: string[];
+  [key: string]: string[];
 }
 
 interface InventoryVersion {
@@ -81,11 +80,11 @@ interface Inventory {
   head: string;
   manifest: InventoryDigests;
   versions: {
-    [key:string]: InventoryVersion;
+    [key: string]: InventoryVersion;
   };
   fixity?: {
-    [key:string]: {
-      [key:string]: string[];
+    [key: string]: {
+      [key: string]: string[];
     };
     // [key in 'md5'|'sha1'|'sha256'|'sha512'|'blake2b-512'|'blake2b-160'|'blake2b-256'|'blake2b-384'|'sha512-256'|'size'|'crc32']: {};
   };
@@ -98,3 +97,20 @@ interface Inventory {
 
 //type Enum<T extends readonly string[]> = {[key in T[number]]: ReturnType<typeof enumeration<T>>};
 //declare function enumeration<T extends readonly string[]>(arr:  T): Enum<T>;
+
+interface CommonHasher {
+  init: () => CommonHasher;
+  update: (data: any) => CommonHasher;
+  digest: {
+    (outputType: "binary"): Uint8Array;
+    (outputType?: "hex"): string;
+  };
+}
+
+interface MultiHasher {
+  update: (data: any) => MultiHasher;
+  digest: {
+    (outputType: "binary"): {[key: string] : Uint8Array};
+    (outputType?: "hex"): {[key: string] : string};
+  };
+}

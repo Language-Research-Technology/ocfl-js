@@ -6,6 +6,7 @@
     "module": "CommonJS",
     "target": "es2022",
     "outDir": "dist",
+    "typeRoots": ["lib/**/*.d.ts"]
   },
   "include": [
     "index.js",
