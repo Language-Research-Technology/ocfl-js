@@ -99,9 +99,9 @@ class OcflExtension {
 
   static get forObject() { return false; }
   static get forStorage() { return false; }
-  static async setup(ocfl) { };
   static get NAME() { return '0000-example-extension' }
   static get DESCRIPTION() { return 'Example extension' }
+  static async setup(ocfl) { };
 
   /**
    * 
@@ -191,6 +191,8 @@ class OcflStorageLayout extends OcflExtension {
    * @param {C} [defaultConfig]
    */
   constructor(config, defaultConfig) { super(config, defaultConfig); }
+
+  async validate() {}
 
   /**
    * Map an object identifier to a path

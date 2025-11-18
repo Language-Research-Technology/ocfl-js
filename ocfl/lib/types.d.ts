@@ -97,18 +97,20 @@ interface Inventory {
 
 //type Enum<T extends readonly string[]> = {[key in T[number]]: ReturnType<typeof enumeration<T>>};
 //declare function enumeration<T extends readonly string[]>(arr:  T): Enum<T>;
+type IDataType = string | ArrayBufferLike | Uint8Array | Uint16Array | Uint32Array;
 
 interface CommonHasher {
   init: () => CommonHasher;
-  update: (data: any) => CommonHasher;
+  update: (data: IDataType) => CommonHasher;
   digest: {
     (outputType: "binary"): Uint8Array;
     (outputType?: "hex"): string;
   };
+  digestSize: number;
 }
 
 interface MultiHasher {
-  update: (data: any) => MultiHasher;
+  update: (data: IDataType) => MultiHasher;
   digest: {
     (outputType: "binary"): {[key: string] : Uint8Array};
     (outputType?: "hex"): {[key: string] : string};

@@ -105,4 +105,24 @@ describe("OcflDigest", function () {
     });
   });
 
+  describe("digest algorithms", async function () {
+    it("can correctly calculate BLAKE2b512", async function () {
+      const hash = await OcflDigest.digest('blake2b-512', inputData);
+      const hash2 = createHash('BLAKE2b512').update(inputData).digest('hex');
+      assert.strictEqual(hash['blake2b-512'], hash2);
+    });
+    it("can correctly calculate sha 512/256", async function () {
+      let hash = await OcflDigest.digest('sha512/256', inputData);
+      const hash2 = createHash('sha512-256').update(inputData).digest('hex');
+      assert.strictEqual(hash['sha512/256'], hash2);
+      hash = await OcflDigest.digest('sha512/256', new TextEncoder().encode(inputData));
+      assert.strictEqual(hash['sha512/256'], hash2);
+    });
+    it("can correctly calculate byte size", async function () {
+      const hash = await OcflDigest.digest('size', inputData);
+      const hash2 = '' + (new TextEncoder()).encode(inputData).length;
+      assert.strictEqual(hash['size'], hash2);
+    });
+  });
+
 });

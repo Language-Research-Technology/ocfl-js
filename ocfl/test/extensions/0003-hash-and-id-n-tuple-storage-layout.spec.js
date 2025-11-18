@@ -2,8 +2,14 @@
 
 const assert = require("assert");
 const {HashAndIdNTupleStorageLayout} = require('../../index').extensions;
+const { OcflDigest } = require("../../lib/digest");
+
 
 describe("HashAndIdNTupleStorageLayout class", function () {
+  before(async function() {
+    await OcflDigest.initSync('sha256');
+    await OcflDigest.initSync('md5');
+  });
 
   it("can map valid id with default config", function() {
     let layout = new HashAndIdNTupleStorageLayout();

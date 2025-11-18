@@ -34,9 +34,9 @@ class HashAndIdNTupleStorageLayout extends OcflStorageLayout {
     let c = this.parameters;
     const algo = enumeration.of(OcflDigest.FIXITY, c.digestAlgorithm)?.name;
     if (!algo) throw new Error('Invalid digestAlgorithm');
-    let digest = OcflDigest.digestSync(algo, 'test');
+    let digestLength = OcflDigest.getHexDigestLength(algo);
     let p = c.numberOfTuples * c.tupleSize
-    if (p > digest.length) throw new Error('Product of numberOfTuples and tupleSize is greater than the number of characters in the hex encoded digest.');
+    if (p > digestLength) throw new Error('Product of numberOfTuples and tupleSize is greater than the number of characters in the hex encoded digest.');
   }
 
   /**

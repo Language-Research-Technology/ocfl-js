@@ -10,7 +10,7 @@ const { isDirEmpty, findNamasteVersion } = require("./utils.js");
 const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT,
   EXTENSIONS_DIR, EXTENSION_CONFIG,
   NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = require('./constants').OcflConstants;
-const DIGEST = require('./digest').OcflDigest.CONTENT;
+const { OcflDigest } = require('./digest');
 
 
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
@@ -159,7 +159,9 @@ class OcflStorageImpl extends OcflStorage {
     if (this.#workspace && this.#workspace.startsWith(this.#root + path.sep) && !this.#workspace.startsWith(this.#root + path.sep + 'extensions' + path.sep)) {
       throw new Error('[OcflStorage] config.workspace cannot be the same as or a subpath of config.root');
     }
-    this.#layout = layout instanceof OcflStorageLayout ? layout : this.#createLayout(layout);
+    if (layout) {
+      this.#layout = layout instanceof OcflStorageLayout ? layout : this.#createLayout(layout);
+    }
     this.ocflVersion = ocflVersion || OCFL_VERSION;
     this.#objectConfig = objectConfig;
   }
@@ -232,7 +234,8 @@ class OcflStorageImpl extends OcflStorage {
     } catch (error) {
     }
     this.#layout = this.#createLayout(layoutConfig || layoutName);
-
+    const layoutDigestAlgorithm = this.#layout.get('digestAlgorithm');
+    if (layoutDigestAlgorithm) await OcflDigest.initSync(layoutDigestAlgorithm);
     //@todo: load storage level extensions
 
     return this;
@@ -259,6 +262,8 @@ class OcflStorageImpl extends OcflStorage {
     if (!this.#layout) {
       this.#layout = new DEFAULT_LAYOUT();
     }
+    const layoutDigestAlgorithm = this.#layout.get('digestAlgorithm');
+    if (layoutDigestAlgorithm) await OcflDigest.initSync(layoutDigestAlgorithm);
     let layout = { extension: this.#layout.name, description: this.#layout.description };
     await this.#store.writeFile(path.join(this.root, OCFL_LAYOUT), JSON.stringify(layout, null, 2), 'utf8');
     if (this.#layout.config) {
@@ -272,6 +277,9 @@ class OcflStorageImpl extends OcflStorage {
     return this;
   }
 
+  /**
+   * Allow async iteration over all OCFL objects in this storage.
+   */
   [Symbol.asyncIterator]() {
     let store = this.#store;
     let workspace = this.#workspace;
