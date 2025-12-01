@@ -5,7 +5,7 @@ const validation = require('./validation.js');
 const { NotImplementedError } = require("./error");
 const { OcflStorageLayout } = require("./extension");
 const { HashedNTupleStorageLayout } = require("./extensions/0004-hashed-n-tuple-storage-layout");
-const { OcflObject, OcflObjectImpl } = require("./object");
+const { OcflObject } = require("./object");
 const { isDirEmpty, findNamasteVersion } = require("./utils.js");
 const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT,
   EXTENSIONS_DIR, EXTENSION_CONFIG,
@@ -122,7 +122,7 @@ class OcflStorage {
  * @property {('sha256' | 'sha512')} [digestAlgorithm] - Digest algorithm for content-addressing, must use either sha512 or sha256
  * @property {string} [contentDirectory='content'] - Content directory name. Only applies to a newly created object.
  * @property {string} [ocflVersion=c.OCFL_VERSION] - Ocfl version. Only applies to a newly created object.
- * @property {string[]} [fixity] - A default list of digest algorithm names to be added to the fixity block of objects under this storage.
+ * @property {string[]} [fixityAlgorithms] - A default list of digest algorithm names to be added to the fixity block of objects under this storage.
  */
 
 /**
@@ -197,15 +197,14 @@ class OcflStorageImpl extends OcflStorage {
     if (typeof opt === 'string') id = opt;
     else ({ id, root } = opt);
     let relObjectRoot = root || this.objectRoot(id);
-    return new OcflObjectImpl({
+    return new OcflObject({
       id,
       root: path.join(this.root, relObjectRoot),
       // @todo:use extension workspace if not defined
       workspace: this.#workspace ? path.join(this.#workspace, relObjectRoot) : undefined,
       ocflVersion: this.ocflVersion,
       ...this.#objectConfig
-    },
-      this.#store);
+    }, this.#store);
   }
 
   async exists() {
@@ -308,7 +307,7 @@ class OcflStorageImpl extends OcflStorage {
           if (nv) {
             //ocfl object exists
             // inventory exists
-            let object = new OcflObjectImpl({
+            let object = new OcflObject({
               root: basePath,
               workspace: workspace ? path.join(workspace, path.relative(root, basePath)) : undefined,
               ocflVersion: nv,

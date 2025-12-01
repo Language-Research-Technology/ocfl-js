@@ -117,6 +117,19 @@ describe("OcflTransactionImpl class", function () {
     await trx.commit();
   });
 
+  it("write with fixity", async function () {
+    object.fixityAlgorithms = ['size', 'crc32'];
+    const trx = await createTransaction();
+    const wp = trx._workspaceVersionPath;
+    const text = 'Hello, World!';
+    await trx.write('test.txt', text);
+    await trx.commit();
+    const {size, crc32} = await OcflDigest.digest(['size', 'crc32'], text);
+    assert(newInv.fixity.size[size].includes('v1/content/test.txt'))
+    assert(newInv.fixity.crc32[crc32].includes('v1/content/test.txt'))
+  });
+
+
   it("import", async function () {
     const trx = await createTransaction();
     const wp = trx._workspaceVersionPath;

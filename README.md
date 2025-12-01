@@ -118,7 +118,7 @@ List all existing files in the object
 
 Clone the Git repo with submodules included:
 
-    git clone --recursive https://github.com/Language-Research-Technology/ocfl-js
+    git clone --recurse-submodules https://github.com/Language-Research-Technology/ocfl-js
 
 The project is structured as a monorepo with multiple packages set up as npm workspaces.
 Install the dependencies for all workspaces:

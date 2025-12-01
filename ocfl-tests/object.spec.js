@@ -1,10 +1,10 @@
 const assert = require("assert");
 const path = require("path");
 const fs = require("fs");
-const hasha = require("hasha");
-const { Readable } = require("node:stream");
+const { Readable, Writable } = require("stream");
 const { Ocfl, OcflObject } = require("@ocfl/ocfl");
-const { createHash } = require('crypto');
+const { createHash } = require("node:crypto");
+
 
 /** 
  * @param {Ocfl} ocfl
@@ -21,7 +21,7 @@ module.exports = function (ocfl) {
    */
   async function validateFile(object, srcPath, logicalPath) {
     let content = await fs.promises.readFile(srcPath);
-    let digest = hasha(content, { algorithm: 'sha512' });
+    let digest = createHash('sha512').update(content).digest('hex');
     let inv = await object.getInventory();
     assert.strictEqual(inv.manifest[digest]?.length, 1);
     assert.ok(inv.state[digest].includes(logicalPath));
@@ -83,7 +83,7 @@ module.exports = function (ocfl) {
     });
     //todo: list non existant object
     it("can list files with metadata", async function () {
-      await object.load();
+      await object.load({filesMetadata: true});
       const { manifest } = invRaw;
       for await (const f of await object.files()) {
         let s = await fs.promises.stat(path.join(object.root, f.contentPath));
@@ -133,7 +133,7 @@ module.exports = function (ocfl) {
     let objectx;
 
     function createObject(id, useWorkspace, ocflVersion) {
-      let config = { id, root: path.join(tempdir, id), ocflVersion };
+      let config = { id, root: path.join(tempdir, id), ocflVersion, fixityAlgorithms: ['md5', 'crc32'] };
       if (useWorkspace) config.workspace = config.root + '-tmp';
       return ocfl.object(config);
     }
@@ -169,7 +169,7 @@ module.exports = function (ocfl) {
           await fs.promises.access(o.workspace);
           throw new Error('test');
         });
-      } catch (e) {}
+      } catch (e) { }
       await assert.rejects(fs.promises.access(o.workspace));
       await assert.rejects(fs.promises.access(o.root));
     });
@@ -193,7 +193,8 @@ module.exports = function (ocfl) {
           let o = createObject('object-' + objcount, useWorkspace, ocflVersion);
           let content = 'test';
           let commitInfo = { message: 'test commit', user: { name: 'john', address: 'john@test.com' } };
-          let hash = hasha(content, { algorithm: 'sha512' });
+          let hash = createHash('sha512').update(content).digest('hex');
+
           await o.update(async t => {
             await t.write('test.txt', content);
             await t.commit(commitInfo);
@@ -216,7 +217,8 @@ module.exports = function (ocfl) {
           assert.strictEqual(inv.versions.v1.state[hash][0], 'test.txt');
           // sidecar
           let sidecar = await fs.promises.readFile(path.join(o.root, 'inventory.json.sha512'), 'utf8');
-          let invhash = await hasha.fromFile(path.join(o.root, 'inventory.json'), { algorithm: 'sha512' });
+          let invhash = createHash('sha512').update(invstr).digest('hex');
+
           assert.strictEqual(sidecar, invhash + ' inventory.json');
 
           //await fs.promises.rm(o.root, { recursive: true, force: true });
@@ -233,9 +235,9 @@ module.exports = function (ocfl) {
         // buffer
         await t.write('a/test.txt', content);
         // stream
-        await t.write('b/test.txt', fs.createReadStream(path.join(datadir, 'test_input.txt')));
+        await t.write('b/test.txt', Readable.toWeb(fs.createReadStream(path.join(datadir, 'test_input.txt'))));
       });
-      let hash = hasha(content, { algorithm: 'sha512' });
+      let hash = createHash('sha512').update(content).digest('hex');
       // inventory
       let inv = JSON.parse(await fs.promises.readFile(path.join(objectx.root, 'inventory.json'), 'utf8'));
       assert.strictEqual(inv.head, 'v1');
@@ -298,8 +300,8 @@ module.exports = function (ocfl) {
       let inv = await objectx.getInventory();
       assert.strictEqual(inv.head, 'v4');
       assert.strictEqual(c2, c1 - 2);
-      await assert.rejects(objectx.getFile('test.txt').asString());
-      await assert.rejects(objectx.getFile('bar/bar.xml').asString());
+      await assert(!objectx.getFile('test.txt'));
+      await assert(!objectx.getFile('bar/bar.xml'));
     });
 
     it("can reinstate files", async function () {
@@ -414,11 +416,27 @@ module.exports = function (ocfl) {
 
     //@todo: check delete, rename, reinstate non existant logical path
 
+    it("can add and list files with fixity", async function () {
+      const content = 'test test test';
+      await objectx.update(async t => {
+        await t.write('test.txt', content);
+      });
+      for (const f of await objectx.files()) {
+        assert(f.fixity.md5);
+        assert(f.fixity.crc32);
+        const fc = await f.text();
+        assert.strictEqual(f.fixity.md5, createHash('md5').update(fc).digest('hex'));
+      }
+      let file = await objectx.getFile('test.txt');
+      assert.strictEqual(file.fixity.md5, createHash('md5').update(content).digest('hex'));
+    });
+
     after(async function () {
       // delete temp dir
       await fs.promises.rm(tempdir, { recursive: true, force: true });
     });
   });
+
 };
 
 

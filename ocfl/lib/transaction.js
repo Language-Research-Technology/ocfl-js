@@ -6,11 +6,8 @@ const { parallelize } = require('./utils');
 const { OcflDigest } = require('./digest');
 const { INVENTORY_NAME } = require('./constants').OcflConstants;
 
-//const { pipeline } = require('stream/promises');
-//const { OcflObjectImpl, OcflObjectInventory } = require('./object');
-
 /**
- * @typedef {import('./object').OcflObjectImpl} OcflObjectImpl
+ * @typedef {import('./object').OcflObject} OcflObject
  * @typedef {import('./store').OcflStore} OcflStore
  * @typedef {import('./inventory').OcflObjectInventoryMut} OcflObjectInventoryMut
  * @typedef {import('stream').Writable} Writable
@@ -157,7 +154,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
 
   /**
    * 
-   * @param {OcflObjectImpl} ocflObject 
+   * @param {OcflObject} ocflObject 
    * @param {OcflStore} ocflStore 
    * @param {OcflObjectInventoryMut} inventory 
    * @param {string} workspaceVersionPath 
@@ -177,7 +174,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
 
   /**
    * Create a new transaction instance.
-   * @param {OcflObjectImpl} ocflObject 
+   * @param {OcflObject} ocflObject 
    * @param {OcflStore} ocflStore 
    * @param {OcflObjectInventoryMut} inventory 
    * @param {string} workspacePath 
@@ -283,7 +280,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   async createWritable(logicalPath, options) {
     if (this._committed) throw new Error('Transaction already commited');
     const digestAlgo = this._inventory.digestAlgorithm;
-    const digestAlgos = [digestAlgo, ...(this._object.fixity || [])];
+    const digestAlgos = [digestAlgo, ...(this._object.fixityAlgorithms || [])];
     const hs = await OcflDigest.createStream(digestAlgos);
     const realPath = this._getRealPath(logicalPath);
     const writer = (await this._store.createWritable(realPath, options)).getWriter();
@@ -315,15 +312,15 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     return this._transact(async () => {
       let realPath = this._getRealPath(logicalPath);
       const digestAlgo = this._inventory.digestAlgorithm;
-      const digestAlgos = [digestAlgo, ...(this._object.fixity || [])];
+      const digestAlgos = [digestAlgo, ...(this._object.fixityAlgorithms || [])];
       let digest, fixity;
       if (typeof data === 'string' || ArrayBuffer.isView(data)) {
         // if data is not stream, check digest first
         if (ArrayBuffer.isView(data) && !(data instanceof Uint8Array || data instanceof Uint16Array || data instanceof Uint32Array)) {
           data = new Uint8Array(data.buffer)
         }
-        const test = await OcflDigest.digest(digestAlgos, data);
-        ({[digestAlgo]: digest, ...fixity} = test);
+        const hashes = await OcflDigest.digest(digestAlgos, data);
+        ({[digestAlgo]: digest, ...fixity} = hashes);
         if (!this._inventory.getContentPath(digest)) {
           // no digest yet, write the file to storage backend
           await this._store.writeFile(realPath, data, options);
@@ -354,7 +351,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     const realPath = this._getRealPath(target);
     const rs = await this._store.createReadable(source);
     const digestAlgo = this._inventory.digestAlgorithm;
-    const digestAlgos = [digestAlgo, ...(this._object.fixity || [])];
+    const digestAlgos = [digestAlgo, ...(this._object.fixityAlgorithms || [])];
     const {[digestAlgo]: digest, ...fixity} = await OcflDigest.digest(digestAlgos, rs);
 
     if (!this._inventory.getContentPath(digest)) {
@@ -416,14 +413,11 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     return this._transact(async () => {
       if (options?.purge) {
         // completely remove content from all versions
-        let ver = this._inventory.prevVersion;
-        while (ver) {
-          this._inventory.currentVersion = ver;
-          this._inventory.delete(logicalPath);
-          await this._store.remove(this._getRealPath(logicalPath));
-          ver = this._inventory.prevVersion;
-        }
-        this._inventory.currentVersion = this._inventory.head;
+        let ver = this._inventory.versionNumber.previous();
+         while (ver) {
+          this._inventory.delete(logicalPath, ver.toString());
+          ver = ver.previous();
+        };
       }
       if (this._inventory.delete(logicalPath)) {
         return this._store.remove(this._getRealPath(logicalPath));

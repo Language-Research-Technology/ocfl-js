@@ -1,7 +1,7 @@
 //@ts-check
 
 const hashWasm = require('hash-wasm');
-const {sha512_256} = require('js-sha512'); // fallback for sha512/256 algorithm, which is not included in hash-wasm
+const { sha512_256 } = require('js-sha512'); // fallback for sha512/256 algorithm, which is not included in hash-wasm
 //const worker = require('node:worker_threads');
 const { enumeration } = require('./enum.js');
 const { testSymbol } = require('./utils.js');
@@ -12,7 +12,8 @@ const FIXITY = enumeration(['sha256', 'sha512', 'md5', 'sha1', 'blake2b-512', 'b
 /**
  * @typedef {((outputType: "binary") => Uint8Array) & ((outputType?: "hex") => string)} IDigest
  * @typedef {((outputType: "binary") => {[key:string]: Uint8Array}) & ((outputType?: "hex") => {[key:string]: string})} IMultiDigest
- * @typedef {WritableStream & { update(data: IDataType): void, digest: IMultiDigest }} WritableStreamHash 
+ * @typedef {WritableStream & { update(data: IDataType): void, digest: IDigest }} WritableStreamHasher 
+ * @typedef {WritableStream & { update(data: IDataType): void, digest: IMultiDigest }} WritableStreamMultiHasher 
  */
 
 /** 
@@ -59,7 +60,7 @@ function hasAlgorithm(name) {
         /** @type {CommonHasher} */
         const hasher = {
           digestSize: 32,
-          init() { h = sha512_256.create(); return this;},
+          init() { h = sha512_256.create(); return this; },
           update(data) { h.update(/** @type {any} */(data)); return this },
           // @ts-ignore
           digest(encoding) {
@@ -76,14 +77,16 @@ function hasAlgorithm(name) {
         /** @type {CommonHasher} */
         const hasher = {
           digestSize: 1,
-          init() { 
+          init() {
             size = 0;
             encoder = new TextEncoder();
             return this;
           },
           update(data) {
-            if (typeof data === 'string') size += encoder.encode(data).length;
-            else size += data.byteLength;
+            if (data) {
+              if (typeof data === 'string') size += encoder.encode(data).length;
+              else size += data.byteLength;
+            }
             return this;
           },
           // @ts-ignore
@@ -108,6 +111,16 @@ function hasAlgorithm(name) {
 //     console.log(h.init().update('test').digest().length)
 //   }
 // })();
+
+/**
+ * 
+ * @param {*} hasher
+ * @returns {hasher is MultiHasher}
+ */
+function isMulti(hasher) {
+  return hasher.multi;
+}
+
 /**
  * Create a hasher instance for the given algorithm or get it from cache if available.
  * @param {string} algorithm 
@@ -133,19 +146,20 @@ async function createHasher(algorithm) {
  */
 async function createMultiHasher(algorithms) {
   const algoNames = Array.isArray(algorithms) ? (algorithms.length ? [...(new Set(algorithms))] : ['sha512']) : [algorithms];
-  const hashes = await Promise.all(algoNames.map(createHasher));
+  const hashers = await Promise.all(algoNames.map(createHasher));
   return /** @type { MultiHasher } */({
+    multi: true,
     update(data) {
-      for (const hash of hashes) {
+      for (const hash of hashers) {
         hash.update(data);
       }
       return this;
     },
     digest(encoding) {
       const result = {};
-      for (let i = 0; i < hashes.length; i++) {
-        hasherPending.set(hashes[i], false);
-        result[algoNames[i]] = hashes[i].digest(encoding);
+      for (let i = 0; i < hashers.length; i++) {
+        hasherPending.set(hashers[i], false);
+        result[algoNames[i]] = hashers[i].digest(encoding);
       }
       return result;
     }
@@ -154,11 +168,17 @@ async function createMultiHasher(algorithms) {
 
 /**
  * Create a hash instance that implements WritableStream.
- * @param {string|string[]} algorithm One or more digest algorithm names
- * @return {Promise<WritableStreamHash>}
+ * @overload
+ * @param {string} algorithm One or more digest algorithm names
+ * @return {Promise<WritableStreamHasher>}
+ */
+/**
+ * @overload
+ * @param {string[]} algorithm One or more digest algorithm names
+ * @return {Promise<WritableStreamMultiHasher>}
  */
 async function createStream(algorithm = 'sha512') {
-  const hash = await createMultiHasher(algorithm);
+  const hash = await (Array.isArray(algorithm) ? createMultiHasher(algorithm) : createHasher(algorithm));
   /** @type {any} */
   const ws = new WritableStream({
     write(chunk) {
@@ -169,6 +189,7 @@ async function createStream(algorithm = 'sha512') {
     hash.update(data);
   };
   ws.digest = function (encoding) {
+    if (!isMulti(hash)) hasherPending.set(hash, false);
     return hash.digest(encoding);
   }
   return ws;
@@ -182,7 +203,7 @@ async function createStream(algorithm = 'sha512') {
  * @return {Promise<StreamThroughHash>}
  */
 async function createStreamThrough(algorithm = 'sha512', options) {
-  const hash = await createMultiHasher(algorithm);
+  const hash = await (Array.isArray(algorithm) ? createMultiHasher(algorithm) : createHasher(algorithm));
   const { writableStrategy, readableStrategy } = options || {};
   //hash.setEncoding('hex');
   /** @type {any} */
@@ -193,6 +214,7 @@ async function createStreamThrough(algorithm = 'sha512', options) {
     }
   }, writableStrategy, readableStrategy);
   ts.digest = function (encoding) {
+    if (!isMulti(hash)) hasherPending.set(hash, false);
     return hash.digest(encoding);
   }
   return ts;
@@ -200,9 +222,16 @@ async function createStreamThrough(algorithm = 'sha512', options) {
 
 /**
  * 
- * @param {string|string[]} algorithm 
+ * @overload
+ * @param {string[]} algorithm 
  * @param {IDataType | ReadableStream} input 
  * @return {Promise<{[key:string]: string}>}
+ */
+/**
+ * @overload
+ * @param {string} algorithm 
+ * @param {IDataType | ReadableStream} input 
+ * @return {Promise<string>}
  */
 async function digest(algorithm, input) {
   if (input instanceof ReadableStream) {
@@ -210,7 +239,8 @@ async function digest(algorithm, input) {
     await input.pipeTo(hash);
     return hash.digest();
   } else {
-    const hash = await createMultiHasher(algorithm);
+    const hash = await (Array.isArray(algorithm) ? createMultiHasher(algorithm) : createHasher(algorithm));
+    if (!isMulti(hash)) hasherPending.set(hash, false);
     return hash.update(input).digest();
   }
 }

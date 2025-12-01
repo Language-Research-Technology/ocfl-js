@@ -28,7 +28,9 @@ describe("OcflDigest", function () {
   describe("digest", async function () {
     it("can calculate hash from a string", async function () {
       const hash = await OcflDigest.digest('sha512', inputData);
-      assert.strictEqual(controlDigest, hash.sha512);
+      assert.strictEqual(hash, controlDigest);
+      const hash2 = await OcflDigest.digest(['sha512'], inputData);
+      assert.strictEqual(hash2.sha512, controlDigest);
     });
   });
 
@@ -38,13 +40,19 @@ describe("OcflDigest", function () {
       const w = hs.getWriter();
       w.write(inputData);
       w.close();
-      assert.strictEqual(controlDigest, hs.digest().sha512);
+      assert.strictEqual(hs.digest(), controlDigest);
     });
     it("can be piped from readable stream", async function () {
       const r = createReadable();
       const hs = await OcflDigest.createStream('sha512');
       const rs = await r.pipeTo(hs);
-      assert.strictEqual(controlDigest, hs.digest().sha512);
+      assert.strictEqual(hs.digest(), controlDigest);
+    });
+    it("can be digest multiple algorithms", async function () {
+      const r = createReadable();
+      const hs = await OcflDigest.createStream(['sha512']);
+      const rs = await r.pipeTo(hs);
+      assert.strictEqual(hs.digest().sha512, controlDigest);
     });
   });
 
@@ -58,7 +66,7 @@ describe("OcflDigest", function () {
         outputData += chunk;
       }
       assert.strictEqual(inputData, outputData);
-      assert.strictEqual(controlDigest, hs.digest().sha512);
+      assert.strictEqual(hs.digest(), controlDigest);
     });
     it("can be piped from readable stream with buffer chunk", async function () {
       const r = createReadable();
@@ -70,7 +78,7 @@ describe("OcflDigest", function () {
       }
       let outputData = Buffer.concat(buffers).toString('utf8');
       assert.strictEqual(inputData, outputData);
-      assert.strictEqual(controlDigest, hs.digest().sha512);
+      assert.strictEqual(hs.digest(), controlDigest);
     });
   });
 
@@ -109,19 +117,19 @@ describe("OcflDigest", function () {
     it("can correctly calculate BLAKE2b512", async function () {
       const hash = await OcflDigest.digest('blake2b-512', inputData);
       const hash2 = createHash('BLAKE2b512').update(inputData).digest('hex');
-      assert.strictEqual(hash['blake2b-512'], hash2);
+      assert.strictEqual(hash, hash2);
     });
     it("can correctly calculate sha 512/256", async function () {
       let hash = await OcflDigest.digest('sha512/256', inputData);
       const hash2 = createHash('sha512-256').update(inputData).digest('hex');
-      assert.strictEqual(hash['sha512/256'], hash2);
+      assert.strictEqual(hash, hash2);
       hash = await OcflDigest.digest('sha512/256', new TextEncoder().encode(inputData));
-      assert.strictEqual(hash['sha512/256'], hash2);
+      assert.strictEqual(hash, hash2);
     });
     it("can correctly calculate byte size", async function () {
       const hash = await OcflDigest.digest('size', inputData);
       const hash2 = '' + (new TextEncoder()).encode(inputData).length;
-      assert.strictEqual(hash['size'], hash2);
+      assert.strictEqual(hash, hash2);
     });
   });
 

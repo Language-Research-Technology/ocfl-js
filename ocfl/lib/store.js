@@ -52,7 +52,7 @@ class OcflStore {
   * @param {string} filePath - Absolute path
   * @param {*} options 
   * @return {Promise<import('fs').ReadStream>}
-  * @deprecated
+  * @deprecated Use {@link createReadable()} instead
   */
   async createReadStream(filePath, options) { throw new Error('Not Implemented'); }
 
@@ -61,7 +61,7 @@ class OcflStore {
    * @param {string} relPath 
    * @param {*} options 
    * @return {Promise<import('fs').WriteStream>}
-   * @deprecated
+   * @deprecated Use {@link createWritable()} instead
    */
   async createWriteStream(relPath, options) { throw new Error('Not Implemented'); }
 
@@ -132,7 +132,7 @@ class OcflStore {
    * @param {string} target - destination filename of the copy operation
    */
   async copyFile(source, target) {
-    await this.writeFile(target, await this.createReadStream(source));
+    await this.writeFile(target, await this.createReadable(source));
   }
 
   /**

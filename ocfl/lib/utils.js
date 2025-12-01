@@ -115,6 +115,17 @@ function joinTypedArray(target, source) {
   return mergedArray;
 }
 
+  /**
+   * 
+   * @param {string} absOrRelPath 
+   * @return {string} 
+   */
+  // toAbsPath(absOrRelPath = '') {
+  //   if (!path.isAbsolute(absOrRelPath)) return path.join(this.root, absOrRelPath);
+  //   return absOrRelPath;
+  // }
+
+
 const testSymbol = Symbol('testSymbol');
 
 module.exports = {

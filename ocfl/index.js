@@ -3,10 +3,8 @@
  */
 
 const { OcflConstants, OcflDigest, OcflExtension, OcflStorageLayout, OcflStore,
-  OcflObject, OcflObjectImpl,
-  OcflObjectInventory, OcflObjectTransactionImpl,
+  OcflObject, OcflObjectInventory, OcflObjectTransactionImpl,
   OcflStorage, OcflStorageImpl,
-  createObjectProxy,
   extensions
 } = require('./lib/index.js');
 
@@ -97,7 +95,7 @@ class Ocfl {
    * @return {OcflObject}
    */
   object(config, storeOptions = this.#defaultOptions) {
-    return new OcflObjectImpl(config, this.#store.getInstance(storeOptions));
+    return new OcflObject(config, this.#store.getInstance(storeOptions));
   }
 
   /**
@@ -139,10 +137,8 @@ module.exports = {
   OcflExtension, OcflStorageLayout,
   OcflStore,
   OcflObject,
-  OcflObjectImpl,
   OcflObjectInventory,
   OcflObjectTransactionImpl,
-  createObjectProxy,
   OcflStorage, OcflStorageImpl,
   Ocfl,
   extensions
