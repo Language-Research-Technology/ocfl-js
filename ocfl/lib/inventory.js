@@ -1,9 +1,8 @@
 'use strict';
 
-const { log } = require("console");
-const { threadId } = require("worker_threads");
-
 //@ts-check
+/** @typedef {import('./types').Inventory} Inventory */
+/** @typedef {import('./types').InventoryDigests} InventoryDigests */
 
 class VersionNumber {
   value;

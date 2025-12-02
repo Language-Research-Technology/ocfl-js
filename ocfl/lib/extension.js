@@ -1,6 +1,3 @@
-//const {} = require('./object');
-//const digest = require('./digest');
-
 const { NotImplementedError } = require("./error");
 
 /** Index by Registered extension name */
@@ -10,8 +7,6 @@ const extensionByClassName = {};
 
 const storageLayout = {};
 
-/** @typedef {{ extensionName?: string;[key: string]: any; }} OcflExtensionConfig */
-
 // class OcflExtensionConfig {
 //   /** User defined config */
 //   definedConfig;
@@ -20,6 +15,7 @@ const storageLayout = {};
 //   }
   
 // }
+/** @typedef {import('../index.js').StorageLayout} StorageLayout */
 
 /**
  * @template {{}} C
@@ -76,16 +72,6 @@ class OcflExtension {
     extensionClass.setup(require('./index.js'));
   }
 
-  /**
-   * @template {typeof OcflExtension} T
-   * @param {OcflExtensionConfig} [config]
-   * @this {T}
-   * @return {InstanceType<T>}
-   */
-   static create2(config){
-    if (!config?.extensionName || this.NAME === config.extensionName) return /**@type {InstanceType<T>}*/(new this(config));
-    return OcflExtension.class(config.extensionName).create2(config);
-  }
   /**
    * Create an instance of the extension
    * @type {<T extends typeof OcflExtension>(this: T, config?: OcflExtensionConfig) => InstanceType<T>}

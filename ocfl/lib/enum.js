@@ -16,7 +16,7 @@ const constantsSymbol = Symbol('constants');
  * @param {T} constants
  */
 
-export function enumeration(constants) {
+function enumeration(constants) {
   class Enum {
     /** @type {string} */
     #name;
@@ -57,7 +57,7 @@ export function enumeration(constants) {
 
 /**
  * Return an existing constant that represents the specified value
- * @type {{<T>(type: T, value: any): InstanceType<T>}}
+ * @type {{<T extends abstract new() => any>(type: T, value: any): InstanceType<T>}}
  */
 enumeration.of = function (type, value) {
   if (value instanceof type && type[value.name]) return value;
@@ -85,4 +85,6 @@ enumeration.size = function (type) {
   return type[constantsSymbol].length;
 }
 
-export default { ...enumeration };
+exports.enumeration = enumeration;
+exports.default = { ...enumeration };
+//export default { ...enumeration };

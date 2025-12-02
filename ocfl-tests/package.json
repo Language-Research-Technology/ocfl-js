@@ -7,6 +7,9 @@
     "Oxford Common File Layout",
     "test case"
   ],
+  "scripts": {
+    "test": ""
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Arkisto-Platform/ocfl-js"

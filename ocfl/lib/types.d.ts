@@ -42,20 +42,11 @@ interface ReadFile {
   ): Promise<string>;
 }
 
-type StorageLayout = {
-  FlatDirectStorageLayout: typeof import('./extensions/0002-flat-direct-storage-layout').FlatDirectStorageLayout
-  HashAndIdNTupleStorageLayout: typeof import('./extensions/0003-hash-and-id-n-tuple-storage-layout').HashAndIdNTupleStorageLayout
-  HashedNTupleStorageLayout: typeof import('./extensions/0004-hashed-n-tuple-storage-layout').HashedNTupleStorageLayout
-  FlatOmitPrefixStorageLayout: typeof import('./extensions/0006-flat-omit-prefix-storage-layout').FlatOmitPrefixStorageLayout
-  NTupleOmitPrefixStorageLayout: typeof import('./extensions/0007-n-tuple-omit-prefix-storage-layout').NTupleOmitPrefixStorageLayout
-  PathDirectStorageLayout: typeof import('./extensions/000N-path-direct-storage-layout').PathDirectStorageLayout
-}
-
-interface InventoryDigests {
+export interface InventoryDigests {
   [key: string]: string[];
 }
 
-interface InventoryVersion {
+export interface InventoryVersion {
   created: string;
   message?: string;
   state: InventoryDigests;
@@ -65,7 +56,7 @@ interface InventoryVersion {
   };
 }
 
-interface Inventory {
+export interface Inventory {
   /** A unique identifier for the OCFL Object. */
   id: string;
   /** The URI of the inventory section of the specification version matching the object conformance declaration. */
@@ -97,9 +88,9 @@ interface Inventory {
 
 //type Enum<T extends readonly string[]> = {[key in T[number]]: ReturnType<typeof enumeration<T>>};
 //declare function enumeration<T extends readonly string[]>(arr:  T): Enum<T>;
-type IDataType = string | ArrayBufferLike | Uint8Array | Uint16Array | Uint32Array;
+export type IDataType = string | ArrayBufferLike | Uint8Array | Uint16Array | Uint32Array;
 
-interface CommonHasher {
+export interface CommonHasher {
   init: () => CommonHasher;
   update: (data: IDataType) => CommonHasher;
   digest: {
@@ -109,13 +100,55 @@ interface CommonHasher {
   digestSize: number;
 }
 
-interface MultiHasher {
+export interface MultiHasher {
   multi: true;
   update: (data: IDataType) => MultiHasher;
   digest: {
-    (outputType: "binary"): {[key: string] : Uint8Array};
-    (outputType?: "hex"): {[key: string] : string};
+    (outputType: "binary"): { [key: string]: Uint8Array };
+    (outputType?: "hex"): { [key: string]: string };
   };
 }
 
-type OcflVersion = '1.0' | '1.1';
+export type OcflVersion = '1.0' | '1.1';
+
+export type OcflExtensionConfig = { extensionName?: string;[key: string]: any };
+type OcflStorageLayout = import('./extension').OcflStorageLayout<OcflExtensionConfig>;
+
+/** Configuration options for an OCFL Object. */
+export type OcflStorageConfig = {
+  /** Absolute path to the ocfl storage root. */
+  root: string;
+  /** Absolute path to storage workspace directory. */
+  workspace?: string;
+  /** A layout that identifies an arrangement of directories and OCFL objects under the storage root */
+  layout?: OcflStorageLayout | OcflExtensionConfig | string;
+  /** A default list of digest algorithm names to be added to the fixity block of objects under this storage. */
+  fixityAlgorithms?: string[];
+  /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
+  digestAlgorithm?: 'sha256' | 'sha512';
+  /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
+  contentDirectory?: string;
+  /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstant.OCFL_VERSION} */
+  ocflVersion?: OcflVersion;
+};
+
+/** Configuration options for an OCFL Object. */
+export type OcflObjectConfig = {
+  /** Absolute path to the ocfl object root. */
+  root: string;
+  /** Absolute path to object workspace directory. */
+  workspace?: string;
+  /** Identifier for the object.  Only be used in a newly created object. */
+  id?: string;
+  /** Reference to existing extensions defined outside of the object, such as in the storage root. */
+  extensions?: import('./extension').OcflExtension<{}>[];
+  /** Additional digest algorithms to be calculated for each file and added to the fixity block. */
+  fixityAlgorithms?: string[];
+  /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
+  digestAlgorithm?: 'sha256' | 'sha512';
+  /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
+  contentDirectory?: string;
+  /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstant.OCFL_VERSION} */
+  ocflVersion?: OcflVersion;
+};
+

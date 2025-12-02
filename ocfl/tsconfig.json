@@ -4,7 +4,7 @@
     "checkJs": true,
     "baseUrl": "..",
     "module": "CommonJS",
-    "target": "es2022",
+    "target": "esnext",
     "outDir": "dist",
     "typeRoots": ["lib/**/*.d.ts"]
   },
@@ -16,6 +16,10 @@
   ],
   "typedocOptions": {
     "entryPoints": "index.mjs",
-    "out": "./docs"
+    "out": "./docs",
+    "excludePrivate": true,
+    "excludeProtected": true,
+    "includeVersion": true,
+    "skipErrorChecking": true
   }
 }

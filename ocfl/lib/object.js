@@ -25,19 +25,10 @@ const DIGEST = OcflDigest.CONTENT;
  * @typedef {{logicalPath: string, version?: string}} FileRefLogical
  * @typedef {{digest: string, version?: string}} FileRefDigest
  * @typedef {{contentPath: string, version?: string}} FileRefContent
+ * @typedef {import('./types').Inventory} Inventory
+ * @typedef {import('./types').OcflVersion} OcflVersion
+ * @typedef {import('./types').OcflObjectConfig} OcflObjectConfig
  * 
- */
-
-/**
- * @typedef {Object} OcflObjectConfig
- * @property {string} root - Absolute path to the ocfl object root.
- * @property {string} [workspace] - Absolute path to object workspace directory.
- * @property {('sha256' | 'sha512')} [digestAlgorithm] - Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'.
- * @property {string} [id] - Identifier for the object.  Only be used in a newly created object.
- * @property {string} [contentDirectory='content'] - Content directory name. Only applies to a newly created object.
- * @property {OcflVersion} [ocflVersion=c.OCFL_VERSION] - Ocfl version. Only applies to a newly created object.
- * @property {OcflExtension[]} [extensions] - Reference to existing extensions defined outside of the object, such as in the storage root.
- * @property {string[]} [fixityAlgorithms] - Additional digest algorithms to be calculated for each file and added to the fixity block.
  */
 
 /**
@@ -428,17 +419,6 @@ class OcflObject {
  * @implements {OcflObject}
  */
 class OcflObjectImpl extends OcflObject {
-
-
-  /** 
-  @typedef {import('fs').OpenMode} OpenMode
-  @typedef {import('events').Abortable} Abortable
-  @typedef {{ 
-    (relPath: string, options?:({encoding?: null | undefined, flag?: OpenMode | undefined} & Abortable) | null): Promise<Buffer>
-    (relPath: string, options:({encoding: BufferEncoding, flag?: OpenMode | undefined} & Abortable)|BufferEncoding): Promise<string>
-  }} ReadFileFn
-   */
-
 
   // async _resolveContentPath({ logicalPath = '', contentPath = '', digest = '', version = '' }) {
   //   if (!contentPath) {

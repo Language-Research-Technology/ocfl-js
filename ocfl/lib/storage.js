@@ -12,14 +12,16 @@ const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT,
   NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = require('./constants').OcflConstants;
 const { OcflDigest } = require('./digest');
 
-
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
+
+/** @typedef {import('./store').OcflStore} OcflStore */
+/** @typedef {import('./types.js').OcflExtensionConfig} OcflExtensionConfig */
+/** @typedef {import('./types.js').OcflVersion} OcflVersion */
+
 
 /**
  * An abstraction to represent the OCFL Storage Root, which is
  * a base directory used to store OCFL Objects, identified by a [NAMASTE] file “0=ocfl_1.1”.
- * @typedef {import('./extension').OcflExtensionConfig} OcflExtensionConfig
- * @typedef {import('./store').OcflStore} OcflStore
  */
 
 class OcflStorage {
@@ -129,7 +131,6 @@ class OcflStorage {
  * General implementation of {@link OcflStorage} that can uses different datastore backends. 
  * This class provides common functionalities for the subclasses and 
  * at the same provide encapsulation emulating private and protected methods.
- * @implements {OcflStorage}
  */
 class OcflStorageImpl extends OcflStorage {
 
@@ -202,7 +203,7 @@ class OcflStorageImpl extends OcflStorage {
       root: path.join(this.root, relObjectRoot),
       // @todo:use extension workspace if not defined
       workspace: this.#workspace ? path.join(this.#workspace, relObjectRoot) : undefined,
-      ocflVersion: this.ocflVersion,
+      ocflVersion: /** @type {OcflVersion} */(this.ocflVersion),
       ...this.#objectConfig
     }, this.#store);
   }
@@ -310,7 +311,7 @@ class OcflStorageImpl extends OcflStorage {
             let object = new OcflObject({
               root: basePath,
               workspace: workspace ? path.join(workspace, path.relative(root, basePath)) : undefined,
-              ocflVersion: nv,
+              ocflVersion: /** @type {OcflVersion} */(nv),
               ...config
             }, store);
             //await object.load();

@@ -6,24 +6,10 @@ const validation = require('./validation.js');
 const { OCFL_VERSIONS, NAMASTE_T } = require('./constants').OcflConstants;
 
 
-/** 
- * @typedef {import('./store').OcflStore} OcflStore
- */
+/** @typedef {import('./store').OcflStore} OcflStore */
+/** @typedef {import('./types.js').OcflVersion} OcflVersion */
 
-/**
- * 
- * @param {*} data 
- */
-function dataSourceAsIterable(data) {
-  let d = data;
-  if (ArrayBuffer.isView(data) && data.buffer) {
-    d = Buffer.from(data.buffer);
-  }
-  if (typeof data === 'string' || Buffer.isBuffer(data)) {
-    d = [data];
-  }
-  return d;
-}
+
 // 
 /**
  * @template T
@@ -69,7 +55,7 @@ async function isDirEmpty(store, dirPath) {
  * Check if there is any valid namaste in the rootPath and return the version number
  * @param {OcflStore} store 
  * @param {string} prefix 
- * @param {string} rootPath 
+ * @param {string} rootPath
  */
 async function findNamasteVersion(store, prefix, rootPath) {
   let namastePath = path.join(rootPath, NAMASTE_T + prefix);
@@ -81,7 +67,7 @@ async function findNamasteVersion(store, prefix, rootPath) {
   } catch (error) {
     if (!error.errors || error.errors.some(e => e.code !== 'ENOENT')) throw error;
   }
-  return version;
+  return /** @type {OcflVersion} */(version);
 }
 
 /** @typedef {ArrayLike<number> & { buffer: ArrayBuffer, byteLength: number, set(array: ArrayLike<number>, offset?: number): void }} TypedArray */
@@ -130,7 +116,6 @@ const testSymbol = Symbol('testSymbol');
 
 module.exports = {
   parallelize,
-  dataSourceAsIterable,
   isDirEmpty,
   findNamasteVersion,
   joinTypedArray,

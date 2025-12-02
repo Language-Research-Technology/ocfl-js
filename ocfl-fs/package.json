@@ -15,8 +15,7 @@
   },
   "scripts": {
     "test": "mocha",
-    "build-docs2": "typedoc --tsconfig tsconfig.json",
-    "build-docs": "jsdoc -c jsdoc.json"
+    "build-docs": "typedoc --plugin typedoc-plugin-missing-exports"
   },
   "keywords": [
     "ocfl",
@@ -42,7 +41,8 @@
     "clean-jsdoc-theme": "^4.3.0",
     "jsdoc": "^4.0.3",
     "mocha": "^11.7.5",
-    "typedoc": "^0.28.14"
+    "typedoc": "^0.28.14",
+    "typedoc-plugin-missing-exports": "^4.1.2"
   },
   "dependencies": {
     "@ocfl/ocfl": "0.3.0"

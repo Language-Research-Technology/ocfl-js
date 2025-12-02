@@ -15,7 +15,7 @@
   },
   "scripts": {
     "test": "mocha",
-    "build-docs": "jsdoc -c jsdoc.json"
+    "build-docs": "typedoc --plugin typedoc-plugin-missing-exports"
   },
   "keywords": [
     "ocfl",
@@ -42,7 +42,8 @@
     "@types/node": "^24",
     "memfs": "^4.50.0",
     "mocha": "^11.7.5",
-    "typedoc": "^0.28.13"
+    "typedoc": "^0.28.15",
+    "typedoc-plugin-missing-exports": "^4.1.2"
   },
   "mocha": {
     "extension": [
