@@ -190,7 +190,7 @@ class OcflObject {
    * @param {*} inventory 
    * @param {*} version 
    */
-  _setInventory(inventory, version='latest') {
+  _setInventory(inventory, version = 'latest') {
     //this._inventory['latest'] = this._inventory[inventory.head] = inventory;
     this._inventory[version] = inventory;
     if (version === 'latest') this._inventory[inventory.head] = inventory;
@@ -347,25 +347,65 @@ class OcflObject {
   }
 
   /**
-   * Get a file by either the [logical path and version], digest, or content path.
+   * Return a file representation by the content path and version,
+   * @param { string } contentPath 
+   * @param { string } [version='latest']
+   */
+  async fileByContentPath(contentPath, version) {
+    const inv = await this.getInventory();
+    const fr = inv?.getFileByContentPath(contentPath, version);
+    if (fr) return new OcflObjectFile(this, fr);
+  };
+
+  /**
+   * Return a file representation by the digest and version,
+   * @param { string } digest 
+   * @param { string } [version='latest']
+   */
+  async fileByDigest(digest, version) {
+    const inv = await this.getInventory();
+    const fr = inv?.getFileByDigest(digest, version);
+    if (fr) return new OcflObjectFile(this, fr);
+  };
+
+  /**
+   * Return a file representation by the logical path and version,
+   * @param { string } logicalPath 
+   * @param { string } [version='latest']
+   */
+  async fileByLogicalPath(logicalPath, version) {
+    const inv = await this.getInventory();
+    const fr = inv?.getFile(logicalPath, version);
+    if (fr) return new OcflObjectFile(this, fr);
+  };
+
+  /**
+   * Return a file representation by either the [logical path and version], digest, or content path. 
+   * The returned file object can be used to retrieve the content of a file either as string, buffer, or stream.
+   * If the object inventory file is not loaded, this file object will not include the full file metadata information.
    * If version is omitted, it defaults to the last version.
    * @param { LogicalPath | FileRefLogical | FileRefDigest | FileRefContent } opt A choice of logical path (eg: 'test') and version (eg: 'v1'), 
    * digest of the file content, or content path (eg: 'v1/content/test')
    * @param {string} [version='latest'] The object version name, eg: 'v1', 'v2'. Default to 'latest'. Only used if opt is a LogicalPath.
-   * @returns {OcflObjectFile}
+   * @param {string} [lazy] If true, always return a file instance even if the object inventory file is not loaded.
    */
-  getFile(opt, version) {
+  getFile(opt, version, lazy) {
     const inv = this.inventory;
     /** @type {any} */
-    let file = typeof opt === 'string' ? { logicalPath: opt, version: version } : { ...opt };
-    if (file.logicalPath) {
-      file = inv?.getFile(file.logicalPath, file.version);
-    } else if (file.digest) {
-      file = inv?.getFileByDigest(file.digest, file.version);
-    } else if (file.contentPath) {
-      file = inv?.getFileByContentPath(file.contentPath, file.version);
+    const file = typeof opt === 'string' ? { logicalPath: opt, version: version } : { ...opt };
+    if (inv) {
+      let fr;
+      if (file.logicalPath) {
+        fr = inv?.getFile(file.logicalPath, file.version);
+      } else if (file.digest) {
+        fr = inv?.getFileByDigest(file.digest, file.version);
+      } else if (file.contentPath) {
+        fr = inv?.getFileByContentPath(file.contentPath, file.version);
+      }
+      if (fr) return new OcflObjectFile(this, fr);
+    } else if (lazy) {
+      return new OcflObjectFile(this, file);
     }
-    if (file) return new OcflObjectFile(this, file);
   };
 
   /**
@@ -405,6 +445,14 @@ class OcflObject {
    */
   async readFile(relPath, options) {
     return this.#store.readFile(path.join(this.root, relPath), options);
+  };
+
+  /** 
+   * Get the file metadata such as size and modification time.
+   * @param {string} relPath - The file path relative to the object root.
+   */
+  async stat(relPath) {
+    return this.#store.stat(path.join(this.root, relPath));
   };
 
   toString() { return `OcflObject { root: ${this.root}, id: ${this.id} }`; }

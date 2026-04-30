@@ -93,6 +93,12 @@ module.exports = function (ocfl) {
       }
     });
 
+    it("can stat a file", async function () {
+      let actualStat = await fs.promises.stat(path.join(object.root, 'v2/content/foo/bar.xml'));
+      let stat = await object.getFile('foo/bar.xml').stat();
+      assert.equal(stat.size, actualStat.size);
+      assert.equal(stat.mtime.valueOf(), actualStat.mtime.valueOf());
+    });
     it("can read a file as string", async function () {
       let actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'), 'utf8');
       let content = await object.getFile('foo/bar.xml').asString();

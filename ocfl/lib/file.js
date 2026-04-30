@@ -10,6 +10,14 @@
  */
 
 /**
+ * @typedef {Object} FileStat
+ * @property {number} [size] - Size of the file in bytes.
+ * @property {Date} [atime] - Last access time of the file.
+ * @property {Date} [mtime] - Last modified time of the file.
+ * @property {Date} [ctime] - Creation time of the file.
+ */
+
+/**
  * Represent a file in an OCFL object
  */
 class OcflObjectFile {
@@ -122,6 +130,16 @@ class OcflObjectFile {
   async stream(options) {
     return this.#ocflObject.createReadable(await this.#resolveContentPath(), options);
   }
+
+  /**
+   * Get the file stat info
+   * @param {*} [options] Options to be passed to underlying data store specific implementation
+   * @return {Promise<FileStat>}
+   */
+  async stat(options) {
+    return this.#ocflObject.stat(await this.#resolveContentPath());
+  }
+
 }
 
 module.exports = {
