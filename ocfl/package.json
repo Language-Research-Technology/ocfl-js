@@ -15,6 +15,7 @@
   },
   "scripts": {
     "test": "mocha",
+    "build": "tsc",
     "build-docs": "typedoc --plugin typedoc-plugin-missing-exports"
   },
   "keywords": [
@@ -39,10 +40,10 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "^24",
+    "@types/node": "^24.12.2",
     "memfs": "^4.50.0",
     "mocha": "^11.7.5",
-    "typedoc": "^0.28.15",
+    "typedoc": "^0.28.19",
     "typedoc-plugin-missing-exports": "^4.1.2"
   },
   "mocha": {
@@ -57,9 +58,6 @@
     "url": "https://github.com/Language-Research-Technology/ocfl-js/issues"
   },
   "homepage": "https://github.com/Language-Research-Technology/ocfl-js#readme",
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "directories": {
     "lib": "lib",
     "test": "test"
@@ -69,5 +67,8 @@
     "index.mjs",
     "lib",
     "resources"
-  ]
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }

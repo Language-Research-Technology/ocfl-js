@@ -2,11 +2,13 @@
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,
-    "baseUrl": "..",
+    "alwaysStrict": true,
+    "strict": false,
     "module": "CommonJS",
     "target": "esnext",
+    "declaration": true,
     "outDir": "dist",
-    "typeRoots": ["lib/**/*.d.ts"]
+    "resolveJsonModule": true
   },
   "include": [
     "index.js",

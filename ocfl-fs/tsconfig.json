@@ -2,7 +2,8 @@
   "compilerOptions": {
     "allowJs": true,
     "checkJs": true,
-    "baseUrl": "..",
+    "alwaysStrict": true,
+    "strict": false,
     "module": "CommonJS",
     "target": "esnext",
     "outDir": "dist",

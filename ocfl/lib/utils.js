@@ -1,8 +1,7 @@
 //@ts-check
 'use strict';
 
-const path = require('path');
-const validation = require('./validation.js');
+//const validation = require('./validation.js');
 const { OCFL_VERSIONS, NAMASTE_T } = require('./constants').OcflConstants;
 
 
@@ -58,7 +57,7 @@ async function isDirEmpty(store, dirPath) {
  * @param {string} rootPath
  */
 async function findNamasteVersion(store, prefix, rootPath) {
-  let namastePath = path.join(rootPath, NAMASTE_T + prefix);
+  let namastePath = rootPath + '/' + NAMASTE_T + prefix;
   let version;
   try {
     version = await Promise.any(OCFL_VERSIONS.map(async (v) =>
