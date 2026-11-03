@@ -1,5 +1,5 @@
-const assert = require('assert');
-const { OcflExtension } = require('../index.js');
+import assert from 'node:assert';
+import { OcflExtension } from '../src/index.ts';
 
 describe('OcflExtension class', () => {
   it('can register new extension', () => {

@@ -3,6 +3,7 @@ update:
 
 autoDedupe: true
 saveTypes: true
+engineStrict: true
 
 packages:
   - ocfl

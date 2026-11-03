@@ -1,20 +1,18 @@
-const assert = require('assert');
-const path = require('path');
-const fs = require('fs');
-const { Readable, Writable } = require('stream');
-const { Ocfl, OcflObject } = require('@ocfl/ocfl');
-const { createHash } = require('node:crypto');
+import assert from 'node:assert';
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { Readable } from 'node:stream';
 
 /**
  * @param {Ocfl} ocfl
  */
-module.exports = (ocfl) => {
-  let object;
+export default (ocfl) => {
   let objcount = 0;
 
   /**
    *
-   * @param {OcflObject} object
+   * @param {import('@ocfl/ocfl').OcflObject} object
    * @param {string} srcPath
    * @param {string} logicalPath
    */
@@ -57,7 +55,7 @@ module.exports = (ocfl) => {
     let object = ocfl.object({ root: '/tmp/dummy' });
 
     before(async () => {
-      const config = { root: path.join(__dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full') };
+      const config = { root: path.join(import.meta.dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full') };
       object = ocfl.object(config);
       invRaw = JSON.parse(await fs.promises.readFile(path.join(config.root, 'inventory.json'), 'utf8'));
       invRawFiles = Object.values(invRaw.versions[invRaw.head].state).flat();
@@ -115,7 +113,9 @@ module.exports = (ocfl) => {
       // }
       const stream = await object.getFile('foo/bar.xml').asStream();
       const buffers = [];
-      for await (const data of stream) buffers.push(/** @type {Buffer} */ (data));
+      for await (const data of stream) {
+        buffers.push(/** @type {Buffer} */ (data));
+      }
       const content = Buffer.concat(buffers);
       assert.equal(content.compare(actualContent), 0);
     });
@@ -123,21 +123,25 @@ module.exports = (ocfl) => {
       const actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'));
       const stream = await object.getFile('foo/bar.xml').stream();
       const buffers = [];
-      for await (const data of stream) buffers.push(/** @type {Buffer} */ (data));
+      for await (const data of stream) {
+        buffers.push(/** @type {Buffer} */ (data));
+      }
       const content = Buffer.concat(buffers);
       assert.equal(content.compare(actualContent), 0);
     });
   });
 
   describe('update', () => {
-    const datadir = path.join(__dirname, 'test-data');
+    const datadir = path.join(import.meta.dirname, 'test-data');
     const tempdir = path.join(datadir, 'temp');
-    /** @type {OcflObject} */
+    /** @type {import('@ocfl/ocfl').OcflObject} */
     let objectx;
 
     function createObject(id, useWorkspace, ocflVersion) {
       const config = { id, root: path.join(tempdir, id), ocflVersion, fixityAlgorithms: ['md5', 'crc32'] };
-      if (useWorkspace) config.workspace = config.root + '-tmp';
+      if (useWorkspace) {
+        config.workspace = `${config.root}-tmp`;
+      }
       return ocfl.object(config);
     }
 
@@ -173,7 +177,7 @@ module.exports = (ocfl) => {
           await fs.promises.access(o.workspace);
           throw new Error('test');
         });
-      } catch (e) {}
+      } catch {}
       await assert.rejects(fs.promises.access(o.workspace));
       await assert.rejects(fs.promises.access(o.root));
     });
@@ -194,7 +198,7 @@ module.exports = (ocfl) => {
       for (const ocflVersion of ocfl.OCFL_VERSIONS) {
         it(`can create correct namaste and inventory, with${useWorkspace ? '' : 'out'} workspace, with version ${ocflVersion}`, async () => {
           objcount++;
-          const o = createObject('object-' + objcount, useWorkspace, ocflVersion);
+          const o = createObject(`object-${objcount}`, useWorkspace, ocflVersion);
           const content = 'test';
           const commitInfo = { message: 'test commit', user: { name: 'john', address: 'john@test.com' } };
           const hash = createHash('sha512').update(content).digest('hex');
@@ -210,7 +214,7 @@ module.exports = (ocfl) => {
           const invstr = await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8');
           const inv = JSON.parse(invstr);
           //assert.strictEqual(await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8'), inventory.toString());
-          assert.strictEqual(inv.id, 'object-' + objcount);
+          assert.strictEqual(inv.id, `object-${objcount}`);
           assert.strictEqual(inv.digestAlgorithm, 'sha512');
           assert.strictEqual(inv.type, `https://ocfl.io/${ocflVersion}/spec/#inventory`);
           assert.strictEqual(inv.head, 'v1');
@@ -223,7 +227,7 @@ module.exports = (ocfl) => {
           const sidecar = await fs.promises.readFile(path.join(o.root, 'inventory.json.sha512'), 'utf8');
           const invhash = createHash('sha512').update(invstr).digest('hex');
 
-          assert.strictEqual(sidecar, invhash + ' inventory.json');
+          assert.strictEqual(sidecar, `${invhash} inventory.json`);
 
           //await fs.promises.rm(o.root, { recursive: true, force: true });
         });
@@ -356,13 +360,11 @@ module.exports = (ocfl) => {
         await t.import(path.join(datadir, 'test_input.txt'));
       });
       const inv = await objectx.getInventory();
-      const files = [...(await objectx.files())].map((f) => f.logicalPath).sort();
       assert.strictEqual(inv.head, 'v7');
       await assert.rejects(fs.promises.access(path.join(objectx.root, 'v8')));
     });
 
     it('can correctly create versions', async () => {
-      const f1 = path.join(datadir, 'fixtures/1.1/content/spec-ex-full/v3');
       const o = createObject('object-version-1', true);
       let c;
       await o.update(async (t) => {
@@ -443,7 +445,7 @@ module.exports = (ocfl) => {
   describe('spec violations', () => {
     let tempdir;
     before(async () => {
-      tempdir = await fs.promises.mkdtemp(path.join(__dirname, 'test-data', 'temp-errors-'));
+      tempdir = await fs.promises.mkdtemp(path.join(import.meta.dirname, 'test-data', 'temp-errors-'));
     });
 
     it('reports E007 when the version declaration has the wrong contents', async () => {
@@ -481,4 +483,4 @@ module.exports = (ocfl) => {
 };
 
 //ocfl.OcflExtension.register(require('ocfl-extensions'));
-//const d = require('ocfl-extension-dummy');
+//import d from 'ocfl-extension-dummy';

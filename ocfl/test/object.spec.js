@@ -1,8 +1,5 @@
-'use strict';
-//@ts-check
-
-const assert = require('assert');
-const OcflObject = require('../lib/object.js').OcflObject;
+import assert from 'node:assert';
+import { OcflObject } from '../src/object.ts';
 
 describe('OcflObject class', () => {
   it('can not be instantiated without root', () => {
@@ -13,7 +10,3 @@ describe('OcflObject class', () => {
   //   assert.throws(()=>new OcflObject({root: '/tmp/ocfl-js-test'}));
   // });
 });
-
-async function fn() {
-  await new OcflObject().getInventory();
-}

@@ -1,0 +1,12 @@
+import { OcflExtension } from '../extension.ts';
+
+/**
+ * Notes: this implementation does nothing because the 0009 extension is implemented directly in the OcflDigest class.
+ */
+class DigestAlgorithm extends OcflExtension {
+  static get NAME() {
+    return '0009-digest-algorithms';
+  }
+}
+
+export { DigestAlgorithm };

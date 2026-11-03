@@ -1,4 +1,4 @@
-module.exports = {
-  object: require('./object.spec.js'),
-  storage: require('./storage.spec.js'),
-};
+import object from './object.spec.js';
+import storage from './storage.spec.js';
+
+export default { object, storage };

@@ -1,12 +1,7 @@
-//@ts-check
-'use strict';
-
-const assert = require('assert');
-const digest_ = require('../lib/digest.js');
-const { OcflDigest } = require('../lib/digest.js');
-const Readable = require('stream').Readable;
-const { createHash } = require('node:crypto');
-const { testSymbol } = require('../lib/utils.js');
+import assert from 'node:assert';
+import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
+import { OcflDigest } from '../src/digest.ts';
 
 describe('OcflDigest', () => {
   const inputData =
@@ -46,13 +41,13 @@ describe('OcflDigest', () => {
     it('can be piped from readable stream', async () => {
       const r = createReadable();
       const hs = await OcflDigest.createStream('sha512');
-      const rs = await r.pipeTo(hs);
+      await r.pipeTo(hs);
       assert.strictEqual(hs.digest(), controlDigest);
     });
     it('can be digest multiple algorithms', async () => {
       const r = createReadable();
       const hs = await OcflDigest.createStream(['sha512']);
-      const rs = await r.pipeTo(hs);
+      await r.pipeTo(hs);
       assert.strictEqual(hs.digest().sha512, controlDigest);
     });
   });
@@ -83,37 +78,6 @@ describe('OcflDigest', () => {
     });
   });
 
-  describe('digest instances', async () => {
-    it('can reuse the same hash instances', async () => {
-      const cache = digest_[testSymbol].hasherCache;
-      let hs = await OcflDigest.createStream('sha512');
-      hs.update(inputData);
-      hs.digest();
-      const h1 = cache['sha512'][0];
-      hs = await OcflDigest.createStream('sha512');
-      hs.update(inputData);
-      hs.digest();
-      const h2 = cache['sha512'][0];
-      assert.strictEqual(cache['sha512'].length, 1);
-      assert.strictEqual(h1, h2);
-    });
-    it('can create multiple of the same hash instances', async () => {
-      const p = [];
-      for (let i = 0; i < 10; ++i) {
-        const hs = await OcflDigest.createStream('sha512');
-        p.push(hs);
-      }
-      for (const hs of p) {
-        hs.update(inputData);
-        hs.digest();
-      }
-      const cache = digest_[testSymbol].hasherCache;
-      assert.strictEqual(cache['sha512'].length, 10);
-      assert.notEqual(cache['sha512'][0], cache['sha512'][1]);
-      //assert.strictEqual(controlDigest, hash);
-    });
-  });
-
   describe('digest algorithms', async () => {
     it('can correctly calculate BLAKE2b512', async () => {
       const hash = await OcflDigest.digest('blake2b-512', inputData);
@@ -127,9 +91,25 @@ describe('OcflDigest', () => {
       hash = await OcflDigest.digest('sha512/256', new TextEncoder().encode(inputData));
       assert.strictEqual(hash, hash2);
     });
+    it('can correctly calculate crc32', async () => {
+      const hash = await OcflDigest.digest('crc32', 'a');
+      assert.strictEqual(hash, 'e8b7be43');
+      assert.strictEqual(await OcflDigest.digest('crc32', ''), '00000000');
+    });
+    it('can digest an ArrayBuffer and typed array views', async () => {
+      const bytes = new TextEncoder().encode(inputData);
+      assert.strictEqual(await OcflDigest.digest('sha512', bytes.buffer), controlDigest);
+      assert.strictEqual(
+        await OcflDigest.digest('sha512', new Uint16Array(bytes.buffer.slice(0, 2))),
+        createHash('sha512').update(bytes.subarray(0, 2)).digest('hex'),
+      );
+    });
+    it('rejects unsupported algorithms', async () => {
+      await assert.rejects(OcflDigest.digest('blake2b-256', inputData), /Unsupported digest algorithm/);
+    });
     it('can correctly calculate byte size', async () => {
       const hash = await OcflDigest.digest('size', inputData);
-      const hash2 = '' + new TextEncoder().encode(inputData).length;
+      const hash2 = `${new TextEncoder().encode(inputData).length}`;
       assert.strictEqual(hash, hash2);
     });
   });

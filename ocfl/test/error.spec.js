@@ -1,8 +1,5 @@
-//@ts-check
-'use strict';
-
-const assert = require('assert');
-const error = require('../lib/error.js');
+import assert from 'node:assert';
+import * as error from '../src/error.ts';
 
 describe('error.NotImplementedError', () => {
   it('can show correct name and message', async () => {

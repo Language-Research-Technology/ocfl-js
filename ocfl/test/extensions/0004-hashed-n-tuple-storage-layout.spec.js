@@ -1,7 +1,9 @@
-'use strict';
-const assert = require('assert');
-const { HashedNTupleStorageLayout } = require('../../index').extensions;
-const { OcflDigest } = require('../../lib/digest');
+import assert from 'node:assert';
+import { extensions } from '../../src/index.ts';
+
+const { HashedNTupleStorageLayout } = extensions;
+
+import { OcflDigest } from '../../src/digest.ts';
 
 describe('HashedNTupleStorageLayout class', () => {
   before(async () => {
@@ -29,6 +31,14 @@ describe('HashedNTupleStorageLayout class', () => {
     for (const idp of cases) {
       assert.strictEqual(layout.map(idp[0]), idp[1]);
     }
+  });
+
+  it('rejects a digestAlgorithm that is not lowercase', () => {
+    assert.throws(() => new HashedNTupleStorageLayout({ digestAlgorithm: 'MD5' }), { message: 'Invalid digestAlgorithm' });
+  });
+
+  it('rejects an unknown digestAlgorithm', () => {
+    assert.throws(() => new HashedNTupleStorageLayout({ digestAlgorithm: 'sha3' }), { message: 'Invalid digestAlgorithm' });
   });
 
   it('can use custom config, edge case', () => {

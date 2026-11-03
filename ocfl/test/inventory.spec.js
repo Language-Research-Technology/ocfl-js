@@ -1,9 +1,6 @@
-//@ts-check
-'use strict';
-
-const assert = require('assert');
-const { readFile } = require('fs/promises');
-const { OcflObjectInventory } = require('../lib/inventory');
+import assert from 'node:assert';
+import { readFile } from 'node:fs/promises';
+import { OcflObjectInventory } from '../src/inventory.ts';
 
 describe('OcflObjectInventory class', () => {
   let data;
@@ -19,7 +16,6 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can create empty inventory', () => {
-    const digest = 'testdigest123';
     const inv = new OcflObjectInventory(data);
     //assert.strictEqual(digest, inv.cachedDigest);
     assert.strictEqual(data.id, inv.id);
@@ -30,7 +26,6 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can load inventory', async () => {
-    const digest = '8e280eb94af68d27f635c2013531d4cf41c6089dfa8ffeeb4f0230500203fab9c10f929c08057f5d1b5084ab4dff7d72fb20010bf4cbf713569fadfc9257770a';
     const data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
     const inv = new OcflObjectInventory(data);
     //assert.strictEqual(digest, await inv.digest());
@@ -60,7 +55,7 @@ describe('OcflObjectInventory class', () => {
     inv.add('test.txt', 'aabbccddeeff');
     const data2 = inv.toJSON();
     assert.strictEqual(inv.head, 'v1');
-    assert.strictEqual(inv.manifest['aabbccddeeff'][0], 'v1/content/test.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff[0], 'v1/content/test.txt');
     assert.deepStrictEqual(data2.manifest, inv.manifest);
   });
 
@@ -69,12 +64,12 @@ describe('OcflObjectInventory class', () => {
     inv.add('test.txt', 'aabbccddeeff');
     inv.add('test2.txt', 'aabbccddeeff');
     assert.strictEqual(inv.head, 'v1');
-    assert.strictEqual(inv.manifest['aabbccddeeff'][0], 'v1/content/test.txt');
-    assert.strictEqual(inv.manifest['aabbccddeeff'].length, 1);
+    assert.strictEqual(inv.manifest.aabbccddeeff[0], 'v1/content/test.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff.length, 1);
     assert.strictEqual(Object.keys(inv.manifest).length, 1);
-    assert.strictEqual(inv.versions.v1.state['aabbccddeeff'][0], 'test.txt');
-    assert.strictEqual(inv.versions.v1.state['aabbccddeeff'][1], 'test2.txt');
-    assert.strictEqual(inv.versions.v1.state['aabbccddeeff'].length, 2);
+    assert.strictEqual(inv.versions.v1.state.aabbccddeeff[0], 'test.txt');
+    assert.strictEqual(inv.versions.v1.state.aabbccddeeff[1], 'test2.txt');
+    assert.strictEqual(inv.versions.v1.state.aabbccddeeff.length, 2);
     assert.strictEqual(Object.keys(inv.versions.v1.state).length, 1);
   });
 
@@ -83,14 +78,14 @@ describe('OcflObjectInventory class', () => {
     inv.add('test.txt', 'aabbccddeeff');
     inv = OcflObjectInventory.newVersion(inv.toJSON());
     inv.add('test.txt', 'aabbccddeeff');
-    assert.strictEqual(inv.manifest['aabbccddeeff'][0], 'v1/content/test.txt');
-    assert.strictEqual(inv.manifest['aabbccddeeff'].length, 1);
+    assert.strictEqual(inv.manifest.aabbccddeeff[0], 'v1/content/test.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff.length, 1);
     assert.strictEqual(Object.keys(inv.manifest).length, 1);
-    assert.strictEqual(inv.versions.v1.state['aabbccddeeff'][0], 'test.txt');
-    assert.strictEqual(inv.versions.v1.state['aabbccddeeff'].length, 1);
+    assert.strictEqual(inv.versions.v1.state.aabbccddeeff[0], 'test.txt');
+    assert.strictEqual(inv.versions.v1.state.aabbccddeeff.length, 1);
     assert.strictEqual(Object.keys(inv.versions.v1.state).length, 1);
-    assert.strictEqual(inv.versions.v2.state['aabbccddeeff'][0], 'test.txt');
-    assert.strictEqual(inv.versions.v2.state['aabbccddeeff'].length, 1);
+    assert.strictEqual(inv.versions.v2.state.aabbccddeeff[0], 'test.txt');
+    assert.strictEqual(inv.versions.v2.state.aabbccddeeff.length, 1);
     assert.strictEqual(Object.keys(inv.versions.v2.state).length, 1);
   });
 
@@ -99,11 +94,11 @@ describe('OcflObjectInventory class', () => {
     inv.add('test.txt', 'aabbccddeeff');
     inv = OcflObjectInventory.newVersion(inv.toJSON());
     inv.add('test.txt', 'aabbccddeeff2');
-    assert.strictEqual(inv.manifest['aabbccddeeff'][0], 'v1/content/test.txt');
-    assert.strictEqual(inv.manifest['aabbccddeeff2'][0], 'v2/content/test.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff[0], 'v1/content/test.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff2[0], 'v2/content/test.txt');
     assert.strictEqual(Object.keys(inv.manifest).length, 2);
-    assert.strictEqual(inv.versions.v2.state['aabbccddeeff2'][0], 'test.txt');
-    assert.strictEqual(inv.versions.v2.state['aabbccddeeff2'].length, 1);
+    assert.strictEqual(inv.versions.v2.state.aabbccddeeff2[0], 'test.txt');
+    assert.strictEqual(inv.versions.v2.state.aabbccddeeff2.length, 1);
     assert.strictEqual(Object.keys(inv.versions.v1.state).length, 1);
     assert.strictEqual(Object.keys(inv.versions.v2.state).length, 1);
   });
@@ -116,15 +111,15 @@ describe('OcflObjectInventory class', () => {
     inv = OcflObjectInventory.newVersion(inv.toJSON());
     inv.add('test.txt', 'aabbccddeeff'); // reinstatement
     assert.strictEqual(Object.keys(inv.manifest).length, 2);
-    assert.strictEqual(inv.versions.v3.state['aabbccddeeff'][0], 'test.txt');
-    assert.strictEqual(inv.versions.v3.state['aabbccddeeff'].length, 1);
+    assert.strictEqual(inv.versions.v3.state.aabbccddeeff[0], 'test.txt');
+    assert.strictEqual(inv.versions.v3.state.aabbccddeeff.length, 1);
     assert.strictEqual(Object.keys(inv.versions.v3.state).length, 1);
   });
 
   it('can add file with extra fixity', () => {
     const inv = OcflObjectInventory.newVersion(data);
     inv.add('test1.txt', 'aabbccddeeff', { crc32: '12345678', size: '1024' });
-    assert.strictEqual(inv.manifest['aabbccddeeff'][0], 'v1/content/test1.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff[0], 'v1/content/test1.txt');
     assert.strictEqual(inv.fixity.crc32['12345678'][0], 'v1/content/test1.txt');
     assert.strictEqual(inv.fixity.size['1024'][0], 'v1/content/test1.txt');
   });
@@ -155,12 +150,12 @@ describe('OcflObjectInventory class', () => {
   it('can reinstate removed file from older version', () => {
     let inv = OcflObjectInventory.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
-    assert.strictEqual(inv.versions.v1.state['aabbccddeeff'][0], 'test.txt');
+    assert.strictEqual(inv.versions.v1.state.aabbccddeeff[0], 'test.txt');
     inv = OcflObjectInventory.newVersion(inv);
     inv.delete('test.txt');
-    assert(!inv.versions.v2.state['aabbccddeeff']);
+    assert(!inv.versions.v2.state.aabbccddeeff);
     inv = OcflObjectInventory.newVersion(inv);
     inv.reinstate('test.txt', 'v1');
-    assert(inv.versions.v3.state['aabbccddeeff']);
+    assert(inv.versions.v3.state.aabbccddeeff);
   });
 });

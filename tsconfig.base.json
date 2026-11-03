@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    // ES2024 is the newest edition Node 22 (engines) fully supports; listing lib also keeps DOM types out
+    "target": "es2024",
+    "lib": ["es2024"],
+    // Default is bundler resolution, which doesn't enforce Node's ESM rules
+    "module": "nodenext",
+    // Default is [] since TS 6
+    "types": ["node"],
+    // Sources import .ts paths so Node can run them directly; emitted imports need .js
+    "rewriteRelativeImportExtensions": true,
+    // Node's type stripping can't handle enums, namespaces, parameter properties or untyped type-only imports
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    // Maps point into src/, which is published alongside dist/
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    // TS 7 requires rootDir when emitting
+    "rootDir": "${configDir}/src",
+    "outDir": "${configDir}/dist"
+  },
+  // Default would also pick up dist/*.d.ts
+  "include": ["${configDir}/src"]
+}

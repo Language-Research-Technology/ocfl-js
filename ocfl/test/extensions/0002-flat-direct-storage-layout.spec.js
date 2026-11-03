@@ -1,6 +1,7 @@
-'use strict';
-const assert = require('assert');
-const { FlatDirectStorageLayout } = require('../../index').extensions;
+import assert from 'node:assert';
+import { extensions } from '../../src/index.ts';
+
+const { FlatDirectStorageLayout } = extensions;
 
 describe('FlatDirectStorageLayout class', () => {
   const layout = FlatDirectStorageLayout.create();

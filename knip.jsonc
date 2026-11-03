@@ -5,18 +5,12 @@
   "workspaces": {
     ".": {},
     "ocfl": {
-      "mocha": {
-        // The plugin ignores recursive + extension in package.json#mocha, so mirror them here
-        // and skip config parsing, which would otherwise add its test/*.js default.
-        "config": [],
-        "entry": ["test/**/*.spec.{js,cjs,mjs}"]
-      },
       // Ambient describe/it types for the test files.
-      "ignoreDependencies": ["@types/mocha"],
-      "ignoreIssues": {
-        // Re-exported via `...require()` spread in lib/extensions/index.js, which Knip can't follow.
-        "lib/extensions/*.js": ["exports"]
-      }
+      "ignoreDependencies": ["@types/mocha"]
+    },
+    "ocfl-fs": {
+      // Typechecked only, by test/tsconfig.json.
+      "entry": ["test/*.ts"]
     }
   }
 }

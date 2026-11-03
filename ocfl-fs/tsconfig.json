@@ -1,20 +1,3 @@
 {
-  "compilerOptions": {
-    "allowJs": true,
-    "checkJs": true,
-    "alwaysStrict": true,
-    "strict": false,
-    "module": "CommonJS",
-    "target": "esnext",
-    "outDir": "dist"
-  },
-  "include": ["index.js", "index.mjs", "lib/**/*.js", "lib/**/*.d.ts"],
-  "typedocOptions": {
-    "entryPoints": "index.mjs",
-    "out": "./docs",
-    "excludePrivate": true,
-    "excludeProtected": true,
-    "includeVersion": true,
-    "skipErrorChecking": true
-  }
+  "extends": "../tsconfig.base.json"
 }
