@@ -72,7 +72,10 @@ enumeration.of = <T extends readonly string[]>(type: EnumType<T>, value: unknown
 /**
  * Return an existing constant based on the index
  */
-enumeration.at = <T extends readonly string[]>(type: EnumType<T>, index: number): EnumValue => (type as unknown as Record<string, EnumValue>)[[...type][index]];
+enumeration.at = <T extends readonly string[]>(type: EnumType<T>, index: number): EnumValue | undefined => {
+  const name = [...type][index];
+  return name === undefined ? undefined : (type as unknown as Record<string, EnumValue>)[name];
+};
 
 enumeration.size = <T extends readonly string[]>(type: EnumType<T>): number => [...type].length;
 

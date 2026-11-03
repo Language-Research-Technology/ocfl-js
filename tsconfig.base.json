@@ -13,6 +13,7 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "strict": true,
+    "noUncheckedIndexedAccess": true,
     // Maps point into src/, which is published alongside dist/
     "declaration": true,
     "declarationMap": true,

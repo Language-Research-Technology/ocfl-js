@@ -132,19 +132,19 @@ async function createHasher(algorithm: string): Promise<CommonHasher> {
  */
 async function createMultiHasher(algorithms: string | string[]): Promise<MultiHasher> {
   const algoNames = Array.isArray(algorithms) ? (algorithms.length ? [...new Set(algorithms)] : ['sha512']) : [algorithms];
-  const hashers = await Promise.all(algoNames.map(createHasher));
+  const hashers = await Promise.all(algoNames.map(async (name) => [name, await createHasher(name)] as const));
   const multiHasher: MultiHasher = {
     multi: true,
     update(data) {
-      for (const hash of hashers) {
+      for (const [, hash] of hashers) {
         hash.update(data);
       }
       return this;
     },
     digest: ((encoding?: 'binary' | 'hex') => {
       const result: { [key: string]: string | Uint8Array } = {};
-      for (let i = 0; i < hashers.length; i++) {
-        result[algoNames[i]] = hashers[i].digest(encoding as 'hex');
+      for (const [name, hash] of hashers) {
+        result[name] = hash.digest(encoding as 'hex');
       }
       return result;
     }) as MultiDigest,

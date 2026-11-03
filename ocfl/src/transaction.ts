@@ -31,6 +31,15 @@ export interface RemoveOptions {
 
 type TrackedPromise<T> = Promise<T> & { done?: boolean };
 
+/** Split the digests into the content digest and the remaining fixity digests */
+function splitDigests(digests: { [algorithm: string]: string }, algorithm: string): [string, { [algorithm: string]: string }] {
+  const { [algorithm]: digest, ...fixity } = digests;
+  if (!digest) {
+    throw new Error(`Digest "${algorithm}" was not calculated.`);
+  }
+  return [digest, fixity];
+}
+
 /**
  * A Transaction represent an atomic update on an OCFL Object.
  * When a transaction is commited, all changes are saved as a new version.
@@ -297,7 +306,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       },
       async close() {
         await writer.close();
-        const { [digestAlgo]: digest, ...fixity } = hs.digest();
+        const [digest, fixity] = splitDigests(hs.digest(), digestAlgo);
         if (inv.getContentPath(digest)) {
           await store.remove(realPath);
         }
@@ -326,7 +335,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
           data = new Uint8Array(data.buffer);
         }
         const hashes = await OcflDigest.digest(digestAlgos, data as string | Uint8Array);
-        ({ [digestAlgo]: digest, ...fixity } = hashes);
+        [digest, fixity] = splitDigests(hashes, digestAlgo);
         if (!this._inventory.getContentPath(digest)) {
           // no digest yet, write the file to storage backend
           await this._store.writeFile(realPath, data, options);
@@ -336,7 +345,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         const hs = await OcflDigest.createStreamThrough(digestAlgos);
         const rs = data.pipeThrough(hs);
         await this._store.writeFile(realPath, rs, options);
-        ({ [digestAlgo]: digest, ...fixity } = hs.digest());
+        [digest, fixity] = splitDigests(hs.digest(), digestAlgo);
         // already exists, delete temp file
         if (this._inventory.getContentPath(digest)) {
           await this._store.remove(realPath);
@@ -359,7 +368,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     const rs = await this._store.createReadable(source);
     const digestAlgo = this._inventory.digestAlgorithm;
     const digestAlgos = [digestAlgo, ...(this._object.fixityAlgorithms || [])];
-    const { [digestAlgo]: digest, ...fixity } = await OcflDigest.digest(digestAlgos, rs);
+    const [digest, fixity] = splitDigests(await OcflDigest.digest(digestAlgos, rs), digestAlgo);
 
     if (!this._inventory.getContentPath(digest)) {
       await this._store.copyFile(source, realPath);

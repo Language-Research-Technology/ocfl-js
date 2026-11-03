@@ -5,7 +5,7 @@ import { type EnumValue, enumeration } from './enum.ts';
 import type { OcflExtension } from './extension.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
-import { type InventoryFile, OcflObjectInventory, type OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
+import { headNotInVersionsError, type InventoryFile, OcflObjectInventory, type OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
 import type { OcflStore } from './store.ts';
 import { type OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
 import type { Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
@@ -188,7 +188,9 @@ class OcflObject {
     if (digest !== actualDigest) {
       throw createError('E060', path.join(this.root, invPath), `recorded=${digest} actual=${actualDigest}`);
     }
-    //return new OcflObjectInventory({ data, digest });
+    if (!data.versions?.[data.head]) {
+      throw headNotInVersionsError(data.head);
+    }
     return new OcflObjectInventory(data);
   }
 
@@ -288,24 +290,11 @@ class OcflObject {
    * @param mode - Update mode. Defaults to `UPDATE_MODE.MERGE`.
    */
   async import(content: string | string[] | string[][], mode: UpdateMode = UPDATE_MODE.MERGE) {
-    if (typeof content === 'string') {
-      content = [[content, '']];
-    }
+    const items = typeof content === 'string' ? [[content, '']] : content.map((p) => (typeof p === 'string' ? [p, ''] : p));
 
     await this.update(async (t) => {
-      const res = await parallelize(content as string[][], async (p) => {
-        if (typeof p === 'string') {
-          p = [p, ''];
-        }
-        const [source, target] = p;
-        return t.import(source, target);
-      });
-      const errors = [];
-      for (let i = 0; i < res.length; ++i) {
-        if (res[i] instanceof Error) {
-          errors.push(content[i][0]);
-        }
-      }
+      const res = await parallelize([...items], async ([source = '', target]) => t.import(source, target));
+      const errors = items.filter((_, i) => res[i] instanceof Error).map(([source]) => source);
       if (errors.length) {
         const msg = `Cannot add the files: ${errors.join(', ')}`;
         throw new Error(msg);

@@ -47,6 +47,13 @@ describe('OcflObject with a malformed or missing inventory', () => {
     );
   });
 
+  it('rejects loading an inventory whose head is not in versions', async () => {
+    const o = await malformedObject('bad-head-load', (inv) => {
+      inv.head = 'v2';
+    });
+    await assert.rejects(o.load(), { message: 'Inventory head "v2" is not in versions.' });
+  });
+
   it('rejects reading a file whose digest is not in the manifest', async () => {
     let digest;
     const o = await malformedObject('bad-manifest', (inv) => {
@@ -57,6 +64,16 @@ describe('OcflObject with a malformed or missing inventory', () => {
     const message = `Digest "${digest}" is not in the manifest of object "bad-manifest".`;
     assert.throws(() => o.getFile('a.txt'), { message });
     await assert.rejects(async () => [...(await o.files())], { message });
+  });
+
+  it('finds no file in a version that does not exist', async () => {
+    const root = path.join(tempdir, 'missing-version');
+    const o = ocfl.object({ id: 'missing-version', root });
+    await o.update(async (t) => t.write('a.txt', 'a'));
+    const { digest } = await o.fileByLogicalPath('a.txt');
+    assert.strictEqual(await o.fileByDigest(digest, 'v9'), undefined);
+    assert.strictEqual(await o.fileByLogicalPath('a.txt', 'v9'), undefined);
+    assert.strictEqual(await o.count('v9'), 0);
   });
 
   it('rejects counting or listing files of an object without an inventory', async () => {
