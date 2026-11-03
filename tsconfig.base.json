@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "lib": ["es2024"],
+    "module": "nodenext",
+    "types": ["node"],
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedDeclarations": false,
+    "strict": false,
+    "noImplicitAny": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "rootDir": "${configDir}/src",
+    "outDir": "${configDir}/dist",
+    "skipLibCheck": true
+  },
+  "include": ["${configDir}/src"]
+}
