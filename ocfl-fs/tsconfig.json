@@ -1,9 +1,13 @@
 {
   "compilerOptions": {
     "target": "es2023",
-    "lib": ["es2024"],
+    "lib": [
+      "es2024"
+    ],
     "module": "nodenext",
-    "types": ["node"],
+    "types": [
+      "node"
+    ],
     "rewriteRelativeImportExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
@@ -16,15 +20,11 @@
     "rootDir": "src",
     "outDir": "dist",
     "skipLibCheck": true,
-    "customConditions": ["@ocfl/source"]
+    "customConditions": [
+      "@ocfl/source"
+    ]
   },
-  "include": ["src"],
-  "typedocOptions": {
-    "entryPoints": ["src/index.ts"],
-    "out": "./docs",
-    "excludePrivate": true,
-    "excludeProtected": true,
-    "includeVersion": true,
-    "plugin": ["typedoc-plugin-missing-exports"]
-  }
+  "include": [
+    "src"
+  ]
 }

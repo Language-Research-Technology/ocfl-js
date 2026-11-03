@@ -39,16 +39,13 @@
     "test": "mocha",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "prepack": "tsc",
-    "build-docs": "typedoc"
+    "prepack": "tsc"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.20.5",
     "memfs": "^4.50.0",
     "mocha": "^11.7.5",
-    "typedoc": "^0.28.19",
-    "typedoc-plugin-missing-exports": "^4.1.2",
     "typescript": "~6.0.3"
   },
   "engines": {

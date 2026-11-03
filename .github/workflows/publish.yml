@@ -1,4 +1,4 @@
-# Publish docs to github pages and publish library to npm
+# Publish library to the registry
 name: Publish
 
 on:
@@ -35,22 +35,6 @@ jobs:
       # - run: echo ${{ steps.create_tag.outputs.version }}
       - name: Check if a new tag is created
         run: "[[ '${{ steps.create_tag.outputs.tagname }}' ]]"
-      - name: get major-minor version
-        id: docver
-        run: echo "DOCVER=${TAGNAME%.*}" >> $GITHUB_ENV
-        env:
-          TAGNAME: ${{ steps.create_tag.outputs.tagname }}
       - run: pnpm install --frozen-lockfile
-      # - run: npm run build-docs
-      # - run: mkdir _docs && mv docs _docs/${{ env.DOCVER }} && mv _docs docs
-      # - run: |
-      #     echo $'---\nlayout: redirect\ntarget: ./${{ env.DOCVER }}\n---' > docs/index.md
-      # - name: Deploy docs to GitHub Pages
-      #   uses: JamesIves/github-pages-deploy-action@v4
-      #   with:
-      #     folder: docs
-      #     target-folder: docs
-      #     single-commit: true
-      #     clean: false
       - name: Publish package on NPM
         run: pnpm publish --access public --no-git-checks --filter ./${{ matrix.package }}
