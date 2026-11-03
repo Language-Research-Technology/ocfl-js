@@ -77,9 +77,8 @@ class OcflFsStore extends OcflStore {
     const maxBuffer = bufferSize || 1;
     async function* generator(): AsyncGenerator<ListedFile> {
       const buffer: Promise<ListedFile>[] = [];
-      let dirp: Promise<fs.Dir> | undefined;
       const dirQueue = [opendir(dirPath, { encoding, bufferSize })];
-      while ((dirp = dirQueue.shift())) {
+      for (let dirp = dirQueue.shift(); dirp; dirp = dirQueue.shift()) {
         const dir = await dirp;
         for await (const de of dir) {
           const cdp = path.join(dir.path, de.name);
@@ -101,10 +100,7 @@ class OcflFsStore extends OcflStore {
           }
         }
       }
-      let file: Promise<ListedFile> | undefined;
-      while ((file = buffer.shift())) {
-        yield file;
-      }
+      yield* buffer;
     }
     return generator();
   }

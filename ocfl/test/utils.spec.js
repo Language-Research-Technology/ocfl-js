@@ -15,7 +15,7 @@ describe('utils.parallelize', () => {
   it('can run function concurrently', async () => {
     const input = [1, 2, 3, 4, 5];
     const startTime = performance.now();
-    const output = await utils.parallelize(input, async (i) => {
+    await utils.parallelize(input, async (i) => {
       await setTimeout(100);
       return i;
     });
@@ -48,7 +48,7 @@ describe('utils.parallelize', () => {
   it('can work with callback that returns a promise', async () => {
     const input = [...Array(30).keys()];
     const startTime = performance.now();
-    await utils.parallelize(input.concat([]), async (i) => setTimeout(100));
+    await utils.parallelize(input.concat([]), async (_i) => setTimeout(100));
     const endTime = performance.now();
     assert(endTime - startTime < 320);
   });

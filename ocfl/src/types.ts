@@ -64,8 +64,8 @@ export interface MultiHasher {
 
 export type OcflVersion = '1.0' | '1.1';
 
-export type OcflExtensionConfig = { extensionName?: string; [key: string]: any };
-type OcflStorageLayout = import('./extension.ts').OcflStorageLayout<OcflExtensionConfig>;
+export type OcflExtensionConfig = { extensionName?: string; [key: string]: unknown };
+type OcflStorageLayout = import('./extension.ts').OcflStorageLayout;
 
 /** Configuration options for an OCFL Object. */
 export type OcflStorageConfig = {
@@ -94,7 +94,7 @@ export type OcflObjectConfig = {
   /** Identifier for the object.  Only be used in a newly created object. */
   id?: string;
   /** Reference to existing extensions defined outside of the object, such as in the storage root. */
-  extensions?: import('./extension.ts').OcflExtension<{}>[];
+  extensions?: import('./extension.ts').OcflExtension[];
   /** Additional digest algorithms to be calculated for each file and added to the fixity block. */
   fixityAlgorithms?: string[];
   /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */

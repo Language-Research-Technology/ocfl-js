@@ -41,23 +41,3 @@ export const createError = (code: ErrorCode, path: string, detail?: string) => {
   }
   return new ValidationError({ code, description, path, detail });
 };
-
-class Validator {
-  /**
-   * From the spec: the contentDirectory value must not contain the forward slash (/) path separator
-   * and must not be either one or two periods (. or ..)
-   */
-  validateContentDirectoryName(_name: string) {
-    // if (name === '.' || name === '..' || name.includes('/')) {
-    //   throw new validation.Error('contentDirectory is invalid'); 16, 17
-    // }
-  }
-  /**
-   * If the key contentDirectory is set, it must be set in the first version of the object and must not change between versions of the same object.
-   * Every file within a version's content directory must be referenced in the manifest section of that version's inventory. There must not be empty directories within a version's content directory.
-   */
-  validateContentDirectory() {}
-  validateInventory(inventory: { id: string }) {
-    new URL(inventory.id);
-  }
-}

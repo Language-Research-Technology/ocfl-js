@@ -29,6 +29,7 @@ class OcflStore {
   static instances: Map<object, OcflStore>;
 
   static getInstance<T extends OcflStore>(this: new (options?: object) => T, options: object = emptyOptions): T {
+    // biome-ignore lint/complexity/noThisInStatic: reads the subclass's own instances map
     const instances = (this as unknown as typeof OcflStore).instances as Map<object, T> | undefined;
     if (!instances) {
       return new this(options);

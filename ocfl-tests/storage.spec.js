@@ -60,8 +60,7 @@ export default (ocfl) => {
     });
 
     it('can create new storage with default layout', async () => {
-      let storage;
-      storage = ocfl.storage({ root: path.join(tempdir, 'storage') });
+      const storage = ocfl.storage({ root: path.join(tempdir, 'storage') });
       await storage.create();
       const namaste = await fs.promises.readFile(path.join(storage.root, `0=ocfl_${storage.ocflVersion}`), 'utf8');
       // namaste
@@ -69,8 +68,7 @@ export default (ocfl) => {
     });
 
     it('can create object in the storage', async () => {
-      let storage;
-      storage = ocfl.storage({ root: path.join(tempdir, 'storage') });
+      const storage = ocfl.storage({ root: path.join(tempdir, 'storage') });
       await storage.load();
       const o = storage.object('http://ocfl.io/examples/object-1');
       await o.update(async (t) => {

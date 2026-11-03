@@ -3,7 +3,6 @@ import { createFsFromVolume, Volume } from 'memfs';
 import { OcflFsStore } from '../../ocfl-fs/src/store.ts';
 import { OcflDigest } from '../src/digest.ts';
 import { OcflObjectInventory } from '../src/inventory.ts';
-import { OcflStore } from '../src/store.ts';
 import { OcflObjectTransactionImpl } from '../src/transaction.ts';
 
 /** In-memory store for testing */
@@ -120,7 +119,6 @@ describe('OcflTransactionImpl class', () => {
   it('write with fixity', async () => {
     object.fixityAlgorithms = ['size', 'crc32'];
     const trx = await createTransaction();
-    const wp = trx._workspaceVersionPath;
     const text = 'Hello, World!';
     await trx.write('test.txt', text);
     await trx.commit();

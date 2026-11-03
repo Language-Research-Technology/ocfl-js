@@ -1,13 +1,9 @@
 {
   "compilerOptions": {
     "target": "es2023",
-    "lib": [
-      "es2024"
-    ],
+    "lib": ["es2024"],
     "module": "nodenext",
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "rewriteRelativeImportExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
@@ -20,11 +16,7 @@
     "rootDir": "src",
     "outDir": "dist",
     "skipLibCheck": true,
-    "customConditions": [
-      "@ocfl/source"
-    ]
+    "customConditions": ["@ocfl/source"]
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

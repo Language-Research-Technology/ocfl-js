@@ -41,13 +41,13 @@ describe('OcflDigest', () => {
     it('can be piped from readable stream', async () => {
       const r = createReadable();
       const hs = await OcflDigest.createStream('sha512');
-      const rs = await r.pipeTo(hs);
+      await r.pipeTo(hs);
       assert.strictEqual(hs.digest(), controlDigest);
     });
     it('can be digest multiple algorithms', async () => {
       const r = createReadable();
       const hs = await OcflDigest.createStream(['sha512']);
-      const rs = await r.pipeTo(hs);
+      await r.pipeTo(hs);
       assert.strictEqual(hs.digest().sha512, controlDigest);
     });
   });
@@ -109,7 +109,7 @@ describe('OcflDigest', () => {
     });
     it('can correctly calculate byte size', async () => {
       const hash = await OcflDigest.digest('size', inputData);
-      const hash2 = '' + new TextEncoder().encode(inputData).length;
+      const hash2 = `${new TextEncoder().encode(inputData).length}`;
       assert.strictEqual(hash, hash2);
     });
   });

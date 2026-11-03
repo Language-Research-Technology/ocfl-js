@@ -91,11 +91,9 @@ class OcflObject {
   /**
    * Latest version number of the OCFL Object
    */
-  get headVersion(): VersionNumber {
+  get headVersion(): VersionNumber | undefined {
     const head = this.inventory?.head;
-    if (head) {
-      return VersionNumber.fromString(head);
-    }
+    return head ? VersionNumber.fromString(head) : undefined;
   }
 
   /**
@@ -438,7 +436,8 @@ class OcflObject {
     //await this.loadExtensions();
     if (inv && filesMetadata) {
       //load file metadata from underlying storage
-      const metadata: OcflObjectInventory['metadata'] = (inv.metadata = {});
+      const metadata: OcflObjectInventory['metadata'] = {};
+      inv.metadata = metadata;
       for await (const file of await this.#store.list(this.root, { recursive: true })) {
         const contentPath = file.path;
         metadata[contentPath] = {

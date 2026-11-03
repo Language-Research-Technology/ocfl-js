@@ -11,7 +11,7 @@ const storageLayout: { [className: string]: typeof OcflStorageLayout } = {};
 
 type ExtensionConstructor<T> = new (config?: OcflExtensionConfig) => T;
 
-class OcflExtension<C extends object = OcflExtensionConfig> {
+class OcflExtension<C extends object = object> {
   static #object: { [name: string]: typeof OcflExtension } = {};
   static #storage: { [name: string]: typeof OcflExtension } = {};
 
@@ -50,6 +50,7 @@ class OcflExtension<C extends object = OcflExtensionConfig> {
   /**
    * Register an extension
    */
+  // biome-ignore lint/complexity/noThisInStatic: defaults to the subclass register() is called on
   static register(extensionClass: typeof OcflExtension = this) {
     const name = extensionClass.NAME;
     extensionByName[name] = extensionClass;
@@ -60,7 +61,7 @@ class OcflExtension<C extends object = OcflExtensionConfig> {
   /**
    * Create an instance of the extension
    */
-  static create<T extends OcflExtension<object>>(this: ExtensionConstructor<T>, config?: OcflExtensionConfig): T {
+  static create<T extends OcflExtension>(this: ExtensionConstructor<T>, config?: OcflExtensionConfig): T {
     const name = config?.extensionName;
     if (!name || (OcflExtension as unknown as typeof OcflExtension).NAME === name) {
       return new this(config);
@@ -96,13 +97,14 @@ class OcflExtension<C extends object = OcflExtensionConfig> {
   /** Return all the parameters in which the value has been set to non-default value */
   get config(): OcflExtensionConfig | undefined {
     const paramNames = Object.keys(this.parameters);
-    if (paramNames.length > 0) {
-      const params: OcflExtensionConfig = { extensionName: this.name };
-      for (const name of paramNames) {
-        params[name] = this.get(name);
-      }
-      return params;
+    if (paramNames.length === 0) {
+      return undefined;
     }
+    const params: OcflExtensionConfig = { extensionName: this.name };
+    for (const name of paramNames) {
+      params[name] = this.get(name);
+    }
+    return params;
   }
 
   get p() {
@@ -144,13 +146,13 @@ class OcflExtension<C extends object = OcflExtensionConfig> {
   }
 }
 
-class OcflStorageLayout<C extends object = OcflExtensionConfig> extends OcflExtension<C> {
+class OcflStorageLayout<C extends object = object> extends OcflExtension<C> {
   static get layout(): StorageLayout {
     return storageLayout as unknown as StorageLayout;
   }
 
   static class(name: string): typeof OcflStorageLayout | undefined {
-    const c = super.class(name);
+    const c = OcflExtension.class(name);
     if (c && c.prototype instanceof OcflStorageLayout) {
       return c as typeof OcflStorageLayout;
     }
@@ -163,8 +165,9 @@ class OcflStorageLayout<C extends object = OcflExtensionConfig> extends OcflExte
   /**
    * Register a storage layout extension
    */
+  // biome-ignore lint/complexity/noThisInStatic: defaults to the subclass register() is called on
   static register(extensionClass: typeof OcflStorageLayout = this) {
-    super.register(extensionClass);
+    OcflExtension.register(extensionClass);
     storageLayout[extensionClass.name] = extensionClass;
   }
 

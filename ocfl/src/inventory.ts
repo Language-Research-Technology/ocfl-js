@@ -98,8 +98,9 @@ class OcflObjectInventory {
         }
       }
       if (digestArr.length > 0) {
-        const verIndex = (this.#fileIndex[version] = this.#fileIndex[version] || {});
-        digests = verIndex[logicalPath] = Object.fromEntries(digestArr);
+        this.#fileIndex[version] ??= {};
+        digests = Object.fromEntries(digestArr);
+        this.#fileIndex[version][logicalPath] = digests;
       }
     }
     return digests;
@@ -122,7 +123,8 @@ class OcflObjectInventory {
     if (fixity) {
       for (const fixityAlgo in fixity) {
         const digestBlock = fixity[fixityAlgo];
-        const fixityIndexDigest: { [contentPath: string]: string } = (fixityIndex[fixityAlgo] = {});
+        const fixityIndexDigest: { [contentPath: string]: string } = {};
+        fixityIndex[fixityAlgo] = fixityIndexDigest;
         for (const digest in digestBlock) {
           const cps = digestBlock[digest];
           for (const cp of cps) {
@@ -133,14 +135,17 @@ class OcflObjectInventory {
     }
     // index logicalPaths
     // { v1: { 'dir/file.txt': { sha512: 'abcdef' } } }
-    const index: { [version: string]: { [logicalPath: string]: Digests } } = (this.#fileIndex = {});
+    const index: { [version: string]: { [logicalPath: string]: Digests } } = {};
+    this.#fileIndex = index;
     const algo = this.digestAlgorithm;
     for (const verName in this.versions) {
       const ver = this.versions[verName];
-      const indexVer: { [logicalPath: string]: Digests } = (index[verName] = {});
+      const indexVer: { [logicalPath: string]: Digests } = {};
+      index[verName] = indexVer;
       for (const digest in ver.state) {
         for (const lp of ver.state[digest]) {
-          const file: Digests = (indexVer[lp] = { [algo]: digest });
+          const file: Digests = { [algo]: digest };
+          indexVer[lp] = file;
           if (fixity) {
             for (const fixityAlgo in fixityIndex) {
               const fixityIndexDigest = fixityIndex[fixityAlgo];
@@ -299,7 +304,7 @@ class OcflObjectInventory {
    * @param version - The version name
    */
   *files(version?: string): Generator<InventoryFile> {
-    let state;
+    let state: InventoryDigests | undefined;
     if (!version || version === 'latest') {
       state = this.state;
       version = this.head;
@@ -418,7 +423,7 @@ class OcflObjectInventory {
       for (const d in s1) {
         const d1 = s1[d];
         const d2 = s2[d];
-        let diff;
+        let diff: string[];
         if (d2?.length) {
           diff = d1.filter((f: string) => !d2.includes(f));
         } else {
@@ -484,8 +489,9 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     if (!digestValue || !digestName) {
       return;
     }
-    const fixityBlock = (this.fixity = this.fixity || {});
-    const digestBlock = (fixityBlock[digestName] = fixityBlock[digestName] || {});
+    this.fixity ??= {};
+    this.fixity[digestName] ??= {};
+    const digestBlock = this.fixity[digestName];
     if (digestBlock[digestValue]) {
       if (!digestBlock[digestValue].includes(contentPath)) {
         digestBlock[digestValue].push(contentPath);

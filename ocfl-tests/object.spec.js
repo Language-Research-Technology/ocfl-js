@@ -2,13 +2,12 @@ import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Readable, Writable } from 'node:stream';
+import { Readable } from 'node:stream';
 
 /**
  * @param {Ocfl} ocfl
  */
 export default (ocfl) => {
-  let object;
   let objcount = 0;
 
   /**
@@ -114,7 +113,9 @@ export default (ocfl) => {
       // }
       const stream = await object.getFile('foo/bar.xml').asStream();
       const buffers = [];
-      for await (const data of stream) buffers.push(/** @type {Buffer} */ (data));
+      for await (const data of stream) {
+        buffers.push(/** @type {Buffer} */ (data));
+      }
       const content = Buffer.concat(buffers);
       assert.equal(content.compare(actualContent), 0);
     });
@@ -122,7 +123,9 @@ export default (ocfl) => {
       const actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'));
       const stream = await object.getFile('foo/bar.xml').stream();
       const buffers = [];
-      for await (const data of stream) buffers.push(/** @type {Buffer} */ (data));
+      for await (const data of stream) {
+        buffers.push(/** @type {Buffer} */ (data));
+      }
       const content = Buffer.concat(buffers);
       assert.equal(content.compare(actualContent), 0);
     });
@@ -136,7 +139,9 @@ export default (ocfl) => {
 
     function createObject(id, useWorkspace, ocflVersion) {
       const config = { id, root: path.join(tempdir, id), ocflVersion, fixityAlgorithms: ['md5', 'crc32'] };
-      if (useWorkspace) config.workspace = config.root + '-tmp';
+      if (useWorkspace) {
+        config.workspace = `${config.root}-tmp`;
+      }
       return ocfl.object(config);
     }
 
@@ -172,7 +177,7 @@ export default (ocfl) => {
           await fs.promises.access(o.workspace);
           throw new Error('test');
         });
-      } catch (e) {}
+      } catch {}
       await assert.rejects(fs.promises.access(o.workspace));
       await assert.rejects(fs.promises.access(o.root));
     });
@@ -193,7 +198,7 @@ export default (ocfl) => {
       for (const ocflVersion of ocfl.OCFL_VERSIONS) {
         it(`can create correct namaste and inventory, with${useWorkspace ? '' : 'out'} workspace, with version ${ocflVersion}`, async () => {
           objcount++;
-          const o = createObject('object-' + objcount, useWorkspace, ocflVersion);
+          const o = createObject(`object-${objcount}`, useWorkspace, ocflVersion);
           const content = 'test';
           const commitInfo = { message: 'test commit', user: { name: 'john', address: 'john@test.com' } };
           const hash = createHash('sha512').update(content).digest('hex');
@@ -209,7 +214,7 @@ export default (ocfl) => {
           const invstr = await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8');
           const inv = JSON.parse(invstr);
           //assert.strictEqual(await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8'), inventory.toString());
-          assert.strictEqual(inv.id, 'object-' + objcount);
+          assert.strictEqual(inv.id, `object-${objcount}`);
           assert.strictEqual(inv.digestAlgorithm, 'sha512');
           assert.strictEqual(inv.type, `https://ocfl.io/${ocflVersion}/spec/#inventory`);
           assert.strictEqual(inv.head, 'v1');
@@ -222,7 +227,7 @@ export default (ocfl) => {
           const sidecar = await fs.promises.readFile(path.join(o.root, 'inventory.json.sha512'), 'utf8');
           const invhash = createHash('sha512').update(invstr).digest('hex');
 
-          assert.strictEqual(sidecar, invhash + ' inventory.json');
+          assert.strictEqual(sidecar, `${invhash} inventory.json`);
 
           //await fs.promises.rm(o.root, { recursive: true, force: true });
         });
@@ -355,13 +360,11 @@ export default (ocfl) => {
         await t.import(path.join(datadir, 'test_input.txt'));
       });
       const inv = await objectx.getInventory();
-      const files = [...(await objectx.files())].map((f) => f.logicalPath).sort();
       assert.strictEqual(inv.head, 'v7');
       await assert.rejects(fs.promises.access(path.join(objectx.root, 'v8')));
     });
 
     it('can correctly create versions', async () => {
-      const f1 = path.join(datadir, 'fixtures/1.1/content/spec-ex-full/v3');
       const o = createObject('object-version-1', true);
       let c;
       await o.update(async (t) => {

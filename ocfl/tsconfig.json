@@ -1,13 +1,9 @@
 {
   "compilerOptions": {
     "target": "es2023",
-    "lib": [
-      "es2024"
-    ],
+    "lib": ["es2024"],
     "module": "nodenext",
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "rewriteRelativeImportExtensions": true,
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
@@ -21,7 +17,5 @@
     "outDir": "dist",
     "skipLibCheck": true
   },
-  "include": [
-    "src"
-  ]
+  "include": ["src"]
 }

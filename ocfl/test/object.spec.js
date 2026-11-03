@@ -10,7 +10,3 @@ describe('OcflObject class', () => {
   //   assert.throws(()=>new OcflObject({root: '/tmp/ocfl-js-test'}));
   // });
 });
-
-async function fn() {
-  await new OcflObject().getInventory();
-}

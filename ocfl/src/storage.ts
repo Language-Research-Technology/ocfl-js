@@ -1,5 +1,4 @@
 //@todo add default layout
-import type { Dir } from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { NotImplementedError } from './error.ts';
@@ -289,8 +288,7 @@ class OcflStorageImpl extends OcflStorage {
         return this;
       },
       async next(): Promise<IteratorResult<OcflObject>> {
-        let dirp: Promise<Dir> | undefined;
-        while ((dirp = stack.pop())) {
+        for (let dirp = stack.pop(); dirp; dirp = stack.pop()) {
           const dir = await dirp;
           const dirent = await dir.read();
           if (!dirent) {
