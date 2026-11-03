@@ -1,13 +1,13 @@
-const { OcflStorageLayout } = require("../extension");
-const { OcflDigest } = require("../digest");
-const path = require("path");
+const { OcflStorageLayout } = require('../extension');
+const { OcflDigest } = require('../digest');
+const path = require('path');
 
 const DefaultConfig = {
   extensionName: '000N-path-direct-storage-layout',
   omitScheme: false,
   /** @type {any} */
   replace: [],
-  suffix: '/__object__'
+  suffix: '/__object__',
 };
 
 /** @typedef {Partial<typeof DefaultConfig>} PathDirectStorageLayoutConfig */
@@ -15,14 +15,16 @@ const DefaultConfig = {
  * @extends {OcflStorageLayout<typeof DefaultConfig>}
  */
 class PathDirectStorageLayout extends OcflStorageLayout {
-  static get NAME() { return DefaultConfig.extensionName; }
+  static get NAME() {
+    return DefaultConfig.extensionName;
+  }
   static get DESCRIPTION() {
-    return "OCFL object identifiers are used directly as the path.";
+    return 'OCFL object identifiers are used directly as the path.';
   }
 
   /**
-   * 
-   * @param {PathDirectStorageLayoutConfig} [config] 
+   *
+   * @param {PathDirectStorageLayoutConfig} [config]
    */
   constructor(config) {
     super(config, DefaultConfig);
@@ -30,7 +32,7 @@ class PathDirectStorageLayout extends OcflStorageLayout {
 
   /**
    * @param {string} id
-   * @return {string} 
+   * @return {string}
    */
   map(id) {
     var suffix = this.parameters.suffix;
@@ -40,8 +42,8 @@ class PathDirectStorageLayout extends OcflStorageLayout {
       p = p.replace(r[0], r[1]);
     }
     try {
-      let u = new URL(p);
-      let parts = [];
+      const u = new URL(p);
+      const parts = [];
       if (!this.parameters.omitScheme && u.protocol !== 'file:') {
         parts.push(u.protocol.replace(':', ''));
       }
@@ -49,13 +51,11 @@ class PathDirectStorageLayout extends OcflStorageLayout {
         parts.push(u.hostname.replace(',', '_').replace(';', '/'));
       }
       p = path.join(parts.join('_'), u.pathname + u.search + u.hash);
-    } catch (error) {
-    }
+    } catch (error) {}
     p = p.replace(/^\/+/, '').replace(/\/+$/, '');
     return path.join(p, this.parameters.suffix);
     //if (/^\w+:/.test(id)) {
   }
-
 }
 
 module.exports = { PathDirectStorageLayout };

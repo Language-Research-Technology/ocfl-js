@@ -1,32 +1,33 @@
 //@ts-check
-"use strict";
+'use strict';
 
-const assert = require("assert");
-const digest_ = require("../lib/digest.js");
-const { OcflDigest } = require("../lib/digest.js");
+const assert = require('assert');
+const digest_ = require('../lib/digest.js');
+const { OcflDigest } = require('../lib/digest.js');
 const Readable = require('stream').Readable;
-const { createHash } = require("node:crypto");
+const { createHash } = require('node:crypto');
 const { testSymbol } = require('../lib/utils.js');
 
-describe("OcflDigest", function () {
-  const inputData = "This Oxford Common File Layout (OCFL) specification describes an application-independent approach to the storage of digital objects in a structured, transparent, and predictable manner. It is designed to promote long-term access and management of digital objects within digital repositories"
+describe('OcflDigest', () => {
+  const inputData =
+    'This Oxford Common File Layout (OCFL) specification describes an application-independent approach to the storage of digital objects in a structured, transparent, and predictable manner. It is designed to promote long-term access and management of digital objects within digital repositories';
   const controlDigest = createHash('sha512').update(inputData).digest('hex');
 
   /**
    * @param {*} [encoding]
    */
   function createReadable(encoding) {
-    let r = new Readable({ highWaterMark: 2, encoding, read: () => { } });
+    const r = new Readable({ highWaterMark: 2, encoding, read: () => {} });
     let i = 0;
-    for (let c of inputData) {
+    for (const c of inputData) {
       setTimeout(() => r.push(c), ++i * 1);
     }
     setTimeout(() => r.push(null), ++i * 1);
     return /** @type {ReadableStream} */ (Readable.toWeb(r));
   }
 
-  describe("digest", async function () {
-    it("can calculate hash from a string", async function () {
+  describe('digest', async () => {
+    it('can calculate hash from a string', async () => {
       const hash = await OcflDigest.digest('sha512', inputData);
       assert.strictEqual(hash, controlDigest);
       const hash2 = await OcflDigest.digest(['sha512'], inputData);
@@ -34,21 +35,21 @@ describe("OcflDigest", function () {
     });
   });
 
-  describe("createStream", async function () {
-    it("can be used as stream", async function () {
+  describe('createStream', async () => {
+    it('can be used as stream', async () => {
       const hs = await OcflDigest.createStream('sha512');
       const w = hs.getWriter();
       w.write(inputData);
       w.close();
       assert.strictEqual(hs.digest(), controlDigest);
     });
-    it("can be piped from readable stream", async function () {
+    it('can be piped from readable stream', async () => {
       const r = createReadable();
       const hs = await OcflDigest.createStream('sha512');
       const rs = await r.pipeTo(hs);
       assert.strictEqual(hs.digest(), controlDigest);
     });
-    it("can be digest multiple algorithms", async function () {
+    it('can be digest multiple algorithms', async () => {
       const r = createReadable();
       const hs = await OcflDigest.createStream(['sha512']);
       const rs = await r.pipeTo(hs);
@@ -56,8 +57,8 @@ describe("OcflDigest", function () {
     });
   });
 
-  describe("createStreamThrough", async function () {
-    it("can be piped from readable stream with string chunk", async function () {
+  describe('createStreamThrough', async () => {
+    it('can be piped from readable stream with string chunk', async () => {
       const r = createReadable('utf8');
       const hs = await OcflDigest.createStreamThrough('sha512');
       const rs = r.pipeThrough(hs);
@@ -68,22 +69,22 @@ describe("OcflDigest", function () {
       assert.strictEqual(inputData, outputData);
       assert.strictEqual(hs.digest(), controlDigest);
     });
-    it("can be piped from readable stream with buffer chunk", async function () {
+    it('can be piped from readable stream with buffer chunk', async () => {
       const r = createReadable();
       const hs = await OcflDigest.createStreamThrough('sha512');
       const rs = r.pipeThrough(hs);
-      let buffers = [];
+      const buffers = [];
       for await (const chunk of rs) {
         buffers.push(chunk);
       }
-      let outputData = Buffer.concat(buffers).toString('utf8');
+      const outputData = Buffer.concat(buffers).toString('utf8');
       assert.strictEqual(inputData, outputData);
       assert.strictEqual(hs.digest(), controlDigest);
     });
   });
 
-  describe("digest instances", async function () {
-    it("can reuse the same hash instances", async function () {
+  describe('digest instances', async () => {
+    it('can reuse the same hash instances', async () => {
       const cache = digest_[testSymbol].hasherCache;
       let hs = await OcflDigest.createStream('sha512');
       hs.update(inputData);
@@ -96,7 +97,7 @@ describe("OcflDigest", function () {
       assert.strictEqual(cache['sha512'].length, 1);
       assert.strictEqual(h1, h2);
     });
-    it("can create multiple of the same hash instances", async function () {
+    it('can create multiple of the same hash instances', async () => {
       const p = [];
       for (let i = 0; i < 10; ++i) {
         const hs = await OcflDigest.createStream('sha512');
@@ -113,24 +114,23 @@ describe("OcflDigest", function () {
     });
   });
 
-  describe("digest algorithms", async function () {
-    it("can correctly calculate BLAKE2b512", async function () {
+  describe('digest algorithms', async () => {
+    it('can correctly calculate BLAKE2b512', async () => {
       const hash = await OcflDigest.digest('blake2b-512', inputData);
       const hash2 = createHash('BLAKE2b512').update(inputData).digest('hex');
       assert.strictEqual(hash, hash2);
     });
-    it("can correctly calculate sha 512/256", async function () {
+    it('can correctly calculate sha 512/256', async () => {
       let hash = await OcflDigest.digest('sha512/256', inputData);
       const hash2 = createHash('sha512-256').update(inputData).digest('hex');
       assert.strictEqual(hash, hash2);
       hash = await OcflDigest.digest('sha512/256', new TextEncoder().encode(inputData));
       assert.strictEqual(hash, hash2);
     });
-    it("can correctly calculate byte size", async function () {
+    it('can correctly calculate byte size', async () => {
       const hash = await OcflDigest.digest('size', inputData);
-      const hash2 = '' + (new TextEncoder()).encode(inputData).length;
+      const hash2 = '' + new TextEncoder().encode(inputData).length;
       assert.strictEqual(hash, hash2);
     });
   });
-
 });

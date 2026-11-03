@@ -1,4 +1,3 @@
-
 module.exports = {
   ...require('./0009-digest-algorithms'),
   ...require('./0002-flat-direct-storage-layout'),
@@ -6,6 +5,6 @@ module.exports = {
   ...require('./0004-hashed-n-tuple-storage-layout'),
   ...require('./0006-flat-omit-prefix-storage-layout'),
   ...require('./0007-n-tuple-omit-prefix-storage-layout'),
-  ...require('./000N-path-direct-storage-layout')
+  ...require('./000N-path-direct-storage-layout'),
 };
 //const { DigestAlgorithm } = require('./0001-digest-algorithms.js');

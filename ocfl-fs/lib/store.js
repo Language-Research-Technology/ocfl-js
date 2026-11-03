@@ -9,7 +9,7 @@ const { INVENTORY_NAME } = OcflConstants;
 
 /**
  * @typedef {Object} OcflFsStoreConfig
- * @property {typeof fs} [fs] - Custom fs module to use for any file operation 
+ * @property {typeof fs} [fs] - Custom fs module to use for any file operation
  */
 
 /**
@@ -86,30 +86,30 @@ class OcflFsStore extends OcflStore {
   }
 
   /**
-   * @param {string} dirPath 
+   * @param {string} dirPath
    * @param {OpenDirOptions} [options]
    * @return {Promise<AsyncIterableIterator<{name: string, path: string, size: number, lastModified: Date}>> }
    */
   async list(dirPath, { encoding = 'utf8', bufferSize = 32, recursive = false } = {}) {
-    const {opendir, stat} = this.fs.promises;
+    const { opendir, stat } = this.fs.promises;
     const maxBuffer = bufferSize || 1;
     async function* generator() {
       /** @type Promise<{ name: string, path: string, size: number, lastModified: Date}>[] */
-      let buffer = [];
+      const buffer = [];
       let dirp;
       const dirQueue = [opendir(dirPath, { encoding, bufferSize })];
-      while (dirp = dirQueue.shift()) {
+      while ((dirp = dirQueue.shift())) {
         const dir = await dirp;
         for await (const de of dir) {
           const cdp = path.join(dir.path, de.name);
           if (recursive && de.isDirectory()) {
             dirQueue.push(opendir(cdp, { encoding, bufferSize }));
           } else {
-            let f = stat(cdp).then(stats => ({
+            const f = stat(cdp).then((stats) => ({
               name: de.name,
               path: path.relative(dirPath, cdp),
               size: stats.size,
-              lastModified: stats.mtime
+              lastModified: stats.mtime,
             }));
             if (buffer.length < maxBuffer) {
               buffer.push(f);
@@ -121,7 +121,7 @@ class OcflFsStore extends OcflStore {
         }
       }
       let file;
-      while (file = buffer.shift()) {
+      while ((file = buffer.shift())) {
         yield file;
       }
     }
@@ -149,8 +149,6 @@ class OcflFsStore extends OcflStore {
   async remove(filePath) {
     return this.fs.promises.rm(filePath, { recursive: true, force: true });
   }
-
-
-};
+}
 
 module.exports = { OcflFsStore };

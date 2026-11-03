@@ -1,6 +1,6 @@
 /**
  * @module
- * default constants 
+ * default constants
  */
 // module.exports = {
 //   OCFL_VERSION: 1.1,
@@ -18,7 +18,7 @@ const OcflConstants = {
   INVENTORY_NAME: 'inventory.json',
   EXTENSIONS_DIR: 'extensions',
   EXTENSION_CONFIG: 'config.json',
-  DIGEST_ALGORITHM: 'sha512'
+  DIGEST_ALGORITHM: 'sha512',
 };
 
 module.exports = { OcflConstants };

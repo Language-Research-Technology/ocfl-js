@@ -1,4 +1,5 @@
 # ocfl-js - An OCFL implementation in Node.js
+
 Node.js library for creating and manipulating Oxford Common File Layout(OCFL) storage and object.
 The library consists of common components and implementations for different storage backends.
 
@@ -21,7 +22,7 @@ Import the corresponding module of the chosen backend and then create a new Stor
 
 Before any OCFL object can be created in the storage, either the `create` or `load` methods must be be called first.
 Alternatively, use the `createStorage` and `loadStorage` methods to create a new storage or load an existing storage as follows:
-    
+
     let storage;
     let config = {root: '/var/data/myocfl'};
     try {
@@ -39,13 +40,13 @@ To choose a different storage layout, pass the layout name, config, or instance:
 
     // Use class name
     storage = ocfl.createStorage({ root: '/var/data/myocfl', layout: 'FlatDirectStorageLayout' });
-    
+
     // Use official extension name and specify parameters
     storage = ocfl.createStorage({ root: '/var/data/myocfl', layout: { 
       extensionName: '0003-hash-and-id-n-tuple-storage-layout',
       tupleSize: 1
     }});
-    
+
     // Instantiate the class directly
     let layout = new ocfl.StorageLayout.PathDirectStorageLayout({omitScheme: true});
     storage = ocfl.createStorage({ root: '/var/data/myocfl', layout });

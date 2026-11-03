@@ -2,10 +2,18 @@
  * @module ocfl
  */
 
-const { OcflConstants, OcflDigest, OcflExtension, OcflStorageLayout, OcflStore,
-  OcflObject, OcflObjectInventory, OcflObjectTransactionImpl,
-  OcflStorage, OcflStorageImpl,
-  extensions
+const {
+  OcflConstants,
+  OcflDigest,
+  OcflExtension,
+  OcflStorageLayout,
+  OcflStore,
+  OcflObject,
+  OcflObjectInventory,
+  OcflObjectTransactionImpl,
+  OcflStorage,
+  OcflStorageImpl,
+  extensions,
 } = require('./lib/index.js');
 
 /**
@@ -36,12 +44,12 @@ function layout(config) {
   }
   return OcflStorageLayout.class(name).create(c);
 }
-let storageLayout = Object.assign(layout, /** @type {StorageLayout} */(OcflStorageLayout.layout))
+const storageLayout = Object.assign(layout, /** @type {StorageLayout} */ (OcflStorageLayout.layout));
 
 /**
  * Creates a new OCFL core API with a specific backend store.
- * Any backend store implementation module must return the result of this method. 
- * @param {typeof OcflStore} store 
+ * Any backend store implementation module must return the result of this method.
+ * @param {typeof OcflStore} store
  * @param {SO} defaultOptions
  * @template SO
  * @returns Top level OCFL API interface that provides storage and object creation.
@@ -65,7 +73,7 @@ function implementOcfl(store, defaultOptions) {
         name = config.extensionName;
         c = config;
       }
-      let cls = OcflStorageLayout.class(name)
+      const cls = OcflStorageLayout.class(name);
       if (!cls) throw new Error(`Layout "${name}" is not supported.`);
       return cls.create(c);
     },
@@ -96,7 +104,7 @@ function implementOcfl(store, defaultOptions) {
      * @return {Promise<OcflStorage>}
      */
     async createStorage(config, storeOptions = defaultOptions) {
-      return (new OcflStorageImpl(config, store.getInstance(storeOptions))).create();
+      return new OcflStorageImpl(config, store.getInstance(storeOptions)).create();
     },
 
     /**
@@ -106,24 +114,26 @@ function implementOcfl(store, defaultOptions) {
      * @return {Promise<OcflStorage>}
      */
     async loadStorage(config, storeOptions = defaultOptions) {
-      return (new OcflStorageImpl(config, store.getInstance(storeOptions))).load();
-    }
-  }
+      return new OcflStorageImpl(config, store.getInstance(storeOptions)).load();
+    },
+  };
 }
 
 module.exports = {
   OcflConstants,
   OcflDigest,
-  OcflExtension, OcflStorageLayout,
+  OcflExtension,
+  OcflStorageLayout,
   OcflStore,
   OcflObject,
   OcflObjectInventory,
   OcflObjectTransactionImpl,
-  OcflStorage, OcflStorageImpl,
+  OcflStorage,
+  OcflStorageImpl,
   implementOcfl,
-  extensions
+  extensions,
 };
 
-for (let name in extensions) {
+for (const name in extensions) {
   extensions[name].register();
 }

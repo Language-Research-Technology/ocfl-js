@@ -1,7 +1,7 @@
 # Publish docs to github pages and publish library to npm
 name: Publish
 
-on: 
+on:
   workflow_run:
     workflows: [Run Tests]
     types: [completed]
@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: "https://registry.npmjs.org"
       - uses: ButlerLogic/action-autotag@1.1.2
         env:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
@@ -37,7 +37,7 @@ jobs:
         run: "[[ '${{ steps.create_tag.outputs.tagname }}' ]]"
       - name: get major-minor version
         id: docver
-        run: echo "DOCVER=${TAGNAME%.*}" >> $GITHUB_ENV 
+        run: echo "DOCVER=${TAGNAME%.*}" >> $GITHUB_ENV
         env:
           TAGNAME: ${{ steps.create_tag.outputs.tagname }}
       - run: pnpm install --frozen-lockfile
