@@ -19,6 +19,11 @@
     "Peter Sefton (https://orcid.org/0000-0002-3545-944X)"
   ],
   "license": "GPL-3.0-or-later",
-  "scripts": {},
-  "packageManager": "pnpm@12.16.1"
+  "scripts": {
+    "lint:knip": "knip"
+  },
+  "packageManager": "pnpm@12.16.1",
+  "devDependencies": {
+    "knip": "^6.44.1"
+  }
 }
