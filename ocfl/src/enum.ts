@@ -9,6 +9,8 @@ export interface EnumValue {
   toString(): string;
 }
 
+const VALUES = Symbol('values');
+
 type EnumType<T extends readonly string[]> = {
   new (name: string, ordinal: number): EnumValue;
   [Symbol.iterator](): Iterator<string>;
@@ -38,14 +40,12 @@ function enumeration<const T extends readonly string[]>(constants: T): EnumType<
       return constants[Symbol.iterator]();
     }
   }
-  let count = 0;
-  for (const c of constants) {
-    Object.defineProperty(Enum, c, {
-      value: Object.freeze(new Enum(c, count++)),
-      writable: false,
-      enumerable: true,
-    });
-  }
+  const values = constants.map((c, ordinal) => {
+    const value = Object.freeze(new Enum(c, ordinal));
+    Object.defineProperty(Enum, c, { value, writable: false, enumerable: true });
+    return value;
+  });
+  Object.defineProperty(Enum, VALUES, { value: Object.freeze(values) });
   return Object.freeze(Enum) as unknown as EnumType<T>;
 }
 
@@ -69,14 +69,13 @@ enumeration.of = <T extends readonly string[]>(type: EnumType<T>, value: unknown
   }
 };
 
+const valuesOf = (type: object) => (type as { readonly [VALUES]: readonly EnumValue[] })[VALUES];
+
 /**
  * Return an existing constant based on the index
  */
-enumeration.at = <T extends readonly string[]>(type: EnumType<T>, index: number): EnumValue | undefined => {
-  const name = [...type][index];
-  return name === undefined ? undefined : (type as unknown as Record<string, EnumValue>)[name];
-};
+enumeration.at = <T extends readonly string[]>(type: EnumType<T>, index: number): EnumValue | undefined => valuesOf(type)[index];
 
-enumeration.size = <T extends readonly string[]>(type: EnumType<T>): number => [...type].length;
+enumeration.size = <T extends readonly string[]>(type: EnumType<T>): number => valuesOf(type).length;
 
 export { enumeration };
