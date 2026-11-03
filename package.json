@@ -22,7 +22,8 @@
   "scripts": {
     "lint:knip": "knip",
     "lint:biome": "biome check .",
-    "format": "biome check --write ."
+    "format": "biome check --write .",
+    "typecheck": "pnpm -r typecheck"
   },
   "packageManager": "pnpm@12.16.1",
   "devDependencies": {

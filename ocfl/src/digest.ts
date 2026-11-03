@@ -1,8 +1,7 @@
-//@ts-check
-
-const crypto = require('node:crypto');
-const zlib = require('node:zlib');
-const { enumeration } = require('./enum.js');
+import crypto from 'node:crypto';
+import zlib from 'node:zlib';
+import { enumeration } from './enum.ts';
+import type { CommonHasher, IDataType, MultiHasher } from './types.ts';
 
 const CONTENT = enumeration(['sha256', 'sha512']);
 const FIXITY = enumeration(['sha256', 'sha512', 'md5', 'sha1', 'blake2b-512', 'sha512/256', 'size', 'crc32']);
@@ -17,18 +16,14 @@ const NATIVE = {
   'blake2b-512': 'blake2b512',
 };
 
-/**
- * @typedef {((outputType: "binary") => Uint8Array) & ((outputType?: "hex") => string)} IDigest
- * @typedef {((outputType: "binary") => {[key:string]: Uint8Array}) & ((outputType?: "hex") => {[key:string]: string})} IMultiDigest
- * @typedef {WritableStream & { update(data: IDataType): void, digest: IDigest }} WritableStreamHasher
- * @typedef {WritableStream & { update(data: IDataType): void, digest: IMultiDigest }} WritableStreamMultiHasher
- */
+type Digest = CommonHasher['digest'];
+type MultiDigest = MultiHasher['digest'];
+type WritableStreamHasher = WritableStream & { update(data: IDataType): void; digest: Digest };
+type WritableStreamMultiHasher = WritableStream & { update(data: IDataType): void; digest: MultiDigest };
+type StreamThroughHash = TransformStream & { digest: MultiDigest };
+type StreamThroughOptions = { writableStrategy?: QueuingStrategy; readableStrategy?: QueuingStrategy };
 
-/**
- * @param {IDataType} data
- * @returns {string | Uint8Array}
- */
-function toBytes(data) {
+function toBytes(data: IDataType): string | Uint8Array {
   if (typeof data === 'string' || data instanceof Uint8Array) {
     return data;
   }
@@ -38,12 +33,13 @@ function toBytes(data) {
   return new Uint8Array(data);
 }
 
-/**
- * @param {number} digestSize
- * @param {() => { update(data: string | Uint8Array): void, digest(): Uint8Array, hex(): string }} start
- * @returns {CommonHasher}
- */
-function hasher(digestSize, start) {
+interface HashState {
+  update(data: string | Uint8Array): void;
+  digest(): Uint8Array;
+  hex(): string;
+}
+
+function hasher(digestSize: number, start: () => HashState): CommonHasher {
   let state = start();
   return {
     digestSize,
@@ -55,30 +51,23 @@ function hasher(digestSize, start) {
       state.update(toBytes(data));
       return this;
     },
-    // @ts-expect-error overloaded return type
-    digest(encoding) {
-      return encoding === 'binary' ? state.digest() : state.hex();
-    },
+    digest: ((encoding?: 'binary' | 'hex') => (encoding === 'binary' ? state.digest() : state.hex())) as Digest,
   };
 }
 
-/** @type { {[key: string]: () => Promise<CommonHasher>} } */
-const hasherFactory = {};
-/** @type { Object.<string, CommonHasher> } */
-const hasherSyncCache = {};
+const hasherFactory: { [key: string]: () => Promise<CommonHasher> } = {};
+const hasherSyncCache: { [key: string]: CommonHasher } = {};
 
 /**
  * Register a hash algorithm and it's factory function.
- * @param {string} name
- * @param {() => Promise<CommonHasher>} factory
  */
-function registerHasherFactory(name, factory) {
+function registerHasherFactory(name: string, factory: () => Promise<CommonHasher>) {
   if (typeof factory === 'function') {
     hasherFactory[name] = factory;
   }
 }
 
-function hasAlgorithm(name) {
+function hasAlgorithm(name: string) {
   return name in hasherFactory;
 }
 
@@ -87,8 +76,11 @@ for (const [algo, nativeName] of Object.entries(NATIVE)) {
   registerHasherFactory(algo, async () =>
     hasher(digestSize, () => {
       const h = crypto.createHash(nativeName);
-      let result;
-      const final = () => (result ??= h.digest());
+      let result: Buffer | undefined;
+      const final = () => {
+        result ??= h.digest();
+        return result;
+      };
       return { update: (d) => h.update(d), digest: () => new Uint8Array(final()), hex: () => final().toString('hex') };
     }),
   );
@@ -126,9 +118,8 @@ registerHasherFactory('size', async () =>
 
 /**
  * Create a hasher instance for the given algorithm.
- * @param {string} algorithm
  */
-async function createHasher(algorithm) {
+async function createHasher(algorithm: string): Promise<CommonHasher> {
   const factory = hasherFactory[algorithm];
   if (!factory) {
     throw new Error(`Unsupported digest algorithm: ${algorithm}`);
@@ -138,12 +129,11 @@ async function createHasher(algorithm) {
 
 /**
  * Create a hasher instance for calculating multiple types of digest in one go.
- * @param {string|string[]} algorithms
  */
-async function createMultiHasher(algorithms) {
+async function createMultiHasher(algorithms: string | string[]): Promise<MultiHasher> {
   const algoNames = Array.isArray(algorithms) ? (algorithms.length ? [...new Set(algorithms)] : ['sha512']) : [algorithms];
   const hashers = await Promise.all(algoNames.map(createHasher));
-  return /** @type { MultiHasher } */ ({
+  return {
     multi: true,
     update(data) {
       for (const hash of hashers) {
@@ -151,53 +141,46 @@ async function createMultiHasher(algorithms) {
       }
       return this;
     },
-    digest(encoding) {
-      const result = {};
+    digest: ((encoding?: 'binary' | 'hex') => {
+      const result: { [key: string]: string | Uint8Array } = {};
       for (let i = 0; i < hashers.length; i++) {
-        result[algoNames[i]] = hashers[i].digest(encoding);
+        result[algoNames[i]] = hashers[i].digest(encoding as 'hex');
       }
       return result;
-    },
-  });
+    }) as MultiDigest,
+  };
+}
+
+function createAnyHasher(algorithm: string | string[]): Promise<CommonHasher | MultiHasher> {
+  return Array.isArray(algorithm) ? createMultiHasher(algorithm) : createHasher(algorithm);
 }
 
 /**
  * Create a hash instance that implements WritableStream.
- * @overload
- * @param {string} algorithm One or more digest algorithm names
- * @return {Promise<WritableStreamHasher>}
+ * @param algorithm One or more digest algorithm names
  */
-/**
- * @overload
- * @param {string[]} algorithm One or more digest algorithm names
- * @return {Promise<WritableStreamMultiHasher>}
- */
-async function createStream(algorithm = 'sha512') {
-  const hash = await (Array.isArray(algorithm) ? createMultiHasher(algorithm) : createHasher(algorithm));
-  /** @type {any} */
+async function createStream(algorithm?: string): Promise<WritableStreamHasher>;
+async function createStream(algorithm: string[]): Promise<WritableStreamMultiHasher>;
+async function createStream(algorithm: string | string[] = 'sha512'): Promise<WritableStreamHasher | WritableStreamMultiHasher> {
+  const hash = await createAnyHasher(algorithm);
   const ws = new WritableStream({
     write(chunk) {
       hash.update(chunk);
     },
-  });
+  }) as WritableStreamHasher & WritableStreamMultiHasher;
   ws.update = (data) => {
     hash.update(data);
   };
-  ws.digest = (encoding) => hash.digest(encoding);
+  ws.digest = ((encoding?: 'binary' | 'hex') => hash.digest(encoding as 'hex')) as Digest & MultiDigest;
   return ws;
 }
 
-/** @typedef {TransformStream & { digest: IMultiDigest }} StreamThroughHash */
 /**
  * Create a pass through stream that pass data as it is and calculate the digest as data pass through.
- * @param {string|string[]} [algorithm]
- * @param {object} [options]
- * @return {Promise<StreamThroughHash>}
  */
-async function createStreamThrough(algorithm = 'sha512', options) {
-  const hash = await (Array.isArray(algorithm) ? createMultiHasher(algorithm) : createHasher(algorithm));
+async function createStreamThrough(algorithm: string | string[] = 'sha512', options?: StreamThroughOptions): Promise<StreamThroughHash> {
+  const hash = await createAnyHasher(algorithm);
   const { writableStrategy, readableStrategy } = options || {};
-  /** @type {any} */
   const ts = new TransformStream(
     {
       transform(chunk, controller) {
@@ -207,52 +190,37 @@ async function createStreamThrough(algorithm = 'sha512', options) {
     },
     writableStrategy,
     readableStrategy,
-  );
-  ts.digest = (encoding) => hash.digest(encoding);
+  ) as StreamThroughHash;
+  ts.digest = ((encoding?: 'binary' | 'hex') => hash.digest(encoding as 'hex')) as MultiDigest;
   return ts;
 }
 
-/**
- *
- * @overload
- * @param {string[]} algorithm
- * @param {IDataType | ReadableStream} input
- * @return {Promise<{[key:string]: string}>}
- */
-/**
- * @overload
- * @param {string} algorithm
- * @param {IDataType | ReadableStream} input
- * @return {Promise<string>}
- */
-async function digest(algorithm, input) {
+async function digest(algorithm: string[], input: IDataType | ReadableStream): Promise<{ [key: string]: string }>;
+async function digest(algorithm: string, input: IDataType | ReadableStream): Promise<string>;
+async function digest(algorithm: string | string[], input: IDataType | ReadableStream): Promise<string | { [key: string]: string }> {
   if (input instanceof ReadableStream) {
-    const hash = await createStream(algorithm);
+    const hash = await createStream(algorithm as string);
     await input.pipeTo(hash);
     return hash.digest();
-  } else {
-    const hash = await (Array.isArray(algorithm) ? createMultiHasher(algorithm) : createHasher(algorithm));
-    return hash.update(input).digest();
   }
+  const hash = await createAnyHasher(algorithm);
+  return hash.update(input).digest();
 }
 
-async function initSync(algorithm) {
+async function initSync(algorithm: string) {
   if (!hasherSyncCache[algorithm]) {
     const factory = hasherFactory[algorithm];
     if (!factory) {
       throw new Error(`Unsupported digest algorithm: ${algorithm}`);
     }
-    const hasher = await factory();
-    hasherSyncCache[algorithm] = hasher;
+    hasherSyncCache[algorithm] = await factory();
   }
 }
 
 /**
  * For this sync function to work correctly, it requires a call to initSync() to be awaited for each algorithm before calling this function.
- * @param {string} algorithm
- * @param {IDataType} input
  */
-function digestSync(algorithm, input) {
+function digestSync(algorithm: string, input: IDataType): string {
   const hasher = hasherSyncCache[algorithm];
   if (!hasher) {
     throw new Error(`Hasher for algorithm ${algorithm} is not initialized. Please call and await initSync('${algorithm}') before calling this function.`);
@@ -260,7 +228,7 @@ function digestSync(algorithm, input) {
   return hasher.init().update(input).digest();
 }
 
-const HEX_DIGEST_LENGTH = {
+const HEX_DIGEST_LENGTH: { [algorithm: string]: number } = {
   md5: 32,
   sha1: 40,
   sha256: 64,
@@ -271,7 +239,7 @@ const HEX_DIGEST_LENGTH = {
   size: 1,
 };
 
-function getHexDigestLength(algorithm) {
+function getHexDigestLength(algorithm: string) {
   return HEX_DIGEST_LENGTH[algorithm] || 0;
 }
 
@@ -288,4 +256,4 @@ const OcflDigest = {
   initSync,
 };
 
-module.exports = { OcflDigest };
+export { OcflDigest };

@@ -1,4 +1,4 @@
-const { OcflStorageLayout } = require('../extension');
+import { OcflStorageLayout } from '../extension.ts';
 
 class FlatOmitPrefixStorageLayout extends OcflStorageLayout {
   static get NAME() {
@@ -6,4 +6,4 @@ class FlatOmitPrefixStorageLayout extends OcflStorageLayout {
   }
 }
 
-module.exports = { FlatOmitPrefixStorageLayout };
+export { FlatOmitPrefixStorageLayout };

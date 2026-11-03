@@ -1,102 +1,83 @@
-//@ts-check
-const path = require('path');
-const fs = require('node:fs');
-const { Readable, Writable } = require('node:stream');
+import fs from 'node:fs';
+import path from 'node:path';
+import { Readable, Writable } from 'node:stream';
+import { type ListedFile, type ListOptions, OcflStore, type WriteFileData } from '@ocfl/ocfl';
 
-const { OcflStore, OcflConstants } = require('@ocfl/ocfl');
-const { opendir } = require('./utils.js');
-const { INVENTORY_NAME } = OcflConstants;
-
-/**
- * @typedef {Object} OcflFsStoreConfig
- * @property {typeof fs} [fs] - Custom fs module to use for any file operation
- */
+export interface OcflFsStoreConfig {
+  /** Custom fs module to use for any file operation */
+  fs?: typeof fs;
+}
 
 /**
  * OCFL Object backed by local filesystem
  */
 class OcflFsStore extends OcflStore {
-  /** @type {Map<Object, OcflFsStore>} */
-  static instances = new Map();
+  static instances: Map<object, OcflFsStore> = new Map();
 
-  // static getInstance({fs = require('fs')} = {}) {
-  //   let store = OcflFsStore.instances.get(fs);
-  //   if (!store) {
-  //     store = new OcflFsStore({fs});
-  //     OcflFsStore.instances.set(fs, store);
-  //   }
-  //   return store;
-  // }
+  fs: typeof fs;
 
   /**
    * Create a new backend store that uses the given fs api.
    * A typical use case would be a locally mounted file system.
-   * @param {OcflFsStoreConfig} [config]
    */
-  constructor(config) {
+  constructor(config?: OcflFsStoreConfig) {
     super();
     this.fs = config?.fs ?? fs;
   }
 
-  async stat(filePath) {
+  async stat(filePath: string) {
     return this.fs.promises.stat(filePath);
   }
 
-  async createReadStream(filePath, options) {
-    //await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  async createReadStream(filePath: string, options?: Parameters<typeof fs.createReadStream>[1]) {
     return this.fs.createReadStream(filePath, options);
   }
 
-  async createWriteStream(filePath, options) {
+  async createWriteStream(filePath: string, options?: Parameters<typeof fs.createWriteStream>[1]) {
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     return this.fs.createWriteStream(filePath, options);
   }
 
-  async createReadable(filePath, options) {
-    return /** @type {ReadableStream} */ (Readable.toWeb(this.fs.createReadStream(filePath, options)));
+  async createReadable(filePath: string, options?: Parameters<typeof fs.createReadStream>[1]) {
+    return Readable.toWeb(this.fs.createReadStream(filePath, options)) as ReadableStream;
   }
 
-  async createWritable(filePath, options) {
+  async createWritable(filePath: string, options?: Parameters<typeof fs.createWriteStream>[1]) {
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     return Writable.toWeb(this.fs.createWriteStream(filePath, options));
   }
 
-  async readFile(filePath, options) {
-    return this.fs.promises.readFile(filePath, options);
-    //if (err.code !== 'ENOENT') throw validation.createError(34, invPath);
+  async readFile(filePath: string, options: BufferEncoding | { encoding: BufferEncoding }): Promise<string>;
+  async readFile(filePath: string, options?: unknown): Promise<Uint8Array>;
+  async readFile(filePath: string, options?: unknown): Promise<string | Uint8Array> {
+    return this.fs.promises.readFile(filePath, options as Parameters<typeof fs.promises.readFile>[1]);
   }
 
-  async writeFile(filePath, data, options) {
+  async writeFile(filePath: string, data: WriteFileData, options?: object | string) {
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    if (data instanceof ReadableStream) data = fs.ReadStream.fromWeb(data);
-    await this.fs.promises.writeFile(filePath, data, options);
+    const content = data instanceof ReadableStream ? Readable.fromWeb(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+    await this.fs.promises.writeFile(filePath, content, options as Parameters<typeof fs.promises.writeFile>[2]);
   }
 
-  async copyFile(source, target) {
+  async copyFile(source: string, target: string) {
     await this.fs.promises.mkdir(path.dirname(target), { recursive: true });
     await this.fs.promises.copyFile(source, target);
   }
 
-  async opendir(filePath, options) {
+  async opendir(filePath: string, options?: fs.OpenDirOptions) {
     return this.fs.promises.opendir(filePath, options);
   }
 
-  async readdir(filePath, options) {
-    return this.fs.promises.readdir(filePath, options);
+  async readdir(filePath: string) {
+    return this.fs.promises.readdir(filePath);
   }
 
-  /**
-   * @param {string} dirPath
-   * @param {OpenDirOptions} [options]
-   * @return {Promise<AsyncIterableIterator<{name: string, path: string, size: number, lastModified: Date}>> }
-   */
-  async list(dirPath, { encoding = 'utf8', bufferSize = 32, recursive = false } = {}) {
+  async list(dirPath: string, { encoding = 'utf8', bufferSize = 32, recursive = false }: ListOptions = {}) {
     const { opendir, stat } = this.fs.promises;
     const maxBuffer = bufferSize || 1;
-    async function* generator() {
-      /** @type Promise<{ name: string, path: string, size: number, lastModified: Date}>[] */
-      const buffer = [];
-      let dirp;
+    async function* generator(): AsyncGenerator<ListedFile> {
+      const buffer: Promise<ListedFile>[] = [];
+      let dirp: Promise<fs.Dir> | undefined;
       const dirQueue = [opendir(dirPath, { encoding, bufferSize })];
       while ((dirp = dirQueue.shift())) {
         const dir = await dirp;
@@ -120,7 +101,7 @@ class OcflFsStore extends OcflStore {
           }
         }
       }
-      let file;
+      let file: Promise<ListedFile> | undefined;
       while ((file = buffer.shift())) {
         yield file;
       }
@@ -128,11 +109,11 @@ class OcflFsStore extends OcflStore {
     return generator();
   }
 
-  async mkdir(filePath, options = { recursive: true }) {
+  async mkdir(filePath: string, options: fs.MakeDirectoryOptions = { recursive: true }) {
     return this.fs.promises.mkdir(filePath, options);
   }
 
-  async move(source, target) {
+  async move(source: string, target: string) {
     try {
       await this.fs.promises.mkdir(path.dirname(target), { recursive: true });
       return this.fs.promises.rename(source, target);
@@ -140,15 +121,14 @@ class OcflFsStore extends OcflStore {
       if (error.code === 'EXDEV') {
         await this.fs.promises.cp(source, path.dirname(target), { recursive: true, preserveTimestamps: true });
         return this.fs.promises.rm(target, { recursive: true, force: true });
-      } else {
-        throw error;
       }
+      throw error;
     }
   }
 
-  async remove(filePath) {
+  async remove(filePath: string) {
     return this.fs.promises.rm(filePath, { recursive: true, force: true });
   }
 }
 
-module.exports = { OcflFsStore };
+export { OcflFsStore };

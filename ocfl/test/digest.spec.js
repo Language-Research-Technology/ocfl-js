@@ -1,9 +1,7 @@
-//@ts-check
-
-const assert = require('assert');
-const { OcflDigest } = require('../lib/digest.js');
-const Readable = require('stream').Readable;
-const { createHash } = require('node:crypto');
+import assert from 'node:assert';
+import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
+import { OcflDigest } from '../src/digest.ts';
 
 describe('OcflDigest', () => {
   const inputData =

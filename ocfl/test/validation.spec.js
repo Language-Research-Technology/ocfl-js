@@ -1,6 +1,5 @@
-'use strict';
-const assert = require('assert');
-const { createError } = require('../lib/validation.js');
+import assert from 'node:assert';
+import { createError } from '../src/validation.ts';
 
 describe('validation.createError', () => {
   it('builds an error with the spec code, message and path', () => {

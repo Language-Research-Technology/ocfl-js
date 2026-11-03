@@ -1,14 +1,13 @@
 // throw error if workspace is the same as root or a subdirectory of root
 
-const assert = require('assert');
-const path = require('path');
-const fs = require('fs');
-const { Ocfl, OcflStorage } = require('@ocfl/ocfl');
+import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /**
  * @param {Ocfl} ocfl
  */
-module.exports = (ocfl) => {
+export default (ocfl) => {
   describe('constructor', () => {
     it('can create new storage', () => {
       let storage;
@@ -25,7 +24,7 @@ module.exports = (ocfl) => {
     });
   });
   describe('access existing storage', () => {
-    const repo = ocfl.storage({ root: path.join(__dirname, 'test-data/storage') });
+    const repo = ocfl.storage({ root: path.join(import.meta.dirname, 'test-data/storage') });
     const objects = [{ root: path.join(repo.root, 'object_1'), id: 'http://example.org/minimal_no_content' }];
     it('can list objects via async iterator', async () => {
       let i = 0;
@@ -53,7 +52,7 @@ module.exports = (ocfl) => {
     });
   });
   describe('mutators', () => {
-    const datadir = path.join(__dirname, 'test-data');
+    const datadir = path.join(import.meta.dirname, 'test-data');
     const tempdir = path.join(datadir, 'temp');
     before(async () => {
       // create temp dir
@@ -91,7 +90,7 @@ module.exports = (ocfl) => {
   describe('spec violations', () => {
     let tempdir;
     before(async () => {
-      tempdir = await fs.promises.mkdtemp(path.join(__dirname, 'test-data', 'temp-errors-'));
+      tempdir = await fs.promises.mkdtemp(path.join(import.meta.dirname, 'test-data', 'temp-errors-'));
     });
 
     it('reports E069 when the root conformance declaration is missing', async () => {

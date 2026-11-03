@@ -1,6 +1,6 @@
-'use strict';
-const ocfl = require('../index');
+import ocflTests from '@ocfl/ocfl-tests';
+import ocfl from '../src/index.ts';
 
 describe('OcflStorage class using OcflFsStore', () => {
-  require('@ocfl/ocfl-tests').storage(ocfl);
+  ocflTests.storage(ocfl);
 });

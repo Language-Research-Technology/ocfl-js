@@ -2,59 +2,39 @@
  * @module ocfl
  */
 
-const {
-  OcflConstants,
-  OcflDigest,
-  OcflExtension,
-  OcflStorageLayout,
-  OcflStore,
-  OcflObject,
-  OcflObjectInventory,
-  OcflObjectTransactionImpl,
-  OcflStorage,
-  OcflStorageImpl,
-  extensions,
-} = require('./lib/index.js');
+import { OcflConstants } from './constants.ts';
+import { OcflStorageLayout } from './extension.ts';
+import * as extensions from './extensions/index.ts';
+import { OcflObject } from './object.ts';
+import { type OcflStorage, OcflStorageImpl } from './storage.ts';
+import type { OcflStore } from './store.ts';
+import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig } from './types.ts';
 
-/**
- * @typedef {Object} StorageLayout
- * @property {typeof extensions.FlatDirectStorageLayout} FlatDirectStorageLayout
- * @property {typeof extensions.FlatOmitPrefixStorageLayout} FlatOmitPrefixStorageLayout
- * @property {typeof extensions.HashAndIdNTupleStorageLayout} HashAndIdNTupleStorageLayout
- * @property {typeof extensions.HashedNTupleStorageLayout} HashedNTupleStorageLayout
- * @property {typeof extensions.NTupleOmitPrefixStorageLayout} NTupleOmitPrefixStorageLayout
- * @property {typeof extensions.PathDirectStorageLayout} PathDirectStorageLayout
- */
-
-/** @typedef {import('./lib/types').OcflExtensionConfig} OcflExtensionConfig */
-/** @typedef {import('./lib/types').OcflObjectConfig} OcflObjectConfig */
-/** @typedef {import('./lib/types').OcflStorageConfig} OcflStorageConfig */
-
-/**
- * Create a storage layout from extension name or config
- * @param {string|OcflExtensionConfig} config - Layout name or config
- */
-function layout(config) {
-  let name, c;
-  if (typeof config === 'string') {
-    name = config;
-  } else {
-    name = config.extensionName;
-    c = config;
-  }
-  return OcflStorageLayout.class(name).create(c);
-}
-const storageLayout = Object.assign(layout, /** @type {StorageLayout} */ (OcflStorageLayout.layout));
+export { OcflConstants } from './constants.ts';
+export { OcflDigest } from './digest.ts';
+export { OcflExtension, OcflStorageLayout } from './extension.ts';
+export type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direct-storage-layout.ts';
+export type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
+export type { StorageLayout } from './extensions/index.ts';
+export type { FileRef, FileStat, OcflObjectFile } from './file.ts';
+export type { InventoryFile, OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
+export { OcflObjectInventory } from './inventory.ts';
+export type { UpdateMode } from './object.ts';
+export { OcflObject } from './object.ts';
+export { OcflStorage, OcflStorageImpl } from './storage.ts';
+export type { ListedFile, ListOptions, WriteFileData } from './store.ts';
+export { OcflStore } from './store.ts';
+export type { CommitOptions, RemoveOptions } from './transaction.ts';
+export { OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
+export type * from './types.ts';
+export { extensions };
 
 /**
  * Creates a new OCFL core API with a specific backend store.
  * Any backend store implementation module must return the result of this method.
- * @param {typeof OcflStore} store
- * @param {SO} defaultOptions
- * @template SO
  * @returns Top level OCFL API interface that provides storage and object creation.
  */
-function implementOcfl(store, defaultOptions) {
+export function implementOcfl<SO extends object>(store: { getInstance(options?: SO): OcflStore }, defaultOptions?: SO) {
   return {
     OCFL_VERSIONS: OcflConstants.OCFL_VERSIONS,
 
@@ -63,10 +43,11 @@ function implementOcfl(store, defaultOptions) {
 
     /**
      * Instantiate a storage layout from extension name or config
-     * @param {string | OcflExtensionConfig} config - Layout name or config
+     * @param config - Layout name or config
      */
-    storageLayout(config) {
-      let name, c;
+    storageLayout(config: string | OcflExtensionConfig): OcflStorageLayout {
+      let name: string;
+      let c: OcflExtensionConfig | undefined;
       if (typeof config === 'string') {
         name = config;
       } else {
@@ -74,66 +55,42 @@ function implementOcfl(store, defaultOptions) {
         c = config;
       }
       const cls = OcflStorageLayout.class(name);
-      if (!cls) throw new Error(`Layout "${name}" is not supported.`);
+      if (!cls) {
+        throw new Error(`Layout "${name}" is not supported.`);
+      }
       return cls.create(c);
     },
 
     /**
      * Instantiate an OCFL Object
-     * @param {OcflObjectConfig} config
-     * @param {SO} [storeOptions]
      */
-    object(config, storeOptions = defaultOptions) {
+    object(config: OcflObjectConfig, storeOptions: SO | undefined = defaultOptions): OcflObject {
       return new OcflObject(config, store.getInstance(storeOptions));
     },
 
     /**
      * Instantiate an OCFL Storage root
-     * @param {OcflStorageConfig} config
-     * @param {SO} [storeOptions]
-     * @return {OcflStorage}
      */
-    storage(config, storeOptions = defaultOptions) {
+    storage(config: OcflStorageConfig, storeOptions: SO | undefined = defaultOptions): OcflStorage {
       return new OcflStorageImpl(config, store.getInstance(storeOptions));
     },
 
     /**
      * Create a new OCFL Storage
-     * @param {OcflStorageConfig} config
-     * @param {SO} [storeOptions]
-     * @return {Promise<OcflStorage>}
      */
-    async createStorage(config, storeOptions = defaultOptions) {
+    async createStorage(config: OcflStorageConfig, storeOptions: SO | undefined = defaultOptions): Promise<OcflStorage> {
       return new OcflStorageImpl(config, store.getInstance(storeOptions)).create();
     },
 
     /**
      * Load an existing OCFL Storage
-     * @param {OcflStorageConfig} config
-     * @param {SO} [storeOptions]
-     * @return {Promise<OcflStorage>}
      */
-    async loadStorage(config, storeOptions = defaultOptions) {
+    async loadStorage(config: OcflStorageConfig, storeOptions: SO | undefined = defaultOptions): Promise<OcflStorage> {
       return new OcflStorageImpl(config, store.getInstance(storeOptions)).load();
     },
   };
 }
 
-module.exports = {
-  OcflConstants,
-  OcflDigest,
-  OcflExtension,
-  OcflStorageLayout,
-  OcflStore,
-  OcflObject,
-  OcflObjectInventory,
-  OcflObjectTransactionImpl,
-  OcflStorage,
-  OcflStorageImpl,
-  implementOcfl,
-  extensions,
-};
-
-for (const name in extensions) {
-  extensions[name].register();
+for (const ext of Object.values(extensions)) {
+  ext.register();
 }

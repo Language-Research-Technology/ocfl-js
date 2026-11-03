@@ -7,22 +7,38 @@ const ERRORS = {
   E082: 'OCFL Object Roots MUST be stored either as the terminal resource at the end of a directory storage hierarchy or as direct children of a containing OCFL Storage Root.',
 };
 
+type ErrorCode = keyof typeof ERRORS;
+
+interface ValidationErrorOptions {
+  code: ErrorCode;
+  description: string;
+  path: string;
+  detail?: string;
+}
+
 class ValidationError extends Error {
-  constructor(options = {}) {
-    super(`${options.code}: ${options.description} At ${options.path}` + (options.detail ? ` (${options.detail})` : ''));
+  declare code: ErrorCode;
+  declare description: string;
+  declare path: string;
+  declare detail?: string;
+
+  constructor(options: ValidationErrorOptions) {
+    super(`${options.code}: ${options.description} At ${options.path}${options.detail ? ` (${options.detail})` : ''}`);
     this.name = 'ValidationError';
     Object.assign(this, options);
   }
 }
 
 /**
- * @param {keyof ERRORS} code - OCFL validation code, eg 'E060'
- * @param {string} path - Path the problem was found at
- * @param {string} [detail] - Extra context appended to the message
+ * @param code - OCFL validation code, eg 'E060'
+ * @param path - Path the problem was found at
+ * @param detail - Extra context appended to the message
  */
-exports.createError = (code, path, detail) => {
+export const createError = (code: ErrorCode, path: string, detail?: string) => {
   const description = Object.hasOwn(ERRORS, code) ? ERRORS[code] : undefined;
-  if (!description) throw new RangeError(`Unknown OCFL validation code ${code}`);
+  if (!description) {
+    throw new RangeError(`Unknown OCFL validation code ${code}`);
+  }
   return new ValidationError({ code, description, path, detail });
 };
 
@@ -30,9 +46,8 @@ class Validator {
   /**
    * From the spec: the contentDirectory value must not contain the forward slash (/) path separator
    * and must not be either one or two periods (. or ..)
-   * @param {string} name
    */
-  validateContentDirectoryName(name) {
+  validateContentDirectoryName(_name: string) {
     // if (name === '.' || name === '..' || name.includes('/')) {
     //   throw new validation.Error('contentDirectory is invalid'); 16, 17
     // }
@@ -42,7 +57,7 @@ class Validator {
    * Every file within a version's content directory must be referenced in the manifest section of that version's inventory. There must not be empty directories within a version's content directory.
    */
   validateContentDirectory() {}
-  validateInventory(inventory) {
+  validateInventory(inventory: { id: string }) {
     new URL(inventory.id);
   }
 }

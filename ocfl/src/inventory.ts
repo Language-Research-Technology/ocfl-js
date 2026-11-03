@@ -1,17 +1,22 @@
-'use strict';
-//@ts-check
-/** @typedef {import('./types').Inventory} Inventory */
-/** @typedef {import('./types').InventoryDigests} InventoryDigests */
+import type { Inventory, InventoryDigests, InventoryVersion } from './types.ts';
+
+/** Digest values keyed by algorithm name */
+type Digests = { [algorithm: string]: string };
+
+export interface InventoryFile {
+  logicalPath: string;
+  version: string;
+  digest: string;
+  contentPath: string;
+  fixity: Digests;
+  size?: number;
+  lastModified?: number;
+}
 
 class VersionNumber {
-  value;
-  zeroPaddingLength;
-  /**
-   *
-   * @param {number} num
-   * @param {number} [zeroPaddingLength]
-   */
-  constructor(num, zeroPaddingLength) {
+  value: number;
+  zeroPaddingLength: number | undefined;
+  constructor(num: number, zeroPaddingLength?: number) {
     this.value = num;
     this.zeroPaddingLength = zeroPaddingLength;
   }
@@ -19,51 +24,44 @@ class VersionNumber {
     return this.value;
   }
   toString() {
-    return 'v' + (this.zeroPaddingLength ? (this.value + '').padStart(this.zeroPaddingLength, '0') : this.value);
+    return `v${this.zeroPaddingLength ? `${this.value}`.padStart(this.zeroPaddingLength, '0') : this.value}`;
   }
   next() {
     return new VersionNumber(this.value + 1, this.zeroPaddingLength);
   }
   previous() {
     const n = this.value - 1;
-    if (n > 0) return new VersionNumber(n, this.zeroPaddingLength);
+    if (n > 0) {
+      return new VersionNumber(n, this.zeroPaddingLength);
+    }
   }
-  /**
-   *
-   * @param {number} num
-   * @param {number} zeroPaddingLength
-   */
-  static fromInt(num, zeroPaddingLength) {
+  static fromInt(num: number, zeroPaddingLength: number) {
     return new VersionNumber(num, zeroPaddingLength);
   }
-  /**
-   *
-   * @param {string} versionLabel
-   */
-  static fromString(versionLabel) {
+  static fromString(versionLabel: string) {
     const label = versionLabel.replace('v', '');
-    let zeroPaddingLength;
-    if (label.startsWith('0')) zeroPaddingLength = label.length;
-    return new VersionNumber(parseInt(label), zeroPaddingLength);
+    let zeroPaddingLength: number | undefined;
+    if (label.startsWith('0')) {
+      zeroPaddingLength = label.length;
+    }
+    return new VersionNumber(parseInt(label, 10), zeroPaddingLength);
   }
 
-  static next(versionLabel) {
+  static next(versionLabel: string) {
     return VersionNumber.fromString(versionLabel).next();
   }
 
-  static previous(versionLabel) {
+  static previous(versionLabel: string) {
     return VersionNumber.fromString(versionLabel).previous();
   }
 }
 
-/**
- * @typedef {{logicalPath?: string; digest?: string; contentPath?: string;}} FileRef
- */
-
-function findKey(file, obj) {
+function findKey(file: string, obj: InventoryDigests): string | undefined {
   for (const digest in obj) {
     const arr = obj[digest];
-    if (arr.includes(file)) return digest;
+    if (arr.includes(file)) {
+      return digest;
+    }
   }
 }
 
@@ -71,26 +69,21 @@ function findKey(file, obj) {
  * Wrapper class for inventory data
  */
 class OcflObjectInventory {
-  /** @type {Inventory} */
-  #data;
-  /** @type {{[key: string]: {[key:string]: {[key:string]: string}}}} */
-  #fileIndex = {};
+  #data: Inventory;
+  #fileIndex: { [version: string]: { [logicalPath: string]: Digests } } = {};
 
-  metadata;
+  metadata: { [contentPath: string]: { size: number; lastModified: number } } | undefined;
 
   /**
    * Helper function to find the digest by logical file path and cached it by indexing
-   * @param {string} logicalPath
-   * @param {string} version
-   * @param {boolean} [onlyUsecache]
    */
-  _indexGet(logicalPath, version, onlyUsecache) {
+  _indexGet(logicalPath: string, version: string, onlyUsecache?: boolean): Digests | undefined {
     let digests = this.#fileIndex[version]?.[logicalPath];
     if (!digests && !onlyUsecache) {
       // search and then index
       const fixity = this.fixity;
       const algo = this.digestAlgorithm;
-      const digestArr = [];
+      const digestArr: [string, string][] = [];
       const mainDigest = findKey(logicalPath, this.versionState(version));
       if (mainDigest) {
         digestArr.push([algo, mainDigest]);
@@ -98,7 +91,9 @@ class OcflObjectInventory {
           const cp = this.getContentPath(mainDigest);
           for (const fixityDigest in fixity) {
             const digest = findKey(cp, fixity[fixityDigest]);
-            if (digest) digestArr.push([fixityDigest, digest]);
+            if (digest) {
+              digestArr.push([fixityDigest, digest]);
+            }
           }
         }
       }
@@ -110,11 +105,11 @@ class OcflObjectInventory {
     return digests;
   }
 
-  _indexAdd(logicalPath, version, digests) {
+  _indexAdd(logicalPath: string, version: string, digests: Digests) {
     this.#fileIndex[version][logicalPath] = digests;
   }
 
-  _indexRemove(logicalPath, version = this.head) {
+  _indexRemove(logicalPath: string, version = this.head) {
     const val = this.#fileIndex[version][logicalPath];
     delete this.#fileIndex[version][logicalPath];
     return val;
@@ -123,11 +118,11 @@ class OcflObjectInventory {
   _indexBuild() {
     // index fixity contentPaths
     const fixity = this.fixity;
-    const fixityIndex = {};
+    const fixityIndex: { [algorithm: string]: { [contentPath: string]: string } } = {};
     if (fixity) {
       for (const fixityAlgo in fixity) {
         const digestBlock = fixity[fixityAlgo];
-        const fixityIndexDigest = (fixityIndex[fixityAlgo] = {});
+        const fixityIndexDigest: { [contentPath: string]: string } = (fixityIndex[fixityAlgo] = {});
         for (const digest in digestBlock) {
           const cps = digestBlock[digest];
           for (const cp of cps) {
@@ -138,20 +133,22 @@ class OcflObjectInventory {
     }
     // index logicalPaths
     // { v1: { 'dir/file.txt': { sha512: 'abcdef' } } }
-    const index = (this.#fileIndex = {});
+    const index: { [version: string]: { [logicalPath: string]: Digests } } = (this.#fileIndex = {});
     const algo = this.digestAlgorithm;
     for (const verName in this.versions) {
       const ver = this.versions[verName];
-      const indexVer = (index[verName] = {});
+      const indexVer: { [logicalPath: string]: Digests } = (index[verName] = {});
       for (const digest in ver.state) {
         for (const lp of ver.state[digest]) {
-          const file = (indexVer[lp] = { [algo]: digest });
+          const file: Digests = (indexVer[lp] = { [algo]: digest });
           if (fixity) {
             for (const fixityAlgo in fixityIndex) {
               const fixityIndexDigest = fixityIndex[fixityAlgo];
               const cps = this.manifest[digest] || [];
               for (const cp of cps) {
-                if (fixityIndexDigest[cp]) file[fixityAlgo] = fixityIndexDigest[cp];
+                if (fixityIndexDigest[cp]) {
+                  file[fixityAlgo] = fixityIndexDigest[cp];
+                }
               }
             }
           }
@@ -160,12 +157,14 @@ class OcflObjectInventory {
     }
   }
 
-  _indexFindPaths(prefix, version = this.head) {
-    const res = [];
+  _indexFindPaths(prefix: string, version = this.head) {
+    const res: string[] = [];
     const index = this.#fileIndex[version];
-    const prefixWithSlash = prefix.endsWith('/') ? prefix : prefix + '/';
+    const prefixWithSlash = prefix.endsWith('/') ? prefix : `${prefix}/`;
     for (const lp in index) {
-      if (index[lp] && (lp === prefix || lp.startsWith(prefixWithSlash))) res.push(lp);
+      if (index[lp] && (lp === prefix || lp.startsWith(prefixWithSlash))) {
+        res.push(lp);
+      }
     }
     return res;
   }
@@ -173,17 +172,17 @@ class OcflObjectInventory {
   /**
    * Create a new mutable OcflObjectInventory from the object config or clone an existing inventory,
    * and increase the inventory version number. If data.head is undefined, starts from v1.
-   * @param {Partial<Inventory> | OcflObjectInventory} data
-   * @param {boolean} [cleanState]
    */
-  static newVersion(data, cleanState) {
+  static newVersion(data: Partial<Inventory> | OcflObjectInventory, cleanState?: boolean) {
     if (data instanceof OcflObjectInventory) {
       data = data.toJSON();
     }
-    if (!data.id || !data.digestAlgorithm || !data.type) throw new Error('Inventory must have an id, digestAlgorithm and type.');
+    if (!data.id || !data.digestAlgorithm || !data.type) {
+      throw new Error('Inventory must have an id, digestAlgorithm and type.');
+    }
     data.manifest = data.manifest || {};
     data.versions = data.versions || {};
-    let prevVer;
+    let prevVer: InventoryVersion | undefined;
     if (data.head) {
       prevVer = data.versions[data.head];
       data.head = VersionNumber.next(data.head).toString();
@@ -195,15 +194,15 @@ class OcflObjectInventory {
       created: new Date().toISOString(),
       state: cleanState ? {} : JSON.parse(JSON.stringify(prevVer.state)),
     };
-    return new OcflObjectInventoryMut(data);
+    return new OcflObjectInventoryMut(data as Inventory);
   }
 
   /**
    * Create a new inventory model
-   * @param {Inventory} data - Initial data of the inventory
-   * @param {string} [version] - Set the version, default to data.head
+   * @param data - Initial data of the inventory
+   * @param version - Set the version, default to data.head
    */
-  constructor(data, version) {
+  constructor(data: Inventory, _version?: string) {
     this.#data = data;
     this._indexBuild();
   }
@@ -261,7 +260,9 @@ class OcflObjectInventory {
   /** Return true if there has been actual change to the state of current version compared to the previous version */
   get isChanged() {
     const prev = this.versionNumber.previous()?.toString();
-    if (!prev) return true;
+    if (!prev) {
+      return true;
+    }
     const diff = this.diffState(this.head, prev);
     return Object.keys(diff[0]).length > 0 || Object.keys(diff[1]).length > 0;
   }
@@ -277,10 +278,12 @@ class OcflObjectInventory {
 
   /**
    * Return the state of the specified version
-   * @param {string} [version ] - The inventory version, default to the latest
+   * @param version - The inventory version, default to the latest
    */
-  versionState(version) {
-    if (!version || version === 'latest') version = this.head;
+  versionState(version?: string) {
+    if (!version || version === 'latest') {
+      version = this.head;
+    }
     return this.versions[version]?.state;
   }
 
@@ -288,18 +291,14 @@ class OcflObjectInventory {
     return JSON.stringify(this.#data, null, 2);
   }
 
-  /**
-   * @return {Inventory}
-   */
-  toJSON() {
+  toJSON(): Inventory {
     return JSON.parse(this.toString());
   }
 
   /**
-   *
-   * @param {string} [version] - The version name
+   * @param version - The version name
    */
-  *files(version) {
+  *files(version?: string): Generator<InventoryFile> {
     let state;
     if (!version || version === 'latest') {
       state = this.state;
@@ -323,9 +322,11 @@ class OcflObjectInventory {
     }
   }
 
-  *find(fn, version) {
+  *find(fn: (file: InventoryFile) => boolean, version?: string) {
     for (const f of this.files(version)) {
-      if (fn(f)) yield f;
+      if (fn(f)) {
+        yield f;
+      }
     }
   }
 
@@ -336,29 +337,26 @@ class OcflObjectInventory {
   /**
    * Get the first content path found with the given digest from the manifest.
    * Also can be used to check the existance of an entry with the specified digest in the manifest.
-   * @param {string} digest
-   * @return {string} - The first content path found in the array
+   * @returns The first content path found in the array
    */
-  getContentPath(digest) {
+  getContentPath(digest: string): string | undefined {
     const cp = this.manifest[digest];
-    if (cp && cp.length > 0) return cp[0];
+    if (cp && cp.length > 0) {
+      return cp[0];
+    }
   }
 
   /**
    * Get the digest of a content represented by the logicalPath of the specified version
-   * @param {string} logicalPath
-   * @param {string} [versionName]
    */
-  getDigest(logicalPath, versionName = this.head) {
+  getDigest(logicalPath: string, versionName: string = this.head) {
     return this._indexGet(logicalPath, versionName, true)?.[this.digestAlgorithm];
   }
 
   /**
    * Get the file information by the logicalPath of the specified version
-   * @param {string} logicalPath
-   * @param {string} [versionName]
    */
-  getFile(logicalPath, versionName = this.head) {
+  getFile(logicalPath: string, versionName: string = this.head): InventoryFile | undefined {
     const digest = this.getDigest(logicalPath, versionName);
     const contentPath = this.getContentPath(digest);
     const version = versionName;
@@ -374,39 +372,41 @@ class OcflObjectInventory {
     }
   }
 
-  getFileByDigest(digest, versionName) {
-    if (versionName) return this.getFile(this.versions[versionName].state[digest]?.[0], versionName);
+  getFileByDigest(digest: string, versionName?: string): InventoryFile | undefined {
+    if (versionName) {
+      return this.getFile(this.versions[versionName].state[digest]?.[0], versionName);
+    }
     for (const version in this.versions) {
       const logicalPath = this.versions[version].state[digest]?.[0];
-      if (logicalPath) return this.getFile(logicalPath, version);
+      if (logicalPath) {
+        return this.getFile(logicalPath, version);
+      }
     }
   }
 
-  getFileByContentPath(contentPath, versionName) {
+  getFileByContentPath(contentPath: string, versionName?: string): InventoryFile | undefined {
     for (const digest in this.manifest) {
-      if (this.manifest[digest].includes(contentPath)) return this.getFileByDigest(digest, versionName);
+      if (this.manifest[digest].includes(contentPath)) {
+        return this.getFileByDigest(digest, versionName);
+      }
     }
   }
 
   /**
    * Get the fixity of a content represented by the logicalPath of the specified version
-   * @param {string} logicalPath
-   * @param {string} [versionName]
    */
-  getFixity(logicalPath, versionName = this.head) {
+  getFixity(logicalPath: string, versionName: string = this.head): Digests {
     const { [this.digestAlgorithm]: digest, ...fixity } = this._indexGet(logicalPath, versionName, true) || {};
     return fixity;
   }
 
   /**
    * Compare the differences between the state of two versions
-   * @param {string} version0
-   * @param {string} version1
-   * @return {[InventoryDigests, InventoryDigests]} - A tuple of [A, B] where A contains files
+   * @returns A tuple of [A, B] where A contains files
    *     that are in `version0` but not in `version1` and B contains files
    *     that are in `version1` but not in `version0`
    */
-  diffState(version0, version1) {
+  diffState(version0: string, version1: string): [InventoryDigests, InventoryDigests] {
     var state1 = this.versionState(version0) ?? {};
     var state2 = this.versionState(version1) ?? {};
 
@@ -414,23 +414,24 @@ class OcflObjectInventory {
       [state1, state2],
       [state2, state1],
     ].map(([s1, s2]) => {
-      /** @type {Map<string, string[]>} */
-      const r = new Map();
+      const r: Map<string, string[]> = new Map();
       for (const d in s1) {
         const d1 = s1[d];
         const d2 = s2[d];
         let diff;
-        if (d2 && d2.length) {
-          diff = d1.filter((f) => !d2.includes(f));
+        if (d2?.length) {
+          diff = d1.filter((f: string) => !d2.includes(f));
         } else {
           diff = d1.slice();
         }
-        if (diff.length > 0) r.set(d, diff);
+        if (diff.length > 0) {
+          r.set(d, diff);
+        }
       }
       return Object.fromEntries(r);
     });
 
-    return /** @type {[InventoryDigests, InventoryDigests]} */ (result);
+    return result as [InventoryDigests, InventoryDigests];
   }
 }
 
@@ -438,20 +439,13 @@ class OcflObjectInventory {
  * Wrapper class with mutable methods for inventory data
  */
 class OcflObjectInventoryMut extends OcflObjectInventory {
-  constructor(data) {
-    super(data);
-  }
-
   /**
    * Add a new file to the inventory or update the digest of an existing file
-   * @param {string} digest
-   * @param {string} logicalPath
-   * @param {{[x: string]: string}} [fixity]
-   * @return {boolean} - true if the state is changed
+   * @returns true if the state is changed
    */
-  add(logicalPath, digest, fixity) {
+  add(logicalPath: string, digest: string, fixity?: { [x: string]: string }): boolean {
     const state = this.state;
-    const contentPath = this.head + '/' + this.contentDirectory + '/' + logicalPath;
+    const contentPath = `${this.head}/${this.contentDirectory}/${logicalPath}`;
     // add fixity info
     if (fixity) {
       for (const digestName in fixity) {
@@ -460,8 +454,11 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     }
     if (state[digest]) {
       // this is a file with identical content but different name
-      if (state[digest].indexOf(logicalPath) < 0) state[digest].push(logicalPath);
-      else return false; // else, same digest and path, ignore
+      if (state[digest].indexOf(logicalPath) < 0) {
+        state[digest].push(logicalPath);
+      } else {
+        return false; // else, same digest and path, ignore
+      }
     } else {
       const mf = this.manifest[digest];
       if (mf && mf.length > 0) {
@@ -482,12 +479,11 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   /**
    * Low-level method to add a set of digest entries associated to file into the fixity block
-   * @param {string} contentPath
-   * @param {string} digestName
-   * @param {string} digestValue
    */
-  addFixity(contentPath, digestName, digestValue) {
-    if (!digestValue || !digestName) return;
+  addFixity(contentPath: string, digestName: string, digestValue: string) {
+    if (!digestValue || !digestName) {
+      return;
+    }
     const fixityBlock = (this.fixity = this.fixity || {});
     const digestBlock = (fixityBlock[digestName] = fixityBlock[digestName] || {});
     if (digestBlock[digestValue]) {
@@ -501,15 +497,15 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   /**
    * Rename a logical path. This will overwrite dest if exists
-   * @param {string} srcLogicalPath
-   * @param {string} destLogicalPath
    */
-  rename(srcLogicalPath, destLogicalPath) {
-    const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : srcLogicalPath + '/';
-    const destPrefix = destLogicalPath.endsWith('/') ? destLogicalPath : destLogicalPath + '/';
+  rename(srcLogicalPath: string, destLogicalPath: string) {
+    const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
+    const destPrefix = destLogicalPath.endsWith('/') ? destLogicalPath : `${destLogicalPath}/`;
     const srcList = this._indexFindPaths(srcPrefix);
     const pairs = srcList.map((src) => [src, destPrefix + src.slice(srcPrefix.length)]);
-    if (pairs.length === 0) pairs.push([srcLogicalPath, destLogicalPath]);
+    if (pairs.length === 0) {
+      pairs.push([srcLogicalPath, destLogicalPath]);
+    }
     for (const [src, dest] of pairs) {
       const digest = this.getDigest(src);
       const files = this.state[digest];
@@ -526,19 +522,23 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   /**
    * Create an alias or reference of a logical path
-   * @param {string} srcLogicalPath
-   * @param {string} destLogicalPath
    */
-  copy(srcLogicalPath, destLogicalPath) {
-    const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : srcLogicalPath + '/';
-    const destPrefix = destLogicalPath.endsWith('/') ? destLogicalPath : destLogicalPath + '/';
+  copy(srcLogicalPath: string, destLogicalPath: string) {
+    const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
+    const destPrefix = destLogicalPath.endsWith('/') ? destLogicalPath : `${destLogicalPath}/`;
     const srcList = this._indexFindPaths(srcPrefix);
     const pairs = srcList.map((src) => [src, destPrefix + src.slice(srcPrefix.length)]);
-    if (pairs.length === 0) pairs.push([srcLogicalPath, destLogicalPath]);
+    if (pairs.length === 0) {
+      pairs.push([srcLogicalPath, destLogicalPath]);
+    }
     for (const [src, dest] of pairs) {
-      if (!dest) throw new Error(`Target logical path cannot be empty`);
+      if (!dest) {
+        throw new Error(`Target logical path cannot be empty`);
+      }
       const digest = this._indexGet(src, this.head, true);
-      if (!digest) throw new Error(`Source logical path "${src}" does not exist in object [${this.id}]`);
+      if (!digest) {
+        throw new Error(`Source logical path "${src}" does not exist in object [${this.id}]`);
+      }
       //console.log(this.state);
       const files = this.state[digest[this.digestAlgorithm]];
       const index = files?.indexOf(dest);
@@ -553,10 +553,8 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   /**
    * Delete a file
-   * @param {string} logicalPath
-   * @param {string} [version]
    */
-  delete(logicalPath, version = this.head) {
+  delete(logicalPath: string, version: string = this.head) {
     const names = this._indexFindPaths(logicalPath, version);
     let count = 0;
     const state = this.versionState(version);
@@ -577,7 +575,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     return count;
   }
 
-  reinstate(logicalPath, versionName) {
+  reinstate(logicalPath: string, versionName: string) {
     const names = this._indexFindPaths(logicalPath, versionName);
     //let digest = this.getDigest(logicalPath, versionName);
     const state = this.state;
@@ -585,7 +583,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     for (const lp of names) {
       const digests = this._indexGet(lp, versionName);
       if (digests) {
-        const c = this.delete(lp);
+        const _c = this.delete(lp);
       }
       state[digests[this.digestAlgorithm]] = [lp];
       this._indexAdd(lp, this.head, digests);
@@ -595,4 +593,4 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   }
 }
 
-module.exports = { OcflObjectInventory, OcflObjectInventoryMut, VersionNumber };
+export { OcflObjectInventory, OcflObjectInventoryMut, VersionNumber };

@@ -1,7 +1,9 @@
-'use strict';
-const assert = require('assert');
-const { HashAndIdNTupleStorageLayout } = require('../../index').extensions;
-const { OcflDigest } = require('../../lib/digest');
+import assert from 'node:assert';
+import { extensions } from '../../src/index.ts';
+
+const { HashAndIdNTupleStorageLayout } = extensions;
+
+import { OcflDigest } from '../../src/digest.ts';
 
 describe('HashAndIdNTupleStorageLayout class', () => {
   before(async () => {

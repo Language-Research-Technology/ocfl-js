@@ -1,9 +1,9 @@
-const { OcflStorageLayout } = require('../extension');
-const { OcflDigest } = require('../digest');
-const { enumeration } = require('../enum');
-const path = require('path');
+import path from 'node:path';
+import { OcflDigest } from '../digest.ts';
+import { enumeration } from '../enum.ts';
+import { OcflStorageLayout } from '../extension.ts';
 
-function encodeIdentifier(id) {
+function encodeIdentifier(id: string) {
   return encodeURIComponent(id).toLowerCase().replace(/\./g, '%2e');
 }
 
@@ -14,10 +14,7 @@ const DefaultConfig = {
   numberOfTuples: 3,
 };
 
-/**
- * @extends {OcflStorageLayout<typeof DefaultConfig>}
- */
-class HashAndIdNTupleStorageLayout extends OcflStorageLayout {
+class HashAndIdNTupleStorageLayout extends OcflStorageLayout<typeof DefaultConfig> {
   static get NAME() {
     return DefaultConfig.extensionName;
   }
@@ -30,29 +27,26 @@ class HashAndIdNTupleStorageLayout extends OcflStorageLayout {
     );
   }
 
-  /**
-   * @param {Partial<typeof DefaultConfig>} [config]
-   */
-  constructor(config) {
+  constructor(config?: Partial<typeof DefaultConfig>) {
     super(config, DefaultConfig);
     const c = this.parameters;
     const algo = enumeration.of(OcflDigest.FIXITY, c.digestAlgorithm)?.name;
-    if (!algo) throw new Error('Invalid digestAlgorithm');
+    if (!algo) {
+      throw new Error('Invalid digestAlgorithm');
+    }
     const digestLength = OcflDigest.getHexDigestLength(algo);
     const p = c.numberOfTuples * c.tupleSize;
-    if (p > digestLength) throw new Error('Product of numberOfTuples and tupleSize is greater than the number of characters in the hex encoded digest.');
+    if (p > digestLength) {
+      throw new Error('Product of numberOfTuples and tupleSize is greater than the number of characters in the hex encoded digest.');
+    }
   }
 
-  /**
-   * @param {string} id
-   * @return {string}
-   */
-  map(id) {
+  map(id: string): string {
     const digest = OcflDigest.digestSync(this.parameters.digestAlgorithm, id);
     const segments = [];
     const s = this.parameters.tupleSize;
     const n = this.parameters.numberOfTuples;
-    let i;
+    let i: number;
     for (i = 0; i < n; ++i) {
       segments.push(digest.slice(s * i, s * i + s));
     }
@@ -61,4 +55,4 @@ class HashAndIdNTupleStorageLayout extends OcflStorageLayout {
   }
 }
 
-module.exports = { HashAndIdNTupleStorageLayout };
+export { HashAndIdNTupleStorageLayout };

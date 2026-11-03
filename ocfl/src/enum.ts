@@ -3,30 +3,29 @@
  * @module enumeration
  */
 
-// const COLOR = (c => {
-//   let r = /** @type {{[key in (typeof c)[number]]: string}} */({});
-//   return r;
-// })(/** @type {const} */(['red', 'green', 'blue']));
-// COLOR.blue
-const constantsSymbol = Symbol('constants');
+const constantsOf = new WeakMap<object, readonly string[]>();
+
+export interface EnumValue {
+  readonly name: string;
+  readonly ordinal: number;
+  toString(): string;
+}
+
+type EnumType<T extends readonly string[]> = {
+  new (name: string, ordinal: number): EnumValue;
+  [Symbol.iterator](): Iterator<string>;
+} & { readonly [key in T[number]]: EnumValue };
 
 /**
  * Create enumeration type by passing the list of constants as arguments of string
- * @template {readonly string[]} const T
- * @param {T} constants
  */
-
-function enumeration(constants) {
-  class Enum {
-    /** @type {string} */
-    #name;
-    /** @type {number} */
-    #ordinal;
-    constructor(name, ordinal) {
+function enumeration<const T extends readonly string[]>(constants: T): EnumType<T> {
+  class Enum implements EnumValue {
+    #name: string;
+    #ordinal: number;
+    constructor(name: string, ordinal: number) {
       this.#name = name;
       this.#ordinal = ordinal;
-      //Object.defineProperty(this, 'name', { writable: false, enumerable: true, value: name });
-      //Object.defineProperty(this, 'ordinal', { writable: false, enumerable: true, value: ordinal });
     }
     get name() {
       return this.#name;
@@ -37,12 +36,10 @@ function enumeration(constants) {
     toString() {
       return this.name;
     }
-    /** @returns {Iterator<string>} */
-    static [Symbol.iterator]() {
-      return this[constantsSymbol][Symbol.iterator]();
+    static [Symbol.iterator](): Iterator<string> {
+      return constantsOf.get(Enum)[Symbol.iterator]();
     }
   }
-  /** @typedef { typeof Enum & {[key in T[number]]: Enum} } EnumType */
   let count = 0;
   for (const c of constants) {
     Object.defineProperty(Enum, c, {
@@ -51,43 +48,36 @@ function enumeration(constants) {
       enumerable: true,
     });
   }
-  Object.defineProperty(Enum, constantsSymbol, {
-    value: constants,
-    writable: false,
-    enumerable: false,
-  });
-  return /** @type {EnumType} */ (Object.freeze(Enum));
+  constantsOf.set(Enum, constants);
+  return Object.freeze(Enum) as unknown as EnumType<T>;
 }
 
 /**
  * Return an existing constant that represents the specified value
- * @type {{<T extends abstract new() => any>(type: T, value: any): InstanceType<T>}}
  */
-enumeration.of = (type, value) => {
-  if (value instanceof type && type[value.name]) return value;
-  else if (typeof value === 'string') {
-    return (
-      type[/**@type {string}*/ (value)] ||
-      (() => {
-        for (const name in type) {
-          if (name.toUpperCase() === value.toUpperCase()) return type[name];
-        }
-      })()
-    );
+enumeration.of = <T extends readonly string[]>(type: EnumType<T>, value: unknown): EnumValue | undefined => {
+  const t = type as unknown as Record<string, EnumValue>;
+  if (value instanceof type && t[value.name]) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    if (t[value]) {
+      return t[value];
+    }
+    for (const name in type) {
+      if (name.toUpperCase() === value.toUpperCase()) {
+        return t[name];
+      }
+    }
   }
 };
 
 /**
  * Return an existing constant based on the index
- * @template T
- * @param {new() => T} type
- * @param {number} index
- * @return {T}
  */
-enumeration.at = (type, index) => type[type[constantsSymbol][index]];
+enumeration.at = <T extends readonly string[]>(type: EnumType<T>, index: number): EnumValue =>
+  (type as unknown as Record<string, EnumValue>)[constantsOf.get(type)[index]];
 
-enumeration.size = (type) => type[constantsSymbol].length;
+enumeration.size = <T extends readonly string[]>(type: EnumType<T>): number => constantsOf.get(type).length;
 
-exports.enumeration = enumeration;
-exports.default = { ...enumeration };
-//export default { ...enumeration };
+export { enumeration };

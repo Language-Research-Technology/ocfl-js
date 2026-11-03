@@ -1,20 +1,19 @@
-const assert = require('assert');
-const path = require('path');
-const fs = require('fs');
-const { Readable, Writable } = require('stream');
-const { Ocfl, OcflObject } = require('@ocfl/ocfl');
-const { createHash } = require('node:crypto');
+import assert from 'node:assert';
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { Readable, Writable } from 'node:stream';
 
 /**
  * @param {Ocfl} ocfl
  */
-module.exports = (ocfl) => {
+export default (ocfl) => {
   let object;
   let objcount = 0;
 
   /**
    *
-   * @param {OcflObject} object
+   * @param {import('@ocfl/ocfl').OcflObject} object
    * @param {string} srcPath
    * @param {string} logicalPath
    */
@@ -57,7 +56,7 @@ module.exports = (ocfl) => {
     let object = ocfl.object({ root: '/tmp/dummy' });
 
     before(async () => {
-      const config = { root: path.join(__dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full') };
+      const config = { root: path.join(import.meta.dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full') };
       object = ocfl.object(config);
       invRaw = JSON.parse(await fs.promises.readFile(path.join(config.root, 'inventory.json'), 'utf8'));
       invRawFiles = Object.values(invRaw.versions[invRaw.head].state).flat();
@@ -130,9 +129,9 @@ module.exports = (ocfl) => {
   });
 
   describe('update', () => {
-    const datadir = path.join(__dirname, 'test-data');
+    const datadir = path.join(import.meta.dirname, 'test-data');
     const tempdir = path.join(datadir, 'temp');
-    /** @type {OcflObject} */
+    /** @type {import('@ocfl/ocfl').OcflObject} */
     let objectx;
 
     function createObject(id, useWorkspace, ocflVersion) {
@@ -443,7 +442,7 @@ module.exports = (ocfl) => {
   describe('spec violations', () => {
     let tempdir;
     before(async () => {
-      tempdir = await fs.promises.mkdtemp(path.join(__dirname, 'test-data', 'temp-errors-'));
+      tempdir = await fs.promises.mkdtemp(path.join(import.meta.dirname, 'test-data', 'temp-errors-'));
     });
 
     it('reports E007 when the version declaration has the wrong contents', async () => {
@@ -481,4 +480,4 @@ module.exports = (ocfl) => {
 };
 
 //ocfl.OcflExtension.register(require('ocfl-extensions'));
-//const d = require('ocfl-extension-dummy');
+//import d from 'ocfl-extension-dummy';

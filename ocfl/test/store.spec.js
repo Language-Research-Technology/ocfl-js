@@ -1,5 +1,5 @@
-const assert = require('assert');
-const { OcflStore } = require('../index.js');
+import assert from 'node:assert';
+import { OcflStore } from '../src/index.ts';
 
 class OcflTest1Store extends OcflStore {}
 

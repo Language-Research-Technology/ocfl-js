@@ -1,6 +1,7 @@
-'use strict';
-const assert = require('assert');
-const { PathDirectStorageLayout } = require('../../index').extensions;
+import assert from 'node:assert';
+import { extensions } from '../../src/index.ts';
+
+const { PathDirectStorageLayout } = extensions;
 
 describe('PathDirectStorageLayout class', () => {
   it('can map valid URIs', () => {

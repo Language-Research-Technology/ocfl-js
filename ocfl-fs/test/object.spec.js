@@ -1,7 +1,5 @@
-//@ts-check
-'use strict';
-
-const ocfl = require('../index');
+import ocflTests from '@ocfl/ocfl-tests';
+import ocfl from '../src/index.ts';
 
 describe('OcflObject class using OcflFsStore', () => {
   // it("constructor", function() {
@@ -10,5 +8,5 @@ describe('OcflObject class using OcflFsStore', () => {
   //   assert.strictEqual(DIGEST_FIXITY.size(), 5);
   // });
 
-  require('@ocfl/ocfl-tests').object(ocfl);
+  ocflTests.object(ocfl);
 });

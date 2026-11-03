@@ -1,9 +1,6 @@
-//@ts-check
-'use strict';
-
-const assert = require('assert');
-const { readFile } = require('fs/promises');
-const { OcflObjectInventory } = require('../lib/inventory');
+import assert from 'node:assert';
+import { readFile } from 'node:fs/promises';
+import { OcflObjectInventory } from '../src/inventory.ts';
 
 describe('OcflObjectInventory class', () => {
   let data;

@@ -1,14 +1,14 @@
-const path = require('path');
-const { OcflStorageLayout } = require('../extension');
-const { EXTENSIONS_DIR } = require('../constants').OcflConstants;
+import path from 'node:path';
+import { OcflConstants } from '../constants.ts';
+import { OcflStorageLayout } from '../extension.ts';
 
-/** @type {FlatDirectStorageLayout} */
-var instance;
+const { EXTENSIONS_DIR } = OcflConstants;
+
+let instance: FlatDirectStorageLayout;
 
 /**
  * OCFL object identifiers are mapped directly to directory names that are direct children of the OCFL storage root directory.
  */
-// @ts-expect-error
 class FlatDirectStorageLayout extends OcflStorageLayout {
   static get NAME() {
     return '0002-flat-direct-storage-layout';
@@ -17,20 +17,12 @@ class FlatDirectStorageLayout extends OcflStorageLayout {
     return 'OCFL object identifiers are mapped directly to directory names' + ' that are direct children of the OCFL storage root.';
   }
 
-  static create() {
-    if (!instance) instance = new FlatDirectStorageLayout();
-    return instance;
+  static create<T>(): T {
+    instance ??= new FlatDirectStorageLayout();
+    return instance as T;
   }
 
-  constructor() {
-    super();
-  }
-
-  /**
-   * @param {string} id
-   * @return {string}
-   */
-  map(id) {
+  map(id: string): string {
     if (path.basename(id) !== id) {
       throw new Error(`The object id <${id}> is incompatible with layout extension ${this.name} because it contains the path separator character.`);
     } else if (id === EXTENSIONS_DIR) {
@@ -44,4 +36,4 @@ class FlatDirectStorageLayout extends OcflStorageLayout {
   }
 }
 
-module.exports = { FlatDirectStorageLayout };
+export { FlatDirectStorageLayout };

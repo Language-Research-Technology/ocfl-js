@@ -1,20 +1,30 @@
 {
   "compilerOptions": {
-    "allowJs": true,
-    "checkJs": true,
-    "alwaysStrict": true,
+    "target": "es2023",
+    "lib": ["es2024"],
+    "module": "nodenext",
+    "types": ["node"],
+    "rewriteRelativeImportExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "isolatedDeclarations": false,
     "strict": false,
-    "module": "CommonJS",
-    "target": "esnext",
-    "outDir": "dist"
+    "noImplicitAny": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "skipLibCheck": true,
+    "customConditions": ["@ocfl/source"]
   },
-  "include": ["index.js", "index.mjs", "lib/**/*.js", "lib/**/*.d.ts"],
+  "include": ["src"],
   "typedocOptions": {
-    "entryPoints": "index.mjs",
+    "entryPoints": ["src/index.ts"],
     "out": "./docs",
     "excludePrivate": true,
     "excludeProtected": true,
     "includeVersion": true,
-    "skipErrorChecking": true
+    "plugin": ["typedoc-plugin-missing-exports"]
   }
 }

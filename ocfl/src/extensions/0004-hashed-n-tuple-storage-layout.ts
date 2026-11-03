@@ -1,7 +1,7 @@
-const { OcflStorageLayout } = require('../extension');
-const { OcflDigest } = require('../digest');
-const path = require('path');
-const { enumeration } = require('../enum');
+import path from 'node:path';
+import { OcflDigest } from '../digest.ts';
+import { enumeration } from '../enum.ts';
+import { OcflStorageLayout } from '../extension.ts';
 
 const DefaultConfig = {
   extensionName: '0004-hashed-n-tuple-storage-layout',
@@ -10,11 +10,9 @@ const DefaultConfig = {
   numberOfTuples: 3,
   shortObjectRoot: false,
 };
-/** @typedef {Partial<typeof DefaultConfig>} HashedNTupleStorageLayoutConfig */
-/**
- * @extends {OcflStorageLayout<typeof DefaultConfig>}
- */
-class HashedNTupleStorageLayout extends OcflStorageLayout {
+export type HashedNTupleStorageLayoutConfig = Partial<typeof DefaultConfig>;
+
+class HashedNTupleStorageLayout extends OcflStorageLayout<typeof DefaultConfig> {
   static get NAME() {
     return DefaultConfig.extensionName;
   }
@@ -26,31 +24,28 @@ class HashedNTupleStorageLayout extends OcflStorageLayout {
     );
   }
 
-  /**
-   *
-   * @param {HashedNTupleStorageLayoutConfig} [config]
-   */
-  constructor(config) {
+  constructor(config?: HashedNTupleStorageLayoutConfig) {
     super(config, DefaultConfig);
     const c = this.parameters;
     const algo = enumeration.of(OcflDigest.FIXITY, c.digestAlgorithm)?.name;
-    if (!algo) throw new Error('Invalid digestAlgorithm');
+    if (!algo) {
+      throw new Error('Invalid digestAlgorithm');
+    }
     const digestLength = OcflDigest.getHexDigestLength(algo);
     const p = c.numberOfTuples * c.tupleSize;
-    if (p > digestLength) throw new Error('Product of numberOfTuples and tupleSize is greater than the number of characters in the hex encoded digest.');
-    else if (p === digestLength && c.shortObjectRoot) throw new Error('shortObjectRoot cannot be set to true');
+    if (p > digestLength) {
+      throw new Error('Product of numberOfTuples and tupleSize is greater than the number of characters in the hex encoded digest.');
+    } else if (p === digestLength && c.shortObjectRoot) {
+      throw new Error('shortObjectRoot cannot be set to true');
+    }
   }
 
-  /**
-   * @param {string} id
-   * @return {string}
-   */
-  map(id) {
+  map(id: string): string {
     const digest = OcflDigest.digestSync(this.parameters.digestAlgorithm, id);
     const segments = [];
     const s = this.parameters.tupleSize;
     const n = this.parameters.numberOfTuples;
-    let i;
+    let i: number;
     for (i = 0; i < n; ++i) {
       segments.push(digest.slice(s * i, s * i + s));
     }
@@ -63,4 +58,4 @@ class HashedNTupleStorageLayout extends OcflStorageLayout {
   }
 }
 
-module.exports = { HashedNTupleStorageLayout };
+export { HashedNTupleStorageLayout };

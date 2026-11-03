@@ -1,62 +1,89 @@
-/**
- * @typedef {Object} FileRef
- * @property {string} [contentPath] - Actual path to the file location relative to the ocfl object root.
- * @property {string} [logicalPath] - A path that represents a file’s location in the logical state of an object.
- * @property {string} [digest] - An algorithmic characterization of the contents of a file conforming to a standard digest algorithm.
- * @property {string} [version] - Version of the OCFL object.
- * @property {string} [lastModified] - Last modified date of the file.
- * @property {string} [size] - Size of the file in bytes.
- * @property {Object.<string, string>} [fixity] - Fixity information of the file.
- */
+import type { OcflObject } from './object.ts';
 
-/**
- * @typedef {Object} FileStat
- * @property {number} [size] - Size of the file in bytes.
- * @property {Date} [atime] - Last access time of the file.
- * @property {Date} [mtime] - Last modified time of the file.
- * @property {Date} [ctime] - Creation time of the file.
- */
+export interface FileRef {
+  /** Actual path to the file location relative to the ocfl object root. */
+  contentPath?: string;
+  /** A path that represents a file’s location in the logical state of an object. */
+  logicalPath?: string;
+  /** An algorithmic characterization of the contents of a file conforming to a standard digest algorithm. */
+  digest?: string;
+  /** Version of the OCFL object. */
+  version?: string;
+  /** Last modified time of the file, in milliseconds since the UNIX epoch. */
+  lastModified?: number;
+  /** Size of the file in bytes. */
+  size?: number;
+  /** Fixity information of the file. */
+  fixity?: { [algorithm: string]: string };
+}
+
+export interface FileStat {
+  /** Size of the file in bytes. */
+  size?: number;
+  /** Last access time of the file. */
+  atime?: Date;
+  /** Last modified time of the file. */
+  mtime?: Date;
+  /** Creation time of the file. */
+  ctime?: Date;
+}
+
+const REF_KEYS = ['logicalPath', 'version', 'digest', 'contentPath'] as const;
 
 /**
  * Represent a file in an OCFL object
  */
 class OcflObjectFile {
-  #ocflObject;
-  #lastModified;
-  #size;
+  #ocflObject: OcflObject;
+  #lastModified: number | undefined;
+  #size: number | undefined;
+  logicalPath?: string;
+  contentPath?: string;
+  digest?: string;
+  version?: string;
+  fixity?: { [algorithm: string]: string };
 
-  /**
-   *
-   * @param {import('./object').OcflObject} ocflObject
-   * @param {FileRef} fileRef
-   */
-  constructor(ocflObject, fileRef) {
+  constructor(ocflObject: OcflObject, fileRef: FileRef) {
     this.#ocflObject = ocflObject;
-    // for (const key in ['logicalPath', 'version', 'digest', 'contentPath']) {
-    //   if (fileRef[key]) this[key] = fileRef[key];
-    // }
-    if (fileRef.logicalPath) this.logicalPath = fileRef.logicalPath;
-    if (fileRef.contentPath) this.contentPath = fileRef.contentPath;
-    if (fileRef.digest) this.digest = fileRef.digest;
-    if (fileRef.version) this.version = fileRef.version;
-    if (fileRef.lastModified != null) this.#lastModified = fileRef.lastModified;
-    if (fileRef.size != null) this.#size = fileRef.size;
-    if (fileRef.fixity != null) this.fixity = fileRef.fixity;
+    if (fileRef.logicalPath) {
+      this.logicalPath = fileRef.logicalPath;
+    }
+    if (fileRef.contentPath) {
+      this.contentPath = fileRef.contentPath;
+    }
+    if (fileRef.digest) {
+      this.digest = fileRef.digest;
+    }
+    if (fileRef.version) {
+      this.version = fileRef.version;
+    }
+    if (fileRef.lastModified != null) {
+      this.#lastModified = fileRef.lastModified;
+    }
+    if (fileRef.size != null) {
+      this.#size = fileRef.size;
+    }
+    if (fileRef.fixity != null) {
+      this.fixity = fileRef.fixity;
+    }
   }
 
   /**
    * Resolve contentPath given either the `logicalPath` and `version`, `digest`, or `contentPath`.
    */
-  async #resolveContentPath() {
+  async #resolveContentPath(): Promise<string> {
     let contentPath = this.contentPath;
     if (!contentPath) {
       const inv = await this.#ocflObject.getInventory();
-      if (!inv) throw new Error(`OCFL Object "${this.#ocflObject.id}" does not exist`);
+      if (!inv) {
+        throw new Error(`OCFL Object "${this.#ocflObject.id}" does not exist`);
+      }
       const version = !this.version || this.version === 'latest' ? inv.head : this.version;
       const digest = this.digest || inv.getDigest(this.logicalPath, version);
       contentPath = inv.getContentPath(digest);
-      if (!contentPath)
+      if (!contentPath) {
         throw new Error(`Cannot find content "${this.toString()}" in the OCFL Object "${this.#ocflObject.id}" version "${this.version || 'latest'}"`);
+      }
     }
     return contentPath;
   }
@@ -76,76 +103,63 @@ class OcflObjectFile {
   }
 
   toString() {
-    const props = [];
-    for (const key in ['logicalPath', 'version', 'digest', 'contentPath']) {
-      if (this[key]) props.push(key + ": '" + this[key] + "'");
-    }
+    const props = REF_KEYS.filter((key) => this[key]).map((key) => `${key}: '${this[key]}'`);
     return `{ ${props.join(', ')} }`;
   }
 
   /**
    * Get the file content as a buffer
-   * @param {*} [options] Options to be passed to underlying data store specific implementation
-
-   * @return {Promise<Buffer>}
+   * @param options Options to be passed to underlying data store specific implementation
    */
-  async buffer(options) {
+  async buffer(options?: unknown): Promise<Uint8Array> {
     return this.#ocflObject.readFile(await this.#resolveContentPath(), options);
   }
 
   /**
-   * @deprecated Use {@link buffer()}
+   * @deprecated Use {@link OcflObjectFile.buffer}
    */
-  async asBuffer(options) {
+  async asBuffer(options?: unknown) {
     return this.buffer(options);
   }
 
   /**
    * Get the file content as a string
-   * @param {BufferEncoding} [encoding='utf8'] String encoding, default to utf8
-   * @return {Promise<string>}
+   * @param encoding String encoding, default to utf8
    */
-  async text(encoding = 'utf8') {
-    // @ts-expect-error
-    return this.buffer(encoding);
+  async text(encoding: BufferEncoding = 'utf8'): Promise<string> {
+    return this.#ocflObject.readFile(await this.#resolveContentPath(), encoding);
   }
+
   /**
-   * @deprecated Use {@link text()}
+   * @deprecated Use {@link OcflObjectFile.text}
    */
-  async asString(encoding = 'utf8') {
-    // @ts-expect-error
+  async asString(encoding: BufferEncoding = 'utf8') {
     return this.text(encoding);
   }
 
   /**
-   * Get the file content as a NodeJS stream
-   * @param {*} [options] Options to be passed to underlying data store specific implementation
-   * @return {Promise<ReadableStream>}
-   * @deprecated Use {@link stream()}
+   * Get the file content as a ReadableStream
+   * @param options Options to be passed to underlying data store specific implementation
+   * @deprecated Use {@link OcflObjectFile.stream}
    */
-  async asStream(options) {
-    return this.#ocflObject.createReadable(await this.#resolveContentPath(), options);
+  async asStream(options?: unknown): Promise<ReadableStream> {
+    return this.stream(options);
   }
 
   /**
    * Get the file content as a ES Streams standard ReadableStream
-   * @param {*} [options] Options to be passed to underlying data store specific implementation
-   * @return {Promise<ReadableStream>}
+   * @param options Options to be passed to underlying data store specific implementation
    */
-  async stream(options) {
+  async stream(options?: unknown): Promise<ReadableStream> {
     return this.#ocflObject.createReadable(await this.#resolveContentPath(), options);
   }
 
   /**
    * Get the file stat info
-   * @param {*} [options] Options to be passed to underlying data store specific implementation
-   * @return {Promise<FileStat>}
    */
-  async stat(options) {
+  async stat(_options?: unknown): Promise<FileStat> {
     return this.#ocflObject.stat(await this.#resolveContentPath());
   }
 }
 
-module.exports = {
-  OcflObjectFile,
-};
+export { OcflObjectFile };

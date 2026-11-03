@@ -1,16 +1,8 @@
-/**
- * @module
- * default constants
- */
-// module.exports = {
-//   OCFL_VERSION: 1.1,
-//   NAMASTE_PREFIX_OBJECT: '0=ocfl_object_',
-//   NAMASTE_PREFIX_STORAGE: '0=ocfl_',
-//   INVENTORY_NAME: 'inventory.json'
-// };
+import type { OcflVersion } from './types.ts';
+
 const OcflConstants = {
-  OCFL_VERSION: '1.1',
-  OCFL_VERSIONS: Object.freeze(['1.1', '1.0']),
+  OCFL_VERSION: '1.1' as OcflVersion,
+  OCFL_VERSIONS: Object.freeze(['1.1', '1.0'] as const),
   OCFL_LAYOUT: 'ocfl_layout.json',
   NAMASTE_T: '0=',
   NAMASTE_PREFIX_OBJECT: 'ocfl_object_',
@@ -21,4 +13,4 @@ const OcflConstants = {
   DIGEST_ALGORITHM: 'sha512',
 };
 
-module.exports = { OcflConstants };
+export { OcflConstants };

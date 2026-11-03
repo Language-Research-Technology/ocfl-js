@@ -1,4 +1,4 @@
-const ocfl = require('../index.js');
+import ocfl from '../src/index.ts';
 
 const o = ocfl.object({ root: '/test' });
 

@@ -1,20 +1,10 @@
-//@ts-check
-const { OcflFsStore } = require('./lib/store.js');
-const { implementOcfl } = require('@ocfl/ocfl');
-//const { default: ocfl } = require('./index.mjs');
+import { implementOcfl } from '@ocfl/ocfl';
+import { OcflFsStore, type OcflFsStoreConfig } from './store.ts';
 
-/** @type {import('./lib/store.js').OcflFsStoreConfig} */
-let defaultOptions;
+export type { OcflFsStoreConfig } from './store.ts';
+export { OcflFsStore } from './store.ts';
 
-const ocfl = implementOcfl(OcflFsStore, defaultOptions);
-const { OCFL_VERSIONS, StorageLayout, createStorage, loadStorage, object, storage, storageLayout } = ocfl;
-module.exports = {
-  OCFL_VERSIONS,
-  StorageLayout,
-  createStorage,
-  loadStorage,
-  object,
-  storage,
-  storageLayout,
-};
-//module.exports.default = module.exports;
+const ocfl = implementOcfl<OcflFsStoreConfig>(OcflFsStore);
+
+export const { OCFL_VERSIONS, StorageLayout, createStorage, loadStorage, object, storage, storageLayout } = ocfl;
+export default ocfl;

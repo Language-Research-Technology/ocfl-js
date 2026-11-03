@@ -1,93 +1,96 @@
-const path = require('path');
-const { parallelize, joinTypedArray } = require('./utils');
+import type { Dir, ReadStream, Stats, WriteStream } from 'node:fs';
+import path from 'node:path';
+import { joinTypedArray } from './utils.ts';
 
 const emptyOptions = {};
+
+type Encoding = BufferEncoding | { encoding: BufferEncoding };
+
+export type WriteFileData = string | Uint8Array | DataView | ArrayBuffer | ReadableStream;
+
+export interface ListedFile {
+  name: string;
+  path: string;
+  size: number;
+  lastModified: Date;
+}
+
+export interface ListOptions {
+  encoding?: BufferEncoding;
+  bufferSize?: number;
+  recursive?: boolean;
+}
 
 /**
  * Abstract class to provide common APIs to access and modify the actual data store backend
  * such as local file system and cloud storage
  */
 class OcflStore {
-  /** @type {Map<Object, OcflStore>} */
-  static instances;
+  static instances: Map<object, OcflStore>;
 
-  /**
-   *
-   * @param {Object} [options]
-   */
-  static getInstance(options = emptyOptions) {
-    if (!this.instances) return new this(options);
-    let store = this.instances.get(options);
+  static getInstance<T extends OcflStore>(this: new (options?: object) => T, options: object = emptyOptions): T {
+    const instances = (this as unknown as typeof OcflStore).instances as Map<object, T> | undefined;
+    if (!instances) {
+      return new this(options);
+    }
+    let store = instances.get(options);
     if (!store) {
       store = new this(options);
-      this.instances.set(options, store);
+      instances.set(options, store);
     }
     return store;
   }
 
-  constructor(options) {}
+  // biome-ignore lint/complexity/noUselessConstructor: documents the constructor signature subclasses receive from getInstance()
+  constructor(_options?: object) {}
 
   /**
    * Get file information.
-   * @param {string} filePath
-   * @return {Promise<import('fs').Stats>}
    */
-  async stat(filePath) {
+  async stat(_filePath: string): Promise<Stats> {
     throw new Error('Not Implemented');
   }
 
   /**
    * Check if file exists
-   * @param {string} filePath
    */
-  async exists(filePath) {
+  async exists(filePath: string): Promise<boolean> {
     try {
       await this.stat(filePath);
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
 
   /**
    * Create a readable stream to get the content of a file
-   * @param {string} filePath - Absolute path
-   * @param {*} options
-   * @return {Promise<import('fs').ReadStream>}
-   * @deprecated Use {@link createReadable()} instead
+   * @deprecated Use {@link OcflStore.createReadable} instead
    */
-  async createReadStream(filePath, options) {
+  async createReadStream(_filePath: string, _options?: unknown): Promise<ReadStream> {
     throw new Error('Not Implemented');
   }
 
   /**
-   * Create a stream that writes data to {@link relPath}.
-   * @param {string} relPath
-   * @param {*} options
-   * @return {Promise<import('fs').WriteStream>}
-   * @deprecated Use {@link createWritable()} instead
+   * Create a stream that writes data to `filePath`.
+   * @deprecated Use {@link OcflStore.createWritable} instead
    */
-  async createWriteStream(relPath, options) {
+  async createWriteStream(_filePath: string, _options?: unknown): Promise<WriteStream> {
     throw new Error('Not Implemented');
   }
 
   /**
    * Create a ReadableStream to get the content of a file
-   * @param {string} filePath - Absolute path
-   * @param {*} options
-   * @return {Promise<ReadableStream>}
+   * @param filePath - Absolute path
    */
-  async createReadable(filePath, options) {
+  async createReadable(_filePath: string, _options?: unknown): Promise<ReadableStream> {
     throw new Error('Not Implemented');
   }
 
   /**
-   * Create a WritableStream that writes data to {@link relPath}.
-   * @param {string} relPath
-   * @param {*} options
-   * @return {Promise<WritableStream>}
+   * Create a WritableStream that writes data to `filePath`.
    */
-  async createWritable(relPath, options) {
+  async createWritable(_filePath: string, _options?: unknown): Promise<WritableStream> {
     throw new Error('Not Implemented');
   }
 
@@ -95,35 +98,39 @@ class OcflStore {
    * Provide a common interface to read a file inside an object.
    * A concrete subclass MAY implement this method to provide read access to its underlying storage backend.
    * The default implementation uses the {@linkcode OcflStore#createReadable} method.
-   * @param {string} filePath
-   * @param {*} [options]
    */
-  async readFile(filePath, options) {
+  async readFile(filePath: string, options: Encoding): Promise<string>;
+  async readFile(filePath: string, options?: unknown): Promise<Uint8Array>;
+  async readFile(filePath: string, options?: unknown): Promise<string | Uint8Array> {
     const rs = await this.createReadable(filePath, options);
-    let buffer = typeof options === 'string' || options.encoding ? '' : new Uint8Array(new ArrayBuffer(0, { maxByteLength: 16 * 1024 }));
+    let buffer: string | Uint8Array =
+      typeof options === 'string' || (options as { encoding?: string } | undefined)?.encoding
+        ? ''
+        : new Uint8Array(new ArrayBuffer(0, { maxByteLength: 16 * 1024 }));
     for await (const chunk of rs) {
       if (typeof chunk === 'string') {
-        if (typeof buffer !== 'string') buffer = new TextDecoder().decode(buffer);
+        if (typeof buffer !== 'string') {
+          buffer = new TextDecoder().decode(buffer);
+        }
         buffer += chunk;
       } else {
-        if (typeof buffer === 'string') buffer = new TextEncoder().encode(buffer);
-        // @ts-expect-error
-        buffer = joinTypedArray(buffer, chunk);
+        if (typeof buffer === 'string') {
+          buffer = new TextEncoder().encode(buffer);
+        }
+        buffer = joinTypedArray(buffer, chunk) as Uint8Array;
       }
     }
     return buffer;
   }
 
-  /** @typedef {string|Buffer|Uint8Array|DataView|AsyncIterable|Iterable|ReadableStream} WriteFileData */
   /**
    * Provide a common interface to write a file inside an object.
    * A concrete subclass MAY implement this method to provide write access to its underlying storage backend.
-   * The default implementation uses the {@link OcflStore.createWriteStream} method.
-   * @param {string} filePath - Absolute path to the file.
-   * @param {WriteFileData} data - The data to be written to the file.
-   * @param {Object|string} options
+   * The default implementation uses the {@link OcflStore.createWritable} method.
+   * @param filePath - Absolute path to the file.
+   * @param data - The data to be written to the file.
    */
-  async writeFile(filePath, data, options) {
+  async writeFile(filePath: string, data: WriteFileData, options?: object | string): Promise<void> {
     await this.mkdir(path.dirname(filePath));
     const target = await this.createWritable(filePath, options);
     if (data instanceof ReadableStream) {
@@ -138,75 +145,54 @@ class OcflStore {
   /**
    * Copy file from `source` to `target`.
    * By default, target is overwritten if it already exists.
-   * @param {string} source - source filename to copy
-   * @param {string} target - destination filename of the copy operation
    */
-  async copyFile(source, target) {
+  async copyFile(source: string, target: string): Promise<void> {
     await this.writeFile(target, await this.createReadable(source));
   }
 
   /**
    * Open a directory
-   * @param {string} filePath
-   * @param {*} options
-   * @return {Promise<import('fs').Dir> }
    */
-  async opendir(filePath, options) {
+  async opendir(_filePath: string, _options?: unknown): Promise<Dir> {
     throw new Error('Not Implemented');
   }
 
   /**
    * Read a directory
-   * @param {string} filePath
-   * @param {*} options
-   * @return {Promise<string[]> }
    */
-  async readdir(filePath, options) {
+  async readdir(_filePath: string, _options?: unknown): Promise<string[]> {
     throw new Error('Not Implemented');
   }
 
   /**
    * List all files contained in a directory including the metadata such as size and last modified date.
    * The returned file.path is a relative path to the dirPath
-   * @param {string} dirPath
-   * @param {object} [options]
-   * @param {BufferEncoding} [options.encoding]
-   * @param {number} [options.bufferSize]
-   * @param {boolean} [options.recursive]
-   * @return {Promise<AsyncIterableIterator<{name: string, path: string, size: number, lastModified: Date}>> }
    */
-  async list(dirPath, { encoding = 'utf8', bufferSize = 32, recursive = false } = {}) {
+  async list(_dirPath: string, _options?: ListOptions): Promise<AsyncIterableIterator<ListedFile>> {
     throw new Error('Not Implemented');
   }
 
   /**
    * Recursively create a directory if the storage backend supports it, otherwise do nothing
-   * @param {string} filePath - The directory path
-   * @param {*} [options] - Options to be passed to the underlying method
-   * @return {Promise<string>} - The first directory path created
+   * @returns The first directory path created
    */
-  async mkdir(filePath, options) {
+  async mkdir(_filePath: string, _options?: unknown): Promise<string | undefined> {
     throw new Error('Not Implemented');
   }
 
   /**
    * Rename or move a file or directory
-   * @param {string} source
-   * @param {string} target
    */
-  async move(source, target) {
+  async move(_source: string, _target: string): Promise<void> {
     throw new Error('Not Implemented');
   }
 
   /**
    * Remove a file or directory recursively
-   * @param {*} filePath
    */
-  async remove(filePath) {
+  async remove(_filePath: string): Promise<void> {
     throw new Error('Not Implemented');
   }
 }
 
-module.exports = {
-  OcflStore,
-};
+export { OcflStore };

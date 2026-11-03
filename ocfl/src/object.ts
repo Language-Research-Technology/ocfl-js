@@ -1,72 +1,64 @@
-//@ts-check
-'use strict';
+import path from 'node:path';
+import { OcflConstants } from './constants.ts';
+import { OcflDigest } from './digest.ts';
+import { type EnumValue, enumeration } from './enum.ts';
+import type { OcflExtension } from './extension.ts';
+import type { FileRef } from './file.ts';
+import { OcflObjectFile } from './file.ts';
+import { type InventoryFile, OcflObjectInventory, type OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
+import type { OcflStore } from './store.ts';
+import { type OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
+import type { Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
+import { findNamasteVersion, isDirEmpty, parallelize } from './utils.ts';
+import { createError } from './validation.ts';
 
-const path = require('path');
-const { createError } = require('./validation.js');
-const { enumeration } = require('./enum.js');
-const { OcflObjectInventory, OcflObjectInventoryMut, VersionNumber } = require('./inventory.js');
-const { OcflDigest } = require('./digest.js');
-const { OcflObjectTransaction, OcflObjectTransactionImpl } = require('./transaction.js');
-const { OcflStore } = require('./store.js');
-const { OcflExtension } = require('./extension.js');
-const { NotImplementedError } = require('./error.js');
-const { parallelize, isDirEmpty, findNamasteVersion } = require('./utils');
-const { OcflObjectFile } = require('./file.js');
-const { OCFL_VERSION, OCFL_VERSIONS, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = require('./constants').OcflConstants;
+const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
 
-const UPDATE_MODES = /** @type { const } */ (['MERGE', 'REPLACE']);
+const UPDATE_MODES = ['MERGE', 'REPLACE'] as const;
 const UPDATE_MODE = enumeration(UPDATE_MODES);
 const DIGEST = OcflDigest.CONTENT;
 
-/**
- * @typedef {(typeof UPDATE_MODES)[number]} UpdateModeStr
- * @typedef { InstanceType<typeof UPDATE_MODE> | UpdateModeStr} UpdateMode
- * @typedef {string} LogicalPath
- * @typedef {{logicalPath: string, version?: string}} FileRefLogical
- * @typedef {{digest: string, version?: string}} FileRefDigest
- * @typedef {{contentPath: string, version?: string}} FileRefContent
- * @typedef {import('./types').Inventory} Inventory
- * @typedef {import('./types').OcflVersion} OcflVersion
- * @typedef {import('./types').OcflObjectConfig} OcflObjectConfig
- *
- */
+type UpdateModeStr = (typeof UPDATE_MODES)[number];
+export type UpdateMode = EnumValue | UpdateModeStr;
+type LogicalPath = string;
+type FileRefLogical = { logicalPath: string; version?: string };
+type FileRefDigest = { digest: string; version?: string };
+type FileRefContent = { contentPath: string; version?: string };
 
 /**
  * A class representing an OCFL Object allowing to read and write the content of an OCFL Object in the underlying store.
  */
 class OcflObject {
-  /** @type {OcflVersion} */
-  #ocflVersion;
-  /** @type {string} */
-  #root;
-  /** @type {string} */
-  #workspace;
-  /** @type {string} */
-  #id;
-  /** @type {('sha256' | 'sha512')} */
-  #digestAlgorithm;
-  /** @type {OcflExtension[]} */
-  #extensions;
-  /** @type {OcflStore} */
-  #store;
+  #ocflVersion: OcflVersion;
+  #root: string;
+  #workspace: string;
+  #id: string;
+  #digestAlgorithm: 'sha256' | 'sha512';
+  #extensions: OcflExtension[];
+  #store: OcflStore;
   /**
    * A default list of digest algorithms to be calculated for each file in this object and added to the fixity block.
-   * @type {string[]}
    */
-  fixityAlgorithms;
+  fixityAlgorithms: string[];
+  contentDirectory: string;
+  _inventory: { [version: string]: OcflObjectInventory } = {};
 
   /**
    * Create a new OCFL Object
-   * @param {OcflObjectConfig} config
-   * @param {OcflStore} store
    */
-  constructor(config, store) {
-    if (!store) throw new TypeError('[OcflObject] store is required.');
+  constructor(config: OcflObjectConfig, store: OcflStore) {
+    if (!store) {
+      throw new TypeError('[OcflObject] store is required.');
+    }
     this.#store = store;
-    if (!config.root) throw new TypeError('[OcflObject] config.root is required.');
-    if (config.root === config.workspace) throw new Error('[OcflObject] config.root and config.workspace must be different.');
+    if (!config.root) {
+      throw new TypeError('[OcflObject] config.root is required.');
+    }
+    if (config.root === config.workspace) {
+      throw new Error('[OcflObject] config.root and config.workspace must be different.');
+    }
     this.#root = path.resolve(config.root);
-    this.#ocflVersion = config.ocflVersion || /** @type {OcflVersion} */ (OCFL_VERSION);
+    this.#ocflVersion = config.ocflVersion || (OCFL_VERSION as OcflVersion);
     //this.contentVersion = null; // No content yet
     this.#id = config.id;
     this.#extensions = config.extensions;
@@ -74,60 +66,56 @@ class OcflObject {
     this.digestAlgorithm = config.digestAlgorithm || 'sha512';
     this.#workspace = config.workspace ? path.resolve(config.workspace) : undefined;
     this.contentDirectory = config.contentDirectory ?? 'content';
-    /** @type Object.<string, OcflObjectInventory> */
     this._inventory = {};
     this.fixityAlgorithms = config.fixityAlgorithms;
   }
 
   /** the digest algorithm used to identify files within the OCFL object */
-  get digestAlgorithm() {
+  get digestAlgorithm(): 'sha256' | 'sha512' {
     return this.#digestAlgorithm;
   }
-  set digestAlgorithm(algorithm) {
-    this.#digestAlgorithm = algorithm;
-    // @ts-expect-error
-    this.#digestAlgorithm = enumeration.of(DIGEST, algorithm || 'sha512')?.name;
-    if (!this.#digestAlgorithm) throw new Error('Invalid digest algorithm. Must be one of `sha256` or `sha512`.');
+  set digestAlgorithm(algorithm: string) {
+    this.#digestAlgorithm = enumeration.of(DIGEST, algorithm || 'sha512')?.name as 'sha256' | 'sha512';
+    if (!this.#digestAlgorithm) {
+      throw new Error('Invalid digest algorithm. Must be one of `sha256` or `sha512`.');
+    }
   }
 
   /**
    * Identifier of the OCFL Object
-   * @return {string}
    */
-  get id() {
+  get id(): string {
     return this.inventory?.id || this.#id;
   }
 
   /**
    * Latest version number of the OCFL Object
-   * @return {VersionNumber}
    */
-  get headVersion() {
+  get headVersion(): VersionNumber {
     const head = this.inventory?.head;
-    if (head) return VersionNumber.fromString(head);
+    if (head) {
+      return VersionNumber.fromString(head);
+    }
   }
 
   /**
    * All available version numbers in the OCFL Object
-   * @return {VersionNumber[]}
    */
-  get versions() {
+  get versions(): VersionNumber[] {
     return Object.keys(this.inventory?.versions || {}).map((v) => VersionNumber.fromString(v));
   }
 
   /**
    * The absolute path to the root of this OCFL Object
-   * @return {string}
    */
-  get root() {
+  get root(): string {
     return this.#root;
   }
 
   /**
    * The absolute path to the temporary workspace of this OCFL Object
-   * @return {string}
    */
-  get workspace() {
+  get workspace(): string {
     return this.#workspace;
   }
 
@@ -138,12 +126,12 @@ class OcflObject {
 
   /**
    * Create a new backend-specific update transaction
-   * @param {OcflObjectInventoryMut} inventory
-   * @return {Promise<OcflObjectTransaction>}
    */
-  async #createTransaction(inventory) {
+  async #createTransaction(inventory: OcflObjectInventoryMut): Promise<OcflObjectTransaction> {
     await this._validateObjectPath();
-    if (!this.workspace) await this._ensureNamaste();
+    if (!this.workspace) {
+      await this._ensureNamaste();
+    }
     const workspacePath = this.workspace || this.root;
     return OcflObjectTransactionImpl.create(this, this.#store, inventory, workspacePath);
   }
@@ -151,56 +139,66 @@ class OcflObject {
   async _ensureNamaste() {
     const prefix = NAMASTE_PREFIX_OBJECT;
     const nv = await findNamasteVersion(this.#store, prefix, this.root);
-    if (nv === '') throw createError('E007', this.root);
+    if (nv === '') {
+      throw createError('E007', this.root);
+    }
     if (nv) {
-      if (!this.ocflVersion) this.#ocflVersion = /** @type {OcflVersion} */ (nv);
+      if (!this.ocflVersion) {
+        this.#ocflVersion = nv as OcflVersion;
+      }
       return;
     }
     // namaste not found, check if object root is not empty
-    let files;
+    let files: string[] | undefined;
     try {
       files = await this.#store.readdir(this.root);
-    } catch (error) {}
-    if (files && files.length > 0) throw new Error('Cannot create an OCFL Object in a non-empty directory');
+    } catch (_error) {}
+    if (files && files.length > 0) {
+      throw new Error('Cannot create an OCFL Object in a non-empty directory');
+    }
     //create the namaste file
     const filePath = path.join(this.root, NAMASTE_T + prefix + this.ocflVersion);
-    await this.#store.writeFile(filePath, prefix + this.ocflVersion + '\n', 'utf8');
+    await this.#store.writeFile(filePath, `${prefix + this.ocflVersion}\n`, 'utf8');
   }
 
   /**
    * Read and parse the inventory.json file
-   * @param {string} [version] - Full name of the version, eg: v1, v2, v3
-   * @returns {Promise<OcflObjectInventory>}
+   * @param version - Full name of the version, eg: v1, v2, v3
    */
-  async _readInventory(version = 'latest') {
+  async _readInventory(version: string = 'latest'): Promise<OcflObjectInventory> {
     const invPath = version === 'latest' ? INVENTORY_NAME : path.join(version, INVENTORY_NAME);
-    let datastr;
+    let datastr: string;
     try {
-      datastr = /** @type string */ (await this.readFile(invPath, 'utf8'));
+      datastr = await this.readFile(invPath, 'utf8');
     } catch (err) {
-      if (err.code !== 'ENOENT') throw err;
+      if (err.code !== 'ENOENT') {
+        throw err;
+      }
       //inventory does not exist yet
       return;
     }
-    const data = /** @type Inventory */ (JSON.parse(datastr));
-    let [digest, actualDigest] = /** @type [string,string] */ (
-      await Promise.all([this.readFile(invPath + '.' + data.digestAlgorithm, 'utf8'), OcflDigest.digest(data.digestAlgorithm, datastr)])
-    );
+    const data = JSON.parse(datastr) as Inventory;
+    let [digest, actualDigest] = await Promise.all([
+      this.readFile(`${invPath}.${data.digestAlgorithm}`, 'utf8'),
+      OcflDigest.digest(data.digestAlgorithm, datastr),
+    ]);
     digest = digest.match(/[^\s]+/)?.[0];
-    if (digest !== actualDigest) throw createError('E060', path.join(this.root, invPath), `recorded=${digest} actual=${actualDigest}`);
+    if (digest !== actualDigest) {
+      throw createError('E060', path.join(this.root, invPath), `recorded=${digest} actual=${actualDigest}`);
+    }
     //return new OcflObjectInventory({ data, digest });
     return new OcflObjectInventory(data);
   }
 
   /**
    * Set the latest version of inventory in the cache
-   * @param {*} inventory
-   * @param {*} version
    */
-  _setInventory(inventory, version = 'latest') {
+  _setInventory(inventory: OcflObjectInventory, version = 'latest') {
     //this._inventory['latest'] = this._inventory[inventory.head] = inventory;
     this._inventory[version] = inventory;
-    if (version === 'latest') this._inventory[inventory.head] = inventory;
+    if (version === 'latest') {
+      this._inventory[inventory.head] = inventory;
+    }
   }
 
   // all the parent directories cannot be an ocfl object
@@ -209,20 +207,23 @@ class OcflObject {
     while (p !== '.' && p !== '/') {
       p = path.dirname(p);
       const nv = await findNamasteVersion(this.#store, NAMASTE_PREFIX_OBJECT, p);
-      if (nv) throw createError('E082', this.root, `nested under the object at ${p}`);
+      if (nv) {
+        throw createError('E082', this.root, `nested under the object at ${p}`);
+      }
     }
   }
 
   /**
    * If a cache exists, return the cached inventory. Otherwise read it from the storage and cache it.
    * If the inventory file does not exist, eg in a newly created object, returns undefined.
-   * @param {string} [version] - Full name of the version, eg: v1, v2, v3
-   * @returns {Promise<OcflObjectInventory>}
+   * @param version - Full name of the version, eg: v1, v2, v3
    */
-  async getInventory(version = 'latest') {
+  async getInventory(version: string = 'latest'): Promise<OcflObjectInventory> {
     if (!this._inventory[version]) {
       const inv = await this._readInventory(version);
-      if (inv) this._setInventory(inv, version);
+      if (inv) {
+        this._setInventory(inv, version);
+      }
     }
     return this._inventory[version];
   }
@@ -231,7 +232,7 @@ class OcflObject {
     return {
       id: this.id,
       digestAlgorithm: this.digestAlgorithm || 'sha512',
-      type: /** @type {Inventory["type"]} */ (`https://ocfl.io/${this.ocflVersion}/spec/#inventory`),
+      type: `https://ocfl.io/${this.ocflVersion}/spec/#inventory` as Inventory['type'],
       contentDirectory: this.contentDirectory || 'content',
     };
   }
@@ -242,13 +243,15 @@ class OcflObject {
    * {@link OcflObjectTransaction#commit} or {@link OcflObjectTransaction#rollback} method to complete the transaction.
    * If callback function `cb` is provided, all update operations can be done in the callback function
    * and all changes are automatically commited at the end of the function.
-   * @param {function(OcflObjectTransaction):Promise<*>} [updater]
-   * @param {UpdateMode} [mode_]
-   * @return {Promise<?OcflObjectTransaction>}
    */
-  async update(updater, mode_ = UPDATE_MODE.MERGE) {
+  async update(
+    updater?: (transaction: OcflObjectTransaction) => Promise<unknown>,
+    mode_: UpdateMode = UPDATE_MODE.MERGE,
+  ): Promise<OcflObjectTransaction | undefined> {
     const mode = enumeration.of(UPDATE_MODE, mode_);
-    if (!mode) throw new TypeError(`Invalid mode '${mode.toString()}'`);
+    if (!mode) {
+      throw new TypeError(`Invalid mode '${mode.toString()}'`);
+    }
     const inv = (await this.getInventory()) ?? this._baseInventory();
     const newInv = await OcflObjectInventory.newVersion(inv, mode === UPDATE_MODE.REPLACE);
     const t = await this.#createTransaction(newInv);
@@ -271,26 +274,30 @@ class OcflObject {
    * in one transaction and commit the changes as a new version.
    * Use this method to simplify copying all contents of a directory
    * in local filesystem to the OCFL Object content directory
-   * @param {string|string[]|string[][]} content - The source path(s) or an array of a tuple [source, logical path]
-   * @param {UpdateMode} [mode=UPDATE_MODE.MERGE] - Update mode.
+   * @param content - The source path(s) or an array of a tuple [source, logical path]
+   * @param mode - Update mode. Defaults to `UPDATE_MODE.MERGE`.
    */
-  async import(content, mode = UPDATE_MODE.MERGE) {
-    //let entries = /**@type {string[][]}*/(content);
-    if (typeof content === 'string') content = [[content, '']];
-    //else if (typeof content[0] === 'string') entries = /**@type {string[]}*/(content).map(src => [src, '']);
+  async import(content: string | string[] | string[][], mode: UpdateMode = UPDATE_MODE.MERGE) {
+    if (typeof content === 'string') {
+      content = [[content, '']];
+    }
 
     await this.update(async (t) => {
-      const res = await parallelize(/**@type {string[][]}*/ (content), async (p) => {
-        if (typeof p === 'string') p = [p, ''];
+      const res = await parallelize(content as string[][], async (p) => {
+        if (typeof p === 'string') {
+          p = [p, ''];
+        }
         const [source, target] = p;
         return t.import(source, target);
       });
       const errors = [];
       for (let i = 0; i < res.length; ++i) {
-        if (res[i] instanceof Error) errors.push(content[i][0]);
+        if (res[i] instanceof Error) {
+          errors.push(content[i][0]);
+        }
       }
       if (errors.length) {
-        const msg = 'Cannot add the files: ' + errors.join(', ');
+        const msg = `Cannot add the files: ${errors.join(', ')}`;
         throw new Error(msg);
       }
     }, mode);
@@ -300,20 +307,19 @@ class OcflObject {
    * Alias for import
    * @see {@link OcflObject.import}
    */
-  async add(sourceDir, mode = UPDATE_MODE.MERGE) {
+  async add(sourceDir: string | string[] | string[][], mode: UpdateMode = UPDATE_MODE.MERGE) {
     await this.import(sourceDir, mode);
   }
 
   /**
    * Count the number of files contained in this object
-   * @param {string} [version]
    */
-  async count(version) {
+  async count(version?: string) {
     const inv = await this.getInventory();
     return [...inv.files(version)].length;
   }
 
-  async createReadable(filePath, options) {
+  async createReadable(filePath: string, options?: unknown): Promise<ReadableStream> {
     return this.#store.createReadable(path.join(this.root, filePath), options);
   }
 
@@ -321,18 +327,15 @@ class OcflObject {
    * Check if the object root path points to an existing file or non-empty directory
    * in the underlying backend store.
    * The existing directory may or may not be a valid OCFL Object.
-   * @return {Promise<boolean>}
    */
-  async exists() {
+  async exists(): Promise<boolean> {
     return !(await isDirEmpty(this.#store, this.root));
   }
 
   /**
    * Copy all content of this Object to a directory in local filesystem
-   * @param {string} targetDir
-   * @param {string} version
    */
-  async export(targetDir, version) {
+  async export(_targetDir: string, _version: string) {
     throw new Error('Not Implemented');
   }
 
@@ -340,10 +343,8 @@ class OcflObject {
    * Iterate through the content files contained in the specified version.
    * Returns an Iterator that contains FileRef which consists of logical path, content path, and digest, in no particular order.
    * The iterator is implemented as a generator.
-   * @param {string} [version]
-   * @return {Promise<Generator<OcflObjectFile, void, unknown>>}
    */
-  async files(version) {
+  async files(version?: string): Promise<Generator<OcflObjectFile, void, unknown>> {
     const inv = await this.getInventory();
     const o = this;
     function* files() {
@@ -356,35 +357,38 @@ class OcflObject {
 
   /**
    * Return a file representation by the content path and version,
-   * @param { string } contentPath
-   * @param { string } [version='latest']
+   * @param version - Defaults to `'latest'`.
    */
-  async fileByContentPath(contentPath, version) {
+  async fileByContentPath(contentPath: string, version?: string) {
     const inv = await this.getInventory();
     const fr = inv?.getFileByContentPath(contentPath, version);
-    if (fr) return new OcflObjectFile(this, fr);
+    if (fr) {
+      return new OcflObjectFile(this, fr);
+    }
   }
 
   /**
    * Return a file representation by the digest and version,
-   * @param { string } digest
-   * @param { string } [version='latest']
+   * @param version - Defaults to `'latest'`.
    */
-  async fileByDigest(digest, version) {
+  async fileByDigest(digest: string, version?: string) {
     const inv = await this.getInventory();
     const fr = inv?.getFileByDigest(digest, version);
-    if (fr) return new OcflObjectFile(this, fr);
+    if (fr) {
+      return new OcflObjectFile(this, fr);
+    }
   }
 
   /**
    * Return a file representation by the logical path and version,
-   * @param { string } logicalPath
-   * @param { string } [version='latest']
+   * @param version - Defaults to `'latest'`.
    */
-  async fileByLogicalPath(logicalPath, version) {
+  async fileByLogicalPath(logicalPath: string, version?: string) {
     const inv = await this.getInventory();
     const fr = inv?.getFile(logicalPath, version);
-    if (fr) return new OcflObjectFile(this, fr);
+    if (fr) {
+      return new OcflObjectFile(this, fr);
+    }
   }
 
   /**
@@ -392,17 +396,16 @@ class OcflObject {
    * The returned file object can be used to retrieve the content of a file either as string, buffer, or stream.
    * If the object inventory file is not loaded, this file object will not include the full file metadata information.
    * If version is omitted, it defaults to the last version.
-   * @param { LogicalPath | FileRefLogical | FileRefDigest | FileRefContent } opt A choice of logical path (eg: 'test') and version (eg: 'v1'),
+   * @param opt - A choice of logical path (eg: 'test') and version (eg: 'v1'),
    * digest of the file content, or content path (eg: 'v1/content/test')
-   * @param {string} [version='latest'] The object version name, eg: 'v1', 'v2'. Default to 'latest'. Only used if opt is a LogicalPath.
-   * @param {string} [lazy] If true, always return a file instance even if the object inventory file is not loaded.
+   * @param version - The object version name, eg: 'v1', 'v2'. Default to 'latest'. Only used if opt is a LogicalPath. Defaults to `'latest'`.
+   * @param lazy - If true, always return a file instance even if the object inventory file is not loaded.
    */
-  getFile(opt, version, lazy) {
+  getFile(opt: LogicalPath | FileRefLogical | FileRefDigest | FileRefContent, version?: string, lazy?: boolean): OcflObjectFile | undefined {
     const inv = this.inventory;
-    /** @type {any} */
-    const file = typeof opt === 'string' ? { logicalPath: opt, version: version } : { ...opt };
+    const file: FileRef = typeof opt === 'string' ? { logicalPath: opt, version: version } : { ...opt };
     if (inv) {
-      let fr;
+      let fr: InventoryFile | undefined;
       if (file.logicalPath) {
         fr = inv?.getFile(file.logicalPath, file.version);
       } else if (file.digest) {
@@ -410,7 +413,9 @@ class OcflObject {
       } else if (file.contentPath) {
         fr = inv?.getFileByContentPath(file.contentPath, file.version);
       }
-      if (fr) return new OcflObjectFile(this, fr);
+      if (fr) {
+        return new OcflObjectFile(this, fr);
+      }
     } else if (lazy) {
       return new OcflObjectFile(this, file);
     }
@@ -426,16 +431,14 @@ class OcflObject {
   /**
    * Reads the object inventory file and cache it in the memory.
    * Optionally, preloads and reads all files metadata from the underlying storage.
-   * @param {object} [options]
-   * @param {boolean} [options.filesMetadata] Whether to read file metadata from the underlying storage.
    */
-  async load({ filesMetadata } = {}) {
+  async load({ filesMetadata }: { filesMetadata?: boolean } = {}) {
     this._inventory = {}; // reset inventory cache
     const inv = await this.getInventory();
     //await this.loadExtensions();
     if (inv && filesMetadata) {
       //load file metadata from underlying storage
-      const metadata = (inv.metadata = {});
+      const metadata: OcflObjectInventory['metadata'] = (inv.metadata = {});
       for await (const file of await this.#store.list(this.root, { recursive: true })) {
         const contentPath = file.path;
         metadata[contentPath] = {
@@ -448,18 +451,20 @@ class OcflObject {
 
   /**
    * Read the content of a file inside an object.
-   * @param {string} relPath - The file path relative to the object root.
-   * @param {*} options - Options to be passed to the underlying method
+   * @param relPath - The file path relative to the object root.
+   * @param options - Options to be passed to the underlying method
    */
-  async readFile(relPath, options) {
+  async readFile(relPath: string, options: BufferEncoding | { encoding: BufferEncoding }): Promise<string>;
+  async readFile(relPath: string, options?: unknown): Promise<Uint8Array>;
+  async readFile(relPath: string, options?: unknown): Promise<string | Uint8Array> {
     return this.#store.readFile(path.join(this.root, relPath), options);
   }
 
   /**
    * Get the file metadata such as size and modification time.
-   * @param {string} relPath - The file path relative to the object root.
+   * @param relPath - The file path relative to the object root.
    */
-  async stat(relPath) {
+  async stat(relPath: string) {
     return this.#store.stat(path.join(this.root, relPath));
   }
 
@@ -472,38 +477,4 @@ class OcflObject {
   }
 }
 
-/**
- * @implements {OcflObject}
- */
-class OcflObjectImpl extends OcflObject {
-  // async _resolveContentPath({ logicalPath = '', contentPath = '', digest = '', version = '' }) {
-  //   if (!contentPath) {
-  //     let inv = await this.getInventory();
-  //     version = version && version !== 'latest' ? version : inv.head;
-  //     contentPath = inv.getContentPath(digest || inv.getDigest(logicalPath, version));
-  //   }
-  //   return contentPath;
-  // }
-
-  async isObject(aPath) {}
-  static status(rootPath) {}
-  static exists(rootPath) {}
-
-  /**
-   * Validate this object
-   * @abstract
-   */
-  async validate() {
-    throw new Error('Not Implemented');
-  }
-  async verify() {
-    return this.validate();
-  }
-}
-
-module.exports = {
-  OcflObject,
-  OcflObjectInventory,
-  //OcflObjectTransaction,
-  OcflObjectTransactionImpl,
-};
+export { OcflObject };

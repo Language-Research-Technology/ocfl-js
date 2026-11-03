@@ -1,44 +1,3 @@
-//type OcflExtensionCreate = <T extends typeof import('./extension').OcflExtension>(this: T, config?: OcflExtensionConfig) => InstanceType<T>;
-
-// import { Abortable } from "events";
-// import { ObjectEncodingOptions, OpenMode, PathLike } from "fs";
-// import { FileHandle } from "fs/promises";
-type OpenMode = number | string;
-
-interface ReadFile {
-  /**
-   * Provide a common interface to read a file inside an object.
-   * A concrete subclass MAY implement this method to provide read access to its underlying storage backend.
-   * The default implementation uses the {@linkcode OcflStore#createReadStream} method.
-   * @param path - The absolute path of the file to be read.
-   * @param options - Options to be passed to the underlying method
-   */
-  readFile(
-    filePath: string,
-    options?: {
-      encoding?: null | undefined;
-      flag?: OpenMode | undefined;
-    } | null,
-  ): Promise<Buffer>;
-
-  /**
-   * Provide a common interface to read a file inside an object.
-   * A concrete subclass MAY implement this method to provide read access to its underlying storage backend.
-   * The default implementation uses the {@linkcode OcflStore#createReadStream} method.
-   * @param path - The absolute path of the file to be read.
-   * @param options - Options to be passed to the underlying method
-   */
-  readFile(
-    filePath: string,
-    options:
-      | {
-          encoding: BufferEncoding;
-          flag?: OpenMode | undefined;
-        }
-      | BufferEncoding,
-  ): Promise<string>;
-}
-
 export interface InventoryDigests {
   [key: string]: string[];
 }
@@ -74,7 +33,6 @@ export interface Inventory {
     [key: string]: {
       [key: string]: string[];
     };
-    // [key in 'md5'|'sha1'|'sha256'|'sha512'|'blake2b-512'|'blake2b-160'|'blake2b-256'|'blake2b-384'|'sha512-256'|'size'|'crc32']: {};
   };
   /**
    * The name of the designated content directory within the version directories.
@@ -83,8 +41,6 @@ export interface Inventory {
   contentDirectory?: string;
 }
 
-//type Enum<T extends readonly string[]> = {[key in T[number]]: ReturnType<typeof enumeration<T>>};
-//declare function enumeration<T extends readonly string[]>(arr:  T): Enum<T>;
 export type IDataType = string | ArrayBufferLike | Uint8Array | Uint16Array | Uint32Array;
 
 export interface CommonHasher {
@@ -109,7 +65,7 @@ export interface MultiHasher {
 export type OcflVersion = '1.0' | '1.1';
 
 export type OcflExtensionConfig = { extensionName?: string; [key: string]: any };
-type OcflStorageLayout = import('./extension').OcflStorageLayout<OcflExtensionConfig>;
+type OcflStorageLayout = import('./extension.ts').OcflStorageLayout<OcflExtensionConfig>;
 
 /** Configuration options for an OCFL Object. */
 export type OcflStorageConfig = {
@@ -125,7 +81,7 @@ export type OcflStorageConfig = {
   digestAlgorithm?: 'sha256' | 'sha512';
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
   contentDirectory?: string;
-  /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstant.OCFL_VERSION} */
+  /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstants.OCFL_VERSION} */
   ocflVersion?: OcflVersion;
 };
 
@@ -138,13 +94,13 @@ export type OcflObjectConfig = {
   /** Identifier for the object.  Only be used in a newly created object. */
   id?: string;
   /** Reference to existing extensions defined outside of the object, such as in the storage root. */
-  extensions?: import('./extension').OcflExtension<{}>[];
+  extensions?: import('./extension.ts').OcflExtension<{}>[];
   /** Additional digest algorithms to be calculated for each file and added to the fixity block. */
   fixityAlgorithms?: string[];
   /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
   digestAlgorithm?: 'sha256' | 'sha512';
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
   contentDirectory?: string;
-  /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstant.OCFL_VERSION} */
+  /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstants.OCFL_VERSION} */
   ocflVersion?: OcflVersion;
 };

@@ -1,20 +1,16 @@
-const { OcflStorageLayout } = require('../extension');
-const { OcflDigest } = require('../digest');
-const path = require('path');
+import path from 'node:path';
+import { OcflStorageLayout } from '../extension.ts';
 
 const DefaultConfig = {
   extensionName: '000N-path-direct-storage-layout',
   omitScheme: false,
-  /** @type {any} */
-  replace: [],
+  replace: [] as [string | RegExp, string][],
   suffix: '/__object__',
 };
 
-/** @typedef {Partial<typeof DefaultConfig>} PathDirectStorageLayoutConfig */
-/**
- * @extends {OcflStorageLayout<typeof DefaultConfig>}
- */
-class PathDirectStorageLayout extends OcflStorageLayout {
+export type PathDirectStorageLayoutConfig = Partial<typeof DefaultConfig>;
+
+class PathDirectStorageLayout extends OcflStorageLayout<typeof DefaultConfig> {
   static get NAME() {
     return DefaultConfig.extensionName;
   }
@@ -22,21 +18,15 @@ class PathDirectStorageLayout extends OcflStorageLayout {
     return 'OCFL object identifiers are used directly as the path.';
   }
 
-  /**
-   *
-   * @param {PathDirectStorageLayoutConfig} [config]
-   */
-  constructor(config) {
+  constructor(config?: PathDirectStorageLayoutConfig) {
     super(config, DefaultConfig);
   }
 
-  /**
-   * @param {string} id
-   * @return {string}
-   */
-  map(id) {
+  map(id: string): string {
     var suffix = this.parameters.suffix;
-    if (suffix && id.endsWith(suffix)) throw new Error(`Identifier cannot end with '${suffix}'`);
+    if (suffix && id.endsWith(suffix)) {
+      throw new Error(`Identifier cannot end with '${suffix}'`);
+    }
     var p = id ?? '';
     for (const r of this.parameters.replace) {
       p = p.replace(r[0], r[1]);
@@ -51,11 +41,11 @@ class PathDirectStorageLayout extends OcflStorageLayout {
         parts.push(u.hostname.replace(',', '_').replace(';', '/'));
       }
       p = path.join(parts.join('_'), u.pathname + u.search + u.hash);
-    } catch (error) {}
+    } catch (_error) {}
     p = p.replace(/^\/+/, '').replace(/\/+$/, '');
     return path.join(p, this.parameters.suffix);
     //if (/^\w+:/.test(id)) {
   }
 }
 
-module.exports = { PathDirectStorageLayout };
+export { PathDirectStorageLayout };

@@ -10,6 +10,8 @@ Install the library:
     // For filesystem backend
     npm install @ocfl/ocfl-fs
 
+The packages are ES modules with bundled TypeScript types and require Node.js 22.12 or later.
+
 ## Usage
 
 ### Storage
@@ -17,7 +19,7 @@ Install the library:
 Import the corresponding module of the chosen backend and then create a new Storage instance with the right config. For more details, please refer to the documentation of the specific backend implementation. For example:
 
     // Use filesystem backend
-    const ocfl = require('@ocfl/ocfl-fs');
+    import ocfl from '@ocfl/ocfl-fs';
     const storage = ocfl.storage({root: '/var/data/myocfl'});
 
 Before any OCFL object can be created in the storage, either the `create` or `load` methods must be be called first.

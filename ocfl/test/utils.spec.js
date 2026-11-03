@@ -1,8 +1,7 @@
-'use strict';
-const assert = require('assert');
-const utils = require('../lib/utils.js');
-const { setTimeout } = require('timers/promises');
-const { performance } = require('perf_hooks');
+import assert from 'node:assert';
+import { performance } from 'node:perf_hooks';
+import { setTimeout } from 'node:timers/promises';
+import * as utils from '../src/utils.ts';
 
 describe('utils.parallelize', () => {
   it('can accept empty array', async () => {

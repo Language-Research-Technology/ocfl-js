@@ -1,6 +1,6 @@
-'use strict';
-const assert = require('assert');
-const { enumeration } = require('../lib/enum.js');
+import assert from 'node:assert';
+import { enumeration } from '../src/enum.ts';
+
 const enumOf = enumeration.of;
 
 describe('Enum class', () => {

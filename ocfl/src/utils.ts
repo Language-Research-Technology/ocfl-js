@@ -1,29 +1,24 @@
-//@ts-check
-'use strict';
+import { OcflConstants } from './constants.ts';
+import type { OcflStore } from './store.ts';
+import type { OcflVersion } from './types.ts';
 
-//const validation = require('./validation.js');
-const { OCFL_VERSIONS, NAMASTE_T } = require('./constants').OcflConstants;
+const { OCFL_VERSIONS, NAMASTE_T } = OcflConstants;
 
-/** @typedef {import('./store').OcflStore} OcflStore */
-/** @typedef {import('./types.js').OcflVersion} OcflVersion */
-
-//
 /**
- * @template T
- * @param {T[]} inputStack - An array in which each element will be passed to the asyncFn function callback. This array will be consumed during the process.
- * @param {function(T):Promise} asyncFn - An async function that will be run in parallel
- * @param {number} count - Maximum number of concurrency
+ * Run `asyncFn` over every element of `inputStack` with at most `count` calls in flight.
+ * Rejections are returned in the result array rather than thrown.
+ * @param inputStack - Consumed during the process.
+ * @param count - Maximum number of concurrency
  */
-async function parallelize(inputStack, asyncFn, count = 10) {
-  const promises = [];
-  let len = inputStack.length > count ? count : inputStack.length;
-  const result = [];
+async function parallelize<T, R>(inputStack: T[], asyncFn: (input: T) => Promise<R>, count = 10): Promise<(R | Error)[]> {
+  const promises: Promise<void>[] = [];
+  let len = Math.min(inputStack.length, count);
+  const result: (R | Error)[] = [];
   while (len--) {
     promises.push(
       (async () => {
-        let input;
         while (inputStack.length) {
-          const input = inputStack.pop();
+          const input = inputStack.pop() as T;
           const index = inputStack.length;
           try {
             result[index] = await asyncFn(input);
@@ -31,17 +26,17 @@ async function parallelize(inputStack, asyncFn, count = 10) {
             result[index] = error;
           }
         }
-      })().catch((err) => {}),
+      })().catch(() => {}),
     );
   }
   await Promise.all(promises);
   return result;
 }
 
-async function isDirEmpty(store, dirPath) {
-  let dir, de;
+async function isDirEmpty(store: OcflStore, dirPath: string): Promise<boolean> {
+  let de: unknown;
   try {
-    dir = await store.opendir(dirPath);
+    const dir = await store.opendir(dirPath);
     de = await dir.read();
     await dir.close();
   } catch (error) {
@@ -51,43 +46,34 @@ async function isDirEmpty(store, dirPath) {
 }
 
 /**
- * Check if there is any valid namaste in the rootPath and return the version number
- * @param {OcflStore} store
- * @param {string} prefix
- * @param {string} rootPath
+ * Check if there is any valid namaste in the rootPath and return the version number.
+ * @returns The version, `''` if a namaste exists but is invalid, or `undefined` if there is none.
  */
-async function findNamasteVersion(store, prefix, rootPath) {
-  const namastePath = rootPath + '/' + NAMASTE_T + prefix;
-  let version;
+async function findNamasteVersion(store: OcflStore, prefix: string, rootPath: string): Promise<OcflVersion | '' | undefined> {
+  const namastePath = `${rootPath}/${NAMASTE_T}${prefix}`;
+  let version: OcflVersion | null | undefined;
   try {
-    version = await Promise.any(
-      OCFL_VERSIONS.map(async (v) => (/**@type {string}*/ (await store.readFile(namastePath + v, 'utf8')) === prefix + v + '\n' ? v : null)),
-    );
-    if (!version) return ''; // namaste exists but invalid
+    version = await Promise.any(OCFL_VERSIONS.map(async (v) => ((await store.readFile(namastePath + v, 'utf8')) === `${prefix}${v}\n` ? v : null)));
+    if (!version) {
+      return '';
+    }
   } catch (error) {
-    if (!error.errors || error.errors.some((e) => e.code !== 'ENOENT')) throw error;
+    if (!error.errors || error.errors.some((e: NodeJS.ErrnoException) => e.code !== 'ENOENT')) {
+      throw error;
+    }
   }
-  return /** @type {OcflVersion} */ (version);
+  return version ?? undefined;
 }
 
-/** @typedef {ArrayLike<number> & { buffer: ArrayBuffer, byteLength: number, set(array: ArrayLike<number>, offset?: number): void }} TypedArray */
-/**
- * @param {any} obj
- * @returns {obj is TypedArray}
- */
-function isTypedArray(obj) {
+type TypedArray = ArrayLike<number> & { buffer: ArrayBufferLike; byteLength: number; set(array: ArrayLike<number>, offset?: number): void };
+
+function isTypedArray(obj: unknown): obj is TypedArray {
   return ArrayBuffer.isView(obj) && !(obj instanceof DataView);
 }
 
-/**
- *
- * @param {ArrayBuffer|TypedArray} target
- * @param {ArrayBuffer|TypedArray} source
- * @returns {TypedArray}
- */
-function joinTypedArray(target, source) {
+function joinTypedArray(target: ArrayBuffer | TypedArray, source: ArrayBuffer | TypedArray): TypedArray {
   const sourceArray = isTypedArray(source) ? source : new Uint8Array(source);
-  const [targetBuffer, targetArray] = isTypedArray(target) ? [/** @type {ArrayBuffer}*/ (target.buffer), target] : [target, new Uint8Array(target)];
+  const [targetBuffer, targetArray] = isTypedArray(target) ? [target.buffer as ArrayBuffer, target] : [target, new Uint8Array(target)];
   const targetLength = targetArray.byteLength;
   const totalSize = targetLength + sourceArray.byteLength;
   let mergedArray = targetArray;
@@ -101,22 +87,4 @@ function joinTypedArray(target, source) {
   return mergedArray;
 }
 
-/**
- *
- * @param {string} absOrRelPath
- * @return {string}
- */
-// toAbsPath(absOrRelPath = '') {
-//   if (!path.isAbsolute(absOrRelPath)) return path.join(this.root, absOrRelPath);
-//   return absOrRelPath;
-// }
-
-const testSymbol = Symbol('testSymbol');
-
-module.exports = {
-  parallelize,
-  isDirEmpty,
-  findNamasteVersion,
-  joinTypedArray,
-  testSymbol,
-};
+export { findNamasteVersion, isDirEmpty, joinTypedArray, parallelize };

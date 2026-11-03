@@ -1,14 +1,10 @@
-'use strict';
-//@ts-check
-
-const assert = require('assert');
-const { OcflObjectTransactionImpl } = require('../lib/transaction.js');
-const { OcflStore } = require('../lib/store.js');
-const { createFsFromVolume, Volume } = require('memfs');
-const { OcflFsStore } = require('../../ocfl-fs/lib/store.js');
-const { OcflObjectInventory } = require('../lib/inventory');
-const { OcflDigest } = require('../lib/digest');
-const { testSymbol } = require('../lib/utils.js');
+import assert from 'node:assert';
+import { createFsFromVolume, Volume } from 'memfs';
+import { OcflFsStore } from '../../ocfl-fs/src/store.ts';
+import { OcflDigest } from '../src/digest.ts';
+import { OcflObjectInventory } from '../src/inventory.ts';
+import { OcflStore } from '../src/store.ts';
+import { OcflObjectTransactionImpl } from '../src/transaction.ts';
 
 /** In-memory store for testing */
 const volInit = {
