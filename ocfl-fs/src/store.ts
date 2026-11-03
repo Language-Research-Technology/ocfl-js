@@ -5,7 +5,7 @@ import { type ListedFile, type ListOptions, OcflStore, type WriteFileData } from
 
 export interface OcflFsStoreConfig {
   /** Custom fs module to use for any file operation */
-  fs?: typeof fs;
+  fs?: typeof fs | undefined;
 }
 
 /**

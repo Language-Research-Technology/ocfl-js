@@ -54,7 +54,7 @@ class OcflStorage {
    * Get an existing object in the Storage or create a new one.
    * @param opt - A unique identifier for the OCFL Object, should be a URI
    */
-  object(_opt: string | { id?: string; root?: string }): OcflObject {
+  object(_opt: string | { id?: string | undefined; root?: string | undefined }): OcflObject {
     throw new NotImplementedError();
   }
 
@@ -69,7 +69,7 @@ class OcflStorage {
    * Create the storage root in the underlying storage backend
    * @param options - Additional options for creating storage root
    */
-  async create(_options?: { ocflSpecText?: boolean }): Promise<OcflStorage> {
+  async create(_options?: { ocflSpecText?: boolean | undefined }): Promise<OcflStorage> {
     throw new NotImplementedError();
   }
 
@@ -176,7 +176,7 @@ class OcflStorageImpl extends OcflStorage {
   /**
    * The root param is a relative path to the storage root.
    */
-  object(opt: string | { id?: string; root?: string }) {
+  object(opt: string | { id?: string | undefined; root?: string | undefined }) {
     let id: string | undefined;
     let root: string | undefined;
     if (typeof opt === 'string') {
@@ -244,7 +244,7 @@ class OcflStorageImpl extends OcflStorage {
   /**
    * @param options - Additional options for creating storage root
    */
-  async create(options?: { ocflSpecText?: boolean }) {
+  async create(options?: { ocflSpecText?: boolean | undefined }) {
     if (await this.exists()) {
       //cannot create, storage root already exists .
       throw new Error('[OcflStorage] Cannot create storage root in a non-empty directory');

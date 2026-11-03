@@ -7,6 +7,10 @@
     "ocfl": {
       // Ambient describe/it types for the test files.
       "ignoreDependencies": ["@types/mocha"]
+    },
+    "ocfl-fs": {
+      // Typechecked only, by test/tsconfig.json.
+      "entry": ["test/*.ts"]
     }
   }
 }

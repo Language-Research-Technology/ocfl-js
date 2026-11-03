@@ -13,14 +13,14 @@ interface ValidationErrorOptions {
   code: ErrorCode;
   description: string;
   path: string;
-  detail?: string;
+  detail?: string | undefined;
 }
 
 class ValidationError extends Error {
   declare code: ErrorCode;
   declare description: string;
   declare path: string;
-  declare detail?: string;
+  declare detail?: string | undefined;
 
   constructor(options: ValidationErrorOptions) {
     super(`${options.code}: ${options.description} At ${options.path}${options.detail ? ` (${options.detail})` : ''}`);

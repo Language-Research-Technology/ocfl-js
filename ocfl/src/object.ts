@@ -21,9 +21,9 @@ const DIGEST = OcflDigest.CONTENT;
 type UpdateModeStr = (typeof UPDATE_MODES)[number];
 export type UpdateMode = EnumValue | UpdateModeStr;
 type LogicalPath = string;
-type FileRefLogical = { logicalPath: string; version?: string };
-type FileRefDigest = { digest: string; version?: string };
-type FileRefContent = { contentPath: string; version?: string };
+type FileRefLogical = { logicalPath: string; version?: string | undefined };
+type FileRefDigest = { digest: string; version?: string | undefined };
+type FileRefContent = { contentPath: string; version?: string | undefined };
 function contentDigestAlgorithm(algorithm: string | undefined): 'sha256' | 'sha512' {
   const name = enumeration.of(DIGEST, algorithm || 'sha512')?.name;
   if (!name) {
@@ -242,7 +242,7 @@ class OcflObject {
 
   _baseInventory() {
     return {
-      id: this.id,
+      ...(this.id === undefined ? {} : { id: this.id }),
       digestAlgorithm: this.digestAlgorithm || 'sha512',
       type: `https://ocfl.io/${this.ocflVersion}/spec/#inventory` as Inventory['type'],
       contentDirectory: this.contentDirectory || 'content',
@@ -431,7 +431,7 @@ class OcflObject {
    * Reads the object inventory file and cache it in the memory.
    * Optionally, preloads and reads all files metadata from the underlying storage.
    */
-  async load({ filesMetadata }: { filesMetadata?: boolean } = {}) {
+  async load({ filesMetadata }: { filesMetadata?: boolean | undefined } = {}) {
     this._inventory = {}; // reset inventory cache
     const inv = await this.getInventory();
     //await this.loadExtensions();

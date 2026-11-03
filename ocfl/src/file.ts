@@ -8,7 +8,7 @@ export interface FileRef {
   /** An algorithmic characterization of the contents of a file conforming to a standard digest algorithm. */
   digest?: string;
   /** Version of the OCFL object. */
-  version?: string;
+  version?: string | undefined;
   /** Last modified time of the file, in milliseconds since the UNIX epoch. */
   lastModified?: number;
   /** Size of the file in bytes. */

@@ -35,7 +35,7 @@
     "test": "mocha",
     "build": "tsc",
     "pretypecheck": "pnpm --filter @ocfl/ocfl build",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p test",
     "prepack": "tsc"
   },
   "dependencies": {

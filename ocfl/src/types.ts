@@ -72,17 +72,17 @@ export type OcflStorageConfig = {
   /** Absolute path to the ocfl storage root. */
   root: string;
   /** Absolute path to storage workspace directory. */
-  workspace?: string;
+  workspace?: string | undefined;
   /** A layout that identifies an arrangement of directories and OCFL objects under the storage root */
-  layout?: OcflStorageLayout | OcflExtensionConfig | string;
+  layout?: OcflStorageLayout | OcflExtensionConfig | string | undefined;
   /** A default list of digest algorithm names to be added to the fixity block of objects under this storage. */
-  fixityAlgorithms?: string[];
+  fixityAlgorithms?: string[] | undefined;
   /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
-  digestAlgorithm?: 'sha256' | 'sha512';
+  digestAlgorithm?: 'sha256' | 'sha512' | undefined;
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
-  contentDirectory?: string;
+  contentDirectory?: string | undefined;
   /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstants.OCFL_VERSION} */
-  ocflVersion?: OcflVersion;
+  ocflVersion?: OcflVersion | undefined;
 };
 
 /** Configuration options for an OCFL Object. */
@@ -90,17 +90,17 @@ export type OcflObjectConfig = {
   /** Absolute path to the ocfl object root. */
   root: string;
   /** Absolute path to object workspace directory. */
-  workspace?: string;
+  workspace?: string | undefined;
   /** Identifier for the object.  Only be used in a newly created object. */
-  id?: string;
+  id?: string | undefined;
   /** Reference to existing extensions defined outside of the object, such as in the storage root. */
-  extensions?: import('./extension.ts').OcflExtension[];
+  extensions?: import('./extension.ts').OcflExtension[] | undefined;
   /** Additional digest algorithms to be calculated for each file and added to the fixity block. */
-  fixityAlgorithms?: string[];
+  fixityAlgorithms?: string[] | undefined;
   /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
-  digestAlgorithm?: 'sha256' | 'sha512';
+  digestAlgorithm?: 'sha256' | 'sha512' | undefined;
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
-  contentDirectory?: string;
+  contentDirectory?: string | undefined;
   /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstants.OCFL_VERSION} */
-  ocflVersion?: OcflVersion;
+  ocflVersion?: OcflVersion | undefined;
 };

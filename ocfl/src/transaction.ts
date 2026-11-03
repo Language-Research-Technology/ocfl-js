@@ -12,21 +12,23 @@ const { INVENTORY_NAME } = OcflConstants;
 
 export interface CommitOptions {
   /** Freeform text used to record the rationale for creating the current version */
-  message?: string;
+  message?: string | undefined;
   /** Identify the user or agent that created the current Version */
-  user?: {
-    /** Any readable name of the user, e.g., a proper name, user ID, agent ID. */
-    name: string;
-    /** A URI: either a mailto URI [RFC6068] with the e-mail address of the user or a URL to a personal identifier, e.g., an ORCID iD. */
-    address?: string;
-  };
+  user?:
+    | {
+        /** Any readable name of the user, e.g., a proper name, user ID, agent ID. */
+        name: string;
+        /** A URI: either a mailto URI [RFC6068] with the e-mail address of the user or a URL to a personal identifier, e.g., an ORCID iD. */
+        address?: string;
+      }
+    | undefined;
   /** If true, force to commit. Use it after a purge. */
-  force?: boolean;
+  force?: boolean | undefined;
 }
 
 export interface RemoveOptions {
   /** If true, completely remove the content from all versions */
-  purge?: boolean;
+  purge?: boolean | undefined;
 }
 
 type TrackedPromise<T> = Promise<T> & { done?: boolean };

@@ -254,10 +254,10 @@ class OcflObjectInventory {
     }
     return version;
   }
-  get fixity() {
+  get fixity(): Inventory['fixity'] {
     return this.#data.fixity;
   }
-  set fixity(val) {
+  set fixity(val: NonNullable<Inventory['fixity']>) {
     this.#data.fixity = val;
   }
   /** The state of the current version */
@@ -267,10 +267,10 @@ class OcflObjectInventory {
   get created() {
     return this.version.created;
   }
-  get message() {
+  get message(): InventoryVersion['message'] {
     return this.version.message;
   }
-  get user() {
+  get user(): InventoryVersion['user'] {
     return this.version.user;
   }
   //get nextVersion() { return this.versionNumber.next().toString(); }
@@ -288,10 +288,10 @@ class OcflObjectInventory {
   set created(val) {
     this.version.created = val;
   }
-  set message(val) {
+  set message(val: NonNullable<InventoryVersion['message']>) {
     this.version.message = val;
   }
-  set user(val) {
+  set user(val: NonNullable<InventoryVersion['user']>) {
     this.version.user = val;
   }
 
