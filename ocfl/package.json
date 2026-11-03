@@ -44,7 +44,8 @@
     "memfs": "^4.50.0",
     "mocha": "^11.7.5",
     "typedoc": "^0.28.19",
-    "typedoc-plugin-missing-exports": "^4.1.2"
+    "typedoc-plugin-missing-exports": "^4.1.2",
+    "typescript": "~6.0.3"
   },
   "mocha": {
     "extension": [

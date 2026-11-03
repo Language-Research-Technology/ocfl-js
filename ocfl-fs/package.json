@@ -36,7 +36,6 @@
   "license": "GPL-3.0-or-later",
   "devDependencies": {
     "@ocfl/ocfl-tests": "workspace:*",
-    "@types/fs-extra": "^11.0.4",
     "@types/node": "^24",
     "mocha": "^11.7.5",
     "typedoc": "^0.28.19",

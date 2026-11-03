@@ -102,23 +102,6 @@ const ERRORS = ["",
   "An inventory file must not contain keys that are not specified."
 ];
 
-const WARNINGS = [
-  "Implementations SHOULD use version directory names constructed without zero-padding the version number, ie. v1, v2, v3, etc.'",
-  "The version directory SHOULD NOT contain any directories other than the designated content sub-directory. Once created, the contents of a version directory are expected to be immutable.",
-  "Version directories must contain a designated content sub-directory if the version contains files to be preserved, and SHOULD NOT contain this sub-directory otherwise.",
-  "For content-addressing, OCFL Objects SHOULD use sha512.",
-  "The OCFL Object Inventory id SHOULD be a URI.",
-  "In the OCFL Object Inventory, the JSON object describing an OCFL Version, SHOULD include the message and user keys.",
-  "In the OCFL Object Inventory, in the version block, the value of the user key SHOULD contain an address key, address.",
-  "In the OCFL Object Inventory, in the version block, the address value SHOULD be a URI: either a mailto URI [RFC6068] with the e-mail address of the user or a URL to a personal identifier, e.g., an ORCID iD.",
-  "In addition to the inventory in the OCFL Object Root, every version directory SHOULD include an inventory file that is an Inventory of all content for versions up to and including that particular version.",
-  "In the case that prior version directories include an inventory file, the values of the created, message and user keys in each version block in each prior inventory file SHOULD have the same values as the corresponding keys in the corresponding version block in the current inventory file.",
-  "Implementers SHOULD use the logs directory, if present, for storing files that contain a record of actions taken on the object.",
-  "In an OCFL Object, extension sub-directories SHOULD be named according to a registered extension name.",
-  "Storage hierarchies within the same OCFL Storage Root SHOULD use just one layout pattern.",
-  "Storage hierarchies within the same OCFL Storage Root SHOULD consistently use either a directory hierarchy of OCFL Objects or top-level OCFL Objects."
-];
-
 class ValidationError extends Error {
   constructor(options = {}) {
     super(`${options.code}: ${options.description} At ${options.path}`);
@@ -130,9 +113,6 @@ class ValidationError extends Error {
 function getError(id) {
   return genValObj(ERRORS, id);
 }
-function getWarning(id) {
-  return genValObj(WARNINGS, id);
-}
 
 function genValObj(arr, id) {
   return {
@@ -141,11 +121,6 @@ function genValObj(arr, id) {
   };
 }
 
-//console.log(getError(2));
-//throw new ValidationError({...getError(1),path:'/test'});
-exports.Error = ValidationError;
-exports.getError = getError;
-exports.getWarning = getWarning;
 exports.createError = function (id, path) {
   return new ValidationError({ ...getError(id), path });
 }

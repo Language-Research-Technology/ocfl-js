@@ -2,7 +2,7 @@
 "use strict";
 
 const path = require('path');
-const validation = require('./validation.js');
+const { createError } = require('./validation.js');
 const { enumeration } = require('./enum.js');
 const { OcflObjectInventory, OcflObjectInventoryMut, VersionNumber } = require('./inventory.js');
 const { OcflDigest } = require('./digest.js');
@@ -142,7 +142,7 @@ class OcflObject {
   async _ensureNamaste() {
     let prefix = NAMASTE_PREFIX_OBJECT;
     let nv = await findNamasteVersion(this.#store, prefix, this.root);
-    if (nv === '') throw validation.createError(6, this.root);
+    if (nv === '') throw createError(6, this.root);
     if (nv) {
       if (!this.ocflVersion) this.#ocflVersion = /** @type {OcflVersion} */(nv);
       return;

@@ -8,10 +8,6 @@ const {OcflExtension} = require("../extension");
 class DigestAlgorithm extends OcflExtension {
   static get NAME() { return '0009-digest-algorithms' }
 
-  /**
-   * 
-   * @param {import('ocfl')} ocfl 
-   */
   static async setup(ocfl) {}
 }
 
