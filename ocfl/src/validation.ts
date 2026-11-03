@@ -1,6 +1,9 @@
 // Messages for the OCFL 1.1 validation codes this library raises: https://ocfl.io/1.1/spec/validation-codes.html
 const ERRORS = {
   E007: 'The text contents of the [version declaration] file must be the same as dvalue, followed by a newline (\\n).',
+  E036: 'An OCFL Object Inventory MUST include the following keys: [id, type, digestAlgorithm, head].',
+  E040: '[head] MUST be the version directory name with the highest version number.',
+  E050: 'The keys of [the state JSON object] are digest values, each of which MUST correspond to an entry in the manifest of the inventory.',
   E060: 'The digest sidecar file must contain the digest of the inventory file.',
   E069: 'An OCFL Storage Root MUST contain a Root Conformance Declaration identifying it as such.',
   E080: 'The text contents of [the OCFL version declaration file] MUST be the same as dvalue, followed by a newline (\\n).',

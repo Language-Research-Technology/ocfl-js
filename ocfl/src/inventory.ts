@@ -1,4 +1,5 @@
 import type { Inventory, InventoryDigests, InventoryVersion } from './types.ts';
+import { createError } from './validation.ts';
 
 /** Digest values keyed by algorithm name */
 type Digests = { [algorithm: string]: string };
@@ -64,8 +65,8 @@ function findKey(file: string, obj: InventoryDigests): string | undefined {
   }
 }
 
-function headNotInVersionsError(head: string) {
-  return new Error(`Inventory head "${head}" is not in versions.`);
+function headNotInVersionsError(id: string, head: string) {
+  return createError('E040', id, `head "${head}" is not in versions`);
 }
 
 /**
@@ -194,7 +195,7 @@ class OcflObjectInventory {
       if (!cleanState) {
         const prev = data.versions[data.head];
         if (!prev) {
-          throw headNotInVersionsError(data.head);
+          throw headNotInVersionsError(data.id, data.head);
         }
         state = JSON.parse(JSON.stringify(prev.state));
       }
@@ -217,7 +218,7 @@ class OcflObjectInventory {
   constructor(data: Inventory, _version?: string) {
     // an empty head is an inventory with no versions yet
     if (data.head !== '' && !data.versions?.[data.head]) {
-      throw headNotInVersionsError(data.head);
+      throw headNotInVersionsError(data.id, data.head);
     }
     this.#data = data;
     this._indexBuild();
@@ -252,7 +253,7 @@ class OcflObjectInventory {
   get version() {
     const version = this.versions[this.head];
     if (!version) {
-      throw headNotInVersionsError(this.head);
+      throw headNotInVersionsError(this.id, this.head);
     }
     return version;
   }
@@ -369,7 +370,7 @@ class OcflObjectInventory {
   #requireContentPath(digest: string): string {
     const cp = this.getContentPath(digest);
     if (!cp) {
-      throw new Error(`Digest "${digest}" is not in the manifest of object "${this.id}".`);
+      throw createError('E050', this.id, `digest "${digest}" is not in the manifest`);
     }
     return cp;
   }

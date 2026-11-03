@@ -43,7 +43,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
     });
     await assert.rejects(
       o.update(async (t) => t.write('b.txt', 'b')),
-      { message: 'Inventory head "v2" is not in versions.' },
+      { name: 'ValidationError', code: 'E040', detail: 'head "v2" is not in versions' },
     );
   });
 
@@ -51,7 +51,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
     const o = await malformedObject('bad-head-load', (inv) => {
       inv.head = 'v2';
     });
-    await assert.rejects(o.load(), { message: 'Inventory head "v2" is not in versions.' });
+    await assert.rejects(o.load(), { name: 'ValidationError', code: 'E040', detail: 'head "v2" is not in versions' });
   });
 
   it('rejects loading an inventory with a state digest that is not in the manifest', async () => {
@@ -60,8 +60,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
       [digest] = Object.keys(inv.manifest);
       inv.manifest = {};
     });
-    const message = `Digest "${digest}" is not in the manifest of object "bad-manifest".`;
-    await assert.rejects(o.load(), { message });
+    await assert.rejects(o.load(), { name: 'ValidationError', code: 'E050', detail: `digest "${digest}" is not in the manifest` });
   });
 
   it('finds no file in a version that does not exist', async () => {
