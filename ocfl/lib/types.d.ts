@@ -1,4 +1,3 @@
-
 //type OcflExtensionCreate = <T extends typeof import('./extension').OcflExtension>(this: T, config?: OcflExtensionConfig) => InstanceType<T>;
 
 // import { Abortable } from "events";
@@ -8,7 +7,7 @@ type OpenMode = number | string;
 
 interface ReadFile {
   /**
-   * Provide a common interface to read a file inside an object. 
+   * Provide a common interface to read a file inside an object.
    * A concrete subclass MAY implement this method to provide read access to its underlying storage backend.
    * The default implementation uses the {@linkcode OcflStore#createReadStream} method.
    * @param path - The absolute path of the file to be read.
@@ -16,16 +15,14 @@ interface ReadFile {
    */
   readFile(
     filePath: string,
-    options?:
-      | {
-        encoding?: null | undefined;
-        flag?: OpenMode | undefined;
-      }
-      | null
+    options?: {
+      encoding?: null | undefined;
+      flag?: OpenMode | undefined;
+    } | null,
   ): Promise<Buffer>;
 
   /**
-   * Provide a common interface to read a file inside an object. 
+   * Provide a common interface to read a file inside an object.
    * A concrete subclass MAY implement this method to provide read access to its underlying storage backend.
    * The default implementation uses the {@linkcode OcflStore#createReadStream} method.
    * @param path - The absolute path of the file to be read.
@@ -35,10 +32,10 @@ interface ReadFile {
     filePath: string,
     options:
       | {
-        encoding: BufferEncoding;
-        flag?: OpenMode | undefined;
-      }
-      | BufferEncoding
+          encoding: BufferEncoding;
+          flag?: OpenMode | undefined;
+        }
+      | BufferEncoding,
   ): Promise<string>;
 }
 
@@ -61,10 +58,10 @@ export interface Inventory {
   id: string;
   /** The URI of the inventory section of the specification version matching the object conformance declaration. */
   type: 'https://ocfl.io/1.0/spec/#inventory' | 'https://ocfl.io/1.1/spec/#inventory';
-  /** 
-   * The algorithm used for calculating digests for content-addressing 
-   * within the OCFL Object and for the Inventory Digest. 
-   * This MUST be the algorithm used in the manifest and state blocks 
+  /**
+   * The algorithm used for calculating digests for content-addressing
+   * within the OCFL Object and for the Inventory Digest.
+   * This MUST be the algorithm used in the manifest and state blocks
    */
   digestAlgorithm: 'sha256' | 'sha512';
   /** The version directory name of the most recent version of the object. */
@@ -79,7 +76,7 @@ export interface Inventory {
     };
     // [key in 'md5'|'sha1'|'sha256'|'sha512'|'blake2b-512'|'blake2b-160'|'blake2b-256'|'blake2b-384'|'sha512-256'|'size'|'crc32']: {};
   };
-  /** 
+  /**
    * The name of the designated content directory within the version directories.
    * @default content
    */
@@ -94,8 +91,8 @@ export interface CommonHasher {
   init: () => CommonHasher;
   update: (data: IDataType) => CommonHasher;
   digest: {
-    (outputType: "binary"): Uint8Array;
-    (outputType?: "hex"): string;
+    (outputType: 'binary'): Uint8Array;
+    (outputType?: 'hex'): string;
   };
   digestSize: number;
 }
@@ -104,14 +101,14 @@ export interface MultiHasher {
   multi: true;
   update: (data: IDataType) => MultiHasher;
   digest: {
-    (outputType: "binary"): { [key: string]: Uint8Array };
-    (outputType?: "hex"): { [key: string]: string };
+    (outputType: 'binary'): { [key: string]: Uint8Array };
+    (outputType?: 'hex'): { [key: string]: string };
   };
 }
 
 export type OcflVersion = '1.0' | '1.1';
 
-export type OcflExtensionConfig = { extensionName?: string;[key: string]: any };
+export type OcflExtensionConfig = { extensionName?: string; [key: string]: any };
 type OcflStorageLayout = import('./extension').OcflStorageLayout<OcflExtensionConfig>;
 
 /** Configuration options for an OCFL Object. */
@@ -151,4 +148,3 @@ export type OcflObjectConfig = {
   /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstant.OCFL_VERSION} */
   ocflVersion?: OcflVersion;
 };
-

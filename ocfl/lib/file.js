@@ -26,9 +26,9 @@ class OcflObjectFile {
   #size;
 
   /**
-   * 
-   * @param {import('./object').OcflObject} ocflObject 
-   * @param {FileRef} fileRef 
+   *
+   * @param {import('./object').OcflObject} ocflObject
+   * @param {FileRef} fileRef
    */
   constructor(ocflObject, fileRef) {
     this.#ocflObject = ocflObject;
@@ -50,12 +50,13 @@ class OcflObjectFile {
   async #resolveContentPath() {
     let contentPath = this.contentPath;
     if (!contentPath) {
-      let inv = await this.#ocflObject.getInventory();
+      const inv = await this.#ocflObject.getInventory();
       if (!inv) throw new Error(`OCFL Object "${this.#ocflObject.id}" does not exist`);
-      let version = !this.version || this.version === 'latest' ? inv.head : this.version;
-      let digest = this.digest || inv.getDigest(this.logicalPath, version);
+      const version = !this.version || this.version === 'latest' ? inv.head : this.version;
+      const digest = this.digest || inv.getDigest(this.logicalPath, version);
       contentPath = inv.getContentPath(digest);
-      if (!contentPath) throw new Error(`Cannot find content "${this.toString()}" in the OCFL Object "${this.#ocflObject.id}" version "${this.version || 'latest'}"`);
+      if (!contentPath)
+        throw new Error(`Cannot find content "${this.toString()}" in the OCFL Object "${this.#ocflObject.id}" version "${this.version || 'latest'}"`);
     }
     return contentPath;
   }
@@ -63,15 +64,19 @@ class OcflObjectFile {
   /**
    * Returns the last modified time of the file, in millisecond since the UNIX epoch (January 1st, 1970 at Midnight).
    */
-  get lastModified() { return this.#lastModified }
+  get lastModified() {
+    return this.#lastModified;
+  }
 
   /**
    * Returns the file size in bytes.
    */
-  get size() { return this.#size }
+  get size() {
+    return this.#size;
+  }
 
   toString() {
-    let props = [];
+    const props = [];
     for (const key in ['logicalPath', 'version', 'digest', 'contentPath']) {
       if (this[key]) props.push(key + ": '" + this[key] + "'");
     }
@@ -101,14 +106,14 @@ class OcflObjectFile {
    * @return {Promise<string>}
    */
   async text(encoding = 'utf8') {
-    // @ts-ignore
+    // @ts-expect-error
     return this.buffer(encoding);
   }
   /**
    * @deprecated Use {@link text()}
    */
   async asString(encoding = 'utf8') {
-    // @ts-ignore
+    // @ts-expect-error
     return this.text(encoding);
   }
 
@@ -139,9 +144,8 @@ class OcflObjectFile {
   async stat(options) {
     return this.#ocflObject.stat(await this.#resolveContentPath());
   }
-
 }
 
 module.exports = {
-  OcflObjectFile
+  OcflObjectFile,
 };

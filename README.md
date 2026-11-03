@@ -1,4 +1,5 @@
 # ocfl-js - An OCFL implementation in Node.js
+
 Node.js library for creating and manipulating Oxford Common File Layout(OCFL) storage and object.
 The library consists of common components and implementations for different storage backends.
 
@@ -8,9 +9,6 @@ Install the library:
 
     // For filesystem backend
     npm install @ocfl/ocfl-fs
-
-    // For s3 backend
-    npm install @ocfl/ocfl-s3
 
 ## Usage
 
@@ -22,13 +20,9 @@ Import the corresponding module of the chosen backend and then create a new Stor
     const ocfl = require('@ocfl/ocfl-fs');
     const storage = ocfl.storage({root: '/var/data/myocfl'});
 
-    // Use S3 backend, assuming the required S3 credentials are set as env vars
-    const ocfl = require('@ocfl/ocfl-s3');
-    const storage = ocfl.storage({root: '/var/data/myocfl', bucket: "test-bucket"});
-
 Before any OCFL object can be created in the storage, either the `create` or `load` methods must be be called first.
 Alternatively, use the `createStorage` and `loadStorage` methods to create a new storage or load an existing storage as follows:
-    
+
     let storage;
     let config = {root: '/var/data/myocfl'};
     try {
@@ -46,13 +40,13 @@ To choose a different storage layout, pass the layout name, config, or instance:
 
     // Use class name
     storage = ocfl.createStorage({ root: '/var/data/myocfl', layout: 'FlatDirectStorageLayout' });
-    
+
     // Use official extension name and specify parameters
     storage = ocfl.createStorage({ root: '/var/data/myocfl', layout: { 
       extensionName: '0003-hash-and-id-n-tuple-storage-layout',
       tupleSize: 1
     }});
-    
+
     // Instantiate the class directly
     let layout = new ocfl.StorageLayout.PathDirectStorageLayout({omitScheme: true});
     storage = ocfl.createStorage({ root: '/var/data/myocfl', layout });

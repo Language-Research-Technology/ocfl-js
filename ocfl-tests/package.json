@@ -1,5 +1,6 @@
 {
   "name": "@ocfl/ocfl-tests",
+  "version": "0.0.0",
   "private": true,
   "description": "Oxford Common File Layout (OCFL) JS client library - Common tests cases",
   "keywords": [
@@ -7,9 +8,6 @@
     "Oxford Common File Layout",
     "test case"
   ],
-  "scripts": {
-    "test": ""
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Language-Research-Technology/ocfl-js.git"
@@ -19,10 +17,5 @@
     "Moises Sacal Bonequi (https://orcid.org/0000-0002-4438-2755)",
     "Peter Sefton (https://orcid.org/0000-0002-3545-944X)"
   ],
-  "license": "GPL-3.0-or-later",
-  "devDependencies": {
-    "mocha": "^11.7.5",
-    "memfs": "^4.51.0",
-    "unionfs": "^4.6.0"
-  }
+  "license": "GPL-3.0-or-later"
 }

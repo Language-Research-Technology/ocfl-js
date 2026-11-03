@@ -1,0 +1,10 @@
+update:
+  githubActions: true
+
+autoDedupe: true
+saveTypes: true
+
+packages:
+  - ocfl
+  - ocfl-fs
+  - ocfl-tests

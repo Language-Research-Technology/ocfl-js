@@ -1,9 +1,9 @@
 //@ts-check
-"use strict";
+'use strict';
 
 const ocfl = require('../index');
 
-describe("OcflObject class using OcflFsStore", function () {
+describe('OcflObject class using OcflFsStore', () => {
   // it("constructor", function() {
   //   console.log(this.ocfl);
   //   assert.strictEqual(DIGEST.size(), 2);
@@ -12,4 +12,3 @@ describe("OcflObject class using OcflFsStore", function () {
 
   require('@ocfl/ocfl-tests').object(ocfl);
 });
-

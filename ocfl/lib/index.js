@@ -8,6 +8,6 @@ module.exports = {
   ...require('./object.js'),
   ...require('./storage.js'),
   extensions: {
-    ...require('./extensions/index.js')
-  }
+    ...require('./extensions/index.js'),
+  },
 };

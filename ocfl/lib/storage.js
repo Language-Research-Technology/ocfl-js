@@ -1,15 +1,14 @@
 //@ts-check
 //@todo add default layout
-const path = require("path");
-const validation = require('./validation.js');
-const { NotImplementedError } = require("./error");
-const { OcflStorageLayout } = require("./extension");
-const { HashedNTupleStorageLayout } = require("./extensions/0004-hashed-n-tuple-storage-layout");
-const { OcflObject } = require("./object");
-const { isDirEmpty, findNamasteVersion } = require("./utils.js");
-const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT,
-  EXTENSIONS_DIR, EXTENSION_CONFIG,
-  NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = require('./constants').OcflConstants;
+const path = require('path');
+const { createError } = require('./validation.js');
+const { NotImplementedError } = require('./error');
+const { OcflStorageLayout } = require('./extension');
+const { HashedNTupleStorageLayout } = require('./extensions/0004-hashed-n-tuple-storage-layout');
+const { OcflObject } = require('./object');
+const { isDirEmpty, findNamasteVersion } = require('./utils.js');
+const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } =
+  require('./constants').OcflConstants;
 const { OcflDigest } = require('./digest');
 
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
@@ -17,7 +16,6 @@ const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 /** @typedef {import('./store').OcflStore} OcflStore */
 /** @typedef {import('./types.js').OcflExtensionConfig} OcflExtensionConfig */
 /** @typedef {import('./types.js').OcflVersion} OcflVersion */
-
 
 /**
  * An abstraction to represent the OCFL Storage Root, which is
@@ -32,20 +30,24 @@ class OcflStorage {
    * Get the storage root
    * @return {string}
    */
-  get root() { throw new NotImplementedError(); }
+  get root() {
+    throw new NotImplementedError();
+  }
 
   /**
    * Construct the path of the object root relative to the storage root
-   * The path is mapped from the object identifier using the algorithm defined in the chosen 
+   * The path is mapped from the object identifier using the algorithm defined in the chosen
    * storage layout extension (specified in {@link OcflStorageConfig}).
    * @param {string} id - Identifier of the object
    * @return {string}
    */
-  objectRoot(id) { throw new NotImplementedError(); }
+  objectRoot(id) {
+    throw new NotImplementedError();
+  }
 
   /**
    * Absolute path to the object root
-   * @param {string} id - Identifier of the object 
+   * @param {string} id - Identifier of the object
    */
   objectRootAbs(id) {
     return path.join(this.root, this.objectRoot(id));
@@ -56,11 +58,13 @@ class OcflStorage {
    * @param {string|{id?:string, root?:string}} opt - A unique identifier for the OCFL Object, should be a URI
    * @return {OcflObject}
    */
-  object(opt) { throw new NotImplementedError(); }
+  object(opt) {
+    throw new NotImplementedError();
+  }
 
   /**
    * Check if the storage has already the object with the given id.
-   * @param {*} id 
+   * @param {*} id
    */
   async has(id) {
     return this.object(id).exists();
@@ -72,26 +76,34 @@ class OcflStorage {
    * @param {boolean} [options.ocflSpecText=false] - If true, create a copy of the OCFL specification text in the storage root
    * @return {Promise<OcflStorage>}
    */
-  async create(options) { throw new NotImplementedError(); }
+  async create(options) {
+    throw new NotImplementedError();
+  }
 
   /**
    * Check namaste, retrieve storage layout extension, and read its config file.
    * @return {Promise<OcflStorage>}
    */
-  async load() { throw new NotImplementedError(); }
+  async load() {
+    throw new NotImplementedError();
+  }
 
   /**
-  * Check if the storage root path points to an existing file or non-empty directory in the underlying backend store.
-  * The existing directory may or may not be a valid OCFL Storage.
-  * @return {Promise<boolean>}
-  */
-  async exists() { throw new NotImplementedError(); }
+   * Check if the storage root path points to an existing file or non-empty directory in the underlying backend store.
+   * The existing directory may or may not be a valid OCFL Storage.
+   * @return {Promise<boolean>}
+   */
+  async exists() {
+    throw new NotImplementedError();
+  }
 
   /**
-   * 
+   *
    * @return {AsyncIterableIterator<OcflObject>}
    */
-  [Symbol.asyncIterator]() { throw new NotImplementedError(); }
+  [Symbol.asyncIterator]() {
+    throw new NotImplementedError();
+  }
 
   /**
    * Return a new AsyncIterator that contains all the OCFL objects in this Storage.
@@ -112,9 +124,10 @@ class OcflStorage {
     return this.remove(id);
   }
 
-  async remove(id) { throw new NotImplementedError(); }
-
-};
+  async remove(id) {
+    throw new NotImplementedError();
+  }
+}
 
 /**
  * @typedef {Object} OcflStorageConfig
@@ -128,12 +141,11 @@ class OcflStorage {
  */
 
 /**
- * General implementation of {@link OcflStorage} that can uses different datastore backends. 
- * This class provides common functionalities for the subclasses and 
+ * General implementation of {@link OcflStorage} that can uses different datastore backends.
+ * This class provides common functionalities for the subclasses and
  * at the same provide encapsulation emulating private and protected methods.
  */
 class OcflStorageImpl extends OcflStorage {
-
   /** @type {string} */
   #root;
   /** @type {string} */
@@ -145,8 +157,8 @@ class OcflStorageImpl extends OcflStorage {
   #objectConfig;
 
   /**
-   * 
-   * @param {OcflStorageConfig} config 
+   *
+   * @param {OcflStorageConfig} config
    * @param {OcflStore} store
    */
   constructor(config, store) {
@@ -168,12 +180,12 @@ class OcflStorageImpl extends OcflStorage {
   }
 
   /**
-   * 
-   * @param {OcflExtensionConfig|string} option 
+   *
+   * @param {OcflExtensionConfig|string} option
    */
   #createLayout(option) {
-    let name = typeof option === 'string' ? option : option?.extensionName;
-    let config = typeof option === 'object' ? option : null;
+    const name = typeof option === 'string' ? option : option?.extensionName;
+    const config = typeof option === 'object' ? option : null;
     if (name) {
       return OcflStorageLayout.class(name).create(config);
     }
@@ -182,7 +194,9 @@ class OcflStorageImpl extends OcflStorage {
     // }
   }
 
-  get root() { return this.#root; }
+  get root() {
+    return this.#root;
+  }
 
   objectRoot(id) {
     if (!this.#layout) throw new Error('[OcflStorage] No layout defined');
@@ -191,21 +205,24 @@ class OcflStorageImpl extends OcflStorage {
 
   /**
    * The root param is a relative path to the storage root.
-   * @param {string|{id?:string, root?:string}} opt 
+   * @param {string|{id?:string, root?:string}} opt
    */
   object(opt) {
     let id, root;
     if (typeof opt === 'string') id = opt;
     else ({ id, root } = opt);
-    let relObjectRoot = root || this.objectRoot(id);
-    return new OcflObject({
-      id,
-      root: path.join(this.root, relObjectRoot),
-      // @todo:use extension workspace if not defined
-      workspace: this.#workspace ? path.join(this.#workspace, relObjectRoot) : undefined,
-      ocflVersion: /** @type {OcflVersion} */(this.ocflVersion),
-      ...this.#objectConfig
-    }, this.#store);
+    const relObjectRoot = root || this.objectRoot(id);
+    return new OcflObject(
+      {
+        id,
+        root: path.join(this.root, relObjectRoot),
+        // @todo:use extension workspace if not defined
+        workspace: this.#workspace ? path.join(this.#workspace, relObjectRoot) : undefined,
+        ocflVersion: /** @type {OcflVersion} */ (this.ocflVersion),
+        ...this.#objectConfig,
+      },
+      this.#store,
+    );
   }
 
   async exists() {
@@ -213,26 +230,22 @@ class OcflStorageImpl extends OcflStorage {
   }
 
   async load() {
-    let prefix = NAMASTE_PREFIX_STORAGE;
-    let tasks = [
-      findNamasteVersion(this.#store, prefix, this.root),
-      this.#store.readFile(path.join(this.root, OCFL_LAYOUT), 'utf8')
-    ];
-    // @ts-ignore
-    let [ocflVersion, layout] = (await Promise.allSettled(tasks)).map(r => r.value);
-    if (!ocflVersion) throw new Error('Invalid storage root');//throw validation.createError(67, this.root);
+    const prefix = NAMASTE_PREFIX_STORAGE;
+    const tasks = [findNamasteVersion(this.#store, prefix, this.root), this.#store.readFile(path.join(this.root, OCFL_LAYOUT), 'utf8')];
+    // @ts-expect-error
+    const [ocflVersion, layout] = (await Promise.allSettled(tasks)).map((r) => r.value);
+    if (ocflVersion === '') throw createError('E080', this.root);
+    if (!ocflVersion) throw createError('E069', this.root);
     let layoutName, layoutConfig;
     // load layout
     try {
       if (layout) layoutName = JSON.parse(layout).extension;
-    } catch (error) {
-    }
+    } catch (error) {}
     // load ext config if exists
     try {
-      let cfgstr = await this.#store.readFile(path.join(this.root, EXTENSIONS_DIR, layoutName, EXTENSION_CONFIG), 'utf8');
-      layoutConfig = JSON.parse(/**@type{string}*/(cfgstr));
-    } catch (error) {
-    }
+      const cfgstr = await this.#store.readFile(path.join(this.root, EXTENSIONS_DIR, layoutName, EXTENSION_CONFIG), 'utf8');
+      layoutConfig = JSON.parse(/**@type{string}*/ (cfgstr));
+    } catch (error) {}
     this.#layout = this.#createLayout(layoutConfig || layoutName);
     const layoutDigestAlgorithm = this.#layout.get('digestAlgorithm');
     if (layoutDigestAlgorithm) await OcflDigest.initSync(layoutDigestAlgorithm);
@@ -253,9 +266,9 @@ class OcflStorageImpl extends OcflStorage {
       await this.#store.mkdir(this.root);
     }
     // create namaste
-    let prefix = NAMASTE_PREFIX_STORAGE;
-    let filenamePrefix = NAMASTE_T + prefix;
-    let filePath = path.join(this.root, filenamePrefix + this.ocflVersion);
+    const prefix = NAMASTE_PREFIX_STORAGE;
+    const filenamePrefix = NAMASTE_T + prefix;
+    const filePath = path.join(this.root, filenamePrefix + this.ocflVersion);
     await this.#store.writeFile(filePath, prefix + this.ocflVersion + '\n', 'utf8');
 
     // create layout
@@ -264,15 +277,18 @@ class OcflStorageImpl extends OcflStorage {
     }
     const layoutDigestAlgorithm = this.#layout.get('digestAlgorithm');
     if (layoutDigestAlgorithm) await OcflDigest.initSync(layoutDigestAlgorithm);
-    let layout = { extension: this.#layout.name, description: this.#layout.description };
+    const layout = { extension: this.#layout.name, description: this.#layout.description };
     await this.#store.writeFile(path.join(this.root, OCFL_LAYOUT), JSON.stringify(layout, null, 2), 'utf8');
     if (this.#layout.config) {
-      await this.#store.writeFile(path.join(this.root, EXTENSIONS_DIR, this.#layout.name, EXTENSION_CONFIG), JSON.stringify(this.#layout.config, null, 2), 'utf8');
+      await this.#store.writeFile(
+        path.join(this.root, EXTENSIONS_DIR, this.#layout.name, EXTENSION_CONFIG),
+        JSON.stringify(this.#layout.config, null, 2),
+        'utf8',
+      );
     }
 
     // todo: create other extensions
     if (options?.ocflSpecText) {
-
     }
     return this;
   }
@@ -281,58 +297,60 @@ class OcflStorageImpl extends OcflStorage {
    * Allow async iteration over all OCFL objects in this storage.
    */
   [Symbol.asyncIterator]() {
-    let store = this.#store;
-    let workspace = this.#workspace;
-    let config = this.#objectConfig;
-    let root = this.root;
-    let stack = [this.#store.opendir(this.root)];
+    const store = this.#store;
+    const workspace = this.#workspace;
+    const config = this.#objectConfig;
+    const root = this.root;
+    const stack = [this.#store.opendir(this.root)];
     return {
-      [Symbol.asyncIterator]() { return this; },
+      [Symbol.asyncIterator]() {
+        return this;
+      },
       async next() {
         let dirp;
         while ((dirp = stack.pop())) {
-          let dir = await dirp;
-          let dirent = await dir.read();
+          const dir = await dirp;
+          const dirent = await dir.read();
           if (!dirent) {
             await dir.close();
             continue;
           }
           stack.push(dirp);
           if (!dirent.isDirectory()) continue;
-          let basePath = path.join(dir.path, dirent.name);
+          const basePath = path.join(dir.path, dirent.name);
           let nv;
           try {
             nv = await findNamasteVersion(store, NAMASTE_PREFIX_OBJECT, basePath);
-          } catch (err) {
-          }
+          } catch (err) {}
           if (nv) {
             //ocfl object exists
             // inventory exists
-            let object = new OcflObject({
-              root: basePath,
-              workspace: workspace ? path.join(workspace, path.relative(root, basePath)) : undefined,
-              ocflVersion: /** @type {OcflVersion} */(nv),
-              ...config
-            }, store);
+            const object = new OcflObject(
+              {
+                root: basePath,
+                workspace: workspace ? path.join(workspace, path.relative(root, basePath)) : undefined,
+                ocflVersion: /** @type {OcflVersion} */ (nv),
+                ...config,
+              },
+              store,
+            );
             //await object.load();
             return { done: false, value: object };
           } else {
-            //ocfl object does not exist, process subdir 
+            //ocfl object does not exist, process subdir
             stack.push(store.opendir(basePath));
           }
-
         }
         return { done: true, value: null };
-      }
+      },
       // return() {
       //   return { done: true };
       // }
     };
   }
-
 }
 
 module.exports = {
   OcflStorage,
-  OcflStorageImpl
+  OcflStorageImpl,
 };

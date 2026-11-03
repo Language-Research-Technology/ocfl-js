@@ -1,6 +1,6 @@
-const path = require("path");
-const { OcflStorageLayout } = require("../extension");
-const { EXTENSIONS_DIR } = require("../constants").OcflConstants;
+const path = require('path');
+const { OcflStorageLayout } = require('../extension');
+const { EXTENSIONS_DIR } = require('../constants').OcflConstants;
 
 /** @type {FlatDirectStorageLayout} */
 var instance;
@@ -8,26 +8,27 @@ var instance;
 /**
  * OCFL object identifiers are mapped directly to directory names that are direct children of the OCFL storage root directory.
  */
-// @ts-ignore
+// @ts-expect-error
 class FlatDirectStorageLayout extends OcflStorageLayout {
-  static get NAME() { return '0002-flat-direct-storage-layout' }
+  static get NAME() {
+    return '0002-flat-direct-storage-layout';
+  }
   static get DESCRIPTION() {
-    return "OCFL object identifiers are mapped directly to directory names" +
-      " that are direct children of the OCFL storage root.";
+    return 'OCFL object identifiers are mapped directly to directory names' + ' that are direct children of the OCFL storage root.';
   }
 
   static create() {
     if (!instance) instance = new FlatDirectStorageLayout();
     return instance;
   }
-  
+
   constructor() {
-    super()
+    super();
   }
 
   /**
    * @param {string} id
-   * @return {string} 
+   * @return {string}
    */
   map(id) {
     if (path.basename(id) !== id) {

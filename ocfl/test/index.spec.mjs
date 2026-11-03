@@ -1,17 +1,15 @@
 //@ts-check
 
+import ocfl, { OcflObject } from '@ocfl/ocfl';
 /**
  * Test ES module import export
  */
 import assert from 'assert';
-import ocfl from '@ocfl/ocfl';
-import {OcflObject} from '@ocfl/ocfl';
 
-describe("ES module import", function () {
-  it("can use default import", function() {
+describe('ES module import', () => {
+  it('can use default import', () => {
     assert.ok(ocfl.OcflObject);
     assert.ok(ocfl.OcflStorage);
     assert.ok(ocfl.OcflStorageImpl);
-    
   });
 });

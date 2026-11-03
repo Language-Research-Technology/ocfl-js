@@ -1,26 +1,26 @@
 //@ts-check
-"use strict";
+'use strict';
 
-const assert = require("assert");
-const { readFile } = require("fs/promises");
-const { OcflObjectInventory } = require("../lib/inventory");
+const assert = require('assert');
+const { readFile } = require('fs/promises');
+const { OcflObjectInventory } = require('../lib/inventory');
 
-describe("OcflObjectInventory class", function () {
+describe('OcflObjectInventory class', () => {
   let data;
-  beforeEach(function(){
+  beforeEach(() => {
     data = {
       id: 'id1',
       digestAlgorithm: 'sha512',
       type: `https://ocfl.io/1.1/spec/#inventory`,
       head: '',
       manifest: {},
-      versions: {}
+      versions: {},
     };
   });
 
-  it("can create empty inventory", function () {
-    let digest = "testdigest123";
-    let inv = new OcflObjectInventory(data);
+  it('can create empty inventory', () => {
+    const digest = 'testdigest123';
+    const inv = new OcflObjectInventory(data);
     //assert.strictEqual(digest, inv.cachedDigest);
     assert.strictEqual(data.id, inv.id);
     assert.strictEqual(data.digestAlgorithm, inv.digestAlgorithm);
@@ -29,43 +29,43 @@ describe("OcflObjectInventory class", function () {
     assert.strictEqual('', inv.head);
   });
 
-  it("can load inventory", async function () {
-    let digest = "8e280eb94af68d27f635c2013531d4cf41c6089dfa8ffeeb4f0230500203fab9c10f929c08057f5d1b5084ab4dff7d72fb20010bf4cbf713569fadfc9257770a";
-    let data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
-    let inv = new OcflObjectInventory(data);
+  it('can load inventory', async () => {
+    const digest = '8e280eb94af68d27f635c2013531d4cf41c6089dfa8ffeeb4f0230500203fab9c10f929c08057f5d1b5084ab4dff7d72fb20010bf4cbf713569fadfc9257770a';
+    const data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
+    const inv = new OcflObjectInventory(data);
     //assert.strictEqual(digest, await inv.digest());
     assert.strictEqual(data.id, inv.id);
     assert.strictEqual(data.digestAlgorithm, inv.digestAlgorithm);
     assert.strictEqual(data.type, inv.type);
   });
 
-  it("can create new version", function () {
-    let inv = OcflObjectInventory.newVersion(data);
+  it('can create new version', () => {
+    const inv = OcflObjectInventory.newVersion(data);
     assert.strictEqual(inv.head, 'v1');
     assert.strictEqual(typeof inv.versions.v1, 'object');
     assert.strictEqual(Object.keys(inv.versions.v1.state).length, 0);
   });
 
-  it("can create new version from existing", async function () {
-    let data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
-    let inv = OcflObjectInventory.newVersion(data);
+  it('can create new version from existing', async () => {
+    const data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
+    const inv = OcflObjectInventory.newVersion(data);
     //console.log(inv.toJSON());
-    let data2 = inv.toJSON();
+    const data2 = inv.toJSON();
     assert.strictEqual(data2.head, 'v4');
     assert.deepStrictEqual(data2.versions.v4.state, data.versions.v3.state);
   });
 
-  it("can add file to a new version", function () {
-    let inv = OcflObjectInventory.newVersion(data);
+  it('can add file to a new version', () => {
+    const inv = OcflObjectInventory.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
-    let data2 = inv.toJSON();
+    const data2 = inv.toJSON();
     assert.strictEqual(inv.head, 'v1');
     assert.strictEqual(inv.manifest['aabbccddeeff'][0], 'v1/content/test.txt');
     assert.deepStrictEqual(data2.manifest, inv.manifest);
   });
 
-  it("can add file with identical content but different name", function () {
-    let inv = OcflObjectInventory.newVersion(data);
+  it('can add file with identical content but different name', () => {
+    const inv = OcflObjectInventory.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
     inv.add('test2.txt', 'aabbccddeeff');
     assert.strictEqual(inv.head, 'v1');
@@ -78,7 +78,7 @@ describe("OcflObjectInventory class", function () {
     assert.strictEqual(Object.keys(inv.versions.v1.state).length, 1);
   });
 
-  it("can add file with identical content and name", function () {
+  it('can add file with identical content and name', () => {
     let inv = OcflObjectInventory.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
     inv = OcflObjectInventory.newVersion(inv.toJSON());
@@ -94,7 +94,7 @@ describe("OcflObjectInventory class", function () {
     assert.strictEqual(Object.keys(inv.versions.v2.state).length, 1);
   });
 
-  it("can add file with different content but identical name", function () {
+  it('can add file with different content but identical name', () => {
     let inv = OcflObjectInventory.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
     inv = OcflObjectInventory.newVersion(inv.toJSON());
@@ -108,7 +108,7 @@ describe("OcflObjectInventory class", function () {
     assert.strictEqual(Object.keys(inv.versions.v2.state).length, 1);
   });
 
-  it("can add same file after it has been deleted", function () {
+  it('can add same file after it has been deleted', () => {
     let inv = OcflObjectInventory.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
     inv = OcflObjectInventory.newVersion(inv.toJSON());
@@ -121,7 +121,7 @@ describe("OcflObjectInventory class", function () {
     assert.strictEqual(Object.keys(inv.versions.v3.state).length, 1);
   });
 
-  it("can add file with extra fixity", function () {
+  it('can add file with extra fixity', () => {
     const inv = OcflObjectInventory.newVersion(data);
     inv.add('test1.txt', 'aabbccddeeff', { crc32: '12345678', size: '1024' });
     assert.strictEqual(inv.manifest['aabbccddeeff'][0], 'v1/content/test1.txt');
@@ -129,7 +129,7 @@ describe("OcflObjectInventory class", function () {
     assert.strictEqual(inv.fixity.size['1024'][0], 'v1/content/test1.txt');
   });
 
-  it("can detect state change", function () {
+  it('can detect state change', () => {
     let inv = OcflObjectInventory.newVersion(data);
     assert.ok(inv.isChanged);
     inv = OcflObjectInventory.newVersion(inv);
@@ -143,16 +143,16 @@ describe("OcflObjectInventory class", function () {
     assert.ok(inv.isChanged);
   });
 
-  it("can iterate files", async function () {
-    let data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
-    let inv = new OcflObjectInventory(data);
+  it('can iterate files', async () => {
+    const data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
+    const inv = new OcflObjectInventory(data);
     var files = [...inv.files()];
     assert.strictEqual(files[0].contentPath, 'v2/content/foo/bar.xml');
     assert.strictEqual(files[1].contentPath, 'v1/content/empty.txt');
     assert.strictEqual(files[2].contentPath, 'v1/content/image.tiff');
   });
 
-  it("can reinstate removed file from older version", function () {
+  it('can reinstate removed file from older version', () => {
     let inv = OcflObjectInventory.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
     assert.strictEqual(inv.versions.v1.state['aabbccddeeff'][0], 'test.txt');
@@ -163,5 +163,4 @@ describe("OcflObjectInventory class", function () {
     inv.reinstate('test.txt', 'v1');
     assert(inv.versions.v3.state['aabbccddeeff']);
   });
-
 });

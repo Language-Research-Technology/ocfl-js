@@ -1,0 +1,28 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "**",
+      // Written by pnpm
+      "!pnpm-lock.yaml",
+      // OCFL fixtures: the upstream fixtures submodule plus inventories whose .sha512 sidecars depend on exact bytes
+      "!!ocfl-tests/test-data"
+    ]
+  },
+  "formatter": { "enabled": true, "indentStyle": "space", "lineWidth": 160 },
+  "linter": {
+    "enabled": true,
+    "domains": { "project": "recommended" },
+    "rules": {
+      "preset": "recommended",
+      "nursery": {},
+      "style": { "useBlockStatements": "error" }
+    }
+  },
+  "javascript": { "formatter": { "quoteStyle": "single" } },
+  "assist": {
+    "enabled": true,
+    "actions": { "source": { "organizeImports": "on", "useSortedProperties": "on" } }
+  }
+}

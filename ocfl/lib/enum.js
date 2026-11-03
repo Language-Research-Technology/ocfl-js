@@ -1,5 +1,5 @@
 /**
- * Enumeration tool for working with a set of options 
+ * Enumeration tool for working with a set of options
  * @module enumeration
  */
 
@@ -28,8 +28,12 @@ function enumeration(constants) {
       //Object.defineProperty(this, 'name', { writable: false, enumerable: true, value: name });
       //Object.defineProperty(this, 'ordinal', { writable: false, enumerable: true, value: ordinal });
     }
-    get name() { return this.#name }
-    get ordinal() { return this.#ordinal }
+    get name() {
+      return this.#name;
+    }
+    get ordinal() {
+      return this.#ordinal;
+    }
     toString() {
       return this.name;
     }
@@ -40,35 +44,38 @@ function enumeration(constants) {
   }
   /** @typedef { typeof Enum & {[key in T[number]]: Enum} } EnumType */
   let count = 0;
-  for (let c of constants) {
+  for (const c of constants) {
     Object.defineProperty(Enum, c, {
       value: Object.freeze(new Enum(c, count++)),
       writable: false,
-      enumerable: true
+      enumerable: true,
     });
   }
   Object.defineProperty(Enum, constantsSymbol, {
     value: constants,
     writable: false,
-    enumerable: false
+    enumerable: false,
   });
-  return /** @type {EnumType} */(Object.freeze(Enum));
+  return /** @type {EnumType} */ (Object.freeze(Enum));
 }
 
 /**
  * Return an existing constant that represents the specified value
  * @type {{<T extends abstract new() => any>(type: T, value: any): InstanceType<T>}}
  */
-enumeration.of = function (type, value) {
+enumeration.of = (type, value) => {
   if (value instanceof type && type[value.name]) return value;
   else if (typeof value === 'string') {
-    return type[/**@type {string}*/(value)] || (() => {
-      for (let name in type) {
-        if (name.toUpperCase() === value.toUpperCase()) return type[name];
-      }
-    })();
+    return (
+      type[/**@type {string}*/ (value)] ||
+      (() => {
+        for (const name in type) {
+          if (name.toUpperCase() === value.toUpperCase()) return type[name];
+        }
+      })()
+    );
   }
-}
+};
 
 /**
  * Return an existing constant based on the index
@@ -77,13 +84,9 @@ enumeration.of = function (type, value) {
  * @param {number} index
  * @return {T}
  */
-enumeration.at = function (type, index) {
-  return type[type[constantsSymbol][index]];
-}
+enumeration.at = (type, index) => type[type[constantsSymbol][index]];
 
-enumeration.size = function (type) {
-  return type[constantsSymbol].length;
-}
+enumeration.size = (type) => type[constantsSymbol].length;
 
 exports.enumeration = enumeration;
 exports.default = { ...enumeration };

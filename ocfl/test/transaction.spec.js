@@ -1,59 +1,63 @@
-"use strict";
+'use strict';
 //@ts-check
 
-const assert = require("assert");
-const { OcflObjectTransactionImpl } = require("../lib/transaction.js");
-const { OcflStore } = require("../lib/store.js");
+const assert = require('assert');
+const { OcflObjectTransactionImpl } = require('../lib/transaction.js');
+const { OcflStore } = require('../lib/store.js');
 const { createFsFromVolume, Volume } = require('memfs');
 const { OcflFsStore } = require('../../ocfl-fs/lib/store.js');
-const { OcflObjectInventory } = require("../lib/inventory");
-const { OcflDigest } = require("../lib/digest");
-const { testSymbol } = require("../lib/utils.js");
+const { OcflObjectInventory } = require('../lib/inventory');
+const { OcflDigest } = require('../lib/digest');
+const { testSymbol } = require('../lib/utils.js');
 
 /** In-memory store for testing */
 const volInit = {
   '/ocfl/test': {},
-  '/source/metadata.json': "{}",
-  '/source/data/a/a.txt': "data a",
-  '/source/data/b/b.txt': "data b",
-  '/source/data/a/aa/aa.txt': "data aa"
+  '/source/metadata.json': '{}',
+  '/source/data/a/a.txt': 'data a',
+  '/source/data/b/b.txt': 'data b',
+  '/source/data/a/aa/aa.txt': 'data aa',
 };
 
-describe("OcflTransactionImpl class", function () {
+describe('OcflTransactionImpl class', () => {
   /** @type {import('memfs').IFs} */
   let fs;
   /** @type {string} */
-  let root = '/ocfl/test';
+  const root = '/ocfl/test';
   let newInv = null;
   let store;
   const object = {
     root,
-    _setInventory: function (inv) { newInv = inv; },
-    async _ensureNamaste() { }
+    _setInventory: (inv) => {
+      newInv = inv;
+    },
+    async _ensureNamaste() {},
   };
 
-  beforeEach(async function () {
+  beforeEach(async () => {
     fs = createFsFromVolume(Volume.fromJSON(volInit));
     store = OcflFsStore.getInstance({ fs });
     newInv = null;
   });
 
   async function createTransaction(inv) {
-    newInv = OcflObjectInventory.newVersion(inv || {
-      id: 'test',
-      digestAlgorithm: 'sha512',
-      type: `https://ocfl.io/v1.1/spec/#inventory`
-    });
+    newInv = OcflObjectInventory.newVersion(
+      inv || {
+        id: 'test',
+        digestAlgorithm: 'sha512',
+        type: `https://ocfl.io/v1.1/spec/#inventory`,
+      },
+    );
     return OcflObjectTransactionImpl.create(object, store, newInv, '/workspace');
   }
 
-  it("creates the temp dir", async function () {
+  it('creates the temp dir', async () => {
     const trx = await createTransaction();
     assert(fs.existsSync('/workspace'));
     await trx.commit();
   });
 
-  it("rollback", async function () {
+  it('rollback', async () => {
     const trx = await createTransaction();
     const wp = trx._workspaceVersionPath;
     await trx.write('test.txt', 'test');
@@ -62,7 +66,7 @@ describe("OcflTransactionImpl class", function () {
     assert(!fs.existsSync(`${root}/v1/content/test.txt`));
   });
 
-  it("commit", async function () {
+  it('commit', async () => {
     const trx = await createTransaction();
     const wp = trx._workspaceVersionPath;
     await trx.write('test.txt', 'test');
@@ -76,7 +80,7 @@ describe("OcflTransactionImpl class", function () {
     await trx.commit();
   });
 
-  it("createWritable", async function () {
+  it('createWritable', async () => {
     const trx = await createTransaction();
     const wp = trx._workspaceVersionPath;
     const ws = await trx.createWritable('test.txt');
@@ -88,7 +92,7 @@ describe("OcflTransactionImpl class", function () {
     await trx.commit();
   });
 
-  it("write", async function () {
+  it('write', async () => {
     const trx = await createTransaction();
     const wp = trx._workspaceVersionPath;
     // test writing text
@@ -105,7 +109,7 @@ describe("OcflTransactionImpl class", function () {
       start(controller) {
         controller.enqueue(bytes2);
         controller.close();
-      }
+      },
     });
     await trx.write('stream.bin', rs);
     // verify contents
@@ -117,34 +121,33 @@ describe("OcflTransactionImpl class", function () {
     await trx.commit();
   });
 
-  it("write with fixity", async function () {
+  it('write with fixity', async () => {
     object.fixityAlgorithms = ['size', 'crc32'];
     const trx = await createTransaction();
     const wp = trx._workspaceVersionPath;
     const text = 'Hello, World!';
     await trx.write('test.txt', text);
     await trx.commit();
-    const {size, crc32} = await OcflDigest.digest(['size', 'crc32'], text);
-    assert(newInv.fixity.size[size].includes('v1/content/test.txt'))
-    assert(newInv.fixity.crc32[crc32].includes('v1/content/test.txt'))
+    const { size, crc32 } = await OcflDigest.digest(['size', 'crc32'], text);
+    assert(newInv.fixity.size[size].includes('v1/content/test.txt'));
+    assert(newInv.fixity.crc32[crc32].includes('v1/content/test.txt'));
   });
 
-
-  it("import", async function () {
+  it('import', async () => {
     const trx = await createTransaction();
     const wp = trx._workspaceVersionPath;
     // import a file
     await trx.import('/source/metadata.json', 'metadata.json');
-    assert.strictEqual(fs.readFileSync(`${wp}/content/metadata.json`, 'utf-8'), "{}");
+    assert.strictEqual(fs.readFileSync(`${wp}/content/metadata.json`, 'utf-8'), '{}');
     // import a directory
     await trx.import('/source/data', 'data');
-    assert.strictEqual(fs.readFileSync(`${wp}/content/data/a/a.txt`, 'utf-8'), "data a");
-    assert.strictEqual(fs.readFileSync(`${wp}/content/data/b/b.txt`, 'utf-8'), "data b");
-    assert.strictEqual(fs.readFileSync(`${wp}/content/data/a/aa/aa.txt`, 'utf-8'), "data aa");
+    assert.strictEqual(fs.readFileSync(`${wp}/content/data/a/a.txt`, 'utf-8'), 'data a');
+    assert.strictEqual(fs.readFileSync(`${wp}/content/data/b/b.txt`, 'utf-8'), 'data b');
+    assert.strictEqual(fs.readFileSync(`${wp}/content/data/a/aa/aa.txt`, 'utf-8'), 'data aa');
     await trx.commit();
   });
 
-  it("purge", async function () {
+  it('purge', async () => {
     let trx = await createTransaction();
     // create two versions
     await trx.write('test.txt', 'test');
@@ -166,21 +169,21 @@ describe("OcflTransactionImpl class", function () {
     assert(!newInv.getDigest('test.txt', 'v3'));
   });
 
-  it("copy", async function () {
+  it('copy', async () => {
     const trx = await createTransaction();
     const wp = trx._workspaceVersionPath;
     await trx.import('/source', '');
-    assert.strictEqual(fs.readFileSync(`${wp}/content/metadata.json`, 'utf-8'), "{}");
+    assert.strictEqual(fs.readFileSync(`${wp}/content/metadata.json`, 'utf-8'), '{}');
     await trx.copy('data/a/a.txt', 'data/c/c.txt');
     await trx.commit();
-    assert.strictEqual(newInv.getDigest('data/a/a.txt'), newInv.getDigest('data/c/c.txt'))
+    assert.strictEqual(newInv.getDigest('data/a/a.txt'), newInv.getDigest('data/c/c.txt'));
   });
 
-  it("rename", async function () {
+  it('rename', async () => {
     const trx = await createTransaction();
     const wp = trx._workspaceVersionPath;
     await trx.import('/source', '');
-    assert.strictEqual(fs.readFileSync(`${wp}/content/metadata.json`, 'utf-8'), "{}");
+    assert.strictEqual(fs.readFileSync(`${wp}/content/metadata.json`, 'utf-8'), '{}');
     const a = newInv.getDigest('data/a/a.txt');
     await trx.rename('data/a/a.txt', 'data/c/c.txt');
     const b = newInv.getDigest('data/c/c.txt');
@@ -190,11 +193,11 @@ describe("OcflTransactionImpl class", function () {
     await trx.commit();
   });
 
-  it("remove", async function () {
+  it('remove', async () => {
     let trx = await createTransaction();
     const wp = trx._workspaceVersionPath;
     await trx.import('/source', '');
-    assert.strictEqual(fs.readFileSync(`${wp}/content/data/a/a.txt`, 'utf-8'), "data a");
+    assert.strictEqual(fs.readFileSync(`${wp}/content/data/a/a.txt`, 'utf-8'), 'data a');
     await trx.remove('data/a/a.txt');
     assert(!fs.existsSync(`${wp}/content/data/a/a.txt`));
     await trx.commit();
@@ -205,7 +208,7 @@ describe("OcflTransactionImpl class", function () {
     assert(!newInv.getDigest('data/b/b.txt'));
   });
 
-  it("reinstate", async function () {
+  it('reinstate', async () => {
     let trx = await createTransaction();
     await trx.import('/source', '');
     await trx.commit();
@@ -220,4 +223,3 @@ describe("OcflTransactionImpl class", function () {
     assert(newInv.getDigest('metadata.json'));
   });
 });
-
