@@ -1,13 +1,21 @@
 //@ts-check
 
-const hashWasm = require('hash-wasm');
-const { sha512_256 } = require('js-sha512'); // fallback for sha512/256 algorithm, which is not included in hash-wasm
-//const worker = require('node:worker_threads');
+const crypto = require('node:crypto');
+const zlib = require('node:zlib');
 const { enumeration } = require('./enum.js');
-const { testSymbol } = require('./utils.js');
 
 const CONTENT = enumeration(['sha256', 'sha512']);
-const FIXITY = enumeration(['sha256', 'sha512', 'md5', 'sha1', 'blake2b-512', 'blake2b-160', 'blake2b-256', 'blake2b-384', 'sha512/256', 'size', 'crc32']);
+const FIXITY = enumeration(['sha256', 'sha512', 'md5', 'sha1', 'blake2b-512', 'sha512/256', 'size', 'crc32']);
+
+/** OCFL algorithm name to node:crypto name */
+const NATIVE = {
+  md5: 'md5',
+  sha1: 'sha1',
+  sha256: 'sha256',
+  sha512: 'sha512',
+  'sha512/256': 'sha512-256',
+  'blake2b-512': 'blake2b512',
+};
 
 /**
  * @typedef {((outputType: "binary") => Uint8Array) & ((outputType?: "hex") => string)} IDigest
@@ -17,22 +25,47 @@ const FIXITY = enumeration(['sha256', 'sha512', 'md5', 'sha1', 'blake2b-512', 'b
  */
 
 /**
- * @type { Object.<string, CommonHasher[]> }
+ * @param {IDataType} data
+ * @returns {string | Uint8Array}
  */
-const hasherCache = {};
-/**
- * @type { Object.<string, CommonHasher> }
- */
-const hasherSyncCache = {};
-// for (let algo of FIXITY) {
-//   algorithms[algo] = function () { return crypto.createHash(algo); }
-// }
+function toBytes(data) {
+  if (typeof data === 'string' || data instanceof Uint8Array) {
+    return data;
+  }
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  }
+  return new Uint8Array(data);
+}
 
-/** @type { WeakMap<CommonHasher, boolean>} */
-const hasherPending = new WeakMap();
+/**
+ * @param {number} digestSize
+ * @param {() => { update(data: string | Uint8Array): void, digest(): Uint8Array, hex(): string }} start
+ * @returns {CommonHasher}
+ */
+function hasher(digestSize, start) {
+  let state = start();
+  return {
+    digestSize,
+    init() {
+      state = start();
+      return this;
+    },
+    update(data) {
+      state.update(toBytes(data));
+      return this;
+    },
+    // @ts-expect-error overloaded return type
+    digest(encoding) {
+      return encoding === 'binary' ? state.digest() : state.hex();
+    },
+  };
+}
 
 /** @type { {[key: string]: () => Promise<CommonHasher>} } */
 const hasherFactory = {};
+/** @type { Object.<string, CommonHasher> } */
+const hasherSyncCache = {};
 
 /**
  * Register a hash algorithm and it's factory function.
@@ -49,101 +82,58 @@ function hasAlgorithm(name) {
   return name in hasherFactory;
 }
 
-(function init() {
-  for (const algo of FIXITY) {
-    if (algo.startsWith('blake2b')) {
-      const bits = parseInt(algo.split('-')[1]);
-      registerHasherFactory(algo, async () => hashWasm.createBLAKE2b(bits));
-    } else if (algo === 'sha512/256') {
-      registerHasherFactory(algo, async () => {
-        let h = sha512_256.create();
-        /** @type {CommonHasher} */
-        const hasher = {
-          digestSize: 32,
-          init() {
-            h = sha512_256.create();
-            return this;
-          },
-          update(data) {
-            h.update(/** @type {any} */ (data));
-            return this;
-          },
-          // @ts-expect-error
-          digest(encoding) {
-            if (encoding === 'binary') return new Uint8Array(h.digest());
-            else return h.hex();
-          },
-        };
-        return hasher;
-      });
-    } else if (algo === 'size') {
-      registerHasherFactory(algo, async () => {
-        let encoder;
-        let size = 0;
-        /** @type {CommonHasher} */
-        const hasher = {
-          digestSize: 1,
-          init() {
-            size = 0;
-            encoder = new TextEncoder();
-            return this;
-          },
-          update(data) {
-            if (data) {
-              if (typeof data === 'string') size += encoder.encode(data).length;
-              else size += data.byteLength;
-            }
-            return this;
-          },
-          // @ts-expect-error
-          digest(encoding) {
-            if (encoding === 'binary') return new Uint8Array(new BigUint64Array([BigInt(size)]).buffer);
-            else return '' + size;
-          },
-        };
-        return hasher;
-      });
-    } else {
-      registerHasherFactory(algo, hashWasm['create' + algo.toUpperCase()]);
-    }
-  }
-})();
-// (async () => {
-//   for (const name in hasherFactory) {
-//     const factory = hasherFactory[name];
-//     const h = await factory();
-//     console.log(name);
-//     console.log(h);
-//     console.log(h.init().update('test').digest().length)
-//   }
-// })();
-
-/**
- *
- * @param {*} hasher
- * @returns {hasher is MultiHasher}
- */
-function isMulti(hasher) {
-  return hasher.multi;
+for (const [algo, nativeName] of Object.entries(NATIVE)) {
+  const digestSize = crypto.createHash(nativeName).digest().length;
+  registerHasherFactory(algo, async () =>
+    hasher(digestSize, () => {
+      const h = crypto.createHash(nativeName);
+      let result;
+      const final = () => (result ??= h.digest());
+      return { update: (d) => h.update(d), digest: () => new Uint8Array(final()), hex: () => final().toString('hex') };
+    }),
+  );
 }
 
+registerHasherFactory('crc32', async () =>
+  hasher(4, () => {
+    let crc = 0;
+    return {
+      update: (d) => {
+        crc = zlib.crc32(d, crc);
+      },
+      digest: () => {
+        const b = new Uint8Array(4);
+        new DataView(b.buffer).setUint32(0, crc);
+        return b;
+      },
+      hex: () => crc.toString(16).padStart(8, '0'),
+    };
+  }),
+);
+
+registerHasherFactory('size', async () =>
+  hasher(8, () => {
+    let size = 0;
+    return {
+      update: (d) => {
+        size += typeof d === 'string' ? Buffer.byteLength(d) : d.byteLength;
+      },
+      digest: () => new Uint8Array(new BigUint64Array([BigInt(size)]).buffer),
+      hex: () => `${size}`,
+    };
+  }),
+);
+
 /**
- * Create a hasher instance for the given algorithm or get it from cache if available.
+ * Create a hasher instance for the given algorithm.
  * @param {string} algorithm
  */
 async function createHasher(algorithm) {
-  const cacheArray = hasherCache[algorithm];
-  let hash = (cacheArray ?? []).find((hasher) => !hasherPending.get(hasher));
-  if (!hash) {
-    const factory = hasherFactory[algorithm];
-    if (!factory) throw new Error(`Unsupported digest algorithm: ${algorithm}`);
-    hash = await factory();
-    if (cacheArray) cacheArray.push(hash);
-    else hasherCache[algorithm] = [hash];
+  const factory = hasherFactory[algorithm];
+  if (!factory) {
+    throw new Error(`Unsupported digest algorithm: ${algorithm}`);
   }
-  hasherPending.set(hash, true);
-  hash.init();
-  return hash;
+  return (await factory()).init();
 }
 
 /**
@@ -164,7 +154,6 @@ async function createMultiHasher(algorithms) {
     digest(encoding) {
       const result = {};
       for (let i = 0; i < hashers.length; i++) {
-        hasherPending.set(hashers[i], false);
         result[algoNames[i]] = hashers[i].digest(encoding);
       }
       return result;
@@ -194,10 +183,7 @@ async function createStream(algorithm = 'sha512') {
   ws.update = (data) => {
     hash.update(data);
   };
-  ws.digest = (encoding) => {
-    if (!isMulti(hash)) hasherPending.set(hash, false);
-    return hash.digest(encoding);
-  };
+  ws.digest = (encoding) => hash.digest(encoding);
   return ws;
 }
 
@@ -211,7 +197,6 @@ async function createStream(algorithm = 'sha512') {
 async function createStreamThrough(algorithm = 'sha512', options) {
   const hash = await (Array.isArray(algorithm) ? createMultiHasher(algorithm) : createHasher(algorithm));
   const { writableStrategy, readableStrategy } = options || {};
-  //hash.setEncoding('hex');
   /** @type {any} */
   const ts = new TransformStream(
     {
@@ -223,10 +208,7 @@ async function createStreamThrough(algorithm = 'sha512', options) {
     writableStrategy,
     readableStrategy,
   );
-  ts.digest = (encoding) => {
-    if (!isMulti(hash)) hasherPending.set(hash, false);
-    return hash.digest(encoding);
-  };
+  ts.digest = (encoding) => hash.digest(encoding);
   return ts;
 }
 
@@ -250,7 +232,6 @@ async function digest(algorithm, input) {
     return hash.digest();
   } else {
     const hash = await (Array.isArray(algorithm) ? createMultiHasher(algorithm) : createHasher(algorithm));
-    if (!isMulti(hash)) hasherPending.set(hash, false);
     return hash.update(input).digest();
   }
 }
@@ -258,7 +239,9 @@ async function digest(algorithm, input) {
 async function initSync(algorithm) {
   if (!hasherSyncCache[algorithm]) {
     const factory = hasherFactory[algorithm];
-    if (!factory) throw new Error(`Unsupported digest algorithm: ${algorithm}`);
+    if (!factory) {
+      throw new Error(`Unsupported digest algorithm: ${algorithm}`);
+    }
     const hasher = await factory();
     hasherSyncCache[algorithm] = hasher;
   }
@@ -271,8 +254,9 @@ async function initSync(algorithm) {
  */
 function digestSync(algorithm, input) {
   const hasher = hasherSyncCache[algorithm];
-  if (!hasher)
+  if (!hasher) {
     throw new Error(`Hasher for algorithm ${algorithm} is not initialized. Please call and await initSync('${algorithm}') before calling this function.`);
+  }
   return hasher.init().update(input).digest();
 }
 
@@ -282,9 +266,6 @@ const HEX_DIGEST_LENGTH = {
   sha256: 64,
   'sha512/256': 64,
   sha512: 128,
-  'blake2b-160': 40,
-  'blake2b-256': 64,
-  'blake2b-384': 96,
   'blake2b-512': 128,
   crc32: 8,
   size: 1,
@@ -297,7 +278,6 @@ function getHexDigestLength(algorithm) {
 const OcflDigest = {
   CONTENT,
   FIXITY,
-  // algorithms,
   createStream,
   createStreamThrough,
   digest,
@@ -308,16 +288,4 @@ const OcflDigest = {
   initSync,
 };
 
-module.exports = {
-  OcflDigest,
-  [testSymbol]: {
-    hasherCache,
-  },
-  // DIGEST,
-  // DIGEST_FIXITY,
-  // digestSync,
-  // digestAsync,
-  // digestFromStream,
-  // digestStream,
-  // HashThrough
-};
+module.exports = { OcflDigest };
