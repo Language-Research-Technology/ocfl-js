@@ -91,11 +91,10 @@ class OcflFsStore extends OcflStore {
               size: stats.size,
               lastModified: stats.mtime,
             }));
-            if (buffer.length < maxBuffer) {
-              buffer.push(f);
-            } else {
-              yield buffer.shift();
-              buffer.push(f);
+            buffer.push(f);
+            if (buffer.length > maxBuffer) {
+              // biome-ignore lint/style/noNonNullAssertion: an item was just pushed
+              yield buffer.shift()!;
             }
           }
         }
@@ -114,7 +113,7 @@ class OcflFsStore extends OcflStore {
       await this.fs.promises.mkdir(path.dirname(target), { recursive: true });
       return this.fs.promises.rename(source, target);
     } catch (error) {
-      if (error.code === 'EXDEV') {
+      if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
         await this.fs.promises.cp(source, path.dirname(target), { recursive: true, preserveTimestamps: true });
         return this.fs.promises.rm(target, { recursive: true, force: true });
       }

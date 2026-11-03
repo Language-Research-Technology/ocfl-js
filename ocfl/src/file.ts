@@ -74,13 +74,9 @@ class OcflObjectFile {
   async #resolveContentPath(): Promise<string> {
     let contentPath = this.contentPath;
     if (!contentPath) {
-      const inv = await this.#ocflObject.getInventory();
-      if (!inv) {
-        throw new Error(`OCFL Object "${this.#ocflObject.id}" does not exist`);
-      }
+      const inv = await this.#ocflObject._requireInventory();
       const version = !this.version || this.version === 'latest' ? inv.head : this.version;
-      const digest = this.digest || inv.getDigest(this.logicalPath, version);
-      contentPath = inv.getContentPath(digest);
+      contentPath = this.digest ? inv.getContentPath(this.digest) : this.logicalPath && inv.getFile(this.logicalPath, version)?.contentPath;
       if (!contentPath) {
         throw new Error(`Cannot find content "${this.toString()}" in the OCFL Object "${this.#ocflObject.id}" version "${this.version || 'latest'}"`);
       }

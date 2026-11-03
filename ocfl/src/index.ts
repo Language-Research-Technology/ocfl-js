@@ -3,7 +3,7 @@
  */
 
 import { OcflConstants } from './constants.ts';
-import { OcflStorageLayout } from './extension.ts';
+import { createByName, OcflStorageLayout } from './extension.ts';
 import * as extensions from './extensions/index.ts';
 import { OcflObject } from './object.ts';
 import { type OcflStorage, OcflStorageImpl } from './storage.ts';
@@ -46,7 +46,7 @@ export function implementOcfl<SO extends object>(store: { getInstance(options?: 
      * @param config - Layout name or config
      */
     storageLayout(config: string | OcflExtensionConfig): OcflStorageLayout {
-      let name: string;
+      let name: string | undefined;
       let c: OcflExtensionConfig | undefined;
       if (typeof config === 'string') {
         name = config;
@@ -54,11 +54,7 @@ export function implementOcfl<SO extends object>(store: { getInstance(options?: 
         name = config.extensionName;
         c = config;
       }
-      const cls = OcflStorageLayout.class(name);
-      if (!cls) {
-        throw new Error(`Layout "${name}" is not supported.`);
-      }
-      return cls.create(c);
+      return createByName<OcflStorageLayout>(OcflStorageLayout, 'Layout', name, c);
     },
 
     /**

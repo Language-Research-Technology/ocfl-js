@@ -3,8 +3,6 @@
  * @module enumeration
  */
 
-const constantsOf = new WeakMap<object, readonly string[]>();
-
 export interface EnumValue {
   readonly name: string;
   readonly ordinal: number;
@@ -37,7 +35,7 @@ function enumeration<const T extends readonly string[]>(constants: T): EnumType<
       return this.name;
     }
     static [Symbol.iterator](): Iterator<string> {
-      return constantsOf.get(Enum)[Symbol.iterator]();
+      return constants[Symbol.iterator]();
     }
   }
   let count = 0;
@@ -48,7 +46,6 @@ function enumeration<const T extends readonly string[]>(constants: T): EnumType<
       enumerable: true,
     });
   }
-  constantsOf.set(Enum, constants);
   return Object.freeze(Enum) as unknown as EnumType<T>;
 }
 
@@ -75,9 +72,8 @@ enumeration.of = <T extends readonly string[]>(type: EnumType<T>, value: unknown
 /**
  * Return an existing constant based on the index
  */
-enumeration.at = <T extends readonly string[]>(type: EnumType<T>, index: number): EnumValue =>
-  (type as unknown as Record<string, EnumValue>)[constantsOf.get(type)[index]];
+enumeration.at = <T extends readonly string[]>(type: EnumType<T>, index: number): EnumValue => (type as unknown as Record<string, EnumValue>)[[...type][index]];
 
-enumeration.size = <T extends readonly string[]>(type: EnumType<T>): number => constantsOf.get(type).length;
+enumeration.size = <T extends readonly string[]>(type: EnumType<T>): number => [...type].length;
 
 export { enumeration };

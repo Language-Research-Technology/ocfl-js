@@ -4,6 +4,10 @@ import type { OcflVersion } from './types.ts';
 
 const { OCFL_VERSIONS, NAMASTE_T } = OcflConstants;
 
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && 'code' in error;
+}
+
 /**
  * Run `asyncFn` over every element of `inputStack` with at most `count` calls in flight.
  * Rejections are returned in the result array rather than thrown.
@@ -23,7 +27,7 @@ async function parallelize<T, R>(inputStack: T[], asyncFn: (input: T) => Promise
           try {
             result[index] = await asyncFn(input);
           } catch (error) {
-            result[index] = error;
+            result[index] = error instanceof Error ? error : new Error(String(error), { cause: error });
           }
         }
       })().catch(() => {}),
@@ -40,7 +44,7 @@ async function isDirEmpty(store: OcflStore, dirPath: string): Promise<boolean> {
     de = await dir.read();
     await dir.close();
   } catch (error) {
-    return error.code === 'ENOENT';
+    return isErrnoException(error) && error.code === 'ENOENT';
   }
   return !de;
 }
@@ -58,7 +62,7 @@ async function findNamasteVersion(store: OcflStore, prefix: string, rootPath: st
       return '';
     }
   } catch (error) {
-    if (!error.errors || error.errors.some((e: NodeJS.ErrnoException) => e.code !== 'ENOENT')) {
+    if (!(error instanceof AggregateError) || error.errors.some((e) => !isErrnoException(e) || e.code !== 'ENOENT')) {
       throw error;
     }
   }
@@ -87,4 +91,4 @@ function joinTypedArray(target: ArrayBuffer | TypedArray, source: ArrayBuffer | 
   return mergedArray;
 }
 
-export { findNamasteVersion, isDirEmpty, joinTypedArray, parallelize };
+export { findNamasteVersion, isDirEmpty, isErrnoException, joinTypedArray, parallelize };

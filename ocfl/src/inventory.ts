@@ -87,8 +87,8 @@ class OcflObjectInventory {
       const mainDigest = findKey(logicalPath, this.versionState(version));
       if (mainDigest) {
         digestArr.push([algo, mainDigest]);
-        if (fixity) {
-          const cp = this.getContentPath(mainDigest);
+        const cp = this.getContentPath(mainDigest);
+        if (fixity && cp) {
           for (const fixityDigest in fixity) {
             const digest = findKey(cp, fixity[fixityDigest]);
             if (digest) {
@@ -188,16 +188,24 @@ class OcflObjectInventory {
     data.manifest = data.manifest || {};
     data.versions = data.versions || {};
     let prevVer: InventoryVersion | undefined;
-    if (data.head) {
-      prevVer = data.versions[data.head];
-      data.head = VersionNumber.next(data.head).toString();
+    const prevHead = data.head;
+    if (prevHead) {
+      prevVer = data.versions[prevHead];
+      data.head = VersionNumber.next(prevHead).toString();
     } else {
       data.head = 'v1';
       cleanState = true;
     }
+    let state: InventoryDigests = {};
+    if (!cleanState) {
+      if (!prevVer) {
+        throw new Error(`Inventory head "${prevHead}" is not in versions.`);
+      }
+      state = JSON.parse(JSON.stringify(prevVer.state));
+    }
     data.versions[data.head] = {
       created: new Date().toISOString(),
-      state: cleanState ? {} : JSON.parse(JSON.stringify(prevVer.state)),
+      state,
     };
     return new OcflObjectInventoryMut(data as Inventory);
   }
@@ -313,7 +321,7 @@ class OcflObjectInventory {
     }
     for (const digest in state) {
       const files = state[digest];
-      const contentPath = this.getContentPath(digest);
+      const contentPath = this.#requireContentPath(digest);
       for (const logicalPath of files) {
         yield {
           logicalPath,
@@ -351,6 +359,14 @@ class OcflObjectInventory {
     }
   }
 
+  #requireContentPath(digest: string): string {
+    const cp = this.getContentPath(digest);
+    if (!cp) {
+      throw new Error(`Digest "${digest}" is not in the manifest of object "${this.id}".`);
+    }
+    return cp;
+  }
+
   /**
    * Get the digest of a content represented by the logicalPath of the specified version
    */
@@ -363,9 +379,9 @@ class OcflObjectInventory {
    */
   getFile(logicalPath: string, versionName: string = this.head): InventoryFile | undefined {
     const digest = this.getDigest(logicalPath, versionName);
-    const contentPath = this.getContentPath(digest);
     const version = versionName;
     if (digest) {
+      const contentPath = this.#requireContentPath(digest);
       return {
         logicalPath,
         version,
@@ -514,9 +530,9 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     }
     for (const [src, dest] of pairs) {
       const digest = this.getDigest(src);
-      const files = this.state[digest];
-      const index = files?.indexOf(src);
-      if (index >= 0) {
+      const files = digest ? this.state[digest] : undefined;
+      const index = files?.indexOf(src) ?? -1;
+      if (files && index >= 0) {
         this.delete(dest); //overwrite
         files[index] = dest;
         this._indexAdd(dest, this.head, this._indexRemove(src, this.head));
@@ -566,6 +582,9 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     const state = this.versionState(version);
     for (const lp of names) {
       const digest = this.getDigest(lp, version);
+      if (!digest) {
+        continue;
+      }
       const files = state[digest];
       const index = files?.indexOf(lp);
       if (index >= 0) {
@@ -589,11 +608,11 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     for (const lp of names) {
       const digests = this._indexGet(lp, versionName);
       if (digests) {
-        const _c = this.delete(lp);
+        this.delete(lp);
+        state[digests[this.digestAlgorithm]] = [lp];
+        this._indexAdd(lp, this.head, digests);
+        count++;
       }
-      state[digests[this.digestAlgorithm]] = [lp];
-      this._indexAdd(lp, this.head, digests);
-      count++;
     }
     return count;
   }

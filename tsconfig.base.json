@@ -12,9 +12,7 @@
     // Node's type stripping can't handle enums, namespaces, parameter properties or untyped type-only imports
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
-    // Remove both once the strict-mode errors are fixed
-    "strict": false,
-    "noImplicitAny": true,
+    "strict": true,
     // Maps point into src/, which is published alongside dist/
     "declaration": true,
     "declarationMap": true,

@@ -2,7 +2,7 @@
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { NotImplementedError } from './error.ts';
-import { OcflStorageLayout } from './extension.ts';
+import { createByName, OcflStorageLayout } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { OcflObject } from './object.ts';
 import { findNamasteVersion, isDirEmpty } from './utils.ts';
@@ -23,7 +23,7 @@ import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig, OcflVers
  */
 
 class OcflStorage {
-  ocflVersion: OcflVersion;
+  ocflVersion: OcflVersion = OCFL_VERSION;
 
   /**
    * Get the storage root
@@ -123,7 +123,7 @@ class OcflStorage {
 class OcflStorageImpl extends OcflStorage {
   #root: string;
   #workspace: string;
-  #layout: OcflStorageLayout;
+  #layout: OcflStorageLayout | undefined;
   #store: OcflStore;
   #objectConfig: Omit<OcflObjectConfig, 'root' | 'workspace' | 'id' | 'ocflVersion'>;
 
@@ -145,15 +145,17 @@ class OcflStorageImpl extends OcflStorage {
     if (layout) {
       this.#layout = layout instanceof OcflStorageLayout ? layout : this.#createLayout(layout);
     }
-    this.ocflVersion = ocflVersion || OCFL_VERSION;
+    if (ocflVersion) {
+      this.ocflVersion = ocflVersion;
+    }
     this.#objectConfig = objectConfig;
   }
 
-  #createLayout(option: OcflExtensionConfig | string) {
+  #createLayout(option: OcflExtensionConfig | string | undefined) {
     const name = typeof option === 'string' ? option : option?.extensionName;
-    const config = typeof option === 'object' ? option : null;
+    const config = typeof option === 'object' ? option : undefined;
     if (name) {
-      return OcflStorageLayout.class(name).create(config);
+      return createByName<OcflStorageLayout>(OcflStorageLayout, 'Layout', name, config);
     }
     // else if (useDefault) {
     //   return DEFAULT_LAYOUT.create(config);
@@ -182,7 +184,10 @@ class OcflStorageImpl extends OcflStorage {
     } else {
       ({ id, root } = opt);
     }
-    const relObjectRoot = root || this.objectRoot(id);
+    const relObjectRoot = root || (id && this.objectRoot(id));
+    if (!relObjectRoot) {
+      throw new TypeError('[OcflStorage] object id or root is required.');
+    }
     return new OcflObject(
       {
         id,
@@ -220,12 +225,14 @@ class OcflStorageImpl extends OcflStorage {
       }
     } catch (_error) {}
     // load ext config if exists
-    try {
-      const cfgstr = await this.#store.readFile(path.join(this.root, EXTENSIONS_DIR, layoutName, EXTENSION_CONFIG), 'utf8');
-      layoutConfig = JSON.parse(cfgstr as string);
-    } catch (_error) {}
+    if (layoutName) {
+      try {
+        const cfgstr = await this.#store.readFile(path.join(this.root, EXTENSIONS_DIR, layoutName, EXTENSION_CONFIG), 'utf8');
+        layoutConfig = JSON.parse(cfgstr as string);
+      } catch (_error) {}
+    }
     this.#layout = this.#createLayout(layoutConfig || layoutName);
-    const layoutDigestAlgorithm = this.#layout.get('digestAlgorithm');
+    const layoutDigestAlgorithm = this.#layout?.get('digestAlgorithm');
     if (layoutDigestAlgorithm) {
       await OcflDigest.initSync(layoutDigestAlgorithm);
     }

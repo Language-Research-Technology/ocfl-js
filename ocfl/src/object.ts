@@ -9,7 +9,7 @@ import { type InventoryFile, OcflObjectInventory, type OcflObjectInventoryMut, V
 import type { OcflStore } from './store.ts';
 import { type OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
 import type { Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
-import { findNamasteVersion, isDirEmpty, parallelize } from './utils.ts';
+import { findNamasteVersion, isDirEmpty, isErrnoException, parallelize } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
@@ -24,6 +24,13 @@ type LogicalPath = string;
 type FileRefLogical = { logicalPath: string; version?: string };
 type FileRefDigest = { digest: string; version?: string };
 type FileRefContent = { contentPath: string; version?: string };
+function contentDigestAlgorithm(algorithm: string | undefined): 'sha256' | 'sha512' {
+  const name = enumeration.of(DIGEST, algorithm || 'sha512')?.name;
+  if (!name) {
+    throw new Error('Invalid digest algorithm. Must be one of `sha256` or `sha512`.');
+  }
+  return name as 'sha256' | 'sha512';
+}
 
 /**
  * A class representing an OCFL Object allowing to read and write the content of an OCFL Object in the underlying store.
@@ -31,15 +38,15 @@ type FileRefContent = { contentPath: string; version?: string };
 class OcflObject {
   #ocflVersion: OcflVersion;
   #root: string;
-  #workspace: string;
-  #id: string;
+  #workspace: string | undefined;
+  #id: string | undefined;
   #digestAlgorithm: 'sha256' | 'sha512';
-  #extensions: OcflExtension[];
+  #extensions: OcflExtension[] | undefined;
   #store: OcflStore;
   /**
    * A default list of digest algorithms to be calculated for each file in this object and added to the fixity block.
    */
-  fixityAlgorithms: string[];
+  fixityAlgorithms: string[] | undefined;
   contentDirectory: string;
   _inventory: { [version: string]: OcflObjectInventory } = {};
 
@@ -63,7 +70,7 @@ class OcflObject {
     this.#id = config.id;
     this.#extensions = config.extensions;
     //this.fixityDigest = config.fixityDigest ?? this.digestAlgorithm;
-    this.digestAlgorithm = config.digestAlgorithm || 'sha512';
+    this.#digestAlgorithm = contentDigestAlgorithm(config.digestAlgorithm);
     this.#workspace = config.workspace ? path.resolve(config.workspace) : undefined;
     this.contentDirectory = config.contentDirectory ?? 'content';
     this._inventory = {};
@@ -75,16 +82,13 @@ class OcflObject {
     return this.#digestAlgorithm;
   }
   set digestAlgorithm(algorithm: string) {
-    this.#digestAlgorithm = enumeration.of(DIGEST, algorithm || 'sha512')?.name as 'sha256' | 'sha512';
-    if (!this.#digestAlgorithm) {
-      throw new Error('Invalid digest algorithm. Must be one of `sha256` or `sha512`.');
-    }
+    this.#digestAlgorithm = contentDigestAlgorithm(algorithm);
   }
 
   /**
    * Identifier of the OCFL Object
    */
-  get id(): string {
+  get id(): string | undefined {
     return this.inventory?.id || this.#id;
   }
 
@@ -113,7 +117,7 @@ class OcflObject {
   /**
    * The absolute path to the temporary workspace of this OCFL Object
    */
-  get workspace(): string {
+  get workspace(): string | undefined {
     return this.#workspace;
   }
 
@@ -163,24 +167,24 @@ class OcflObject {
    * Read and parse the inventory.json file
    * @param version - Full name of the version, eg: v1, v2, v3
    */
-  async _readInventory(version: string = 'latest'): Promise<OcflObjectInventory> {
+  async _readInventory(version: string = 'latest'): Promise<OcflObjectInventory | undefined> {
     const invPath = version === 'latest' ? INVENTORY_NAME : path.join(version, INVENTORY_NAME);
     let datastr: string;
     try {
       datastr = await this.readFile(invPath, 'utf8');
     } catch (err) {
-      if (err.code !== 'ENOENT') {
+      if (!isErrnoException(err) || err.code !== 'ENOENT') {
         throw err;
       }
       //inventory does not exist yet
       return;
     }
     const data = JSON.parse(datastr) as Inventory;
-    let [digest, actualDigest] = await Promise.all([
+    const [sidecar, actualDigest] = await Promise.all([
       this.readFile(`${invPath}.${data.digestAlgorithm}`, 'utf8'),
       OcflDigest.digest(data.digestAlgorithm, datastr),
     ]);
-    digest = digest.match(/[^\s]+/)?.[0];
+    const digest = sidecar.match(/[^\s]+/)?.[0];
     if (digest !== actualDigest) {
       throw createError('E060', path.join(this.root, invPath), `recorded=${digest} actual=${actualDigest}`);
     }
@@ -216,7 +220,7 @@ class OcflObject {
    * If the inventory file does not exist, eg in a newly created object, returns undefined.
    * @param version - Full name of the version, eg: v1, v2, v3
    */
-  async getInventory(version: string = 'latest'): Promise<OcflObjectInventory> {
+  async getInventory(version: string = 'latest'): Promise<OcflObjectInventory | undefined> {
     if (!this._inventory[version]) {
       const inv = await this._readInventory(version);
       if (inv) {
@@ -224,6 +228,14 @@ class OcflObject {
       }
     }
     return this._inventory[version];
+  }
+
+  async _requireInventory(): Promise<OcflObjectInventory> {
+    const inv = await this.getInventory();
+    if (!inv) {
+      throw new Error(`OCFL Object "${this.id}" does not exist`);
+    }
+    return inv;
   }
 
   _baseInventory() {
@@ -248,7 +260,7 @@ class OcflObject {
   ): Promise<OcflObjectTransaction | undefined> {
     const mode = enumeration.of(UPDATE_MODE, mode_);
     if (!mode) {
-      throw new TypeError(`Invalid mode '${mode.toString()}'`);
+      throw new TypeError(`Invalid mode '${mode_}'`);
     }
     const inv = (await this.getInventory()) ?? this._baseInventory();
     const newInv = await OcflObjectInventory.newVersion(inv, mode === UPDATE_MODE.REPLACE);
@@ -313,7 +325,7 @@ class OcflObject {
    * Count the number of files contained in this object
    */
   async count(version?: string) {
-    const inv = await this.getInventory();
+    const inv = await this._requireInventory();
     return [...inv.files(version)].length;
   }
 
@@ -343,7 +355,7 @@ class OcflObject {
    * The iterator is implemented as a generator.
    */
   async files(version?: string): Promise<Generator<OcflObjectFile, void, unknown>> {
-    const inv = await this.getInventory();
+    const inv = await this._requireInventory();
     const o = this;
     function* files() {
       for (const f of inv.files(version)) {

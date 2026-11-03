@@ -6,7 +6,7 @@ import { OcflDigest } from './digest.ts';
 import type { OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
 import type { OcflStore, WriteFileData } from './store.ts';
-import { parallelize } from './utils.ts';
+import { isErrnoException, parallelize } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 
@@ -396,7 +396,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         const realTarget = this._getRealPath(target);
         await this._store.move(realSource, realTarget);
       } catch (error) {
-        if (error.code !== 'ENOENT') {
+        if (!isErrnoException(error) || error.code !== 'ENOENT') {
           throw error;
         }
       }

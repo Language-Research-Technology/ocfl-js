@@ -66,7 +66,7 @@ class OcflExtension<C extends object = object> {
     if (!name || (OcflExtension as unknown as typeof OcflExtension).NAME === name) {
       return new this(config);
     }
-    return OcflExtension.class(name).create(config) as T;
+    return createByName(OcflExtension, 'Extension', name, config) as T;
   }
 
   static get forObject() {
@@ -186,4 +186,20 @@ class OcflStorageLayout<C extends object = object> extends OcflExtension<C> {
   }
 }
 
-export { OcflExtension, OcflStorageLayout };
+type ExtensionRegistry<T> = { class(name: string): { create(config?: OcflExtensionConfig): T } | undefined };
+
+/** Create an instance of the extension registered as `name`, or throw if `registry` has none */
+function createByName<T extends OcflExtension>(
+  registry: ExtensionRegistry<T>,
+  kind: 'Extension' | 'Layout',
+  name: string | undefined,
+  config?: OcflExtensionConfig,
+): T {
+  const cls = name ? registry.class(name) : undefined;
+  if (!cls) {
+    throw new Error(`${kind} "${name}" is not supported.`);
+  }
+  return cls.create(config);
+}
+
+export { createByName, OcflExtension, OcflStorageLayout };
