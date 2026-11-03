@@ -65,6 +65,10 @@ function findKey(file: string, obj: InventoryDigests): string | undefined {
   }
 }
 
+function isNonEmpty<T>(arr: T[] | undefined): arr is [T, ...T[]] {
+  return arr !== undefined && arr.length > 0;
+}
+
 function headNotInVersionsError(id: string, head: string) {
   return createError('E040', id, `head "${head}" is not in versions`);
 }
@@ -147,8 +151,7 @@ class OcflObjectInventory {
       const indexVer: { [logicalPath: string]: Digests } = {};
       index[verName] = indexVer;
       for (const [digest, lps] of Object.entries(ver.state)) {
-        this.#requireContentPath(digest);
-        const cps = this.manifest[digest] || [];
+        const cps = this.#requireContentPaths(digest);
         for (const lp of lps) {
           const file: Digests = { [algo]: digest };
           indexVer[lp] = file;
@@ -329,7 +332,7 @@ class OcflObjectInventory {
       state = this.versions[version]?.state;
     }
     for (const [digest, files] of Object.entries(state ?? {})) {
-      const contentPath = this.#requireContentPath(digest);
+      const [contentPath] = this.#requireContentPaths(digest);
       for (const logicalPath of files) {
         yield {
           logicalPath,
@@ -367,12 +370,12 @@ class OcflObjectInventory {
     }
   }
 
-  #requireContentPath(digest: string): string {
-    const cp = this.getContentPath(digest);
-    if (!cp) {
+  #requireContentPaths(digest: string): [string, ...string[]] {
+    const cps = this.manifest[digest];
+    if (!isNonEmpty(cps)) {
       throw createError('E050', this.id, `digest "${digest}" is not in the manifest`);
     }
-    return cp;
+    return cps;
   }
 
   /**
@@ -389,7 +392,7 @@ class OcflObjectInventory {
     const digest = this.getDigest(logicalPath, versionName);
     const version = versionName;
     if (digest) {
-      const contentPath = this.#requireContentPath(digest);
+      const [contentPath] = this.#requireContentPaths(digest);
       return {
         logicalPath,
         version,
