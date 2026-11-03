@@ -12,6 +12,8 @@ Install the library:
 
 The packages are ES modules with bundled TypeScript types and require Node.js 22.12 or later.
 
+Upgrading from 0.4? See [Migrating from 0.4](docs/migrating-from-0.4.md).
+
 ## Usage
 
 ### Storage
