@@ -455,6 +455,13 @@ class OcflObjectInventory {
  * Wrapper class with mutable methods for inventory data
  */
 class OcflObjectInventoryMut extends OcflObjectInventory {
+  /** The digest of a logical path and the state entry listing it */
+  #stateEntry(logicalPath: string, version: string = this.head): { digest: string; files: string[] } | undefined {
+    const digest = this.getDigest(logicalPath, version);
+    const files = digest ? this.versionState(version)?.[digest] : undefined;
+    return digest && files ? { digest, files } : undefined;
+  }
+
   /**
    * Add a new file to the inventory or update the digest of an existing file
    * @returns true if the state is changed
@@ -525,12 +532,11 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
       pairs.push([srcLogicalPath, destLogicalPath]);
     }
     for (const [src, dest] of pairs) {
-      const digest = this.getDigest(src);
-      const files = digest ? this.state[digest] : undefined;
-      const index = files?.indexOf(src) ?? -1;
-      if (files && index >= 0) {
+      const entry = this.#stateEntry(src);
+      const index = entry?.files.indexOf(src) ?? -1;
+      if (entry && index >= 0) {
         this.delete(dest); //overwrite
-        files[index] = dest;
+        entry.files[index] = dest;
         const digests = this._indexRemove(src, this.head);
         if (digests) {
           this._indexAdd(dest, this.head, digests);
@@ -557,15 +563,14 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
         throw new Error(`Target logical path cannot be empty`);
       }
       const digests = this._indexGet(src, this.head, true);
-      const digest = digests?.[this.digestAlgorithm];
-      const files = digest ? this.state[digest] : undefined;
-      if (!digests || !files) {
+      const entry = this.#stateEntry(src);
+      if (!digests || !entry) {
         throw new Error(`Source logical path "${src}" does not exist in object [${this.id}]`);
       }
-      if (files.indexOf(dest) >= 0) {
+      if (entry.files.indexOf(dest) >= 0) {
         /** @todo decide: throw error or silently ignore existing dest file? */
       } else {
-        files.push(dest);
+        entry.files.push(dest);
         this._indexAdd(dest, this.head, digests);
       }
     }
@@ -582,11 +587,11 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
       return 0;
     }
     for (const lp of names) {
-      const digest = this.getDigest(lp, version);
-      const files = digest ? state[digest] : undefined;
-      if (!digest || !files) {
+      const entry = this.#stateEntry(lp, version);
+      if (!entry) {
         continue;
       }
+      const { digest, files } = entry;
       const index = files.indexOf(lp);
       if (index >= 0) {
         if (files.length === 1) {
