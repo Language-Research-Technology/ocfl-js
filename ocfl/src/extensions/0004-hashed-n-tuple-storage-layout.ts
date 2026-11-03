@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { OcflDigest } from '../digest.ts';
-import { enumeration } from '../enum.ts';
 import { OcflStorageLayout } from '../extension.ts';
 
 const DefaultConfig = {
@@ -27,11 +26,10 @@ class HashedNTupleStorageLayout extends OcflStorageLayout<typeof DefaultConfig> 
   constructor(config?: HashedNTupleStorageLayoutConfig) {
     super(config, DefaultConfig);
     const c = this.parameters;
-    const algo = enumeration.of(OcflDigest.FIXITY, c.digestAlgorithm)?.name;
-    if (!algo) {
+    const digestLength = OcflDigest.getHexDigestLength(c.digestAlgorithm);
+    if (!digestLength) {
       throw new Error('Invalid digestAlgorithm');
     }
-    const digestLength = OcflDigest.getHexDigestLength(algo);
     const p = c.numberOfTuples * c.tupleSize;
     if (p > digestLength) {
       throw new Error('Product of numberOfTuples and tupleSize is greater than the number of characters in the hex encoded digest.');

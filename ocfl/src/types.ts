@@ -1,3 +1,5 @@
+import type { ContentAlgorithm } from './digest.ts';
+
 export interface InventoryDigests {
   [key: string]: string[];
 }
@@ -22,7 +24,7 @@ export interface Inventory {
    * within the OCFL Object and for the Inventory Digest.
    * This MUST be the algorithm used in the manifest and state blocks
    */
-  digestAlgorithm: 'sha256' | 'sha512';
+  digestAlgorithm: ContentAlgorithm;
   /** The version directory name of the most recent version of the object. */
   head: string;
   manifest: InventoryDigests;
@@ -78,7 +80,7 @@ export type OcflStorageConfig = {
   /** A default list of digest algorithm names to be added to the fixity block of objects under this storage. */
   fixityAlgorithms?: string[] | undefined;
   /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
-  digestAlgorithm?: 'sha256' | 'sha512' | undefined;
+  digestAlgorithm?: ContentAlgorithm | undefined;
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
   contentDirectory?: string | undefined;
   /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstants.OCFL_VERSION} */
@@ -98,7 +100,7 @@ export type OcflObjectConfig = {
   /** Additional digest algorithms to be calculated for each file and added to the fixity block. */
   fixityAlgorithms?: string[] | undefined;
   /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
-  digestAlgorithm?: 'sha256' | 'sha512' | undefined;
+  digestAlgorithm?: ContentAlgorithm | undefined;
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
   contentDirectory?: string | undefined;
   /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstants.OCFL_VERSION} */

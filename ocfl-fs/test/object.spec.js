@@ -87,6 +87,46 @@ describe('OcflObject with a malformed or missing inventory', () => {
     assert.strictEqual(await o.count('v9'), 0);
   });
 
+  it('rejects a digestAlgorithm that is not lowercase', () => {
+    assert.throws(() => ocfl.object({ id: 'upper-digest', root: path.join(tempdir, 'upper-digest'), digestAlgorithm: 'SHA256' }), {
+      message: 'Invalid digest algorithm. Must be one of `sha256` or `sha512`.',
+    });
+  });
+
+  it('rejects an unsupported digestAlgorithm', () => {
+    assert.throws(() => ocfl.object({ id: 'md5-digest', root: path.join(tempdir, 'md5-digest'), digestAlgorithm: 'md5' }), {
+      message: 'Invalid digest algorithm. Must be one of `sha256` or `sha512`.',
+    });
+  });
+
+  it('replaces the previous version content when updating in REPLACE mode', async () => {
+    const o = ocfl.object({ id: 'replace-mode', root: path.join(tempdir, 'replace-mode') });
+    await o.update(async (t) => t.write('a.txt', 'a'));
+    await o.update(async (t) => t.write('b.txt', 'b'), 'REPLACE');
+    const paths = Array.from(await o.files(), (f) => f.logicalPath);
+    assert.deepStrictEqual(paths, ['b.txt']);
+  });
+
+  it('keeps the previous version content when updating in the default MERGE mode', async () => {
+    const o = ocfl.object({ id: 'merge-mode', root: path.join(tempdir, 'merge-mode') });
+    await o.update(async (t) => t.write('a.txt', 'a'));
+    await o.update(async (t) => t.write('b.txt', 'b'));
+    const paths = Array.from(await o.files(), (f) => f.logicalPath).sort();
+    assert.deepStrictEqual(paths, ['a.txt', 'b.txt']);
+  });
+
+  it('rejects an unknown update mode', async () => {
+    const o = ocfl.object({ id: 'bad-mode', root: path.join(tempdir, 'bad-mode') });
+    await assert.rejects(
+      o.update(async (t) => t.write('a.txt', 'a'), 'APPEND'),
+      { name: 'TypeError', message: "Invalid mode 'APPEND'" },
+    );
+    await assert.rejects(
+      o.update(async (t) => t.write('a.txt', 'a'), 'replace'),
+      { name: 'TypeError', message: "Invalid mode 'replace'" },
+    );
+  });
+
   it('rejects counting or listing files of an object without an inventory', async () => {
     const o = ocfl.object({ id: 'no-inventory', root: path.join(tempdir, 'no-inventory') });
     const message = 'OCFL Object "no-inventory" does not exist';

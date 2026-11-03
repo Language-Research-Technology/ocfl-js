@@ -33,6 +33,14 @@ describe('HashedNTupleStorageLayout class', () => {
     }
   });
 
+  it('rejects a digestAlgorithm that is not lowercase', () => {
+    assert.throws(() => new HashedNTupleStorageLayout({ digestAlgorithm: 'MD5' }), { message: 'Invalid digestAlgorithm' });
+  });
+
+  it('rejects an unknown digestAlgorithm', () => {
+    assert.throws(() => new HashedNTupleStorageLayout({ digestAlgorithm: 'sha3' }), { message: 'Invalid digestAlgorithm' });
+  });
+
   it('can use custom config, edge case', () => {
     const layout = new HashedNTupleStorageLayout({ digestAlgorithm: 'sha256', tupleSize: 0, numberOfTuples: 0, shortObjectRoot: false });
     const cases = [

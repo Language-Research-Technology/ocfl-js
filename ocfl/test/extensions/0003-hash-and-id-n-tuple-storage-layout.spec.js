@@ -33,6 +33,14 @@ describe('HashAndIdNTupleStorageLayout class', () => {
     }
   });
 
+  it('rejects a digestAlgorithm that is not lowercase', () => {
+    assert.throws(() => new HashAndIdNTupleStorageLayout({ digestAlgorithm: 'MD5' }), { message: 'Invalid digestAlgorithm' });
+  });
+
+  it('rejects an unknown digestAlgorithm', () => {
+    assert.throws(() => new HashAndIdNTupleStorageLayout({ digestAlgorithm: 'sha3' }), { message: 'Invalid digestAlgorithm' });
+  });
+
   it('can map valid id with tupleSize=0 and numberOfTuples=0', () => {
     const layout = new HashAndIdNTupleStorageLayout({ digestAlgorithm: 'sha256', tupleSize: 0, numberOfTuples: 0 });
     const ids = [

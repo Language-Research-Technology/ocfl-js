@@ -1,7 +1,6 @@
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
-import { OcflDigest } from './digest.ts';
-import { type EnumValue, enumeration } from './enum.ts';
+import { type ContentAlgorithm, OcflDigest } from './digest.ts';
 import type { OcflExtension } from './extension.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
@@ -14,22 +13,17 @@ import { createError } from './validation.ts';
 
 const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
 
-const UPDATE_MODES = ['MERGE', 'REPLACE'] as const;
-const UPDATE_MODE = enumeration(UPDATE_MODES);
-const DIGEST = OcflDigest.CONTENT;
-
-type UpdateModeStr = (typeof UPDATE_MODES)[number];
-export type UpdateMode = EnumValue | UpdateModeStr;
+export type UpdateMode = 'MERGE' | 'REPLACE';
 type LogicalPath = string;
 type FileRefLogical = { logicalPath: string; version?: string | undefined };
 type FileRefDigest = { digest: string; version?: string | undefined };
 type FileRefContent = { contentPath: string; version?: string | undefined };
-function contentDigestAlgorithm(algorithm: string | undefined): 'sha256' | 'sha512' {
-  const name = enumeration.of(DIGEST, algorithm || 'sha512')?.name;
-  if (!name) {
+function contentDigestAlgorithm(algorithm: string | undefined): ContentAlgorithm {
+  const name = algorithm || 'sha512';
+  if (name !== 'sha256' && name !== 'sha512') {
     throw new Error('Invalid digest algorithm. Must be one of `sha256` or `sha512`.');
   }
-  return name as 'sha256' | 'sha512';
+  return name;
 }
 
 /**
@@ -40,7 +34,7 @@ class OcflObject {
   #root: string;
   #workspace: string | undefined;
   #id: string | undefined;
-  #digestAlgorithm: 'sha256' | 'sha512';
+  #digestAlgorithm: ContentAlgorithm;
   #extensions: OcflExtension[] | undefined;
   #store: OcflStore;
   /**
@@ -78,7 +72,7 @@ class OcflObject {
   }
 
   /** the digest algorithm used to identify files within the OCFL object */
-  get digestAlgorithm(): 'sha256' | 'sha512' {
+  get digestAlgorithm(): ContentAlgorithm {
     return this.#digestAlgorithm;
   }
   set digestAlgorithm(algorithm: string) {
@@ -259,16 +253,12 @@ class OcflObject {
    * If callback function `cb` is provided, all update operations can be done in the callback function
    * and all changes are automatically commited at the end of the function.
    */
-  async update(
-    updater?: (transaction: OcflObjectTransaction) => Promise<unknown>,
-    mode_: UpdateMode = UPDATE_MODE.MERGE,
-  ): Promise<OcflObjectTransaction | undefined> {
-    const mode = enumeration.of(UPDATE_MODE, mode_);
-    if (!mode) {
+  async update(updater?: (transaction: OcflObjectTransaction) => Promise<unknown>, mode_: UpdateMode = 'MERGE'): Promise<OcflObjectTransaction | undefined> {
+    if (mode_ !== 'MERGE' && mode_ !== 'REPLACE') {
       throw new TypeError(`Invalid mode '${mode_}'`);
     }
     const inv = (await this.getInventory()) ?? this._baseInventory();
-    const newInv = await OcflObjectInventory.newVersion(inv, mode === UPDATE_MODE.REPLACE);
+    const newInv = await OcflObjectInventory.newVersion(inv, mode_ === 'REPLACE');
     const t = await this.#createTransaction(newInv);
     if (typeof updater === 'function') {
       try {
@@ -290,9 +280,9 @@ class OcflObject {
    * Use this method to simplify copying all contents of a directory
    * in local filesystem to the OCFL Object content directory
    * @param content - The source path(s) or an array of a tuple [source, logical path]
-   * @param mode - Update mode. Defaults to `UPDATE_MODE.MERGE`.
+   * @param mode - Update mode. Defaults to `'MERGE'`.
    */
-  async import(content: string | string[] | string[][], mode: UpdateMode = UPDATE_MODE.MERGE) {
+  async import(content: string | string[] | string[][], mode: UpdateMode = 'MERGE') {
     const items = typeof content === 'string' ? [[content, '']] : content.map((p) => (typeof p === 'string' ? [p, ''] : p));
 
     await this.update(async (t) => {
@@ -309,7 +299,7 @@ class OcflObject {
    * Alias for import
    * @see {@link OcflObject.import}
    */
-  async add(sourceDir: string | string[] | string[][], mode: UpdateMode = UPDATE_MODE.MERGE) {
+  async add(sourceDir: string | string[] | string[][], mode: UpdateMode = 'MERGE') {
     await this.import(sourceDir, mode);
   }
 

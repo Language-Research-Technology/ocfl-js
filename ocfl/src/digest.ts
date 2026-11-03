@@ -1,10 +1,9 @@
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
-import { enumeration } from './enum.ts';
 import type { CommonHasher, IDataType, MultiHasher } from './types.ts';
 
-const CONTENT = enumeration(['sha256', 'sha512']);
-const FIXITY = enumeration(['sha256', 'sha512', 'md5', 'sha1', 'blake2b-512', 'sha512/256', 'size', 'crc32']);
+const CONTENT = ['sha256', 'sha512'] as const;
+type ContentAlgorithm = (typeof CONTENT)[number];
 
 /** OCFL algorithm name to node:crypto name */
 const NATIVE = {
@@ -246,7 +245,6 @@ function getHexDigestLength(algorithm: string) {
 
 const OcflDigest = {
   CONTENT,
-  FIXITY,
   createStream,
   createStreamThrough,
   digest,
@@ -257,4 +255,4 @@ const OcflDigest = {
   initSync,
 };
 
-export { OcflDigest };
+export { type ContentAlgorithm, OcflDigest };
