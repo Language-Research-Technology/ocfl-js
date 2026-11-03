@@ -25,7 +25,6 @@
   "type": "module",
   "exports": {
     ".": {
-      "@ocfl/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -44,7 +43,6 @@
   "devDependencies": {
     "@types/mocha": "^10.0.10",
     "@types/node": "^22.20.5",
-    "memfs": "^4.50.0",
     "mocha": "^11.7.5",
     "typescript": "^7.0.2"
   },
@@ -54,9 +52,6 @@
   "mocha": {
     "spec": [
       "test/**/*.spec.js"
-    ],
-    "node-option": [
-      "conditions=@ocfl/source"
     ]
   }
 }

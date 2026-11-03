@@ -181,9 +181,6 @@ importers:
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
-      memfs:
-        specifier: ^4.50.0
-        version: 4.80.0
       mocha:
         specifier: ^11.7.5
         version: 11.8.0
@@ -203,6 +200,9 @@ importers:
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
+      memfs:
+        specifier: ^4.80.0
+        version: 4.80.0
       mocha:
         specifier: ^11.7.5
         version: 11.8.0

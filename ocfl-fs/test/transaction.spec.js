@@ -1,9 +1,7 @@
 import assert from 'node:assert';
+import { OcflDigest, OcflObjectInventory, OcflObjectTransactionImpl } from '@ocfl/ocfl';
 import { createFsFromVolume, Volume } from 'memfs';
-import { OcflFsStore } from '../../ocfl-fs/src/store.ts';
-import { OcflDigest } from '../src/digest.ts';
-import { OcflObjectInventory } from '../src/inventory.ts';
-import { OcflObjectTransactionImpl } from '../src/transaction.ts';
+import { OcflFsStore } from '../src/store.ts';
 
 /** In-memory store for testing */
 const volInit = {

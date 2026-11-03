@@ -22,7 +22,6 @@
   "type": "module",
   "exports": {
     ".": {
-      "@ocfl/source": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     }
@@ -32,8 +31,10 @@
     "src"
   ],
   "scripts": {
+    "pretest": "pnpm --filter @ocfl/ocfl build",
     "test": "mocha",
     "build": "tsc",
+    "pretypecheck": "pnpm --filter @ocfl/ocfl build",
     "typecheck": "tsc --noEmit",
     "prepack": "tsc"
   },
@@ -43,6 +44,7 @@
   "devDependencies": {
     "@ocfl/ocfl-tests": "workspace:*",
     "@types/node": "^22.20.5",
+    "memfs": "^4.80.0",
     "mocha": "^11.7.5",
     "typescript": "^7.0.2"
   },
@@ -52,9 +54,6 @@
   "mocha": {
     "spec": [
       "test/**/*.spec.js"
-    ],
-    "node-option": [
-      "conditions=@ocfl/source"
     ]
   }
 }
