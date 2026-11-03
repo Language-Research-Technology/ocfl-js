@@ -117,7 +117,7 @@ function getError(id) {
 function genValObj(arr, id) {
   return {
     code: 'E' + ('' + id).padStart(3, '0'),
-    description: arr[id - 1]
+    description: arr[id]
   };
 }
 
