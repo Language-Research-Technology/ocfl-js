@@ -63,7 +63,8 @@ class OcflExtension<C extends object = object> {
    */
   static create<T extends OcflExtension>(this: ExtensionConstructor<T>, config?: OcflExtensionConfig): T {
     const name = config?.extensionName;
-    if (!name || (OcflExtension as unknown as typeof OcflExtension).NAME === name) {
+    // biome-ignore lint/complexity/noThisInStatic: must be the subclass create() is called on, or it recurses
+    if (!name || (this as unknown as typeof OcflExtension).NAME === name) {
       return new this(config);
     }
     return createByName(OcflExtension, 'Extension', name, config) as T;

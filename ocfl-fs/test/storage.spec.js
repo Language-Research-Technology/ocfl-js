@@ -38,6 +38,15 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
     });
   });
 
+  it('creates a layout from a config object naming the extension', () => {
+    const storage = ocfl.storage({
+      root: path.join(tempdir, 'layout-config'),
+      layout: { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 4 },
+    });
+    const [firstTuple] = storage.objectRoot('an-object').split('/');
+    assert.strictEqual(firstTuple.length, 4);
+  });
+
   it('rejects an object reference with neither id nor root', () => {
     const storage = ocfl.storage({ root: path.join(tempdir, 'object-ref'), layout: 'HashedNTupleStorageLayout' });
     assert.throws(() => storage.object({}), { name: 'TypeError', message: '[OcflStorage] object id or root is required.' });
