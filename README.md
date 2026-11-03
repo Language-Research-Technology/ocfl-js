@@ -9,9 +9,6 @@ Install the library:
     // For filesystem backend
     npm install @ocfl/ocfl-fs
 
-    // For s3 backend
-    npm install @ocfl/ocfl-s3
-
 ## Usage
 
 ### Storage
@@ -21,10 +18,6 @@ Import the corresponding module of the chosen backend and then create a new Stor
     // Use filesystem backend
     const ocfl = require('@ocfl/ocfl-fs');
     const storage = ocfl.storage({root: '/var/data/myocfl'});
-
-    // Use S3 backend, assuming the required S3 credentials are set as env vars
-    const ocfl = require('@ocfl/ocfl-s3');
-    const storage = ocfl.storage({root: '/var/data/myocfl', bucket: "test-bucket"});
 
 Before any OCFL object can be created in the storage, either the `create` or `load` methods must be be called first.
 Alternatively, use the `createStorage` and `loadStorage` methods to create a new storage or load an existing storage as follows:
