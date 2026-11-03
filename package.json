@@ -19,10 +19,6 @@
     "Peter Sefton (https://orcid.org/0000-0002-3545-944X)"
   ],
   "license": "GPL-3.0-or-later",
-  "workspaces": [
-    "ocfl",
-    "ocfl-fs",
-    "ocfl-tests"
-  ],
-  "scripts": {}
+  "scripts": {},
+  "packageManager": "pnpm@12.16.1"
 }
