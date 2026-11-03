@@ -146,6 +146,7 @@ class OcflObjectInventory {
       const indexVer: { [logicalPath: string]: Digests } = {};
       index[verName] = indexVer;
       for (const [digest, lps] of Object.entries(ver.state)) {
+        this.#requireContentPath(digest);
         const cps = this.manifest[digest] || [];
         for (const lp of lps) {
           const file: Digests = { [algo]: digest };

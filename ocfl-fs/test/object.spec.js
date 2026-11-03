@@ -54,16 +54,14 @@ describe('OcflObject with a malformed or missing inventory', () => {
     await assert.rejects(o.load(), { message: 'Inventory head "v2" is not in versions.' });
   });
 
-  it('rejects reading a file whose digest is not in the manifest', async () => {
+  it('rejects loading an inventory with a state digest that is not in the manifest', async () => {
     let digest;
     const o = await malformedObject('bad-manifest', (inv) => {
       [digest] = Object.keys(inv.manifest);
       inv.manifest = {};
     });
-    await o.load();
     const message = `Digest "${digest}" is not in the manifest of object "bad-manifest".`;
-    assert.throws(() => o.getFile('a.txt'), { message });
-    await assert.rejects(async () => [...(await o.files())], { message });
+    await assert.rejects(o.load(), { message });
   });
 
   it('finds no file in a version that does not exist', async () => {
