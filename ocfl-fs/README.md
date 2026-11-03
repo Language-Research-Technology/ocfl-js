@@ -1,6 +1,6 @@
-# ocfl-fs - OCFL implementation using Filesystem storage backend for Node.js
+# @ocfl/ocfl-fs - OCFL implementation using Filesystem storage backend for Node.js
 
-This is JavaScript/Node.js library to create and interact with Oxford Common File Layout (OCFL) storage and objects within it.
+TypeScript library to create and interact with Oxford Common File Layout (OCFL) storage and objects within it.
 This package implements the OCFL client that stores storage root and its objects on a locally attached filesystem.
 
 ## Installation
@@ -20,4 +20,4 @@ For example, by passing it memfs (https://www.npmjs.com/package/memfs) the OCFL 
     import { fs } from 'memfs';
     const storage = ocfl.storage({root: '/var/data/myocfl'}, {fs});
 
-For common usage documentation please refer to the [README.md in GitHub](https://github.com/Arkisto-Platform/ocfl-js)
+For common usage documentation please refer to the [README.md in GitHub](https://github.com/Language-Research-Technology/ocfl-js)
