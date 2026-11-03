@@ -188,6 +188,12 @@ class OcflObject {
     if (digest !== actualDigest) {
       throw createError('E060', path.join(this.root, invPath), `recorded=${digest} actual=${actualDigest}`);
     }
+    if (data.head === undefined) {
+      throw createError('E036', path.join(this.root, invPath), 'missing head');
+    }
+    if (data.head === '') {
+      throw createError('E040', path.join(this.root, invPath), 'empty head');
+    }
     return new OcflObjectInventory(data);
   }
 

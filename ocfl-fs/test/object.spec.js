@@ -54,6 +54,20 @@ describe('OcflObject with a malformed or missing inventory', () => {
     await assert.rejects(o.load(), { name: 'ValidationError', code: 'E040', detail: 'head "v2" is not in versions' });
   });
 
+  it('rejects loading an inventory with an empty head', async () => {
+    const o = await malformedObject('empty-head', (inv) => {
+      inv.head = '';
+    });
+    await assert.rejects(o.load(), { name: 'ValidationError', code: 'E040', detail: 'empty head' });
+  });
+
+  it('rejects loading an inventory without a head', async () => {
+    const o = await malformedObject('no-head', (inv) => {
+      delete inv.head;
+    });
+    await assert.rejects(o.load(), { name: 'ValidationError', code: 'E036', detail: 'missing head' });
+  });
+
   it('rejects loading an inventory with a state digest that is not in the manifest', async () => {
     let digest;
     const o = await malformedObject('bad-manifest', (inv) => {
