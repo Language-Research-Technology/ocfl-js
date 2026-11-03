@@ -5,7 +5,7 @@ import { type EnumValue, enumeration } from './enum.ts';
 import type { OcflExtension } from './extension.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
-import { headNotInVersionsError, type InventoryFile, OcflObjectInventory, type OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
+import { type InventoryFile, OcflObjectInventory, type OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
 import type { OcflStore } from './store.ts';
 import { type OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
 import type { Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
@@ -187,9 +187,6 @@ class OcflObject {
     const digest = sidecar.match(/[^\s]+/)?.[0];
     if (digest !== actualDigest) {
       throw createError('E060', path.join(this.root, invPath), `recorded=${digest} actual=${actualDigest}`);
-    }
-    if (!data.versions?.[data.head]) {
-      throw headNotInVersionsError(data.head);
     }
     return new OcflObjectInventory(data);
   }

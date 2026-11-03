@@ -189,21 +189,18 @@ class OcflObjectInventory {
     }
     data.manifest = data.manifest || {};
     data.versions = data.versions || {};
-    let prevVer: InventoryVersion | undefined;
-    const prevHead = data.head;
-    if (prevHead) {
-      prevVer = data.versions[prevHead];
-      data.head = VersionNumber.next(prevHead).toString();
+    let state: InventoryDigests = {};
+    if (data.head) {
+      if (!cleanState) {
+        const prev = data.versions[data.head];
+        if (!prev) {
+          throw headNotInVersionsError(data.head);
+        }
+        state = JSON.parse(JSON.stringify(prev.state));
+      }
+      data.head = VersionNumber.next(data.head).toString();
     } else {
       data.head = 'v1';
-      cleanState = true;
-    }
-    let state: InventoryDigests = {};
-    if (!cleanState) {
-      if (!prevVer) {
-        throw headNotInVersionsError(prevHead ?? '');
-      }
-      state = JSON.parse(JSON.stringify(prevVer.state));
     }
     data.versions[data.head] = {
       created: new Date().toISOString(),
@@ -218,6 +215,10 @@ class OcflObjectInventory {
    * @param version - Set the version, default to data.head
    */
   constructor(data: Inventory, _version?: string) {
+    // an empty head is an inventory with no versions yet
+    if (data.head !== '' && !data.versions?.[data.head]) {
+      throw headNotInVersionsError(data.head);
+    }
     this.#data = data;
     this._indexBuild();
   }
@@ -626,4 +627,4 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   }
 }
 
-export { headNotInVersionsError, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber };
+export { OcflObjectInventory, OcflObjectInventoryMut, VersionNumber };
