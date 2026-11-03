@@ -1,7 +1,7 @@
 //@ts-check
 //@todo add default layout
 const path = require("path");
-const validation = require('./validation.js');
+const { createError } = require('./validation.js');
 const { NotImplementedError } = require("./error");
 const { OcflStorageLayout } = require("./extension");
 const { HashedNTupleStorageLayout } = require("./extensions/0004-hashed-n-tuple-storage-layout");
@@ -220,7 +220,8 @@ class OcflStorageImpl extends OcflStorage {
     ];
     // @ts-ignore
     let [ocflVersion, layout] = (await Promise.allSettled(tasks)).map(r => r.value);
-    if (!ocflVersion) throw new Error('Invalid storage root');//throw validation.createError(67, this.root);
+    if (ocflVersion === '') throw createError('E080', this.root);
+    if (!ocflVersion) throw createError('E069', this.root);
     let layoutName, layoutConfig;
     // load layout
     try {

@@ -142,7 +142,7 @@ class OcflObject {
   async _ensureNamaste() {
     let prefix = NAMASTE_PREFIX_OBJECT;
     let nv = await findNamasteVersion(this.#store, prefix, this.root);
-    if (nv === '') throw createError(6, this.root);
+    if (nv === '') throw createError('E007', this.root);
     if (nv) {
       if (!this.ocflVersion) this.#ocflVersion = /** @type {OcflVersion} */(nv);
       return;
@@ -180,7 +180,7 @@ class OcflObject {
       OcflDigest.digest(data.digestAlgorithm, datastr)
     ]));
     digest = digest.match(/[^\s]+/)?.[0];
-    if (digest !== actualDigest) throw new Error(`Inventory file ${this.root}/${invPath} digest mismatch: recorded=${digest} actual=${actualDigest}`);
+    if (digest !== actualDigest) throw createError('E060', path.join(this.root, invPath), `recorded=${digest} actual=${actualDigest}`);
     //return new OcflObjectInventory({ data, digest });
     return new OcflObjectInventory(data);
   }
@@ -202,7 +202,7 @@ class OcflObject {
     while (p !== '.' && p !== '/') {
       p = path.dirname(p);
       let nv = await findNamasteVersion(this.#store, NAMASTE_PREFIX_OBJECT, p);
-      if (nv) throw new Error(`Object root cannot be nested under another object ${p}`);
+      if (nv) throw createError('E082', this.root, `nested under the object at ${p}`);
     }
   }
 

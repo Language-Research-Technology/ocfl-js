@@ -4,14 +4,17 @@ const assert = require("assert");
 const { createError } = require("../lib/validation.js");
 
 describe("validation.createError", function () {
-  it("uses the spec message for the given code", function () {
-    const first = createError(1, '/obj');
-    assert.equal(first.code, 'E001');
-    assert.match(first.description, /^The OCFL Object Root must not contain files or directories/);
+  it("builds an error with the spec code, message and path", function () {
+    const e = createError('E060', '/obj/inventory.json', 'recorded=a actual=b');
+    assert.equal(e.name, 'ValidationError');
+    assert.equal(e.code, 'E060');
+    assert.equal(e.description, 'The digest sidecar file must contain the digest of the inventory file.');
+    assert.equal(e.path, '/obj/inventory.json');
+    assert.equal(e.message, 'E060: The digest sidecar file must contain the digest of the inventory file. At /obj/inventory.json (recorded=a actual=b)');
+  });
 
-    const e = createError(6, '/obj');
-    assert.equal(e.code, 'E006');
-    assert.match(e.description, /dvalue MUST be ocfl_object_/);
-    assert.equal(e.path, '/obj');
+  it("rejects codes it has no message for", function () {
+    assert.throws(() => createError(/** @type {any} */('E001'), '/obj'), RangeError);
+    assert.throws(() => createError(/** @type {any} */('toString'), '/obj'), RangeError);
   });
 });

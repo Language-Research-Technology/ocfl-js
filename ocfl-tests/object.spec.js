@@ -443,6 +443,39 @@ module.exports = function (ocfl) {
     });
   });
 
+  describe("spec violations", function () {
+    let tempdir;
+    before(async function () {
+      tempdir = await fs.promises.mkdtemp(path.join(__dirname, 'test-data', 'temp-errors-'));
+    });
+
+    it("reports E007 when the version declaration has the wrong contents", async function () {
+      const root = path.join(tempdir, 'bad-namaste');
+      await fs.promises.mkdir(root);
+      await fs.promises.writeFile(path.join(root, '0=ocfl_object_1.1'), 'wrong\n');
+      const o = ocfl.object({ id: 'bad-namaste', root });
+      await assert.rejects(o.update(async t => t.write('a.txt', 'a')), { code: 'E007', path: root });
+    });
+
+    it("reports E060 when the inventory sidecar digest does not match", async function () {
+      const root = path.join(tempdir, 'bad-sidecar');
+      await ocfl.object({ id: 'bad-sidecar', root }).update(async t => t.write('a.txt', 'a'));
+      await fs.promises.writeFile(path.join(root, 'inventory.json.sha512'), 'abc inventory.json\n');
+      await assert.rejects(ocfl.object({ root }).load(), { code: 'E060' });
+    });
+
+    it("reports E082 when an object root is nested in another object", async function () {
+      const parent = path.join(tempdir, 'parent');
+      await ocfl.object({ id: 'parent', root: parent }).update(async t => t.write('a.txt', 'a'));
+      const child = ocfl.object({ id: 'child', root: path.join(parent, 'child') });
+      await assert.rejects(child.update(async t => t.write('b.txt', 'b')), { code: 'E082' });
+    });
+
+    after(async function () {
+      await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+  });
+
 };
 
 

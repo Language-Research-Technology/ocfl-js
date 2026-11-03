@@ -90,6 +90,27 @@ module.exports = function (ocfl) {
       await fs.promises.rm(tempdir, { recursive: true, force: true });
     });
   });
+  describe("spec violations", function () {
+    let tempdir;
+    before(async function () {
+      tempdir = await fs.promises.mkdtemp(path.join(__dirname, 'test-data', 'temp-errors-'));
+    });
+
+    it("reports E069 when the root conformance declaration is missing", async function () {
+      await assert.rejects(ocfl.storage({ root: tempdir }).load(), { code: 'E069', path: tempdir });
+    });
+
+    it("reports E080 when the version declaration has the wrong contents", async function () {
+      const root = path.join(tempdir, 'bad-namaste');
+      await fs.promises.mkdir(root);
+      await fs.promises.writeFile(path.join(root, '0=ocfl_1.1'), 'wrong\n');
+      await assert.rejects(ocfl.storage({ root }).load(), { code: 'E080', path: root });
+    });
+
+    after(async function () {
+      await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+  });
   describe("constructor", function () {
     it("can create new storage", function () {
     });
