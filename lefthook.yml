@@ -1,0 +1,23 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: biome
+      run: pnpm run lint:biome
+
+    - name: knip
+      run: pnpm run lint:knip
+
+    # Sequential: both build ocfl/dist
+    - name: build
+      group:
+        jobs:
+          - name: types
+            run: pnpm run typecheck
+
+          - name: consumer
+            run: pnpm run lint:consumer
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: pnpm exec commitlint --edit {1}
