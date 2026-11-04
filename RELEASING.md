@@ -46,6 +46,7 @@ Prereleases get a GitHub release marked as a prerelease but aren't added to `CHA
 nothing is committed back, which keeps `beta` a fast-forward of `main`.
 
 - **Don't push to `beta`.** CI owns it. If it gains commits that aren't on `main`, the fast-forward
-  fails and no prereleases are published until it's reset to `main`.
+  fails, a publish run on `beta` refuses to release, and no prereleases are published until it's
+  reset to `main`.
 - Stable releases need no `beta` housekeeping: the next releasable push to `main` starts the next
   prerelease line (e.g. `1.1.0-beta.1` after `1.0.0`).

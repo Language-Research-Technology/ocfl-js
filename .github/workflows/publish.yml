@@ -11,10 +11,6 @@ on:
         default: true
         type: boolean
 
-concurrency:
-  group: publish
-  cancel-in-progress: false
-
 jobs:
   test:
     # workflow_dispatch can't hide its branch picker; everything else (via needs) only runs from main or beta
@@ -28,6 +24,9 @@ jobs:
     if: github.event_name == 'push'
     needs: test
     runs-on: ubuntu-latest
+    concurrency:
+      group: promote-beta
+      cancel-in-progress: false
     permissions:
       contents: write # to push beta
       actions: write # to dispatch the beta run
@@ -50,6 +49,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     needs: test
     runs-on: ubuntu-latest
+    # Per branch, so a queued beta run can't displace a queued stable release
+    concurrency:
+      group: publish-${{ github.ref }}
+      cancel-in-progress: false
     permissions:
       contents: write # to be able to publish a GitHub release
       issues: write # to be able to comment on released issues
@@ -64,6 +67,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      - name: Check beta only contains commits from main
+        if: github.ref == 'refs/heads/beta'
+        run: git merge-base --is-ancestor HEAD origin/main
 
       - name: Setup pnpm
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
