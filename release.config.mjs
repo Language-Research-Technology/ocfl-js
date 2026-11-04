@@ -1,13 +1,15 @@
-// `pnpm publish` rather than @semantic-release/npm, which can't rewrite `workspace:*`
+const isPrerelease = process.env.GITHUB_REF === 'refs/heads/beta';
+
 const packages = ['@ocfl/ocfl', '@ocfl/ocfl-fs'];
 const filters = packages.map((name) => `--filter ${name}`).join(' ');
+// `pnpm publish` rather than @semantic-release/npm, which can't rewrite `workspace:*`
 const publish = (name) => `pnpm --filter ${name} publish --tag \${nextRelease.channel || 'latest'} --access public --no-git-checks`;
 
 /**
  * @type {import('semantic-release').GlobalConfig}
  */
 export default {
-  branches: ['main'],
+  branches: ['main', { name: 'beta', prerelease: true }],
   tagFormat: `v\${version}`,
   plugins: [
     [
@@ -22,7 +24,8 @@ export default {
         preset: 'conventionalcommits',
       },
     ],
-    '@semantic-release/changelog',
+    // Prereleases don't commit back, so CI can keep beta fast-forwarded to main
+    !isPrerelease && '@semantic-release/changelog',
     [
       '@semantic-release/exec',
       {
@@ -31,11 +34,11 @@ export default {
       },
     ],
     '@semantic-release/github',
-    [
+    !isPrerelease && [
       '@semantic-release/git',
       {
         assets: ['CHANGELOG.md', 'ocfl/package.json', 'ocfl-fs/package.json'],
       },
     ],
-  ],
+  ].filter(Boolean),
 };
