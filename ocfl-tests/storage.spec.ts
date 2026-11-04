@@ -2,6 +2,7 @@
 
 import assert from 'node:assert';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import type { OcflStorage } from '@ocfl/ocfl';
@@ -53,10 +54,9 @@ export default (ocfl: Ocfl) => {
   });
   describe('mutators', () => {
     const datadir = path.join(import.meta.dirname, 'test-data');
-    const tempdir = path.join(datadir, 'temp');
+    let tempdir: string;
     before(async () => {
-      // create temp dir
-      await fs.promises.mkdir(tempdir, { recursive: true });
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-storage-'));
     });
 
     it('can create new storage with default layout', async () => {
@@ -88,7 +88,7 @@ export default (ocfl: Ocfl) => {
   describe('spec violations', () => {
     let tempdir: string;
     before(async () => {
-      tempdir = await fs.promises.mkdtemp(path.join(import.meta.dirname, 'test-data', 'temp-errors-'));
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-storage-errors-'));
     });
 
     it('reports E069 when the root conformance declaration is missing', async () => {

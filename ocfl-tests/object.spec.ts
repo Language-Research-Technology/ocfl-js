@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { after, before, describe, it } from 'node:test';
@@ -127,7 +128,7 @@ export default (ocfl: Ocfl) => {
 
   describe('update', () => {
     const datadir = path.join(import.meta.dirname, 'test-data');
-    const tempdir = path.join(datadir, 'temp');
+    let tempdir: string;
     let objectx: OcflObject;
 
     function createObject(id: string, useWorkspace: boolean, ocflVersion?: OcflVersion) {
@@ -139,8 +140,7 @@ export default (ocfl: Ocfl) => {
     }
 
     before(async () => {
-      // create temp dir
-      await fs.promises.mkdir(tempdir, { recursive: true });
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-object-'));
       objectx = createObject('object-x', true);
     });
 
@@ -437,7 +437,7 @@ export default (ocfl: Ocfl) => {
   describe('spec violations', () => {
     let tempdir: string;
     before(async () => {
-      tempdir = await fs.promises.mkdtemp(path.join(import.meta.dirname, 'test-data', 'temp-errors-'));
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-object-errors-'));
     });
 
     it('reports E007 when the version declaration has the wrong contents', async () => {
