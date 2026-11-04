@@ -24,7 +24,7 @@
     "lint:biome": "biome check .",
     "lint:consumer": "scripts/check-consumer.sh",
     "format": "biome check --write .",
-    "typecheck": "pnpm -r typecheck",
+    "lint:types": "pnpm -r run typecheck",
     "test": "pnpm --filter @ocfl/ocfl --filter @ocfl/ocfl-fs test",
     "coverage": "c8 pnpm test"
   },

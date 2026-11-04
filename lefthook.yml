@@ -12,7 +12,7 @@ pre-commit:
       group:
         jobs:
           - name: types
-            run: pnpm run typecheck
+            run: pnpm run lint:types
 
           - name: consumer
             run: pnpm run lint:consumer
