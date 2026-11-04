@@ -8,7 +8,7 @@ The library consists of common components and implementations for different stor
 Install the library:
 
     // For filesystem backend
-    npm install @ocfl/ocfl-fs
+    pnpm add @ocfl/ocfl-fs
 
 The packages are ES modules with bundled TypeScript types and require Node.js 22.12 or later.
 
@@ -118,8 +118,12 @@ Clone the Git repo with submodules included:
 
     git clone --recurse-submodules https://github.com/Language-Research-Technology/ocfl-js
 
-The project is structured as a monorepo with multiple packages set up as npm workspaces.
+The project is structured as a monorepo with multiple packages set up as pnpm workspaces.
 Install the dependencies for all workspaces:
 
     cd ocfl-js
-    npm install
+    pnpm install
+
+## Releasing
+
+See [RELEASING.md](RELEASING.md).

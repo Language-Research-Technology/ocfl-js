@@ -1,0 +1,126 @@
+name: Publish Packages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (list package contents and release notes without publishing)"
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  test:
+    # workflow_dispatch can't hide its branch picker; everything else (via needs) only runs from main or beta
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta'
+    uses: ./.github/workflows/test.yml
+    permissions:
+      contents: read
+
+  # Prereleases must run on beta itself: npm rejects provenance whose ref doesn't match the OIDC token
+  promote-beta:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    concurrency:
+      group: promote-beta
+      cancel-in-progress: false
+    permissions:
+      contents: write # to push beta
+      actions: write # to dispatch the beta run
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # so git can see the push to beta is a fast-forward
+
+      - name: Fast-forward beta to main
+        run: git push origin HEAD:refs/heads/beta
+
+      - name: Publish prerelease from beta
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run publish.yml --ref beta -f dry_run=false
+
+  publish:
+    if: github.event_name == 'workflow_dispatch'
+    needs: test
+    runs-on: ubuntu-latest
+    # npm's trusted publisher only accepts OIDC tokens from this environment, which only main and beta can deploy to
+    environment: npm-publish
+    # Per branch, so a queued beta run can't displace a queued stable release
+    concurrency:
+      group: publish-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write # to be able to publish a GitHub release
+      issues: write # to be able to comment on released issues
+      pull-requests: write # to be able to comment on released pull requests
+      id-token: write # for npm trusted publishing and provenance
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      NPM_CONFIG_PROVENANCE: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check beta only contains commits from main
+        if: github.ref == 'refs/heads/beta'
+        run: git merge-base --is-ancestor HEAD origin/main
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm --filter @ocfl/ocfl --filter @ocfl/ocfl-fs build
+
+      - name: Verify the integrity of provenance attestations and registry signatures for installed dependencies
+        run: npm audit signatures
+
+      - name: Semantic Release (dry-run)
+        if: inputs.dry_run
+        run: |
+          echo "## Semantic Release Dry Run"
+          echo "This shows what would be released without making any changes:"
+          echo ""
+          pnpm exec semantic-release --dry-run
+          echo ""
+          echo "## Package Contents Preview"
+          echo "The following files would be included in each npm package:"
+          echo ""
+          pnpm --filter @ocfl/ocfl --filter @ocfl/ocfl-fs pack --dry-run
+
+      - name: Semantic Release
+        if: ${{ !inputs.dry_run }}
+        run: pnpm exec semantic-release
+
+      - name: Summary
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          RELEASES_URL: https://github.com/${{ github.repository }}/releases
+        run: |
+          {
+            if [ "$DRY_RUN" == "true" ]; then
+              echo "## Dry Run Complete"
+              echo "Semantic release dry run has been completed. Check the logs above for details on what would be released."
+            else
+              echo "## Release Complete"
+              echo "Semantic release has completed successfully! Check the logs above for details."
+            fi
+            echo "Visit the [releases page]($RELEASES_URL) to see the releases."
+          } >> "$GITHUB_STEP_SUMMARY"

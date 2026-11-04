@@ -11,7 +11,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Arkisto-Platform/ocfl-js"
+    "url": "https://github.com/Language-Research-Technology/ocfl-js"
   },
   "author": "Alvin Sebastian (https://orcid.org/0000-0002-9086-1722)",
   "contributors": [
@@ -22,16 +22,26 @@
   "scripts": {
     "lint:knip": "knip",
     "lint:biome": "biome check .",
+    "lint:consumer": "scripts/check-consumer.sh",
     "format": "biome check --write .",
-    "typecheck": "pnpm -r typecheck",
+    "lint:types": "pnpm -r run typecheck",
     "test": "pnpm --filter @ocfl/ocfl --filter @ocfl/ocfl-fs test",
     "coverage": "c8 pnpm test"
   },
   "packageManager": "pnpm@12.16.1",
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@commitlint/types": "^21.2.3",
+    "@semantic-release/changelog": "^7.0.0",
+    "@semantic-release/exec": "^7.1.0",
+    "@semantic-release/git": "^11.0.1",
     "c8": "^12.0.0",
-    "knip": "^6.44.1"
+    "conventional-changelog-conventionalcommits": "^9.3.1",
+    "knip": "^6.44.1",
+    "lefthook": "^2.2.2",
+    "semantic-release": "^25.0.9"
   },
   "engines": {
     "node": ">=22.18.0"

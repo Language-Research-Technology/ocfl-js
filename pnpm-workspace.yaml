@@ -9,3 +9,7 @@ packages:
   - ocfl
   - ocfl-fs
   - ocfl-tests
+
+allowBuilds:
+  # Installs the git hooks.
+  lefthook: true
