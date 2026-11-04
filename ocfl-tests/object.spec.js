@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import { after, before, describe, it } from 'node:test';
 
 /**
  * @param {Ocfl} ocfl

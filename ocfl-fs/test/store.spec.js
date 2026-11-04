@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
+import { describe, it } from 'node:test';
 import { OcflFsStore } from '../src/store.ts';
 
 describe('OcflFsStore', () => {

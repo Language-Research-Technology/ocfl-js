@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import { performance } from 'node:perf_hooks';
+import { describe, it } from 'node:test';
 import { setTimeout } from 'node:timers/promises';
 import * as utils from '../src/utils.ts';
 

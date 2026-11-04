@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { describe, it } from 'node:test';
 import { OcflExtension } from '../src/index.ts';
 
 describe('OcflExtension class', () => {

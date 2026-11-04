@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { before, describe, it } from 'node:test';
 import { extensions } from '../../src/index.ts';
 
 const { HashAndIdNTupleStorageLayout } = extensions;

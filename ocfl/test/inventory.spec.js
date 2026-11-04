@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import { readFile } from 'node:fs/promises';
+import { beforeEach, describe, it } from 'node:test';
 import { OcflObjectInventory } from '../src/inventory.ts';
 
 describe('OcflObjectInventory class', () => {

@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { describe, it } from 'node:test';
 import { extensions } from '../../src/index.ts';
 
 const { FlatDirectStorageLayout } = extensions;

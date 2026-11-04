@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { describe, it } from 'node:test';
 import { OcflStore } from '../src/index.ts';
 
 class OcflTest1Store extends OcflStore {}

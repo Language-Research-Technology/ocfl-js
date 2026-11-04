@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
+import { describe, it } from 'node:test';
 import { OcflDigest } from '../src/digest.ts';
 
 describe('OcflDigest', () => {
