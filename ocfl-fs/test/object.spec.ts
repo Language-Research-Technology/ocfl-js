@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import type { Inventory } from '@ocfl/ocfl';
 import ocflTests from '@ocfl/ocfl-tests';
 import ocfl from '../src/index.ts';
 
@@ -18,7 +19,7 @@ describe('OcflObject class using OcflFsStore', () => {
 });
 
 describe('OcflObject with a malformed or missing inventory', () => {
-  let tempdir;
+  let tempdir: string;
   before(async () => {
     tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-fs-object-'));
   });
@@ -27,7 +28,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
   });
 
   /** Create a one-file object, then rewrite its inventory (and sidecar) with `corrupt` */
-  async function malformedObject(name, corrupt) {
+  async function malformedObject(name: string, corrupt: (inv: Partial<Inventory>) => void) {
     const root = path.join(tempdir, name);
     await ocfl.object({ id: name, root }).update(async (t) => t.write('a.txt', 'a'));
     const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8'));
@@ -70,9 +71,9 @@ describe('OcflObject with a malformed or missing inventory', () => {
   });
 
   it('rejects loading an inventory with a state digest that is not in the manifest', async () => {
-    let digest;
+    let digest: string | undefined;
     const o = await malformedObject('bad-manifest', (inv) => {
-      [digest] = Object.keys(inv.manifest);
+      [digest] = Object.keys(inv.manifest!);
       inv.manifest = {};
     });
     await assert.rejects(o.load(), { name: 'ValidationError', code: 'E050', detail: `digest "${digest}" is not in the manifest` });
@@ -82,19 +83,21 @@ describe('OcflObject with a malformed or missing inventory', () => {
     const root = path.join(tempdir, 'missing-version');
     const o = ocfl.object({ id: 'missing-version', root });
     await o.update(async (t) => t.write('a.txt', 'a'));
-    const { digest } = await o.fileByLogicalPath('a.txt');
-    assert.strictEqual(await o.fileByDigest(digest, 'v9'), undefined);
+    const { digest } = (await o.fileByLogicalPath('a.txt'))!;
+    assert.strictEqual(await o.fileByDigest(digest!, 'v9'), undefined);
     assert.strictEqual(await o.fileByLogicalPath('a.txt', 'v9'), undefined);
     assert.strictEqual(await o.count('v9'), 0);
   });
 
   it('rejects a digestAlgorithm that is not lowercase', () => {
+    // @ts-expect-error deliberately invalid
     assert.throws(() => ocfl.object({ id: 'upper-digest', root: path.join(tempdir, 'upper-digest'), digestAlgorithm: 'SHA256' }), {
       message: 'Invalid digest algorithm. Must be one of `sha256` or `sha512`.',
     });
   });
 
   it('rejects an unsupported digestAlgorithm', () => {
+    // @ts-expect-error deliberately invalid
     assert.throws(() => ocfl.object({ id: 'md5-digest', root: path.join(tempdir, 'md5-digest'), digestAlgorithm: 'md5' }), {
       message: 'Invalid digest algorithm. Must be one of `sha256` or `sha512`.',
     });
@@ -119,10 +122,12 @@ describe('OcflObject with a malformed or missing inventory', () => {
   it('rejects an unknown update mode', async () => {
     const o = ocfl.object({ id: 'bad-mode', root: path.join(tempdir, 'bad-mode') });
     await assert.rejects(
+      // @ts-expect-error deliberately invalid
       o.update(async (t) => t.write('a.txt', 'a'), 'APPEND'),
       { name: 'TypeError', message: "Invalid mode 'APPEND'" },
     );
     await assert.rejects(
+      // @ts-expect-error deliberately invalid
       o.update(async (t) => t.write('a.txt', 'a'), 'replace'),
       { name: 'TypeError', message: "Invalid mode 'replace'" },
     );

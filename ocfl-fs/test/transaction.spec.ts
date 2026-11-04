@@ -1,11 +1,11 @@
 import assert from 'node:assert';
 import { beforeEach, describe, it } from 'node:test';
-import { OcflDigest, OcflObjectInventory, OcflObjectTransactionImpl } from '@ocfl/ocfl';
-import { createFsFromVolume, Volume } from 'memfs';
+import { type Inventory, OcflDigest, type OcflObject, OcflObjectInventory, type OcflObjectInventoryMut, OcflObjectTransactionImpl } from '@ocfl/ocfl';
+import { createFsFromVolume, type DirectoryJSON, type IFs, type NestedDirectoryJSON, Volume } from 'memfs';
 import { OcflFsStore } from '../src/store.ts';
 
 /** In-memory store for testing */
-const volInit = {
+const volInit: NestedDirectoryJSON = {
   '/ocfl/test': {},
   '/source/metadata.json': '{}',
   '/source/data/a/a.txt': 'data a',
@@ -14,13 +14,11 @@ const volInit = {
 };
 
 describe('OcflTransactionImpl class', () => {
-  /** @type {import('memfs').IFs} */
-  let fs;
-  /** @type {string} */
+  let fs: IFs;
   const root = '/ocfl/test';
-  let newInv = null;
-  let store;
-  const object = {
+  let newInv: OcflObjectInventory | null = null;
+  let store: OcflFsStore;
+  const object: Pick<OcflObject, 'root' | '_setInventory' | '_ensureNamaste'> & Partial<Pick<OcflObject, 'fixityAlgorithms'>> = {
     root,
     _setInventory: (inv) => {
       newInv = inv;
@@ -29,20 +27,20 @@ describe('OcflTransactionImpl class', () => {
   };
 
   beforeEach(async () => {
-    fs = createFsFromVolume(Volume.fromJSON(volInit));
+    fs = createFsFromVolume(Volume.fromJSON(volInit as DirectoryJSON));
     store = OcflFsStore.getInstance({ fs });
     newInv = null;
   });
 
-  async function createTransaction(inv) {
+  async function createTransaction(inv?: OcflObjectInventory | null) {
     newInv = OcflObjectInventory.newVersion(
       inv || {
         id: 'test',
         digestAlgorithm: 'sha512',
-        type: `https://ocfl.io/v1.1/spec/#inventory`,
+        type: `https://ocfl.io/v1.1/spec/#inventory` as Inventory['type'],
       },
     );
-    return OcflObjectTransactionImpl.create(object, store, newInv, '/workspace');
+    return OcflObjectTransactionImpl.create(object as OcflObject, store, newInv as OcflObjectInventoryMut, '/workspace');
   }
 
   it('creates the temp dir', async () => {
@@ -68,9 +66,9 @@ describe('OcflTransactionImpl class', () => {
     await trx.commit({ message: 'test commit', user: { name: 'tester', address: 'tester@example.com' } });
     assert(fs.existsSync(`${root}/v1/content/test.txt`));
     // test for optional information
-    assert.strictEqual(newInv.versions.v1.message, 'test commit');
-    assert.strictEqual(newInv.versions.v1.user.name, 'tester');
-    assert.strictEqual(newInv.versions.v1.user.address, 'tester@example.com');
+    assert.strictEqual(newInv!.versions.v1!.message, 'test commit');
+    assert.strictEqual(newInv!.versions.v1!.user!.name, 'tester');
+    assert.strictEqual(newInv!.versions.v1!.user!.address, 'tester@example.com');
     await trx.commit();
   });
 
@@ -121,9 +119,9 @@ describe('OcflTransactionImpl class', () => {
     const text = 'Hello, World!';
     await trx.write('test.txt', text);
     await trx.commit();
-    const { size, crc32 } = await OcflDigest.digest(['size', 'crc32'], text);
-    assert(newInv.fixity.size[size].includes('v1/content/test.txt'));
-    assert(newInv.fixity.crc32[crc32].includes('v1/content/test.txt'));
+    const { size, crc32 } = (await OcflDigest.digest(['size', 'crc32'], text)) as { size: string; crc32: string };
+    assert(newInv!.fixity!.size![size]!.includes('v1/content/test.txt'));
+    assert(newInv!.fixity!.crc32![crc32]!.includes('v1/content/test.txt'));
   });
 
   it('import', async () => {
@@ -151,15 +149,15 @@ describe('OcflTransactionImpl class', () => {
     assert(fs.existsSync(`${root}/v1/content/test.txt`));
     assert(fs.existsSync(`${root}/v2/content/test.txt`));
     trx = await createTransaction(newInv);
-    assert(newInv.getDigest('test.txt', 'v1'));
-    assert(newInv.getDigest('test.txt', 'v2'));
+    assert(newInv!.getDigest('test.txt', 'v1'));
+    assert(newInv!.getDigest('test.txt', 'v2'));
     await trx.purge('test.txt');
     await trx.commit({ force: true });
     assert(fs.existsSync(`${root}/v1/content/test.txt`));
     assert(fs.existsSync(`${root}/v2/content/test.txt`));
-    assert(!newInv.getDigest('test.txt', 'v1'));
-    assert(!newInv.getDigest('test.txt', 'v2'));
-    assert(!newInv.getDigest('test.txt', 'v3'));
+    assert(!newInv!.getDigest('test.txt', 'v1'));
+    assert(!newInv!.getDigest('test.txt', 'v2'));
+    assert(!newInv!.getDigest('test.txt', 'v3'));
   });
 
   it('copy', async () => {
@@ -169,7 +167,7 @@ describe('OcflTransactionImpl class', () => {
     assert.strictEqual(fs.readFileSync(`${wp}/content/metadata.json`, 'utf-8'), '{}');
     await trx.copy('data/a/a.txt', 'data/c/c.txt');
     await trx.commit();
-    assert.strictEqual(newInv.getDigest('data/a/a.txt'), newInv.getDigest('data/c/c.txt'));
+    assert.strictEqual(newInv!.getDigest('data/a/a.txt'), newInv!.getDigest('data/c/c.txt'));
   });
 
   it('rename', async () => {
@@ -177,9 +175,9 @@ describe('OcflTransactionImpl class', () => {
     const wp = trx._workspaceVersionPath;
     await trx.import('/source', '');
     assert.strictEqual(fs.readFileSync(`${wp}/content/metadata.json`, 'utf-8'), '{}');
-    const a = newInv.getDigest('data/a/a.txt');
+    const a = newInv!.getDigest('data/a/a.txt');
     await trx.rename('data/a/a.txt', 'data/c/c.txt');
-    const b = newInv.getDigest('data/c/c.txt');
+    const b = newInv!.getDigest('data/c/c.txt');
     assert.strictEqual(a, b);
     assert(fs.existsSync(`${wp}/content/data/c/c.txt`));
     assert(!fs.existsSync(`${wp}/content/data/a/a.txt`));
@@ -195,24 +193,24 @@ describe('OcflTransactionImpl class', () => {
     assert(!fs.existsSync(`${wp}/content/data/a/a.txt`));
     await trx.commit();
     trx = await createTransaction(newInv);
-    assert(newInv.getDigest('data/b/b.txt'));
+    assert(newInv!.getDigest('data/b/b.txt'));
     await trx.remove('data/b/b.txt');
     await trx.commit();
-    assert(!newInv.getDigest('data/b/b.txt'));
+    assert(!newInv!.getDigest('data/b/b.txt'));
   });
 
   it('reinstate', async () => {
     let trx = await createTransaction();
     await trx.import('/source', '');
     await trx.commit();
-    assert(newInv.getDigest('metadata.json'));
+    assert(newInv!.getDigest('metadata.json'));
     trx = await createTransaction(newInv);
     await trx.remove('metadata.json');
     await trx.commit();
-    assert(!newInv.getDigest('metadata.json'));
+    assert(!newInv!.getDigest('metadata.json'));
     trx = await createTransaction(newInv);
     await trx.reinstate('metadata.json', 'v1');
     await trx.commit();
-    assert(newInv.getDigest('metadata.json'));
+    assert(newInv!.getDigest('metadata.json'));
   });
 });

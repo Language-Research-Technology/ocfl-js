@@ -1,17 +1,16 @@
-import { after, before, describe, it } from 'node:test';
 // throw error if workspace is the same as root or a subdirectory of root
 
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
+import { after, before, describe, it } from 'node:test';
+import type { OcflStorage } from '@ocfl/ocfl';
+import type { Ocfl } from './index.ts';
 
-/**
- * @param {Ocfl} ocfl
- */
-export default (ocfl) => {
+export default (ocfl: Ocfl) => {
   describe('constructor', () => {
     it('can create new storage', () => {
-      let storage;
+      let storage: OcflStorage;
       storage = ocfl.storage({ root: '/data/storage-1' });
       assert.equal(storage.root, '/data/storage-1');
 
@@ -30,10 +29,10 @@ export default (ocfl) => {
     it('can list objects via async iterator', async () => {
       let i = 0;
       for await (const o of repo) {
-        assert.strictEqual(o.root, objects[i].root);
+        assert.strictEqual(o.root, objects[i]!.root);
         assert.strictEqual(o.id, undefined);
         await o.load();
-        assert.strictEqual(o.id, objects[i].id);
+        assert.strictEqual(o.id, objects[i]!.id);
         ++i;
       }
     });
@@ -44,12 +43,12 @@ export default (ocfl) => {
       }
       //const objarr = Promise.all(iter);
       assert.strictEqual(objarr.length, 1);
-      assert.strictEqual(objarr[0].root, objects[0].root);
+      assert.strictEqual(objarr[0]!.root, objects[0]!.root);
     });
     it('can retrieve object inventory', async () => {
       const o = repo.object({ root: 'object_1' });
       await o.load();
-      assert.strictEqual(o.id, objects[0].id);
+      assert.strictEqual(o.id, objects[0]!.id);
     });
   });
   describe('mutators', () => {
@@ -87,7 +86,7 @@ export default (ocfl) => {
     });
   });
   describe('spec violations', () => {
-    let tempdir;
+    let tempdir: string;
     before(async () => {
       tempdir = await fs.promises.mkdtemp(path.join(import.meta.dirname, 'test-data', 'temp-errors-'));
     });

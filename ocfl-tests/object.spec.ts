@@ -4,27 +4,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { after, before, describe, it } from 'node:test';
+import type { Inventory, OcflObject, OcflObjectConfig, OcflVersion } from '@ocfl/ocfl';
+import type { Ocfl } from './index.ts';
 
-/**
- * @param {Ocfl} ocfl
- */
-export default (ocfl) => {
+export default (ocfl: Ocfl) => {
   let objcount = 0;
 
-  /**
-   *
-   * @param {import('@ocfl/ocfl').OcflObject} object
-   * @param {string} srcPath
-   * @param {string} logicalPath
-   */
-  async function validateFile(object, srcPath, logicalPath) {
+  async function validateFile(object: OcflObject, srcPath: string, logicalPath: string) {
     const content = await fs.promises.readFile(srcPath);
     const digest = createHash('sha512').update(content).digest('hex');
-    const inv = await object.getInventory();
+    const inv = (await object.getInventory())!;
     assert.strictEqual(inv.manifest[digest]?.length, 1);
-    assert.ok(inv.state[digest].includes(logicalPath));
-    assert.strictEqual(content.toString(), await object.getFile({ digest }).asString());
-    assert.strictEqual(content.toString(), await object.getFile({ logicalPath }).asString());
+    assert.ok(inv.state[digest]!.includes(logicalPath));
+    assert.strictEqual(content.toString(), await object.getFile({ digest })!.asString());
+    assert.strictEqual(content.toString(), await object.getFile({ logicalPath })!.asString());
   }
 
   before(() => {
@@ -39,7 +32,7 @@ export default (ocfl) => {
 
   describe('constructor', () => {
     it('can create new object', () => {
-      let object;
+      let object: OcflObject;
       object = ocfl.object({ root: '/data/objects/object-1' });
       assert.equal(object.root, '/data/objects/object-1');
       object = ocfl.object({ root: '/data/objects/object-1', digestAlgorithm: 'sha256', id: 'object-1' });
@@ -52,18 +45,18 @@ export default (ocfl) => {
   });
 
   describe('access existing object', () => {
-    let invRaw, invRawFiles;
+    let invRaw: Inventory, invRawFiles: string[];
     let object = ocfl.object({ root: '/tmp/dummy' });
 
     before(async () => {
       const config = { root: path.join(import.meta.dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full') };
       object = ocfl.object(config);
       invRaw = JSON.parse(await fs.promises.readFile(path.join(config.root, 'inventory.json'), 'utf8'));
-      invRawFiles = Object.values(invRaw.versions[invRaw.head].state).flat();
+      invRawFiles = Object.values(invRaw.versions[invRaw.head]!.state).flat();
     });
 
     it('can read inventory', async () => {
-      const inv = await object.getInventory();
+      const inv = (await object.getInventory())!;
       assert.deepStrictEqual(object.id, invRaw.id);
       assert.strictEqual(inv.toString(), JSON.stringify(invRaw, null, 2));
       const files = [];
@@ -82,8 +75,8 @@ export default (ocfl) => {
       await object.load({ filesMetadata: true });
       const { manifest } = invRaw;
       for await (const f of await object.files()) {
-        const s = await fs.promises.stat(path.join(object.root, f.contentPath));
-        assert.ok(manifest[f.digest].includes(f.contentPath));
+        const s = await fs.promises.stat(path.join(object.root, f.contentPath!));
+        assert.ok(manifest[f.digest!]!.includes(f.contentPath!));
         assert.strictEqual(f.size, s.size);
         assert.strictEqual(f.lastModified, s.mtime.getTime());
       }
@@ -91,18 +84,18 @@ export default (ocfl) => {
 
     it('can stat a file', async () => {
       const actualStat = await fs.promises.stat(path.join(object.root, 'v2/content/foo/bar.xml'));
-      const stat = await object.getFile('foo/bar.xml').stat();
+      const stat = await object.getFile('foo/bar.xml')!.stat();
       assert.equal(stat.size, actualStat.size);
-      assert.equal(stat.mtime.valueOf(), actualStat.mtime.valueOf());
+      assert.equal(stat.mtime!.valueOf(), actualStat.mtime.valueOf());
     });
     it('can read a file as string', async () => {
       const actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'), 'utf8');
-      const content = await object.getFile('foo/bar.xml').asString();
+      const content = await object.getFile('foo/bar.xml')!.asString();
       assert.equal(content, actualContent);
     });
     it('can read a file as buffer', async () => {
       const actualContent = await fs.promises.readFile(path.join(object.root, 'v1/content/image.tiff'));
-      const content = await object.getFile('image.tiff').asBuffer();
+      const content = (await object.getFile('image.tiff')!.asBuffer()) as Buffer;
       assert.equal(content.compare(actualContent), 0);
     });
     it('can read a file as stream', async () => {
@@ -112,20 +105,20 @@ export default (ocfl) => {
       //   let content = await object.getAsBuffer(f);
       //   assert.equal(content.compare(fileContent[f.logicalPath]), 0);
       // }
-      const stream = await object.getFile('foo/bar.xml').asStream();
+      const stream = await object.getFile('foo/bar.xml')!.asStream();
       const buffers = [];
       for await (const data of stream) {
-        buffers.push(/** @type {Buffer} */ (data));
+        buffers.push(data);
       }
       const content = Buffer.concat(buffers);
       assert.equal(content.compare(actualContent), 0);
     });
     it('can read a file as web stream', async () => {
       const actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'));
-      const stream = await object.getFile('foo/bar.xml').stream();
+      const stream = await object.getFile('foo/bar.xml')!.stream();
       const buffers = [];
       for await (const data of stream) {
-        buffers.push(/** @type {Buffer} */ (data));
+        buffers.push(data);
       }
       const content = Buffer.concat(buffers);
       assert.equal(content.compare(actualContent), 0);
@@ -135,11 +128,10 @@ export default (ocfl) => {
   describe('update', () => {
     const datadir = path.join(import.meta.dirname, 'test-data');
     const tempdir = path.join(datadir, 'temp');
-    /** @type {import('@ocfl/ocfl').OcflObject} */
-    let objectx;
+    let objectx: OcflObject;
 
-    function createObject(id, useWorkspace, ocflVersion) {
-      const config = { id, root: path.join(tempdir, id), ocflVersion, fixityAlgorithms: ['md5', 'crc32'] };
+    function createObject(id: string, useWorkspace: boolean, ocflVersion?: OcflVersion) {
+      const config: OcflObjectConfig = { id, root: path.join(tempdir, id), ocflVersion, fixityAlgorithms: ['md5', 'crc32'] };
       if (useWorkspace) {
         config.workspace = `${config.root}-tmp`;
       }
@@ -155,9 +147,8 @@ export default (ocfl) => {
     it('can detect error of unfinished operations', async () => {
       let ow = createObject('object-we1', true);
       await ow.update(async (t) => t.write('a.txt', 'a'));
+      // @ts-expect-error deliberately not async
       const p1 = ow.update((t) => {
-        // missing async
-        // wrong, must use await
         t.write('test.txt', 'test');
       });
       await assert.rejects(p1);
@@ -171,15 +162,15 @@ export default (ocfl) => {
 
     it('can clean up after error', async () => {
       const o = createObject('object-we3', true);
-      await assert.rejects(fs.promises.access(o.workspace));
+      await assert.rejects(fs.promises.access(o.workspace!));
       try {
         await o.update(async (t) => {
           await t.write('test.txt', 'test');
-          await fs.promises.access(o.workspace);
+          await fs.promises.access(o.workspace!);
           throw new Error('test');
         });
       } catch {}
-      await assert.rejects(fs.promises.access(o.workspace));
+      await assert.rejects(fs.promises.access(o.workspace!));
       await assert.rejects(fs.promises.access(o.root));
     });
 
@@ -208,7 +199,7 @@ export default (ocfl) => {
             await t.write('test.txt', content);
             await t.commit(commitInfo);
           });
-          const inventory = await o.getInventory();
+          const inventory = (await o.getInventory())!;
           // namaste
           assert.strictEqual(`ocfl_object_${ocflVersion}\n`, await fs.promises.readFile(path.join(o.root, `0=ocfl_object_${ocflVersion}`), 'utf8'));
           // inventory
@@ -279,7 +270,7 @@ export default (ocfl) => {
     });
 
     it('can rename files', async () => {
-      let inv = await objectx.getInventory();
+      let inv = (await objectx.getInventory())!;
       const d1 = inv.getDigest('empty2.txt');
       const d2 = inv.getDigest('foo2/bar.xml');
       await objectx.update(async (t) => {
@@ -288,7 +279,7 @@ export default (ocfl) => {
         // directory
         await t.rename('foo2', 'bar');
       });
-      inv = await objectx.getInventory();
+      inv = (await objectx.getInventory())!;
       assert.strictEqual(inv.head, 'v3');
       assert.strictEqual(d1, inv.getDigest('empty.txt'));
       assert.strictEqual(d2, inv.getDigest('bar/bar.xml'));
@@ -305,7 +296,7 @@ export default (ocfl) => {
         await t.remove('bar');
       });
       const c2 = await objectx.count();
-      const inv = await objectx.getInventory();
+      const inv = (await objectx.getInventory())!;
       assert.strictEqual(inv.head, 'v4');
       assert.strictEqual(c2, c1 - 2);
       await assert(!objectx.getFile('test.txt'));
@@ -320,7 +311,7 @@ export default (ocfl) => {
         await t.reinstate('bar', 'v3');
       });
       //console.log([...(await objectx.files())].map(f => f.logicalPath));
-      const inv = await objectx.getInventory();
+      const inv = (await objectx.getInventory())!;
       const d1 = inv.getDigest('test.txt', 'v3');
       const d2 = inv.getDigest('bar/bar.xml', 'v3');
       assert.strictEqual(inv.head, 'v5');
@@ -337,7 +328,7 @@ export default (ocfl) => {
         // directory
         await t.import(path.join(datadir, 'sample_dir'));
       }, 'REPLACE');
-      const inv = await objectx.getInventory();
+      const inv = (await objectx.getInventory())!;
       assert.strictEqual(inv.head, 'v6');
       const files = [...(await objectx.files())].map((f) => f.logicalPath).sort();
       assert.deepStrictEqual(files, ['test_input.txt', 'sample_dir/data1', 'sample_dir/data2'].sort());
@@ -349,7 +340,7 @@ export default (ocfl) => {
         await t.import(path.join(datadir, 'test_input.txt'));
         await t.import(path.join(datadir, 'test_input.txt'), 'test2.txt');
       });
-      const inv = await objectx.getInventory();
+      const inv = (await objectx.getInventory())!;
       assert.strictEqual(inv.head, 'v7');
       await assert.doesNotReject(fs.promises.access(path.join(objectx.root, 'v1/content/test.txt')));
       await assert.rejects(fs.promises.access(path.join(objectx.root, 'v7/content/test_input.txt')));
@@ -360,39 +351,39 @@ export default (ocfl) => {
       await objectx.update(async (t) => {
         await t.import(path.join(datadir, 'test_input.txt'));
       });
-      const inv = await objectx.getInventory();
+      const inv = (await objectx.getInventory())!;
       assert.strictEqual(inv.head, 'v7');
       await assert.rejects(fs.promises.access(path.join(objectx.root, 'v8')));
     });
 
     it('can correctly create versions', async () => {
       const o = createObject('object-version-1', true);
-      let c;
+      let c: string;
       await o.update(async (t) => {
         await t.write('test', 'test');
       });
       c = await fs.promises.readFile(path.join(o.root, 'v1/content/test'), 'utf8');
       assert.strictEqual(c, 'test');
-      assert.strictEqual(await o.getFile('test').asString(), 'test');
+      assert.strictEqual(await o.getFile('test')!.asString(), 'test');
       await o.update(async (t) => {
         await t.write('test', 'testv2');
       });
       c = await fs.promises.readFile(path.join(o.root, 'v2/content/test'), 'utf8');
       assert.strictEqual(c, 'testv2');
-      assert.strictEqual(await o.getFile('test').asString(), 'testv2');
+      assert.strictEqual(await o.getFile('test')!.asString(), 'testv2');
       await o.update(async (t) => {
         await t.write('test', 'test');
       });
       //console.log(o._inventory.latest.toString());
       //console.log(o._inventory.v3.toString());
       await assert.rejects(fs.promises.readFile(path.join(o.root, 'v3/content/test'), 'utf8'));
-      assert.strictEqual(await o.getFile('test').asString(), 'test');
+      assert.strictEqual(await o.getFile('test')!.asString(), 'test');
       await o.update(async (t) => {
         await t.write('test', 'testv4');
       });
       c = await fs.promises.readFile(path.join(o.root, 'v4/content/test'), 'utf8');
       assert.strictEqual(c, 'testv4');
-      assert.strictEqual(await o.getFile('test').asString(), 'testv4');
+      assert.strictEqual(await o.getFile('test')!.asString(), 'testv4');
     });
 
     it('can add a directory without using transaction directly', async () => {
@@ -428,13 +419,13 @@ export default (ocfl) => {
         await t.write('test.txt', content);
       });
       for (const f of await objectx.files()) {
-        assert(f.fixity.md5);
-        assert(f.fixity.crc32);
+        assert(f.fixity!.md5);
+        assert(f.fixity!.crc32);
         const fc = await f.text();
-        assert.strictEqual(f.fixity.md5, createHash('md5').update(fc).digest('hex'));
+        assert.strictEqual(f.fixity!.md5, createHash('md5').update(fc).digest('hex'));
       }
       const file = await objectx.getFile('test.txt');
-      assert.strictEqual(file.fixity.md5, createHash('md5').update(content).digest('hex'));
+      assert.strictEqual(file!.fixity!.md5, createHash('md5').update(content).digest('hex'));
     });
 
     after(async () => {
@@ -444,7 +435,7 @@ export default (ocfl) => {
   });
 
   describe('spec violations', () => {
-    let tempdir;
+    let tempdir: string;
     before(async () => {
       tempdir = await fs.promises.mkdtemp(path.join(import.meta.dirname, 'test-data', 'temp-errors-'));
     });

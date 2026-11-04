@@ -1,5 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "noEmit": true, "rootDir": "${configDir}" },
-  "include": ["${configDir}/*.ts"]
+  // rootDir spans the workspace so the specs can reach ../src and the shared @ocfl/ocfl-tests suite
+  "compilerOptions": { "noEmit": true, "rootDir": "${configDir}/../.." },
+  "include": ["${configDir}/*.ts", "${configDir}/../../ocfl-tests/*.ts"]
 }

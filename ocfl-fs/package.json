@@ -32,7 +32,7 @@
   ],
   "scripts": {
     "pretest": "pnpm --filter @ocfl/ocfl build",
-    "test": "node --test 'test/**/*.spec.js'",
+    "test": "node --test 'test/**/*.spec.ts'",
     "build": "tsc",
     "pretypecheck": "pnpm --filter @ocfl/ocfl build",
     "typecheck": "tsc --noEmit && tsc -p test",
