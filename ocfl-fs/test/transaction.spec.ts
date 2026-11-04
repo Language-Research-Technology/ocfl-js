@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { beforeEach, describe, it } from 'node:test';
-import { type Inventory, OcflDigest, type OcflObject, OcflObjectInventory, type OcflObjectInventoryMut, OcflObjectTransactionImpl } from '@ocfl/ocfl';
-import { createFsFromVolume, type DirectoryJSON, type IFs, type NestedDirectoryJSON, Volume } from 'memfs';
+import { OcflDigest, type OcflObject, OcflObjectInventory, type OcflObjectInventoryMut, OcflObjectTransactionImpl } from '@ocfl/ocfl';
+import { createFsFromVolume, type IFs, type NestedDirectoryJSON, Volume } from 'memfs';
 import { OcflFsStore } from '../src/store.ts';
 
 /** In-memory store for testing */
@@ -27,7 +27,7 @@ describe('OcflTransactionImpl class', () => {
   };
 
   beforeEach(async () => {
-    fs = createFsFromVolume(Volume.fromJSON(volInit as DirectoryJSON));
+    fs = createFsFromVolume(Volume.fromNestedJSON(volInit));
     store = OcflFsStore.getInstance({ fs });
     newInv = null;
   });
@@ -37,7 +37,7 @@ describe('OcflTransactionImpl class', () => {
       inv || {
         id: 'test',
         digestAlgorithm: 'sha512',
-        type: `https://ocfl.io/v1.1/spec/#inventory` as Inventory['type'],
+        type: 'https://ocfl.io/1.1/spec/#inventory',
       },
     );
     return OcflObjectTransactionImpl.create(object as OcflObject, store, newInv as OcflObjectInventoryMut, '/workspace');

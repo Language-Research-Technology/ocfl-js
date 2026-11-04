@@ -22,7 +22,5 @@ describe('OcflFsStore', () => {
     var p2 = await store.mkdir(path.join(import.meta.dirname, 'a/b/c/d/e'));
     assert.equal(p2, path.join(import.meta.dirname, 'a/b/c/d'));
     await fs.promises.rm(p1!, { recursive: true, force: true });
-    // assert.equal(await o._exists('object.spec.ts'), true);
-    // assert.equal(await o._exists('a'), false);
   });
 });
