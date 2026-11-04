@@ -4,8 +4,8 @@
   "tags": ["-lintignore"],
   "workspaces": {
     ".": {
-      // Loaded by semantic-release from the `preset` option.
-      "ignoreDependencies": ["conventional-changelog-conventionalcommits"]
+      // Loaded by semantic-release from the `preset` option, and the plugins release.config.mjs drops on beta.
+      "ignoreDependencies": ["conventional-changelog-conventionalcommits", "@semantic-release/changelog", "@semantic-release/git"]
     },
     "ocfl-fs": {
       // Typechecked only, by test/tsconfig.json.
