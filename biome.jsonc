@@ -20,6 +20,10 @@
       "style": { "useBlockStatements": "error" }
     }
   },
+  "overrides": [
+    // Tests index into fixtures whose keys they know exist
+    { "includes": ["**/*.spec.ts"], "linter": { "rules": { "style": { "noNonNullAssertion": "off" } } } }
+  ],
   "javascript": { "formatter": { "quoteStyle": "single" } },
   "assist": {
     "enabled": true,

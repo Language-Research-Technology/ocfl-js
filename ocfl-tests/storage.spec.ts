@@ -2,15 +2,16 @@
 
 import assert from 'node:assert';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { after, before, describe, it } from 'node:test';
+import type { OcflStorage } from '@ocfl/ocfl';
+import type { Ocfl } from './index.ts';
 
-/**
- * @param {Ocfl} ocfl
- */
-export default (ocfl) => {
+export default (ocfl: Ocfl) => {
   describe('constructor', () => {
     it('can create new storage', () => {
-      let storage;
+      let storage: OcflStorage;
       storage = ocfl.storage({ root: '/data/storage-1' });
       assert.equal(storage.root, '/data/storage-1');
 
@@ -29,10 +30,10 @@ export default (ocfl) => {
     it('can list objects via async iterator', async () => {
       let i = 0;
       for await (const o of repo) {
-        assert.strictEqual(o.root, objects[i].root);
+        assert.strictEqual(o.root, objects[i]!.root);
         assert.strictEqual(o.id, undefined);
         await o.load();
-        assert.strictEqual(o.id, objects[i].id);
+        assert.strictEqual(o.id, objects[i]!.id);
         ++i;
       }
     });
@@ -43,20 +44,19 @@ export default (ocfl) => {
       }
       //const objarr = Promise.all(iter);
       assert.strictEqual(objarr.length, 1);
-      assert.strictEqual(objarr[0].root, objects[0].root);
+      assert.strictEqual(objarr[0]!.root, objects[0]!.root);
     });
     it('can retrieve object inventory', async () => {
       const o = repo.object({ root: 'object_1' });
       await o.load();
-      assert.strictEqual(o.id, objects[0].id);
+      assert.strictEqual(o.id, objects[0]!.id);
     });
   });
   describe('mutators', () => {
     const datadir = path.join(import.meta.dirname, 'test-data');
-    const tempdir = path.join(datadir, 'temp');
+    let tempdir: string;
     before(async () => {
-      // create temp dir
-      await fs.promises.mkdir(tempdir, { recursive: true });
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-storage-'));
     });
 
     it('can create new storage with default layout', async () => {
@@ -86,9 +86,9 @@ export default (ocfl) => {
     });
   });
   describe('spec violations', () => {
-    let tempdir;
+    let tempdir: string;
     before(async () => {
-      tempdir = await fs.promises.mkdtemp(path.join(import.meta.dirname, 'test-data', 'temp-errors-'));
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-storage-errors-'));
     });
 
     it('reports E069 when the root conformance declaration is missing', async () => {

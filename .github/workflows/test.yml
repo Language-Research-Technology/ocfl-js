@@ -25,4 +25,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm --filter @ocfl/ocfl --filter @ocfl/ocfl-fs test
+      - run: pnpm test
+        if: matrix.node-version != 24
+      - run: pnpm coverage
+        if: matrix.node-version == 24

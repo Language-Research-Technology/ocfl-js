@@ -315,11 +315,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         inv.add(logicalPath, digest, fixity);
       },
     });
-    const p: TrackedPromise<void> = writer.closed;
-    p.finally(() => {
-      p.done = true;
-    });
-    this._queue.push(p);
+    this._track(writer.closed);
 
     return ws;
   }
@@ -443,10 +439,15 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     if (this._committed) {
       throw new Error('Transaction already commited');
     }
-    const p: TrackedPromise<T> = op();
-    p.finally(() => {
+    return this._track(op());
+  }
+
+  private _track<T>(p: TrackedPromise<T>): Promise<T> {
+    const markDone = () => {
       p.done = true;
-    });
+    };
+    // then(f, f), not finally(f): finally's derived promise would reject unhandled.
+    p.then(markDone, markDone);
     this._queue.push(p);
     return p;
   }

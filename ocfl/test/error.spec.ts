@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { describe, it } from 'node:test';
 import * as error from '../src/error.ts';
 
 describe('error.NotImplementedError', () => {
@@ -6,8 +7,9 @@ describe('error.NotImplementedError', () => {
     try {
       throw new error.NotImplementedError('test');
     } catch (error) {
-      assert.equal(error.name, 'NotImplementedError');
-      assert.equal(error.message, 'Method test has not been implemented');
+      const e = error as Error;
+      assert.equal(e.name, 'NotImplementedError');
+      assert.equal(e.message, 'Method test has not been implemented');
     }
   });
 });

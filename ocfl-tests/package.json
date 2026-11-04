@@ -19,5 +19,8 @@
   ],
   "license": "GPL-3.0-or-later",
   "type": "module",
-  "exports": "./index.js"
+  "exports": "./index.ts",
+  "devDependencies": {
+    "@ocfl/ocfl": "workspace:*"
+  }
 }

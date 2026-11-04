@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { describe, it } from 'node:test';
 import { createError } from '../src/validation.ts';
 
 describe('validation.createError', () => {
@@ -12,7 +13,7 @@ describe('validation.createError', () => {
   });
 
   it('rejects codes it has no message for', () => {
-    assert.throws(() => createError(/** @type {any} */ ('E001'), '/obj'), RangeError);
-    assert.throws(() => createError(/** @type {any} */ ('toString'), '/obj'), RangeError);
+    assert.throws(() => createError('E001' as never, '/obj'), RangeError);
+    assert.throws(() => createError('toString' as never, '/obj'), RangeError);
   });
 });

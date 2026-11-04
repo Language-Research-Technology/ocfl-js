@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { describe, it } from 'node:test';
 import { extensions } from '../../src/index.ts';
 
 const { PathDirectStorageLayout } = extensions;
@@ -6,7 +7,7 @@ const { PathDirectStorageLayout } = extensions;
 describe('PathDirectStorageLayout class', () => {
   it('can map valid URIs', () => {
     const layout = new PathDirectStorageLayout();
-    const cases = [
+    const cases: [string, string][] = [
       ['https://www.ausnc.org.au/corpora', 'https_www.ausnc.org.au/corpora/__object__'],
       ['https://www.ausnc.org.au/corpora/md', 'https_www.ausnc.org.au/corpora/md/__object__'],
       ['https://www.ausnc.org.au/corpora/md/a', 'https_www.ausnc.org.au/corpora/md/a/__object__'],
@@ -30,7 +31,7 @@ describe('PathDirectStorageLayout class', () => {
   //
   it('can map valid arcp ids', () => {
     const layout = new PathDirectStorageLayout();
-    const cases = [
+    const cases: [string, string][] = [
       ['arcp://name,md/corpus/root/a', 'arcp_name_md/corpus/root/a/__object__'],
       ['arcp://uuid,1234567/corpus/root/a', 'arcp_uuid_1234567/corpus/root/a/__object__'],
       ['arcp://ni,sha-256;f4OxZX_x_FO5LcGBSKHWXfwtSx-j1ncoSt3SABJtkGk/', 'arcp_ni_sha-256/f4OxZX_x_FO5LcGBSKHWXfwtSx-j1ncoSt3SABJtkGk/__object__'],
@@ -55,7 +56,7 @@ describe('PathDirectStorageLayout class', () => {
 
   it('can omit schema', () => {
     const layout = new PathDirectStorageLayout({ omitScheme: true });
-    const cases = [
+    const cases: [string, string][] = [
       ['https://www.ausnc.org.au/corpora', 'www.ausnc.org.au/corpora/__object__'],
       ['doi:10.3897/rio.8.e93937', '10.3897/rio.8.e93937/__object__'],
     ];
@@ -71,7 +72,7 @@ describe('PathDirectStorageLayout class', () => {
         [/(.+)doi\.org/, ''],
       ],
     });
-    const cases = [
+    const cases: [string, string][] = [
       ['https://www.ausnc.org.au/corpora', 'ausnc/corpora/__object__'],
       ['https://doi.org/10.3897/rio.8.e93937', '10.3897/rio.8.e93937/__object__'],
     ];
@@ -82,7 +83,7 @@ describe('PathDirectStorageLayout class', () => {
 
   it('can use custom suffix', () => {
     const layout = new PathDirectStorageLayout({ suffix: '' });
-    const cases = [
+    const cases: [string, string][] = [
       ['https://www.ausnc.org.au/corpora', 'https_www.ausnc.org.au/corpora'],
       ['https://www.ausnc.org.au/corpora/', 'https_www.ausnc.org.au/corpora'],
     ];

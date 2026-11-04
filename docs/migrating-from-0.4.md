@@ -36,14 +36,14 @@ The packages now declare their own types, so delete any hand-written module decl
 
 The declarations show where a value can be missing, so code that assumed otherwise may no longer compile. The most common cases:
 
-| API | Now returns |
-|---|---|
-| `object.getInventory()` | `Promise<OcflObjectInventory \| undefined>`, `undefined` when the object has no inventory yet |
-| `object.inventory` | `OcflObjectInventory \| undefined` until the object is loaded |
-| `object.getFile()`, `fileByLogicalPath()`, `fileByDigest()`, `fileByContentPath()` | `undefined` when the file isn't found |
-| `object.id`, `object.workspace` | `string \| undefined` |
-| `inventory.getDigest()`, `inventory.versionState()` | `undefined` for an unknown logical path or version |
-| `file.size`, `file.lastModified` | `number \| undefined`; set only when the object was loaded with `{ filesMetadata: true }` |
+| API                                                                                | Now returns                                                                                   |
+| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `object.getInventory()`                                                            | `Promise<OcflObjectInventory \| undefined>`, `undefined` when the object has no inventory yet |
+| `object.inventory`                                                                 | `OcflObjectInventory \| undefined` until the object is loaded                                 |
+| `object.getFile()`, `fileByLogicalPath()`, `fileByDigest()`, `fileByContentPath()` | `undefined` when the file isn't found                                                         |
+| `object.id`, `object.workspace`                                                    | `string \| undefined`                                                                         |
+| `inventory.getDigest()`, `inventory.versionState()`                                | `undefined` for an unknown logical path or version                                            |
+| `file.size`, `file.lastModified`                                                   | `number \| undefined`; set only when the object was loaded with `{ filesMetadata: true }`     |
 
 Optional config properties (`OcflStorageConfig`, `OcflObjectConfig`, commit and remove options) accept an explicit `undefined`, so they work with `exactOptionalPropertyTypes`.
 
@@ -51,11 +51,11 @@ Optional config properties (`OcflStorageConfig`, `OcflObjectConfig`, commit and 
 
 Option values used to be matched case-insensitively. They now have to match exactly:
 
-| Option | Accepted values |
-|---|---|
-| `digestAlgorithm` for objects and storage | `'sha256'`, `'sha512'` |
+| Option                                              | Accepted values                                                                                 |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `digestAlgorithm` for objects and storage           | `'sha256'`, `'sha512'`                                                                          |
 | `digestAlgorithm` for storage layouts 0003 and 0004 | `'md5'`, `'sha1'`, `'sha256'`, `'sha512'`, `'sha512/256'`, `'blake2b-512'`, `'crc32'`, `'size'` |
-| `update()` / `import()` mode | `'MERGE'`, `'REPLACE'` |
+| `update()` / `import()` mode                        | `'MERGE'`, `'REPLACE'`                                                                          |
 
 For example, `digestAlgorithm: 'SHA512'` and `update(fn, 'replace')` now throw. A layout configured with `digestAlgorithm: 'MD5'` used to pass validation and then fail on the first `map()`. It is now rejected when the layout is created.
 
@@ -69,16 +69,16 @@ For example, `digestAlgorithm: 'SHA512'` and `update(fn, 'replace')` now throw. 
 
 Spec violations now throw a `ValidationError` (a subclass of `Error`) carrying the OCFL validation `code`, a `description` and a `path`. Check `error.code` rather than matching on the message, because the messages have changed.
 
-| Code | Raised when |
-|---|---|
+| Code | Raised when                                                                          |
+| ---- | ------------------------------------------------------------------------------------ |
 | E007 | An object's version declaration has the wrong contents (previously reported as E006) |
-| E036 | An inventory has no `head` |
-| E040 | An inventory's `head` is empty or isn't one of its versions |
-| E050 | An inventory's state lists a digest that isn't in its manifest |
-| E060 | The inventory sidecar digest doesn't match the inventory |
-| E069 | A storage root has no conformance declaration |
-| E080 | A storage root's version declaration has the wrong contents |
-| E082 | An object root is nested inside another object |
+| E036 | An inventory has no `head`                                                           |
+| E040 | An inventory's `head` is empty or isn't one of its versions                          |
+| E050 | An inventory's state lists a digest that isn't in its manifest                       |
+| E060 | The inventory sidecar digest doesn't match the inventory                             |
+| E069 | A storage root has no conformance declaration                                        |
+| E080 | A storage root's version declaration has the wrong contents                          |
+| E082 | An object root is nested inside another object                                       |
 
 E036, E040 and E050 are checked when the inventory is read. A malformed object that used to load, and then failed later with a `TypeError`, now fails in `load()` or `getInventory()`.
 

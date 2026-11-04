@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { after, before, describe, it } from 'node:test';
 import ocflTests from '@ocfl/ocfl-tests';
 import ocfl from '../src/index.ts';
 
@@ -10,7 +11,7 @@ describe('OcflStorage class using OcflFsStore', () => {
 });
 
 describe('OcflStorage with an unsupported layout or object reference', () => {
-  let tempdir;
+  let tempdir: string;
   before(async () => {
     tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-fs-storage-'));
   });
@@ -44,7 +45,7 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
       layout: { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 4 },
     });
     const [firstTuple] = storage.objectRoot('an-object').split('/');
-    assert.strictEqual(firstTuple.length, 4);
+    assert.strictEqual(firstTuple!.length, 4);
   });
 
   it('rejects an object reference with neither id nor root', () => {
