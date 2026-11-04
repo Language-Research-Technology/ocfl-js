@@ -49,6 +49,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     needs: test
     runs-on: ubuntu-latest
+    # npm's trusted publisher only accepts OIDC tokens from this environment, which only main and beta can deploy to
+    environment: npm-publish
     # Per branch, so a queued beta run can't displace a queued stable release
     concurrency:
       group: publish-${{ github.ref }}

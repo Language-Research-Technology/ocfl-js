@@ -16,8 +16,9 @@ the last release, so commit messages matter: `fix:` is a patch, `feat:` a minor,
 | Stable  | `latest`     | `1.0.0`        | Manually, from `main`                 |
 
 Every run executes the full test suite first. If anything fails, nothing is published. npm only
-accepts publishes from this workflow, through trusted publishing with provenance, so there is no
-way to release around it.
+accepts publishes from this workflow's `npm-publish` environment, through trusted publishing with
+provenance, so there is no way to release around it. The environment only allows deployments from
+`main` and `beta`.
 
 ## Stable releases
 
