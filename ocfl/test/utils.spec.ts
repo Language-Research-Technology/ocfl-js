@@ -6,7 +6,7 @@ import * as utils from '../src/utils.ts';
 
 describe('utils.parallelize', () => {
   it('can accept empty array', async () => {
-    const input = [];
+    const input: number[] = [];
     const output = await utils.parallelize(input, async (i) => {
       await setTimeout(10);
       return i;
@@ -25,7 +25,7 @@ describe('utils.parallelize', () => {
   });
   it('can work with input array length less than concurrency count', async () => {
     const input = [1, 2, 3];
-    const seq = [];
+    const seq: number[] = [];
     const output = await utils.parallelize(input.concat([]), async (i) => {
       await setTimeout(100 + i * 2);
       seq.push(i);

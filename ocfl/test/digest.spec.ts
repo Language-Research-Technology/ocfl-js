@@ -9,17 +9,14 @@ describe('OcflDigest', () => {
     'This Oxford Common File Layout (OCFL) specification describes an application-independent approach to the storage of digital objects in a structured, transparent, and predictable manner. It is designed to promote long-term access and management of digital objects within digital repositories';
   const controlDigest = createHash('sha512').update(inputData).digest('hex');
 
-  /**
-   * @param {*} [encoding]
-   */
-  function createReadable(encoding) {
+  function createReadable(encoding?: BufferEncoding) {
     const r = new Readable({ highWaterMark: 2, encoding, read: () => {} });
     let i = 0;
     for (const c of inputData) {
       setTimeout(() => r.push(c), ++i * 1);
     }
     setTimeout(() => r.push(null), ++i * 1);
-    return /** @type {ReadableStream} */ (Readable.toWeb(r));
+    return Readable.toWeb(r);
   }
 
   describe('digest', async () => {

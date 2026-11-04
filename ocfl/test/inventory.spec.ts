@@ -2,9 +2,10 @@ import assert from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { beforeEach, describe, it } from 'node:test';
 import { OcflObjectInventory } from '../src/inventory.ts';
+import type { Inventory } from '../src/types.ts';
 
 describe('OcflObjectInventory class', () => {
-  let data;
+  let data: Inventory;
   beforeEach(() => {
     data = {
       id: 'id1',
@@ -39,7 +40,7 @@ describe('OcflObjectInventory class', () => {
     const inv = OcflObjectInventory.newVersion(data);
     assert.strictEqual(inv.head, 'v1');
     assert.strictEqual(typeof inv.versions.v1, 'object');
-    assert.strictEqual(Object.keys(inv.versions.v1.state).length, 0);
+    assert.strictEqual(Object.keys(inv.versions.v1!.state).length, 0);
   });
 
   it('can create new version from existing', async () => {
@@ -48,7 +49,7 @@ describe('OcflObjectInventory class', () => {
     //console.log(inv.toJSON());
     const data2 = inv.toJSON();
     assert.strictEqual(data2.head, 'v4');
-    assert.deepStrictEqual(data2.versions.v4.state, data.versions.v3.state);
+    assert.deepStrictEqual(data2.versions.v4!.state, data.versions.v3.state);
   });
 
   it('can add file to a new version', () => {
@@ -56,7 +57,7 @@ describe('OcflObjectInventory class', () => {
     inv.add('test.txt', 'aabbccddeeff');
     const data2 = inv.toJSON();
     assert.strictEqual(inv.head, 'v1');
-    assert.strictEqual(inv.manifest.aabbccddeeff[0], 'v1/content/test.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test.txt');
     assert.deepStrictEqual(data2.manifest, inv.manifest);
   });
 
@@ -65,13 +66,13 @@ describe('OcflObjectInventory class', () => {
     inv.add('test.txt', 'aabbccddeeff');
     inv.add('test2.txt', 'aabbccddeeff');
     assert.strictEqual(inv.head, 'v1');
-    assert.strictEqual(inv.manifest.aabbccddeeff[0], 'v1/content/test.txt');
-    assert.strictEqual(inv.manifest.aabbccddeeff.length, 1);
+    assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff!.length, 1);
     assert.strictEqual(Object.keys(inv.manifest).length, 1);
-    assert.strictEqual(inv.versions.v1.state.aabbccddeeff[0], 'test.txt');
-    assert.strictEqual(inv.versions.v1.state.aabbccddeeff[1], 'test2.txt');
-    assert.strictEqual(inv.versions.v1.state.aabbccddeeff.length, 2);
-    assert.strictEqual(Object.keys(inv.versions.v1.state).length, 1);
+    assert.strictEqual(inv.versions.v1!.state.aabbccddeeff![0], 'test.txt');
+    assert.strictEqual(inv.versions.v1!.state.aabbccddeeff![1], 'test2.txt');
+    assert.strictEqual(inv.versions.v1!.state.aabbccddeeff!.length, 2);
+    assert.strictEqual(Object.keys(inv.versions.v1!.state).length, 1);
   });
 
   it('can add file with identical content and name', () => {
@@ -79,15 +80,15 @@ describe('OcflObjectInventory class', () => {
     inv.add('test.txt', 'aabbccddeeff');
     inv = OcflObjectInventory.newVersion(inv.toJSON());
     inv.add('test.txt', 'aabbccddeeff');
-    assert.strictEqual(inv.manifest.aabbccddeeff[0], 'v1/content/test.txt');
-    assert.strictEqual(inv.manifest.aabbccddeeff.length, 1);
+    assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff!.length, 1);
     assert.strictEqual(Object.keys(inv.manifest).length, 1);
-    assert.strictEqual(inv.versions.v1.state.aabbccddeeff[0], 'test.txt');
-    assert.strictEqual(inv.versions.v1.state.aabbccddeeff.length, 1);
-    assert.strictEqual(Object.keys(inv.versions.v1.state).length, 1);
-    assert.strictEqual(inv.versions.v2.state.aabbccddeeff[0], 'test.txt');
-    assert.strictEqual(inv.versions.v2.state.aabbccddeeff.length, 1);
-    assert.strictEqual(Object.keys(inv.versions.v2.state).length, 1);
+    assert.strictEqual(inv.versions.v1!.state.aabbccddeeff![0], 'test.txt');
+    assert.strictEqual(inv.versions.v1!.state.aabbccddeeff!.length, 1);
+    assert.strictEqual(Object.keys(inv.versions.v1!.state).length, 1);
+    assert.strictEqual(inv.versions.v2!.state.aabbccddeeff![0], 'test.txt');
+    assert.strictEqual(inv.versions.v2!.state.aabbccddeeff!.length, 1);
+    assert.strictEqual(Object.keys(inv.versions.v2!.state).length, 1);
   });
 
   it('can add file with different content but identical name', () => {
@@ -95,13 +96,13 @@ describe('OcflObjectInventory class', () => {
     inv.add('test.txt', 'aabbccddeeff');
     inv = OcflObjectInventory.newVersion(inv.toJSON());
     inv.add('test.txt', 'aabbccddeeff2');
-    assert.strictEqual(inv.manifest.aabbccddeeff[0], 'v1/content/test.txt');
-    assert.strictEqual(inv.manifest.aabbccddeeff2[0], 'v2/content/test.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff2![0], 'v2/content/test.txt');
     assert.strictEqual(Object.keys(inv.manifest).length, 2);
-    assert.strictEqual(inv.versions.v2.state.aabbccddeeff2[0], 'test.txt');
-    assert.strictEqual(inv.versions.v2.state.aabbccddeeff2.length, 1);
-    assert.strictEqual(Object.keys(inv.versions.v1.state).length, 1);
-    assert.strictEqual(Object.keys(inv.versions.v2.state).length, 1);
+    assert.strictEqual(inv.versions.v2!.state.aabbccddeeff2![0], 'test.txt');
+    assert.strictEqual(inv.versions.v2!.state.aabbccddeeff2!.length, 1);
+    assert.strictEqual(Object.keys(inv.versions.v1!.state).length, 1);
+    assert.strictEqual(Object.keys(inv.versions.v2!.state).length, 1);
   });
 
   it('can add same file after it has been deleted', () => {
@@ -112,17 +113,17 @@ describe('OcflObjectInventory class', () => {
     inv = OcflObjectInventory.newVersion(inv.toJSON());
     inv.add('test.txt', 'aabbccddeeff'); // reinstatement
     assert.strictEqual(Object.keys(inv.manifest).length, 2);
-    assert.strictEqual(inv.versions.v3.state.aabbccddeeff[0], 'test.txt');
-    assert.strictEqual(inv.versions.v3.state.aabbccddeeff.length, 1);
-    assert.strictEqual(Object.keys(inv.versions.v3.state).length, 1);
+    assert.strictEqual(inv.versions.v3!.state.aabbccddeeff![0], 'test.txt');
+    assert.strictEqual(inv.versions.v3!.state.aabbccddeeff!.length, 1);
+    assert.strictEqual(Object.keys(inv.versions.v3!.state).length, 1);
   });
 
   it('can add file with extra fixity', () => {
     const inv = OcflObjectInventory.newVersion(data);
     inv.add('test1.txt', 'aabbccddeeff', { crc32: '12345678', size: '1024' });
-    assert.strictEqual(inv.manifest.aabbccddeeff[0], 'v1/content/test1.txt');
-    assert.strictEqual(inv.fixity.crc32['12345678'][0], 'v1/content/test1.txt');
-    assert.strictEqual(inv.fixity.size['1024'][0], 'v1/content/test1.txt');
+    assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test1.txt');
+    assert.strictEqual(inv.fixity!.crc32!['12345678']![0], 'v1/content/test1.txt');
+    assert.strictEqual(inv.fixity!.size!['1024']![0], 'v1/content/test1.txt');
   });
 
   it('can detect state change', () => {
@@ -143,20 +144,20 @@ describe('OcflObjectInventory class', () => {
     const data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
     const inv = new OcflObjectInventory(data);
     var files = [...inv.files()];
-    assert.strictEqual(files[0].contentPath, 'v2/content/foo/bar.xml');
-    assert.strictEqual(files[1].contentPath, 'v1/content/empty.txt');
-    assert.strictEqual(files[2].contentPath, 'v1/content/image.tiff');
+    assert.strictEqual(files[0]!.contentPath, 'v2/content/foo/bar.xml');
+    assert.strictEqual(files[1]!.contentPath, 'v1/content/empty.txt');
+    assert.strictEqual(files[2]!.contentPath, 'v1/content/image.tiff');
   });
 
   it('can reinstate removed file from older version', () => {
     let inv = OcflObjectInventory.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
-    assert.strictEqual(inv.versions.v1.state.aabbccddeeff[0], 'test.txt');
+    assert.strictEqual(inv.versions.v1!.state.aabbccddeeff![0], 'test.txt');
     inv = OcflObjectInventory.newVersion(inv);
     inv.delete('test.txt');
-    assert(!inv.versions.v2.state.aabbccddeeff);
+    assert(!inv.versions.v2!.state.aabbccddeeff);
     inv = OcflObjectInventory.newVersion(inv);
     inv.reinstate('test.txt', 'v1');
-    assert(inv.versions.v3.state.aabbccddeeff);
+    assert(inv.versions.v3!.state.aabbccddeeff);
   });
 });

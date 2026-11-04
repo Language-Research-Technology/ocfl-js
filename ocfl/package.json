@@ -35,9 +35,9 @@
     "resources"
   ],
   "scripts": {
-    "test": "node --test 'test/**/*.spec.js'",
+    "test": "node --test 'test/**/*.spec.ts'",
     "build": "tsc",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p test",
     "prepack": "tsc"
   },
   "devDependencies": {

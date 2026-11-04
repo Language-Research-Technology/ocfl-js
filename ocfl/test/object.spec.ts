@@ -4,7 +4,7 @@ import { OcflObject } from '../src/object.ts';
 
 describe('OcflObject class', () => {
   it('can not be instantiated without root', () => {
-    // @ts-expect-error
+    // @ts-expect-error deliberately invalid
     assert.throws(() => new OcflObject());
   });
   // it("can not be instantiated directly", function() {

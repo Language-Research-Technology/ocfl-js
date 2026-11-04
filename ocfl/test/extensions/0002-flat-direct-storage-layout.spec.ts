@@ -5,7 +5,7 @@ import { extensions } from '../../src/index.ts';
 const { FlatDirectStorageLayout } = extensions;
 
 describe('FlatDirectStorageLayout class', () => {
-  const layout = FlatDirectStorageLayout.create();
+  const layout = FlatDirectStorageLayout.create<InstanceType<typeof FlatDirectStorageLayout>>();
 
   it('can map valid id', () => {
     const id1 = 'object-01';
