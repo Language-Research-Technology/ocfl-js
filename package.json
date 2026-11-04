@@ -11,7 +11,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Arkisto-Platform/ocfl-js"
+    "url": "https://github.com/Language-Research-Technology/ocfl-js"
   },
   "author": "Alvin Sebastian (https://orcid.org/0000-0002-9086-1722)",
   "contributors": [
@@ -22,6 +22,7 @@
   "scripts": {
     "lint:knip": "knip",
     "lint:biome": "biome check .",
+    "lint:consumer": "scripts/check-consumer.sh",
     "format": "biome check --write .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter @ocfl/ocfl --filter @ocfl/ocfl-fs test",

@@ -29,6 +29,8 @@ jobs:
         run: pnpm lint:biome
       - name: Lint (knip)
         run: pnpm lint:knip
+      - name: Lint (consumer)
+        run: pnpm lint:consumer
 
   test:
     runs-on: ubuntu-latest
