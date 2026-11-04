@@ -3,7 +3,10 @@
   // Treat anything tagged @lintignore as intentional.
   "tags": ["-lintignore"],
   "workspaces": {
-    ".": {},
+    ".": {
+      // Loaded by semantic-release from the `preset` option.
+      "ignoreDependencies": ["conventional-changelog-conventionalcommits"]
+    },
     "ocfl-fs": {
       // Typechecked only, by test/tsconfig.json.
       "entry": ["test/*.ts"]

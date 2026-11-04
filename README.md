@@ -123,3 +123,7 @@ Install the dependencies for all workspaces:
 
     cd ocfl-js
     npm install
+
+## Releasing
+
+See [RELEASING.md](RELEASING.md).
