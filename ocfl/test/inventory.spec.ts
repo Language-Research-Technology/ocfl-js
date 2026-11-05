@@ -4,6 +4,22 @@ import { beforeEach, describe, it } from 'node:test';
 import { OcflObjectInventory } from '../src/inventory.ts';
 import type { Inventory } from '../src/types.ts';
 
+function assertHeadStateValid(inv: OcflObjectInventory) {
+  const seen = new Set<string>();
+  for (const [digest, paths] of Object.entries(inv.state)) {
+    assert.ok(paths.length > 0, `digest ${digest} has no logical paths`);
+    assert.ok(inv.manifest[digest], `digest ${digest} is not in the manifest`);
+    for (const path of paths) {
+      assert.ok(!seen.has(path), `logical path ${path} appears more than once`);
+      seen.add(path);
+      assert.strictEqual(inv.getDigest(path), digest, `index disagrees with state for ${path}`);
+    }
+  }
+  for (const path of seen) {
+    assert.ok(!seen.has(path.slice(0, path.lastIndexOf('/'))), `logical path ${path} is under a file`);
+  }
+}
+
 describe('OcflObjectInventory class', () => {
   let data: Inventory;
   beforeEach(() => {
@@ -59,6 +75,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.head, 'v1');
     assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test.txt');
     assert.deepStrictEqual(data2.manifest, inv.manifest);
+    assertHeadStateValid(inv);
   });
 
   it('can add file with identical content but different name', () => {
@@ -73,6 +90,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.versions.v1!.state.aabbccddeeff![1], 'test2.txt');
     assert.strictEqual(inv.versions.v1!.state.aabbccddeeff!.length, 2);
     assert.strictEqual(Object.keys(inv.versions.v1!.state).length, 1);
+    assertHeadStateValid(inv);
   });
 
   it('can add file with identical content and name', () => {
@@ -89,6 +107,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.versions.v2!.state.aabbccddeeff![0], 'test.txt');
     assert.strictEqual(inv.versions.v2!.state.aabbccddeeff!.length, 1);
     assert.strictEqual(Object.keys(inv.versions.v2!.state).length, 1);
+    assertHeadStateValid(inv);
   });
 
   it('can add file with different content but identical name', () => {
@@ -103,6 +122,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.versions.v2!.state.aabbccddeeff2!.length, 1);
     assert.strictEqual(Object.keys(inv.versions.v1!.state).length, 1);
     assert.strictEqual(Object.keys(inv.versions.v2!.state).length, 1);
+    assertHeadStateValid(inv);
   });
 
   it('can add same file after it has been deleted', () => {
@@ -116,6 +136,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.versions.v3!.state.aabbccddeeff![0], 'test.txt');
     assert.strictEqual(inv.versions.v3!.state.aabbccddeeff!.length, 1);
     assert.strictEqual(Object.keys(inv.versions.v3!.state).length, 1);
+    assertHeadStateValid(inv);
   });
 
   it('can add file with extra fixity', () => {
@@ -124,6 +145,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test1.txt');
     assert.strictEqual(inv.fixity!.crc32!['12345678']![0], 'v1/content/test1.txt');
     assert.strictEqual(inv.fixity!.size!['1024']![0], 'v1/content/test1.txt');
+    assertHeadStateValid(inv);
   });
 
   it('can detect state change', () => {
@@ -159,5 +181,127 @@ describe('OcflObjectInventory class', () => {
     inv = OcflObjectInventory.newVersion(inv);
     inv.reinstate('test.txt', 'v1');
     assert(inv.versions.v3!.state.aabbccddeeff);
+    assertHeadStateValid(inv);
+  });
+
+  describe('head version state stays valid', () => {
+    it('moves an updated logical path to a digest that already has other paths', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1');
+      inv.add('b', 'd2');
+      inv = OcflObjectInventory.newVersion(inv);
+      assert.strictEqual(inv.add('a', 'd2'), true);
+      assert.deepStrictEqual(inv.state, { d2: ['b', 'a'] });
+      assert.deepStrictEqual([...inv.files()].map((f) => f.logicalPath).sort(), ['a', 'b']);
+      assert.strictEqual(inv.getDigest('a'), 'd2');
+      assertHeadStateValid(inv);
+      assert.strictEqual(inv.add('a', 'd2'), false);
+      assert.deepStrictEqual(inv.state, { d2: ['b', 'a'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('renames onto a logical path with the same digest', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1');
+      inv.add('b', 'd1');
+      inv.rename('b', 'a');
+      assert.deepStrictEqual(inv.state, { d1: ['a'] });
+      assert.strictEqual(inv.getDigest('b'), undefined);
+      assertHeadStateValid(inv);
+    });
+
+    it('renames onto a logical path with a different digest', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1');
+      inv.add('b', 'd2');
+      inv.rename('b', 'a');
+      assert.deepStrictEqual(inv.state, { d2: ['a'] });
+      assert.strictEqual(inv.getDigest('a'), 'd2');
+      assertHeadStateValid(inv);
+    });
+
+    it('leaves a logical path renamed to itself in place', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1');
+      inv.rename('a', 'a');
+      assert.deepStrictEqual(inv.state, { d1: ['a'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('reinstates a logical path without dropping other paths with the same digest', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv.add('x', 'd1');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.delete('x');
+      inv.add('y', 'd1');
+      inv = OcflObjectInventory.newVersion(inv);
+      assert.strictEqual(inv.reinstate('x', 'v1'), 1);
+      assert.deepStrictEqual(inv.state, { d1: ['y', 'x'] });
+      assert.strictEqual(inv.getDigest('y'), 'd1');
+      assertHeadStateValid(inv);
+    });
+
+    it('reinstates a logical path over its current content', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv.add('x', 'd1');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.add('x', 'd2');
+      inv.add('z', 'd2');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.reinstate('x', 'v1');
+      assert.deepStrictEqual(inv.state, { d2: ['z'], d1: ['x'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('renames a directory onto paths that share digests', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('x/a', 'd1');
+      inv.add('x/b', 'd2');
+      inv.add('y/a', 'd1');
+      inv.rename('x', 'y');
+      assert.deepStrictEqual(inv.state, { d1: ['y/a'], d2: ['y/b'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('renames a file onto a directory, replacing the paths under it', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('x', 'd1');
+      inv.add('y/f', 'd2');
+      inv.rename('x', 'y');
+      assert.deepStrictEqual(inv.state, { d1: ['y'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('deletes a directory and every path under it', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a/b', 'd1');
+      inv.add('a/c', 'd1');
+      inv.add('ab', 'd1');
+      assert.strictEqual(inv.delete('a'), 2);
+      assert.deepStrictEqual(inv.state, { d1: ['ab'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('leaves the state unchanged when reinstating an unchanged path', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv.add('x', 'd1');
+      inv.add('y', 'd1');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.reinstate('x', 'v1');
+      assert.deepStrictEqual(inv.state, { d1: ['x', 'y'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('reinstates a file over a directory, replacing the paths under it', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv.add('x', 'd1');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.delete('x');
+      inv.add('x/y', 'd2');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.reinstate('x', 'v1');
+      assert.deepStrictEqual(inv.state, { d1: ['x'] });
+      assertHeadStateValid(inv);
+    });
   });
 });
