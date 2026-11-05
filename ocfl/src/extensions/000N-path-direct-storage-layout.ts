@@ -11,7 +11,7 @@ const DefaultConfig = {
 export type PathDirectStorageLayoutConfig = Partial<typeof DefaultConfig>;
 
 class PathDirectStorageLayout extends OcflStorageLayout<typeof DefaultConfig> {
-  static get NAME() {
+  static get NAME(): string {
     return DefaultConfig.extensionName;
   }
   static get DESCRIPTION() {

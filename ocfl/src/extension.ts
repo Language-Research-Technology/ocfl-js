@@ -21,7 +21,7 @@ class OcflExtension<C extends object = object> {
    * Get an object-level extension
    * @param name - A registered extension name
    */
-  static object(name: string) {
+  static object(name: string): typeof OcflExtension | undefined {
     return OcflExtension.#object[name];
   }
 
@@ -29,7 +29,7 @@ class OcflExtension<C extends object = object> {
    * Get an storage-level extension
    * @param name - A registered extension name
    */
-  static storage(name: string) {
+  static storage(name: string): typeof OcflExtension | undefined {
     return OcflExtension.#storage[name];
   }
 
@@ -51,7 +51,7 @@ class OcflExtension<C extends object = object> {
    * Register an extension
    */
   // biome-ignore lint/complexity/noThisInStatic: defaults to the subclass register() is called on
-  static register(extensionClass: typeof OcflExtension = this) {
+  static register(extensionClass: typeof OcflExtension = this): void {
     const name = extensionClass.NAME;
     extensionByName[name] = extensionClass;
     extensionByClassName[extensionClass.name] = extensionClass;
@@ -108,7 +108,7 @@ class OcflExtension<C extends object = object> {
     return params;
   }
 
-  get p() {
+  get p(): C {
     return this.parameters;
   }
 
@@ -140,7 +140,7 @@ class OcflExtension<C extends object = object> {
    * @param param - The extension parameter name
    * @param value - The extension parameter value
    */
-  set(param: string, value: unknown) {
+  set(param: string, value: unknown): void {
     if (param in this.parameters) {
       (this.parameters as OcflExtensionConfig)[param] = value;
     }
@@ -167,7 +167,7 @@ class OcflStorageLayout<C extends object = object> extends OcflExtension<C> {
    * Register a storage layout extension
    */
   // biome-ignore lint/complexity/noThisInStatic: defaults to the subclass register() is called on
-  static register(extensionClass: typeof OcflStorageLayout = this) {
+  static register(extensionClass: typeof OcflStorageLayout = this): void {
     OcflExtension.register(extensionClass);
     storageLayout[extensionClass.name] = extensionClass;
   }

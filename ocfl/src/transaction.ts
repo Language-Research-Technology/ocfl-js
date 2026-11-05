@@ -197,7 +197,12 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   /**
    * Create a new transaction instance.
    */
-  static async create(ocflObject: OcflObject, ocflStore: OcflStore, inventory: OcflObjectInventoryMut, workspacePath: string) {
+  static async create(
+    ocflObject: OcflObject,
+    ocflStore: OcflStore,
+    inventory: OcflObjectInventoryMut,
+    workspacePath: string,
+  ): Promise<OcflObjectTransactionImpl> {
     const workspaceVersionPath = path.join(workspacePath, inventory.head);
     if (await ocflStore.exists(workspaceVersionPath)) {
       throw new Error('Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt');
@@ -206,7 +211,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     return new OcflObjectTransactionImpl(ocflObject, ocflStore, inventory, workspaceVersionPath, workspacePath);
   }
 
-  _getRealPath(logicalPath: string) {
+  _getRealPath(logicalPath: string): string {
     const p = path.normalize(logicalPath);
     if (p.startsWith('/') || p.startsWith('..')) {
       throw new Error('logicalPath must be a relative path without `..`');
@@ -214,7 +219,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     return path.join(this._contentRoot, p);
   }
 
-  async rollback() {
+  async rollback(): Promise<void> {
     if (!this._committed) {
       await Promise.all(this._queue);
       if (this._createdDir) {
@@ -224,7 +229,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     }
   }
 
-  async commit(options?: CommitOptions) {
+  async commit(options?: CommitOptions): Promise<void> {
     if (!this._committed) {
       const count = this._queue.filter((p) => !p.done).length;
       if (count > 0) {
@@ -243,7 +248,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     }
   }
 
-  async _commit(options: CommitOptions = {}) {
+  async _commit(options: CommitOptions = {}): Promise<void> {
     const inventory = this._inventory;
     const digestAlgorithm = inventory.digestAlgorithm;
     // set commit info
@@ -319,7 +324,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     return ws;
   }
 
-  async write(logicalPath: string, data: WriteFileData, options?: object | string) {
+  async write(logicalPath: string, data: WriteFileData, options?: object | string): Promise<void> {
     return this._transact(async () => {
       const realPath = this._getRealPath(logicalPath);
       const digestAlgo = this._inventory.digestAlgorithm;
@@ -357,7 +362,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   /**
    * Import a single file from source. This is a helper method for {@link OcflObjectTransaction.import | import()} method.
    */
-  async importFile(source: string, target: string) {
+  async importFile(source: string, target: string): Promise<void> {
     if (!target) {
       throw new TypeError('Target logical path must not be empty if source is a file.');
     }
@@ -373,7 +378,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     this._inventory.add(target, digest, fixity);
   }
 
-  async import(source: string, target?: string) {
+  async import(source: string, target?: string): Promise<void> {
     return this._transact(async () => {
       const dest = target ?? path.basename(source);
       const srcStat = await this._store.stat(source);
@@ -388,13 +393,13 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     });
   }
 
-  async copy(source: string, target: string) {
+  async copy(source: string, target: string): Promise<void> {
     return this._transact(async () => {
       this._inventory.copy(source, target);
     });
   }
 
-  async rename(source: string, target: string) {
+  async rename(source: string, target: string): Promise<void> {
     return this._transact(async () => {
       // if file already exists in the workspace, rename the actual file
       try {
@@ -410,11 +415,11 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     });
   }
 
-  async reinstate(logicalPath: string, versionName: string) {
+  async reinstate(logicalPath: string, versionName: string): Promise<number> {
     return this._inventory.reinstate(logicalPath, versionName);
   }
 
-  async remove(logicalPath: string, options?: RemoveOptions) {
+  async remove(logicalPath: string, options?: RemoveOptions): Promise<void> {
     return this._transact(async () => {
       if (options?.purge) {
         // completely remove content from all versions

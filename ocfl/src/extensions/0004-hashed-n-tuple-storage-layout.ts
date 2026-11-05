@@ -12,10 +12,10 @@ const DefaultConfig = {
 export type HashedNTupleStorageLayoutConfig = Partial<typeof DefaultConfig>;
 
 class HashedNTupleStorageLayout extends OcflStorageLayout<typeof DefaultConfig> {
-  static get NAME() {
+  static get NAME(): string {
     return DefaultConfig.extensionName;
   }
-  static get DESCRIPTION() {
+  static get DESCRIPTION(): string {
     return (
       'OCFL object identifiers are hashed and encoded as lowercase hex strings.' +
       ' These digests are then divided into N n-tuple segments,' +

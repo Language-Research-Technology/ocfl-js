@@ -46,7 +46,7 @@ class OcflStorage {
    * Absolute path to the object root
    * @param id - Identifier of the object
    */
-  objectRootAbs(id: string) {
+  objectRootAbs(id: string): string {
     return path.join(this.root, this.objectRoot(id));
   }
 
@@ -61,7 +61,7 @@ class OcflStorage {
   /**
    * Check if the storage has already the object with the given id.
    */
-  async has(id: string) {
+  async has(id: string): Promise<boolean> {
     return this.object(id).exists();
   }
 
@@ -102,11 +102,11 @@ class OcflStorage {
     // return objects;
   }
 
-  async delete(id: string) {
+  async delete(id: string): Promise<void> {
     return this.remove(id);
   }
 
-  async purge(id: string) {
+  async purge(id: string): Promise<void> {
     return this.remove(id);
   }
 
@@ -164,11 +164,11 @@ class OcflStorageImpl extends OcflStorage {
     // }
   }
 
-  get root() {
+  get root(): string {
     return this.#root;
   }
 
-  objectRoot(id: string) {
+  objectRoot(id: string): string {
     if (!this.#layout) {
       throw new Error('[OcflStorage] No layout defined');
     }
@@ -178,7 +178,7 @@ class OcflStorageImpl extends OcflStorage {
   /**
    * The root param is a relative path to the storage root.
    */
-  object(opt: string | { id?: string | undefined; root?: string | undefined }) {
+  object(opt: string | { id?: string | undefined; root?: string | undefined }): OcflObject {
     let id: string | undefined;
     let root: string | undefined;
     if (typeof opt === 'string') {
@@ -203,11 +203,11 @@ class OcflStorageImpl extends OcflStorage {
     );
   }
 
-  async exists() {
+  async exists(): Promise<boolean> {
     return !(await isDirEmpty(this.#store, this.root));
   }
 
-  async load() {
+  async load(): Promise<this> {
     const prefix = NAMASTE_PREFIX_STORAGE;
     const [ocflVersion, layout] = (
       await Promise.allSettled([findNamasteVersion(this.#store, prefix, this.root), this.#store.readFile(path.join(this.root, OCFL_LAYOUT), 'utf8')])
@@ -253,7 +253,7 @@ class OcflStorageImpl extends OcflStorage {
   /**
    * @param options - Additional options for creating storage root
    */
-  async create(options?: { ocflSpecText?: boolean | undefined }) {
+  async create(options?: { ocflSpecText?: boolean | undefined }): Promise<this> {
     if (await this.exists()) {
       //cannot create, storage root already exists .
       throw new Error('[OcflStorage] Cannot create storage root in a non-empty directory');

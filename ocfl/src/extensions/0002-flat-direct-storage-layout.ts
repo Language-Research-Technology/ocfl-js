@@ -13,7 +13,7 @@ class FlatDirectStorageLayout extends OcflStorageLayout {
   static get NAME() {
     return '0002-flat-direct-storage-layout';
   }
-  static get DESCRIPTION() {
+  static get DESCRIPTION(): string {
     return 'OCFL object identifiers are mapped directly to directory names' + ' that are direct children of the OCFL storage root.';
   }
 

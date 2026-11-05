@@ -21,25 +21,25 @@ class VersionNumber {
     this.value = num;
     this.zeroPaddingLength = zeroPaddingLength;
   }
-  valueOf() {
+  valueOf(): number {
     return this.value;
   }
   toString() {
     return `v${this.zeroPaddingLength ? `${this.value}`.padStart(this.zeroPaddingLength, '0') : this.value}`;
   }
-  next() {
+  next(): VersionNumber {
     return new VersionNumber(this.value + 1, this.zeroPaddingLength);
   }
-  previous() {
+  previous(): VersionNumber | undefined {
     const n = this.value - 1;
     if (n > 0) {
       return new VersionNumber(n, this.zeroPaddingLength);
     }
   }
-  static fromInt(num: number, zeroPaddingLength: number) {
+  static fromInt(num: number, zeroPaddingLength: number): VersionNumber {
     return new VersionNumber(num, zeroPaddingLength);
   }
-  static fromString(versionLabel: string) {
+  static fromString(versionLabel: string): VersionNumber {
     const label = versionLabel.replace('v', '');
     let zeroPaddingLength: number | undefined;
     if (label.startsWith('0')) {
@@ -48,11 +48,11 @@ class VersionNumber {
     return new VersionNumber(parseInt(label, 10), zeroPaddingLength);
   }
 
-  static next(versionLabel: string) {
+  static next(versionLabel: string): VersionNumber {
     return VersionNumber.fromString(versionLabel).next();
   }
 
-  static previous(versionLabel: string) {
+  static previous(versionLabel: string): VersionNumber | undefined {
     return VersionNumber.fromString(versionLabel).previous();
   }
 }
@@ -114,19 +114,19 @@ class OcflObjectInventory {
     return digests;
   }
 
-  _indexAdd(logicalPath: string, version: string, digests: Digests) {
+  _indexAdd(logicalPath: string, version: string, digests: Digests): void {
     this.#fileIndex[version] ??= {};
     this.#fileIndex[version][logicalPath] = digests;
   }
 
-  _indexRemove(logicalPath: string, version = this.head) {
+  _indexRemove(logicalPath: string, version: string = this.head): Digests | undefined {
     const index = this.#fileIndex[version];
     const val = index?.[logicalPath];
     delete index?.[logicalPath];
     return val;
   }
 
-  _indexBuild() {
+  _indexBuild(): void {
     // index fixity contentPaths
     const fixity = this.fixity;
     const fixityIndex: { [algorithm: string]: { [contentPath: string]: string } } = {};
@@ -168,7 +168,7 @@ class OcflObjectInventory {
     }
   }
 
-  _indexFindPaths(prefix: string, version = this.head) {
+  _indexFindPaths(prefix: string, version: string = this.head): string[] {
     const res: string[] = [];
     const index = this.#fileIndex[version];
     const prefixWithSlash = prefix.endsWith('/') ? prefix : `${prefix}/`;
@@ -184,7 +184,7 @@ class OcflObjectInventory {
    * Create a new mutable OcflObjectInventory from the object config or clone an existing inventory,
    * and increase the inventory version number. If data.head is undefined, starts from v1.
    */
-  static newVersion(data: Partial<Inventory> | OcflObjectInventory, cleanState?: boolean) {
+  static newVersion(data: Partial<Inventory> | OcflObjectInventory, cleanState?: boolean): OcflObjectInventoryMut {
     if (data instanceof OcflObjectInventory) {
       data = data.toJSON();
     }
@@ -227,33 +227,35 @@ class OcflObjectInventory {
     this._indexBuild();
   }
 
-  get id() {
+  get id(): string {
     return this.#data.id;
   }
-  get type() {
+  get type(): 'https://ocfl.io/1.0/spec/#inventory' | 'https://ocfl.io/1.1/spec/#inventory' {
     return this.#data.type;
   }
-  get digestAlgorithm() {
+  get digestAlgorithm(): 'sha256' | 'sha512' {
     return this.#data.digestAlgorithm;
   }
-  get head() {
+  get head(): string {
     return this.#data.head;
   }
   /** The version number of the current head */
-  get versionNumber() {
+  get versionNumber(): VersionNumber {
     return VersionNumber.fromString(this.head);
   }
-  get contentDirectory() {
+  get contentDirectory(): string {
     return this.#data.contentDirectory || 'content';
   }
-  get manifest() {
+  get manifest(): InventoryDigests {
     return this.#data.manifest;
   }
-  get versions() {
+  get versions(): {
+    [key: string]: InventoryVersion;
+  } {
     return this.#data.versions;
   }
   /** The current head version. Throws if the head is not in versions. */
-  get version() {
+  get version(): InventoryVersion {
     const version = this.versions[this.head];
     if (!version) {
       throw headNotInVersionsError(this.id, this.head);
@@ -267,10 +269,10 @@ class OcflObjectInventory {
     this.#data.fixity = val;
   }
   /** The state of the current version */
-  get state() {
+  get state(): InventoryDigests {
     return this.version.state;
   }
-  get created() {
+  get created(): string {
     return this.version.created;
   }
   get message(): InventoryVersion['message'] {
@@ -283,7 +285,7 @@ class OcflObjectInventory {
   //get prevVersion() { return this.versionNumber.previous()?.toString(); }
 
   /** Return true if there has been actual change to the state of current version compared to the previous version */
-  get isChanged() {
+  get isChanged(): boolean {
     const prev = this.versionNumber.previous()?.toString();
     if (!prev) {
       return true;
@@ -305,14 +307,14 @@ class OcflObjectInventory {
    * Return the state of the specified version
    * @param version - The inventory version, default to the latest
    */
-  versionState(version?: string) {
+  versionState(version?: string): InventoryDigests | undefined {
     if (!version || version === 'latest') {
       version = this.head;
     }
     return this.versions[version]?.state;
   }
 
-  toString() {
+  toString(): string {
     return JSON.stringify(this.#data, null, 2);
   }
 
@@ -346,7 +348,7 @@ class OcflObjectInventory {
     }
   }
 
-  *find(fn: (file: InventoryFile) => boolean, version?: string) {
+  *find(fn: (file: InventoryFile) => boolean, version?: string): Generator<InventoryFile, void, unknown> {
     for (const f of this.files(version)) {
       if (fn(f)) {
         yield f;
@@ -354,7 +356,7 @@ class OcflObjectInventory {
     }
   }
 
-  clone() {
+  clone(): OcflObjectInventory {
     return new OcflObjectInventory(this.toJSON());
   }
 
@@ -381,7 +383,7 @@ class OcflObjectInventory {
   /**
    * Get the digest of a content represented by the logicalPath of the specified version
    */
-  getDigest(logicalPath: string, versionName: string = this.head) {
+  getDigest(logicalPath: string, versionName: string = this.head): string | undefined {
     return this._indexGet(logicalPath, versionName, true)?.[this.digestAlgorithm];
   }
 
@@ -521,7 +523,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   /**
    * Low-level method to add a set of digest entries associated to file into the fixity block
    */
-  addFixity(contentPath: string, digestName: string, digestValue: string) {
+  addFixity(contentPath: string, digestName: string, digestValue: string): void {
     if (!digestValue || !digestName) {
       return;
     }
@@ -540,7 +542,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   /**
    * Rename a logical path. This will overwrite dest if exists
    */
-  rename(srcLogicalPath: string, destLogicalPath: string) {
+  rename(srcLogicalPath: string, destLogicalPath: string): void {
     const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
     const destPrefix = destLogicalPath.endsWith('/') ? destLogicalPath : `${destLogicalPath}/`;
     const srcList = this._indexFindPaths(srcPrefix);
@@ -563,7 +565,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   /**
    * Create an alias or reference of a logical path
    */
-  copy(srcLogicalPath: string, destLogicalPath: string) {
+  copy(srcLogicalPath: string, destLogicalPath: string): void {
     const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
     const destPrefix = destLogicalPath.endsWith('/') ? destLogicalPath : `${destLogicalPath}/`;
     const srcList = this._indexFindPaths(srcPrefix);
@@ -592,7 +594,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   /**
    * Delete a file
    */
-  delete(logicalPath: string, version: string = this.head) {
+  delete(logicalPath: string, version: string = this.head): number {
     let count = 0;
     for (const lp of this._indexFindPaths(logicalPath, version)) {
       if (this.#unlist(lp, version)) {
@@ -602,7 +604,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     return count;
   }
 
-  reinstate(logicalPath: string, versionName: string) {
+  reinstate(logicalPath: string, versionName: string): number {
     const names = this._indexFindPaths(logicalPath, versionName);
     let count = 0;
     for (const lp of names) {

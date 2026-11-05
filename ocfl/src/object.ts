@@ -1,3 +1,4 @@
+import type { Stats } from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { type ContentAlgorithm, OcflDigest } from './digest.ts';
@@ -118,7 +119,7 @@ class OcflObject {
   }
 
   /** The raw OCFL version number the object adheres to , eg 1.0, 1.1) */
-  get ocflVersion() {
+  get ocflVersion(): OcflVersion {
     return this.#ocflVersion;
   }
 
@@ -134,7 +135,7 @@ class OcflObject {
     return OcflObjectTransactionImpl.create(this, this.#store, inventory, workspacePath);
   }
 
-  async _ensureNamaste() {
+  async _ensureNamaste(): Promise<void> {
     const prefix = NAMASTE_PREFIX_OBJECT;
     const nv = await findNamasteVersion(this.#store, prefix, this.root);
     if (nv === '') {
@@ -196,7 +197,7 @@ class OcflObject {
   /**
    * Set the latest version of inventory in the cache
    */
-  _setInventory(inventory: OcflObjectInventory, version = 'latest') {
+  _setInventory(inventory: OcflObjectInventory, version = 'latest'): void {
     //this._inventory['latest'] = this._inventory[inventory.head] = inventory;
     this._inventory[version] = inventory;
     if (version === 'latest') {
@@ -205,7 +206,7 @@ class OcflObject {
   }
 
   // all the parent directories cannot be an ocfl object
-  async _validateObjectPath() {
+  async _validateObjectPath(): Promise<void> {
     var p = this.root;
     while (p !== '.' && p !== '/') {
       p = path.dirname(p);
@@ -242,7 +243,12 @@ class OcflObject {
     return inv;
   }
 
-  _baseInventory() {
+  _baseInventory(): {
+    digestAlgorithm: 'sha256' | 'sha512';
+    type: Inventory['type'];
+    contentDirectory: string;
+    id?: string;
+  } {
     return {
       ...(this.id === undefined ? {} : { id: this.id }),
       digestAlgorithm: this.digestAlgorithm || 'sha512',
@@ -287,7 +293,7 @@ class OcflObject {
    * @param content - The source path(s) or an array of a tuple [source, logical path]
    * @param mode - Update mode. Defaults to `'MERGE'`.
    */
-  async import(content: string | string[] | string[][], mode: UpdateMode = 'MERGE') {
+  async import(content: string | string[] | string[][], mode: UpdateMode = 'MERGE'): Promise<void> {
     const items = typeof content === 'string' ? [[content, '']] : content.map((p) => (typeof p === 'string' ? [p, ''] : p));
 
     await this.update(async (t) => {
@@ -304,14 +310,14 @@ class OcflObject {
    * Alias for import
    * @see {@link OcflObject.import}
    */
-  async add(sourceDir: string | string[] | string[][], mode: UpdateMode = 'MERGE') {
+  async add(sourceDir: string | string[] | string[][], mode: UpdateMode = 'MERGE'): Promise<void> {
     await this.import(sourceDir, mode);
   }
 
   /**
    * Count the number of files contained in this object
    */
-  async count(version?: string) {
+  async count(version?: string): Promise<number> {
     const inv = await this._requireInventory();
     return [...inv.files(version)].length;
   }
@@ -332,7 +338,7 @@ class OcflObject {
   /**
    * Copy all content of this Object to a directory in local filesystem
    */
-  async export(_targetDir: string, _version: string) {
+  async export(_targetDir: string, _version: string): Promise<void> {
     throw new Error('Not Implemented');
   }
 
@@ -358,7 +364,7 @@ class OcflObject {
    * @returns `undefined` if the object has no such file.
    * @throws {ObjectNotFoundError} If the object does not exist.
    */
-  async fileByContentPath(contentPath: string, version?: string) {
+  async fileByContentPath(contentPath: string, version?: string): Promise<OcflObjectFile | undefined> {
     const inv = await this._requireInventory();
     const fr = inv.getFileByContentPath(contentPath, version);
     if (fr) {
@@ -372,7 +378,7 @@ class OcflObject {
    * @returns `undefined` if the object has no such file.
    * @throws {ObjectNotFoundError} If the object does not exist.
    */
-  async fileByDigest(digest: string, version?: string) {
+  async fileByDigest(digest: string, version?: string): Promise<OcflObjectFile | undefined> {
     const inv = await this._requireInventory();
     const fr = inv.getFileByDigest(digest, version);
     if (fr) {
@@ -386,7 +392,7 @@ class OcflObject {
    * @returns `undefined` if the object has no such file.
    * @throws {ObjectNotFoundError} If the object does not exist.
    */
-  async fileByLogicalPath(logicalPath: string, version?: string) {
+  async fileByLogicalPath(logicalPath: string, version?: string): Promise<OcflObjectFile | undefined> {
     const inv = await this._requireInventory();
     const fr = inv.getFile(logicalPath, version);
     if (fr) {
@@ -432,7 +438,7 @@ class OcflObject {
   /**
    * Return the latest version of the cached data from inventory.json which can be read using {@link getInventory()}
    */
-  get inventory() {
+  get inventory(): OcflObjectInventory | undefined {
     return this._inventory.latest;
   }
 
@@ -440,7 +446,7 @@ class OcflObject {
    * Reads the object inventory file and cache it in the memory.
    * Optionally, preloads and reads all files metadata from the underlying storage.
    */
-  async load({ filesMetadata }: { filesMetadata?: boolean | undefined } = {}) {
+  async load({ filesMetadata }: { filesMetadata?: boolean | undefined } = {}): Promise<void> {
     const inv = await this._readInventory();
     this._inventory = {};
     if (inv) {
@@ -477,7 +483,7 @@ class OcflObject {
    * Get the file metadata such as size and modification time.
    * @param relPath - The file path relative to the object root.
    */
-  async stat(relPath: string) {
+  async stat(relPath: string): Promise<Stats> {
     return this.#store.stat(path.join(this.root, relPath));
   }
 
@@ -489,7 +495,10 @@ class OcflObject {
     return `OcflObject { root: ${this.root}, id: ${this.id} }`;
   }
 
-  toJSON() {
+  toJSON(): {
+    root: string;
+    id: string | undefined;
+  } {
     return { root: this.root, id: this.id };
   }
 }

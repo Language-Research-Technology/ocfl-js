@@ -30,12 +30,28 @@ export { OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.
 export type * from './types.ts';
 export { extensions };
 
+export interface OcflApi<SO extends object> {
+  OCFL_VERSIONS: typeof OcflConstants.OCFL_VERSIONS;
+  /** Built-in storage layout classes */
+  StorageLayout: extensions.StorageLayout;
+  /** Instantiate a storage layout from extension name or config */
+  storageLayout(config: string | OcflExtensionConfig): OcflStorageLayout;
+  /** Instantiate an OCFL Object */
+  object(config: OcflObjectConfig, storeOptions?: SO): OcflObject;
+  /** Instantiate an OCFL Storage root */
+  storage(config: OcflStorageConfig, storeOptions?: SO): OcflStorage;
+  /** Create a new OCFL Storage */
+  createStorage(config: OcflStorageConfig, storeOptions?: SO): Promise<OcflStorage>;
+  /** Load an existing OCFL Storage */
+  loadStorage(config: OcflStorageConfig, storeOptions?: SO): Promise<OcflStorage>;
+}
+
 /**
  * Creates a new OCFL core API with a specific backend store.
  * Any backend store implementation module must return the result of this method.
  * @returns Top level OCFL API interface that provides storage and object creation.
  */
-export function implementOcfl<SO extends object>(store: { getInstance(options?: SO): OcflStore }, defaultOptions?: SO) {
+export function implementOcfl<SO extends object>(store: { getInstance(options?: SO): OcflStore }, defaultOptions?: SO): OcflApi<SO> {
   return {
     OCFL_VERSIONS: OcflConstants.OCFL_VERSIONS,
 

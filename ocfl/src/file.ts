@@ -87,14 +87,14 @@ class OcflObjectFile {
   /**
    * Returns the last modified time of the file, in millisecond since the UNIX epoch (January 1st, 1970 at Midnight).
    */
-  get lastModified() {
+  get lastModified(): number | undefined {
     return this.#lastModified;
   }
 
   /**
    * Returns the file size in bytes.
    */
-  get size() {
+  get size(): number | undefined {
     return this.#size;
   }
 
@@ -114,7 +114,7 @@ class OcflObjectFile {
   /**
    * @deprecated Use {@link OcflObjectFile.buffer}
    */
-  async asBuffer(options?: unknown) {
+  async asBuffer(options?: unknown): Promise<Uint8Array<ArrayBufferLike>> {
     return this.buffer(options);
   }
 
@@ -129,7 +129,7 @@ class OcflObjectFile {
   /**
    * @deprecated Use {@link OcflObjectFile.text}
    */
-  async asString(encoding: BufferEncoding = 'utf8') {
+  async asString(encoding: BufferEncoding = 'utf8'): Promise<string> {
     return this.text(encoding);
   }
 

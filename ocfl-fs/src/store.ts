@@ -25,24 +25,24 @@ class OcflFsStore extends OcflStore {
     this.fs = config?.fs ?? fs;
   }
 
-  async stat(filePath: string) {
+  async stat(filePath: string): Promise<fs.Stats> {
     return this.fs.promises.stat(filePath);
   }
 
-  async createReadStream(filePath: string, options?: Parameters<typeof fs.createReadStream>[1]) {
+  async createReadStream(filePath: string, options?: Parameters<typeof fs.createReadStream>[1]): Promise<fs.ReadStream> {
     return this.fs.createReadStream(filePath, options);
   }
 
-  async createWriteStream(filePath: string, options?: Parameters<typeof fs.createWriteStream>[1]) {
+  async createWriteStream(filePath: string, options?: Parameters<typeof fs.createWriteStream>[1]): Promise<fs.WriteStream> {
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     return this.fs.createWriteStream(filePath, options);
   }
 
-  async createReadable(filePath: string, options?: Parameters<typeof fs.createReadStream>[1]) {
+  async createReadable(filePath: string, options?: Parameters<typeof fs.createReadStream>[1]): Promise<ReadableStream> {
     return Readable.toWeb(this.fs.createReadStream(filePath, options)) as ReadableStream;
   }
 
-  async createWritable(filePath: string, options?: Parameters<typeof fs.createWriteStream>[1]) {
+  async createWritable(filePath: string, options?: Parameters<typeof fs.createWriteStream>[1]): Promise<WritableStream> {
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     return Writable.toWeb(this.fs.createWriteStream(filePath, options));
   }
@@ -53,26 +53,26 @@ class OcflFsStore extends OcflStore {
     return this.fs.promises.readFile(filePath, options as Parameters<typeof fs.promises.readFile>[1]);
   }
 
-  async writeFile(filePath: string, data: WriteFileData, options?: object | string) {
+  async writeFile(filePath: string, data: WriteFileData, options?: object | string): Promise<void> {
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
     const content = data instanceof ReadableStream ? Readable.fromWeb(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data;
     await this.fs.promises.writeFile(filePath, content, options as Parameters<typeof fs.promises.writeFile>[2]);
   }
 
-  async copyFile(source: string, target: string) {
+  async copyFile(source: string, target: string): Promise<void> {
     await this.fs.promises.mkdir(path.dirname(target), { recursive: true });
     await this.fs.promises.copyFile(source, target);
   }
 
-  async opendir(filePath: string, options?: fs.OpenDirOptions) {
+  async opendir(filePath: string, options?: fs.OpenDirOptions): Promise<fs.Dir> {
     return this.fs.promises.opendir(filePath, options);
   }
 
-  async readdir(filePath: string) {
+  async readdir(filePath: string): Promise<string[]> {
     return this.fs.promises.readdir(filePath);
   }
 
-  async list(dirPath: string, { encoding = 'utf8', bufferSize = 32, recursive = false }: ListOptions = {}) {
+  async list(dirPath: string, { encoding = 'utf8', bufferSize = 32, recursive = false }: ListOptions = {}): Promise<AsyncIterableIterator<ListedFile>> {
     const { opendir, stat } = this.fs.promises;
     const maxBuffer = bufferSize || 1;
     async function* generator(): AsyncGenerator<ListedFile> {
@@ -104,11 +104,11 @@ class OcflFsStore extends OcflStore {
     return generator();
   }
 
-  async mkdir(filePath: string, options: fs.MakeDirectoryOptions = { recursive: true }) {
+  async mkdir(filePath: string, options: fs.MakeDirectoryOptions = { recursive: true }): Promise<string | undefined> {
     return this.fs.promises.mkdir(filePath, options);
   }
 
-  async move(source: string, target: string) {
+  async move(source: string, target: string): Promise<void> {
     const { cp, mkdir, mkdtemp, rename, rm } = this.fs.promises;
     const parent = path.dirname(target);
     await mkdir(parent, { recursive: true });
@@ -132,7 +132,7 @@ class OcflFsStore extends OcflStore {
     await rm(source, { recursive: true, force: true });
   }
 
-  async remove(filePath: string) {
+  async remove(filePath: string): Promise<void> {
     return this.fs.promises.rm(filePath, { recursive: true, force: true });
   }
 }

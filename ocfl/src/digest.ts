@@ -60,13 +60,13 @@ const hasherSyncCache: { [key: string]: CommonHasher } = {};
 /**
  * Register a hash algorithm and it's factory function.
  */
-function registerHasherFactory(name: string, factory: () => Promise<CommonHasher>) {
+function registerHasherFactory(name: string, factory: () => Promise<CommonHasher>): void {
   if (typeof factory === 'function') {
     hasherFactory[name] = factory;
   }
 }
 
-function hasAlgorithm(name: string) {
+function hasAlgorithm(name: string): boolean {
   return name in hasherFactory;
 }
 
@@ -207,7 +207,7 @@ async function digest(algorithm: string | string[], input: IDataType | ReadableS
   return hash.update(input).digest();
 }
 
-async function initSync(algorithm: string) {
+async function initSync(algorithm: string): Promise<void> {
   if (!hasherSyncCache[algorithm]) {
     const factory = hasherFactory[algorithm];
     if (!factory) {
@@ -239,11 +239,21 @@ const HEX_DIGEST_LENGTH: { [algorithm: string]: number } = {
   size: 1,
 };
 
-function getHexDigestLength(algorithm: string) {
+function getHexDigestLength(algorithm: string): number {
   return HEX_DIGEST_LENGTH[algorithm] || 0;
 }
 
-const OcflDigest = {
+const OcflDigest: {
+  CONTENT: readonly ['sha256', 'sha512'];
+  createStream: typeof createStream;
+  createStreamThrough: typeof createStreamThrough;
+  digest: typeof digest;
+  registerHasherFactory: typeof registerHasherFactory;
+  hasAlgorithm: typeof hasAlgorithm;
+  getHexDigestLength: typeof getHexDigestLength;
+  digestSync: typeof digestSync;
+  initSync: typeof initSync;
+} = {
   CONTENT,
   createStream,
   createStreamThrough,

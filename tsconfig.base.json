@@ -15,6 +15,7 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
+    "isolatedDeclarations": true,
     // Maps point into src/, which is published alongside dist/
     "declaration": true,
     "declarationMap": true,

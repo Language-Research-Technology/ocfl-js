@@ -38,7 +38,7 @@ class ValidationError extends Error {
  * @param path - Path the problem was found at
  * @param detail - Extra context appended to the message
  */
-export const createError = (code: ErrorCode, path: string, detail?: string) => {
+export const createError = (code: ErrorCode, path: string, detail?: string): ValidationError => {
   const description = Object.hasOwn(ERRORS, code) ? ERRORS[code] : undefined;
   if (!description) {
     throw new RangeError(`Unknown OCFL validation code ${code}`);
