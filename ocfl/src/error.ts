@@ -1,3 +1,24 @@
+import type { ValidationErrorCode } from './validation.ts';
+
+type OcflErrorCode =
+  | 'OBJECT_NOT_FOUND'
+  | 'OBJECT_NOT_LOADED'
+  | 'UPDATE_IN_PROGRESS'
+  | 'DIRECTORY_NOT_EMPTY'
+  | 'ID_INCOMPATIBLE_WITH_LAYOUT'
+  | ValidationErrorCode;
+
+/** Base class for errors a client can handle by their `code`. The message isn't part of the contract. */
+class OcflError extends Error {
+  readonly code: OcflErrorCode;
+
+  constructor(code: OcflErrorCode, message: string) {
+    super(message);
+    this.name = 'OcflError';
+    this.code = code;
+  }
+}
+
 class NotImplementedError extends Error {
   constructor(methodName?: string) {
     const msg = methodName ? `Method ${methodName} has not been implemented` : '';
@@ -6,18 +27,23 @@ class NotImplementedError extends Error {
   }
 }
 
-class ObjectNotLoadedError extends Error {
+class ObjectNotLoadedError extends OcflError {
+  declare readonly code: 'OBJECT_NOT_LOADED';
+
   constructor(label: string) {
-    super(`OCFL Object "${label}" is not loaded; call load() first`);
+    super('OBJECT_NOT_LOADED', `OCFL Object "${label}" is not loaded; call load() first`);
     this.name = 'ObjectNotLoadedError';
   }
 }
 
-class ObjectNotFoundError extends Error {
+class ObjectNotFoundError extends OcflError {
+  declare readonly code: 'OBJECT_NOT_FOUND';
+
   constructor(label: string) {
-    super(`OCFL Object "${label}" does not exist`);
+    super('OBJECT_NOT_FOUND', `OCFL Object "${label}" does not exist`);
     this.name = 'ObjectNotFoundError';
   }
 }
 
-export { NotImplementedError, ObjectNotFoundError, ObjectNotLoadedError };
+export type { OcflErrorCode };
+export { NotImplementedError, ObjectNotFoundError, ObjectNotLoadedError, OcflError };

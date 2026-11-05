@@ -1,3 +1,5 @@
+import { OcflError } from './error.ts';
+
 // Messages for the OCFL 1.1 validation codes this library raises: https://ocfl.io/1.1/spec/validation-codes.html
 const ERRORS = {
   E007: 'The text contents of the [version declaration] file must be the same as dvalue, followed by a newline (\\n).',
@@ -11,23 +13,23 @@ const ERRORS = {
   E082: 'OCFL Object Roots MUST be stored either as the terminal resource at the end of a directory storage hierarchy or as direct children of a containing OCFL Storage Root.',
 };
 
-type ErrorCode = keyof typeof ERRORS;
+export type ValidationErrorCode = keyof typeof ERRORS;
 
 interface ValidationErrorOptions {
-  code: ErrorCode;
+  code: ValidationErrorCode;
   description: string;
   path: string;
   detail?: string | undefined;
 }
 
-class ValidationError extends Error {
-  declare code: ErrorCode;
+export class ValidationError extends OcflError {
+  declare code: ValidationErrorCode;
   declare description: string;
   declare path: string;
   declare detail?: string | undefined;
 
   constructor(options: ValidationErrorOptions) {
-    super(`${options.code}: ${options.description} At ${options.path}${options.detail ? ` (${options.detail})` : ''}`);
+    super(options.code, `${options.code}: ${options.description} At ${options.path}${options.detail ? ` (${options.detail})` : ''}`);
     this.name = 'ValidationError';
     Object.assign(this, options);
   }
@@ -38,7 +40,7 @@ class ValidationError extends Error {
  * @param path - Path the problem was found at
  * @param detail - Extra context appended to the message
  */
-export const createError = (code: ErrorCode, path: string, detail?: string) => {
+export const createError = (code: ValidationErrorCode, path: string, detail?: string) => {
   const description = Object.hasOwn(ERRORS, code) ? ERRORS[code] : undefined;
   if (!description) {
     throw new RangeError(`Unknown OCFL validation code ${code}`);

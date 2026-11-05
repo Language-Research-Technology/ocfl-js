@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { OcflConstants } from '../constants.ts';
+import { OcflError } from '../error.ts';
 import { OcflStorageLayout } from '../extension.ts';
 
 const { EXTENSIONS_DIR } = OcflConstants;
@@ -23,13 +24,16 @@ class FlatDirectStorageLayout extends OcflStorageLayout {
   }
 
   map(id: string): string {
+    let reason: string | undefined;
     if (path.basename(id) !== id) {
-      throw new Error(`The object id <${id}> is incompatible with layout extension ${this.name} because it contains the path separator character.`);
+      reason = 'it contains the path separator character';
     } else if (id === EXTENSIONS_DIR) {
-      throw new Error(`The object id <${id}> is incompatible with layout extension ${this.name} because it conflicts with the extensions directory.`);
+      reason = 'it conflicts with the extensions directory';
+    } else if (id.length > 255) {
+      reason = 'it has more than 255 characters';
     }
-    if (id.length > 255) {
-      throw new Error(`The object id <${id}> is incompatible with layout extension ${this.name} because it has more than 255 characters.`);
+    if (reason) {
+      throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> is incompatible with layout extension ${this.name} because ${reason}.`);
     }
 
     return id;

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { OcflError } from '../error.ts';
 import { OcflStorageLayout } from '../extension.ts';
 
 const DefaultConfig = {
@@ -25,7 +26,7 @@ class PathDirectStorageLayout extends OcflStorageLayout<typeof DefaultConfig> {
   map(id: string): string {
     var suffix = this.parameters.suffix;
     if (suffix && id.endsWith(suffix)) {
-      throw new Error(`Identifier cannot end with '${suffix}'`);
+      throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `Identifier cannot end with '${suffix}'`);
     }
     var p = id ?? '';
     for (const r of this.parameters.replace) {

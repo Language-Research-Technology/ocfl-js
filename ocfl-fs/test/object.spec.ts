@@ -7,6 +7,7 @@ import { after, before, describe, it } from 'node:test';
 import type { Inventory } from '@ocfl/ocfl';
 import ocflTests from '@ocfl/ocfl-tests';
 import ocfl, { ObjectNotFoundError, ObjectNotLoadedError } from '../src/index.ts';
+import { ocflError } from './ocfl-error.ts';
 
 describe('OcflObject class using OcflFsStore', () => {
   // it("constructor", function() {
@@ -142,8 +143,28 @@ describe('OcflObject with a malformed or missing inventory', () => {
 
   it('rejects counting or listing files of an object without an inventory', async () => {
     const o = ocfl.object({ id: 'no-inventory', root: path.join(tempdir, 'no-inventory') });
-    const message = 'OCFL Object "no-inventory" does not exist';
-    await assert.rejects(o.count(), { message });
-    await assert.rejects(o.files(), { message });
+    await assert.rejects(o.count(), ocflError('OBJECT_NOT_FOUND'));
+    await assert.rejects(o.files(), ocflError('OBJECT_NOT_FOUND'));
+  });
+
+  it('rejects an update while another update of the same object is uncommitted', async () => {
+    const o = ocfl.object({ id: 'concurrent', root: path.join(tempdir, 'concurrent') });
+    await o.update(async (t) => {
+      await t.write('a.txt', 'a');
+      await assert.rejects(
+        o.update(async (t2) => t2.write('b.txt', 'b')),
+        ocflError('UPDATE_IN_PROGRESS'),
+      );
+    });
+  });
+
+  it('rejects creating an object in a non-empty directory', async () => {
+    const root = path.join(tempdir, 'not-empty');
+    await fs.promises.mkdir(root);
+    await fs.promises.writeFile(path.join(root, 'stray.txt'), 'x');
+    await assert.rejects(
+      ocfl.object({ id: 'not-empty', root }).update(async (t) => t.write('a.txt', 'a')),
+      ocflError('DIRECTORY_NOT_EMPTY'),
+    );
   });
 });

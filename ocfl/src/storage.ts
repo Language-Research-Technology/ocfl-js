@@ -1,7 +1,7 @@
 //@todo add default layout
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
-import { NotImplementedError } from './error.ts';
+import { NotImplementedError, OcflError } from './error.ts';
 import { createByName, OcflStorageLayout } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { OcflObject } from './object.ts';
@@ -256,7 +256,7 @@ class OcflStorageImpl extends OcflStorage {
   async create(options?: { ocflSpecText?: boolean | undefined }) {
     if (await this.exists()) {
       //cannot create, storage root already exists .
-      throw new Error('[OcflStorage] Cannot create storage root in a non-empty directory');
+      throw new OcflError('DIRECTORY_NOT_EMPTY', '[OcflStorage] Cannot create storage root in a non-empty directory');
     } else {
       await this.#store.mkdir(this.root);
     }

@@ -65,9 +65,38 @@ For example, `digestAlgorithm: 'SHA512'` and `update(fn, 'replace')` now throw. 
 - `OcflDigest.FIXITY` has been removed.
 - `OcflDigest.CONTENT` is now a plain array, `['sha256', 'sha512']`, instead of an enumeration.
 
+## Error classes and codes
+
+Errors a client is expected to handle are now an `OcflError` with a string `code`. Check `error.code` rather than matching on the message: messages aren't part of the API and may change. `OcflError`, its subclasses `ValidationError`, `ObjectNotFoundError` and `ObjectNotLoadedError`, and the `OcflErrorCode` union are exported from both `@ocfl/ocfl` and `@ocfl/ocfl-fs`:
+
+```ts
+import type { OcflError } from '@ocfl/ocfl-fs';
+
+try {
+  await object.update(async (t) => t.write('a.txt', 'a'));
+} catch (error) {
+  if ((error as OcflError).code === 'UPDATE_IN_PROGRESS') {
+    // retry later
+  }
+}
+```
+
+`instanceof OcflError` works because `@ocfl/ocfl` is a peer dependency, so your app and `@ocfl/ocfl-fs` share one copy. Checking `error.code` works even if a second copy is installed, for example when your own `@ocfl/ocfl` dependency is outside the peer range.
+
+| Code                          | Thrown when                                                                                                                  |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `OBJECT_NOT_FOUND`            | The object doesn't exist; thrown as an `ObjectNotFoundError` (see [Errors for missing objects](#errors-for-missing-objects)) |
+| `OBJECT_NOT_LOADED`           | `getFile()` is called before the inventory has been read; thrown as an `ObjectNotLoadedError`                                |
+| `UPDATE_IN_PROGRESS`          | An update finds uncommitted changes, because another process is updating the object or an earlier update failed              |
+| `DIRECTORY_NOT_EMPTY`         | An object or storage root is created in a non-empty directory                                                                |
+| `ID_INCOMPATIBLE_WITH_LAYOUT` | The storage layout can't map the object id                                                                                   |
+| `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                |
+
+Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`.
+
 ## Errors for invalid OCFL content
 
-Spec violations now throw a `ValidationError` (a subclass of `Error`) carrying the OCFL validation `code`, a `description` and a `path`. Check `error.code` rather than matching on the message, because the messages have changed.
+Spec violations now throw a `ValidationError`, an `OcflError` whose `code` is the OCFL validation code. It also carries a `description` and a `path`. The messages have changed from earlier versions.
 
 | Code | Raised when                                                                          |
 | ---- | ------------------------------------------------------------------------------------ |
@@ -78,6 +107,7 @@ Spec violations now throw a `ValidationError` (a subclass of `Error`) carrying t
 | E060 | The inventory sidecar digest doesn't match the inventory                             |
 | E069 | A storage root has no conformance declaration                                        |
 | E080 | A storage root's version declaration has the wrong contents                          |
+| E081 | A storage is loaded with an `ocflVersion` later than its root's version declaration  |
 | E082 | An object root is nested inside another object                                       |
 
 E036, E040 and E050 are checked when the inventory is read. A malformed object that used to load, and then failed later with a `TypeError`, now fails in `load()` or `getInventory()`.
@@ -112,7 +142,7 @@ To check an object or storage root against the spec, use a dedicated OCFL valida
 
 `getFile(..., true)` (lazy) still returns a file instance without a loaded inventory. `count()`, `files()`, and reading the content of a lazy file looked up by logical path or digest, also throw `ObjectNotFoundError` when the object doesn't exist.
 
-Both classes are exported from `@ocfl/ocfl` and `@ocfl/ocfl-fs`:
+Both are `OcflError`s, with codes `OBJECT_NOT_FOUND` and `OBJECT_NOT_LOADED`, and are exported from `@ocfl/ocfl` and `@ocfl/ocfl-fs`:
 
 ```ts
 import { ObjectNotFoundError } from '@ocfl/ocfl-fs';

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { type ContentAlgorithm, OcflDigest } from './digest.ts';
-import { ObjectNotFoundError, ObjectNotLoadedError } from './error.ts';
+import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 import type { OcflExtension } from './extension.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
@@ -152,7 +152,7 @@ class OcflObject {
       files = await this.#store.readdir(this.root);
     } catch (_error) {}
     if (files && files.length > 0) {
-      throw new Error('Cannot create an OCFL Object in a non-empty directory');
+      throw new OcflError('DIRECTORY_NOT_EMPTY', 'Cannot create an OCFL Object in a non-empty directory');
     }
     //create the namaste file
     const filePath = path.join(this.root, NAMASTE_T + prefix + this.ocflVersion);

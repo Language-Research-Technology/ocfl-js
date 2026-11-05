@@ -49,8 +49,7 @@ describe('PathDirectStorageLayout class', () => {
       //'/'
     ];
     for (const c of cases) {
-      console.log(c);
-      assert.throws(() => console.log(layout.map(c)));
+      assert.throws(() => layout.map(c), { name: 'OcflError', code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
     }
   });
 

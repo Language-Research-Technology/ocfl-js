@@ -86,14 +86,25 @@ EOF
 cat >"$consumer/consumer.ts" <<'EOF'
 import { join } from 'node:path';
 import { implementOcfl, type OcflStorage, OcflStore } from '@ocfl/ocfl';
-import ocflFs, { createStorage, OcflFsStore, type OcflFsStoreConfig } from '@ocfl/ocfl-fs';
+import ocflFs, { createStorage, OcflError, type OcflErrorCode, OcflFsStore, type OcflFsStoreConfig, ValidationError } from '@ocfl/ocfl-fs';
 
 const config: OcflFsStoreConfig = {};
 const store: OcflStore = OcflFsStore.getInstance(config);
 const custom = implementOcfl<OcflFsStoreConfig>(OcflFsStore);
 const storage: OcflStorage = await createStorage({ root: join(import.meta.dirname, 'storage'), layout: 'HashedNTupleStorageLayout' });
 
-if (!(store instanceof OcflStore) || custom.OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS || (await storage.has('missing'))) {
+// @ts-expect-error OcflErrorCode is a closed union
+const _unknownCode: OcflErrorCode = 'NO_SUCH_CODE';
+const codeOf = (e: unknown): OcflErrorCode | undefined => (e instanceof OcflError ? e.code : undefined);
+const missingCode = await storage.object('missing').files().then(() => undefined, codeOf);
+
+if (
+  !(store instanceof OcflStore) ||
+  custom.OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
+  (await storage.has('missing')) ||
+  missingCode !== 'OBJECT_NOT_FOUND' ||
+  !(ValidationError.prototype instanceof OcflError)
+) {
   throw new Error('consumer check failed');
 }
 EOF

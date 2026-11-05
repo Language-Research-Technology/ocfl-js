@@ -20,7 +20,9 @@ describe('FlatDirectStorageLayout class', () => {
     const id2 =
       'abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij';
 
-    assert.throws(() => layout.map(id1));
-    assert.throws(() => layout.map(id2));
+    const expected = { name: 'OcflError', code: 'ID_INCOMPATIBLE_WITH_LAYOUT' };
+    assert.throws(() => layout.map(id1), expected);
+    assert.throws(() => layout.map(id2), expected);
+    assert.throws(() => layout.map('extensions'), expected);
   });
 });

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import ocflTests from '@ocfl/ocfl-tests';
 import ocfl from '../src/index.ts';
+import { ocflError } from './ocfl-error.ts';
 
 describe('OcflStorage class using OcflFsStore', () => {
   ocflTests.storage(ocfl);
@@ -51,5 +52,12 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
   it('rejects an object reference with neither id nor root', () => {
     const storage = ocfl.storage({ root: path.join(tempdir, 'object-ref'), layout: 'HashedNTupleStorageLayout' });
     assert.throws(() => storage.object({}), { name: 'TypeError', message: '[OcflStorage] object id or root is required.' });
+  });
+
+  it('rejects creating a storage root in a non-empty directory', async () => {
+    const root = path.join(tempdir, 'not-empty');
+    await fs.promises.mkdir(root);
+    await fs.promises.writeFile(path.join(root, 'stray.txt'), 'x');
+    await assert.rejects(ocfl.createStorage({ root, layout: 'HashedNTupleStorageLayout' }), ocflError('DIRECTORY_NOT_EMPTY'));
   });
 });
