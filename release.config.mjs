@@ -14,7 +14,7 @@ export default {
     // Prereleases don't commit back, so CI can keep beta fast-forwarded to main
     !isPrerelease && '@semantic-release/changelog',
     [
-      // `pnpm publish` rather than @semantic-release/npm, which can't rewrite `workspace:*`
+      // `pnpm publish` rather than @semantic-release/npm, which can't rewrite `workspace:` ranges
       '@semantic-release/exec',
       {
         prepareCmd: `pnpm ${filters} version \${nextRelease.version} --no-git-checks`,

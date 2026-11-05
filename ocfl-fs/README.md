@@ -7,6 +7,10 @@ This package implements the OCFL client that stores storage root and its objects
 
     npm install @ocfl/ocfl-fs
 
+`@ocfl/ocfl` is a peer dependency of `@ocfl/ocfl-fs`, so your app shares one copy of it. pnpm and npm
+install it automatically; with Yarn, add it yourself. List it in your own dependencies too if you
+import from it directly.
+
 ## Usage
 
 The storage and object methods accept an optional fs parameter, which can be any module that implements Node.js fs module API. By default, it will use the built in fs module.

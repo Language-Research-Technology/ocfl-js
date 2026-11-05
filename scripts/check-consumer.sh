@@ -43,6 +43,9 @@ for pkg in ocfl ocfl-fs; do
 done
 
 grep -q 'workspace:' "$tmp/extract/ocfl-fs/package/package.json" && fail "packed @ocfl/ocfl-fs manifest still contains workspace:"
+want="^$(node -p 'require(process.argv[1]).version' "$root/ocfl/package.json")"
+got=$(node -p 'const m = require(process.argv[1]); m.dependencies?.["@ocfl/ocfl"] ? "dependency" : m.peerDependencies?.["@ocfl/ocfl"]' "$tmp/extract/ocfl-fs/package/package.json")
+[[ $got == "$want" ]] || fail "packed @ocfl/ocfl-fs has @ocfl/ocfl as $got, expected a $want peer dependency"
 
 ocfl_tgz=$(echo "$tmp/tarballs/ocfl"/*.tgz)
 fs_tgz=$(echo "$tmp/tarballs/ocfl-fs"/*.tgz)
@@ -64,11 +67,6 @@ cat >"$consumer/package.json" <<EOF
     "typescript": "$(dev_dep typescript)"
   }
 }
-EOF
-# ocfl-fs depends on the packed ocfl version, which may not be on the registry yet
-cat >"$consumer/pnpm-workspace.yaml" <<EOF
-overrides:
-  "@ocfl/ocfl": "file:$ocfl_tgz"
 EOF
 cat >"$consumer/tsconfig.json" <<'EOF'
 {

@@ -29,9 +29,9 @@ provenance, so there is no way to release around it. The environment only allows
 3. Run it again with **Dry run** unticked.
 
 semantic-release tags the release, publishes `@ocfl/ocfl` and then `@ocfl/ocfl-fs` under `latest`
-with `pnpm publish` (which replaces `@ocfl/ocfl-fs`'s `workspace:*` dependency with the released
-version), creates a GitHub release and commits the updated `CHANGELOG.md` and both packages'
-`package.json` back to `main`.
+with `pnpm publish` (which replaces `@ocfl/ocfl-fs`'s `workspace:^` peer dependency with a `^` range
+on the released version), creates a GitHub release and commits the updated `CHANGELOG.md` and both
+packages' `package.json` back to `main`.
 
 ## Prereleases
 
