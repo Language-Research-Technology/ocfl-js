@@ -26,7 +26,8 @@
     "format": "biome check --write .",
     "lint:types": "pnpm -r run typecheck",
     "test": "pnpm --filter @ocfl/ocfl --filter @ocfl/ocfl-fs test",
-    "coverage": "c8 pnpm test"
+    "coverage": "c8 pnpm test",
+    "check:version-states": "node scripts/check-version-states.mts"
   },
   "packageManager": "pnpm@12.16.1",
   "devDependencies": {
