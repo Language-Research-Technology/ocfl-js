@@ -72,6 +72,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.head, 'v1');
     assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test.txt');
     assert.deepStrictEqual(data2.manifest, inv.manifest);
+    assertHeadStateValid(inv);
   });
 
   it('can add file with identical content but different name', () => {
@@ -86,6 +87,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.versions.v1!.state.aabbccddeeff![1], 'test2.txt');
     assert.strictEqual(inv.versions.v1!.state.aabbccddeeff!.length, 2);
     assert.strictEqual(Object.keys(inv.versions.v1!.state).length, 1);
+    assertHeadStateValid(inv);
   });
 
   it('can add file with identical content and name', () => {
@@ -102,6 +104,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.versions.v2!.state.aabbccddeeff![0], 'test.txt');
     assert.strictEqual(inv.versions.v2!.state.aabbccddeeff!.length, 1);
     assert.strictEqual(Object.keys(inv.versions.v2!.state).length, 1);
+    assertHeadStateValid(inv);
   });
 
   it('can add file with different content but identical name', () => {
@@ -116,6 +119,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.versions.v2!.state.aabbccddeeff2!.length, 1);
     assert.strictEqual(Object.keys(inv.versions.v1!.state).length, 1);
     assert.strictEqual(Object.keys(inv.versions.v2!.state).length, 1);
+    assertHeadStateValid(inv);
   });
 
   it('can add same file after it has been deleted', () => {
@@ -129,6 +133,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.versions.v3!.state.aabbccddeeff![0], 'test.txt');
     assert.strictEqual(inv.versions.v3!.state.aabbccddeeff!.length, 1);
     assert.strictEqual(Object.keys(inv.versions.v3!.state).length, 1);
+    assertHeadStateValid(inv);
   });
 
   it('can add file with extra fixity', () => {
@@ -137,6 +142,7 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test1.txt');
     assert.strictEqual(inv.fixity!.crc32!['12345678']![0], 'v1/content/test1.txt');
     assert.strictEqual(inv.fixity!.size!['1024']![0], 'v1/content/test1.txt');
+    assertHeadStateValid(inv);
   });
 
   it('can detect state change', () => {
@@ -172,6 +178,7 @@ describe('OcflObjectInventory class', () => {
     inv = OcflObjectInventory.newVersion(inv);
     inv.reinstate('test.txt', 'v1');
     assert(inv.versions.v3!.state.aabbccddeeff);
+    assertHeadStateValid(inv);
   });
 
   describe('head version state stays valid', () => {
