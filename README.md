@@ -12,6 +12,10 @@ Install the library:
 pnpm add @ocfl/ocfl-fs
 ```
 
+`@ocfl/ocfl` is a peer dependency of `@ocfl/ocfl-fs`, so your app shares one copy of it. pnpm and npm
+install it automatically; with Yarn, add it yourself. List it in your own dependencies too if you
+import from it directly.
+
 The packages are ES modules with bundled TypeScript types and require Node.js 22.12 or later.
 
 Upgrading from 0.4? See [Migrating from 0.4](docs/migrating-from-0.4.md).

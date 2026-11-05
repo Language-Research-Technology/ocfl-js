@@ -213,11 +213,10 @@ importers:
         version: 7.0.2
 
   ocfl-fs:
-    dependencies:
-      '@ocfl/ocfl':
-        specifier: workspace:*
-        version: link:../ocfl
     devDependencies:
+      '@ocfl/ocfl':
+        specifier: workspace:^
+        version: link:../ocfl
       '@ocfl/ocfl-tests':
         specifier: workspace:*
         version: link:../ocfl-tests
