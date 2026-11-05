@@ -468,12 +468,27 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     return digest && files ? { digest, files } : undefined;
   }
 
+  /** Remove exactly one logical path from its digest's list in the version state */
+  #unlist(logicalPath: string, version: string = this.head): boolean {
+    const entry = this.#stateEntry(logicalPath, version);
+    const index = entry?.files.indexOf(logicalPath) ?? -1;
+    if (!entry || index < 0) {
+      return false;
+    }
+    if (entry.files.length === 1) {
+      delete this.versionState(version)?.[entry.digest];
+    } else {
+      entry.files.splice(index, 1);
+    }
+    this._indexRemove(logicalPath, version);
+    return true;
+  }
+
   /**
    * Add a new file to the inventory or update the digest of an existing file
    * @returns true if the state is changed
    */
   add(logicalPath: string, digest: string, fixity?: { [x: string]: string }): boolean {
-    const state = this.state;
     const contentPath = `${this.head}/${this.contentDirectory}/${logicalPath}`;
     // add fixity info
     if (fixity) {
@@ -481,25 +496,18 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
         this.addFixity(contentPath, digestName, digestValue);
       }
     }
+    if (this.getDigest(logicalPath) === digest) {
+      return false;
+    }
+    this.#unlist(logicalPath);
+    const state = this.state;
     const files = state[digest];
     if (files) {
-      // this is a file with identical content but different name
-      if (files.indexOf(logicalPath) < 0) {
-        files.push(logicalPath);
-      } else {
-        return false; // else, same digest and path, ignore
-      }
+      files.push(logicalPath);
     } else {
-      const mf = this.manifest[digest];
-      if (mf && mf.length > 0) {
-        // this is a reinstatement
-      } else {
-        // normal addition of a new file
+      // a digest already in the manifest is a reinstatement, otherwise new content
+      if (!this.manifest[digest]?.length) {
         this.manifest[digest] = [contentPath];
-      }
-      if (this.getDigest(logicalPath)) {
-        // this is an update, remove old digest
-        this.delete(logicalPath);
       }
       state[digest] = [logicalPath];
     }
@@ -586,26 +594,9 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * Delete a file
    */
   delete(logicalPath: string, version: string = this.head) {
-    const names = this._indexFindPaths(logicalPath, version);
     let count = 0;
-    const state = this.versionState(version);
-    if (!state) {
-      return 0;
-    }
-    for (const lp of names) {
-      const entry = this.#stateEntry(lp, version);
-      if (!entry) {
-        continue;
-      }
-      const { digest, files } = entry;
-      const index = files.indexOf(lp);
-      if (index >= 0) {
-        if (files.length === 1) {
-          delete state[digest];
-        } else {
-          files.splice(index, 1);
-        }
-        this._indexRemove(lp, version);
+    for (const lp of this._indexFindPaths(logicalPath, version)) {
+      if (this.#unlist(lp, version)) {
         count++;
       }
     }

@@ -4,6 +4,19 @@ import { beforeEach, describe, it } from 'node:test';
 import { OcflObjectInventory } from '../src/inventory.ts';
 import type { Inventory } from '../src/types.ts';
 
+function assertHeadStateValid(inv: OcflObjectInventory) {
+  const seen = new Set<string>();
+  for (const [digest, paths] of Object.entries(inv.state)) {
+    assert.ok(paths.length > 0, `digest ${digest} has no logical paths`);
+    assert.ok(inv.manifest[digest], `digest ${digest} is not in the manifest`);
+    for (const path of paths) {
+      assert.ok(!seen.has(path), `logical path ${path} appears more than once`);
+      seen.add(path);
+      assert.strictEqual(inv.getDigest(path), digest, `index disagrees with state for ${path}`);
+    }
+  }
+}
+
 describe('OcflObjectInventory class', () => {
   let data: Inventory;
   beforeEach(() => {
@@ -159,5 +172,22 @@ describe('OcflObjectInventory class', () => {
     inv = OcflObjectInventory.newVersion(inv);
     inv.reinstate('test.txt', 'v1');
     assert(inv.versions.v3!.state.aabbccddeeff);
+  });
+
+  describe('head version state stays valid', () => {
+    it('moves an updated logical path to a digest that already has other paths', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1');
+      inv.add('b', 'd2');
+      inv = OcflObjectInventory.newVersion(inv);
+      assert.strictEqual(inv.add('a', 'd2'), true);
+      assert.deepStrictEqual(inv.state, { d2: ['b', 'a'] });
+      assert.deepStrictEqual([...inv.files()].map((f) => f.logicalPath).sort(), ['a', 'b']);
+      assert.strictEqual(inv.getDigest('a'), 'd2');
+      assertHeadStateValid(inv);
+      assert.strictEqual(inv.add('a', 'd2'), false);
+      assert.deepStrictEqual(inv.state, { d2: ['b', 'a'] });
+      assertHeadStateValid(inv);
+    });
   });
 });
