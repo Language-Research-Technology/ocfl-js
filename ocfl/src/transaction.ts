@@ -198,7 +198,6 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
    * Create a new transaction instance.
    */
   static async create(ocflObject: OcflObject, ocflStore: OcflStore, inventory: OcflObjectInventoryMut, workspacePath: string) {
-    // @todo: validate existing object
     const workspaceVersionPath = path.join(workspacePath, inventory.head);
     if (await ocflStore.exists(workspaceVersionPath)) {
       throw new Error('Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt');
