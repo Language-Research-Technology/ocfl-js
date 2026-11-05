@@ -12,6 +12,7 @@
  *
  * Exits 1 if any object has a problem, 2 if an inventory can't be read.
  */
+import type { Dir } from 'node:fs';
 import { opendir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -24,10 +25,21 @@ type Inventory = {
 
 type Problem = { kind: 'duplicate' | 'conflict' | 'empty' | 'manifest'; detail: string; versions: string[] };
 
+const skipped: { dir: string; error: string }[] = [];
+
 async function* findObjectRoots(dir: string): AsyncGenerator<string> {
   const subdirs: string[] = [];
   let isObject = false;
-  for await (const entry of await opendir(dir)) {
+  let handle: Dir;
+  try {
+    handle = await opendir(dir);
+  } catch (e) {
+    const error = (e as NodeJS.ErrnoException).code ?? (e as Error).message;
+    skipped.push({ dir, error });
+    console.warn(`WARN skipping ${dir}: ${error}`);
+    return;
+  }
+  for await (const entry of handle) {
     if (entry.isFile() && entry.name.startsWith('0=ocfl_object_')) {
       isObject = true;
     } else if (entry.isDirectory()) {
@@ -139,9 +151,9 @@ async function main() {
   }
 
   if (json) {
-    console.log(JSON.stringify({ objects, bad, unreadable, results }, null, 2));
+    console.log(JSON.stringify({ objects, bad, unreadable, skipped, results }, null, 2));
   } else {
-    console.log(`\nScanned ${objects} object(s): ${bad} with problems, ${unreadable} unreadable.`);
+    console.log(`\nScanned ${objects} object(s): ${bad} with problems, ${unreadable} unreadable, ${skipped.length} director(ies) skipped.`);
   }
   process.exit(unreadable > 0 ? 2 : bad > 0 ? 1 : 0);
 }
