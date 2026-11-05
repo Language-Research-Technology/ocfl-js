@@ -122,6 +122,9 @@ async function main() {
   for (const root of roots) {
     for await (const objectRoot of findObjectRoots(path.resolve(root))) {
       objects++;
+      if (objects % 1000 === 0) {
+        console.warn(`... ${objects} objects scanned (${bad} with problems)`);
+      }
       let inv: Inventory;
       try {
         inv = JSON.parse(await readFile(path.join(objectRoot, 'inventory.json'), 'utf8'));
