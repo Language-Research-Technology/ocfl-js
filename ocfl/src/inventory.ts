@@ -1,3 +1,4 @@
+import { OcflError } from './error.ts';
 import type { Inventory, InventoryDigests, InventoryVersion } from './types.ts';
 import { createError } from './validation.ts';
 
@@ -552,8 +553,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
       const digests = this.#unlist(src);
       const digest = digests?.[this.digestAlgorithm];
       if (!digests || !digest) {
-        /** @todo decide: throw error or silently ignore non-existant file? */
-        continue;
+        throw new OcflError('FILE_NOT_FOUND', `Source logical path "${src}" does not exist in object [${this.id}]`);
       }
       this.delete(dest); // overwrite, including any paths under dest
       this.#list(dest, digest, digests);
@@ -578,7 +578,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
       const digests = this._indexGet(src, this.head, true);
       const entry = this.#stateEntry(src);
       if (!digests || !entry) {
-        throw new Error(`Source logical path "${src}" does not exist in object [${this.id}]`);
+        throw new OcflError('FILE_NOT_FOUND', `Source logical path "${src}" does not exist in object [${this.id}]`);
       }
       if (entry.files.indexOf(dest) >= 0) {
         /** @todo decide: throw error or silently ignore existing dest file? */

@@ -168,6 +168,76 @@ describe('OcflObject with a malformed or missing inventory', () => {
     );
   });
 
+  it('rejects a logical path that is absolute or leaves the object', async () => {
+    const o = ocfl.object({ id: 'bad-path', root: path.join(tempdir, 'bad-path') });
+    await assert.rejects(
+      o.update(async (t) => t.write('../escape.txt', 'x')),
+      ocflError('INVALID_LOGICAL_PATH'),
+    );
+    await assert.rejects(
+      o.update(async (t) => t.write('/abs.txt', 'x')),
+      ocflError('INVALID_LOGICAL_PATH'),
+    );
+    await assert.rejects(
+      o.update(async (t) => t.write('..\\escape.txt', 'x')),
+      ocflError('INVALID_LOGICAL_PATH'),
+    );
+    await o.update(async (t) => t.write('a.txt', 'a'));
+    await assert.rejects(
+      o.update(async (t) => t.copy('a.txt', '../escape.txt')),
+      ocflError('INVALID_LOGICAL_PATH'),
+    );
+    const dir = path.join(tempdir, 'bad-path-dir');
+    await fs.promises.mkdir(dir);
+    await fs.promises.writeFile(path.join(dir, 'b.txt'), 'b');
+    await assert.rejects(
+      o.update(async (t) => t.import(dir, 'a/../b')),
+      ocflError('INVALID_LOGICAL_PATH'),
+    );
+  });
+
+  it('accepts a logical path whose name starts with two dots', async () => {
+    const o = ocfl.object({ id: 'dot-name', root: path.join(tempdir, 'dot-name') });
+    await o.update(async (t) => t.write('..notes.txt', 'x'));
+    assert.strictEqual(await o.getFile('..notes.txt')?.text(), 'x');
+  });
+
+  it('rejects reading a lazy file the object does not contain', async () => {
+    const root = path.join(tempdir, 'lazy-missing');
+    await ocfl.object({ id: 'lazy-missing', root }).update(async (t) => t.write('a.txt', 'a'));
+    const file = ocfl.object({ root }).getFile('missing.txt', undefined, true);
+    await assert.rejects(file!.text(), ocflError('FILE_NOT_FOUND'));
+  });
+
+  it('rejects copying from a logical path the object does not contain', async () => {
+    const o = ocfl.object({ id: 'copy-missing', root: path.join(tempdir, 'copy-missing') });
+    await o.update(async (t) => t.write('a.txt', 'a'));
+    await assert.rejects(
+      o.update(async (t) => t.copy('missing.txt', 'b.txt')),
+      ocflError('FILE_NOT_FOUND'),
+    );
+  });
+
+  it('rejects renaming a logical path the object does not contain', async () => {
+    const o = ocfl.object({ id: 'rename-missing', root: path.join(tempdir, 'rename-missing') });
+    await o.update(async (t) => t.write('a.txt', 'a'));
+    await assert.rejects(
+      o.update(async (t) => t.rename('missing.txt', 'b.txt')),
+      ocflError('FILE_NOT_FOUND'),
+    );
+  });
+
+  it('keeps the error of each source an import fails on', async () => {
+    const source = path.join(tempdir, 'import-source.txt');
+    await fs.promises.writeFile(source, 'x');
+    const o = ocfl.object({ id: 'import-fail', root: path.join(tempdir, 'import-fail') });
+    await assert.rejects(o.import([[source, '../escape.txt']]), (e) => {
+      assert.ok(e instanceof AggregateError);
+      assert.strictEqual(e.errors.length, 1);
+      return ocflError('INVALID_LOGICAL_PATH')(e.errors[0]);
+    });
+  });
+
   it('rolls back and rethrows the update error when an earlier operation failed', async () => {
     const o = ocfl.object({ id: 'rollback', root: path.join(tempdir, 'rollback') });
     await assert.rejects(
