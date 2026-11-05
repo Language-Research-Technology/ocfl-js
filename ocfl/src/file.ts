@@ -1,3 +1,4 @@
+import { OcflError } from './error.ts';
 import type { OcflObject } from './object.ts';
 
 export interface FileRef {
@@ -78,7 +79,10 @@ class OcflObjectFile {
       const version = !this.version || this.version === 'latest' ? inv.head : this.version;
       contentPath = this.digest ? inv.getContentPath(this.digest) : this.logicalPath && inv.getFile(this.logicalPath, version)?.contentPath;
       if (!contentPath) {
-        throw new Error(`Cannot find content "${this.toString()}" in the OCFL Object "${this.#ocflObject.id}" version "${this.version || 'latest'}"`);
+        throw new OcflError(
+          'FILE_NOT_FOUND',
+          `Cannot find content "${this.toString()}" in the OCFL Object "${this.#ocflObject.id}" version "${this.version || 'latest'}"`,
+        );
       }
     }
     return contentPath;

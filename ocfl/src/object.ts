@@ -292,10 +292,10 @@ class OcflObject {
 
     await this.update(async (t) => {
       const res = await parallelize([...items], async ([source = '', target]) => t.import(source, target));
-      const errors = items.filter((_, i) => res[i] instanceof Error).map(([source]) => source);
+      const errors = res.filter((r) => r instanceof Error);
       if (errors.length) {
-        const msg = `Cannot add the files: ${errors.join(', ')}`;
-        throw new Error(msg);
+        const sources = items.filter((_, i) => res[i] instanceof Error).map(([source]) => source);
+        throw new AggregateError(errors, `Cannot add the files: ${sources.join(', ')}`);
       }
     }, mode);
   }

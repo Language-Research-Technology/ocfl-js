@@ -11,6 +11,17 @@ import { isErrnoException, parallelize } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 
+function invalidLogicalPath(logicalPath: string) {
+  return new OcflError('INVALID_LOGICAL_PATH', `Logical path "${logicalPath}" must be a relative path without \`..\``);
+}
+
+// Backslash counts as a separator because path.normalize treats it as one on Windows
+function checkLogicalPath(logicalPath: string) {
+  if (logicalPath.startsWith('/') || path.isAbsolute(logicalPath) || logicalPath.split(/[/\\]/).includes('..')) {
+    throw invalidLogicalPath(logicalPath);
+  }
+}
+
 export interface CommitOptions {
   /** Freeform text used to record the rationale for creating the current version */
   message?: string | undefined;
@@ -183,6 +194,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   _inventory: OcflObjectInventoryMut;
   _createdDir: string;
   _queue: TrackedPromise<unknown>[] = [];
+  _writers = new Set<WritableStreamDefaultWriter>();
   _committed = false;
 
   constructor(ocflObject: OcflObject, ocflStore: OcflStore, inventory: OcflObjectInventoryMut, workspaceVersionPath: string, createdDir: string) {
@@ -211,16 +223,20 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   }
 
   _getRealPath(logicalPath: string) {
-    const p = path.normalize(logicalPath);
-    if (p.startsWith('/') || p.startsWith('..')) {
-      throw new Error('logicalPath must be a relative path without `..`');
+    checkLogicalPath(logicalPath);
+    const root = path.resolve(this._contentRoot);
+    const resolved = path.resolve(root, logicalPath);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+      throw invalidLogicalPath(logicalPath);
     }
-    return path.join(this._contentRoot, p);
+    return path.join(this._contentRoot, path.normalize(logicalPath));
   }
 
   async rollback() {
     if (!this._committed) {
-      await Promise.all(this._queue);
+      // An unclosed writer's `closed` never settles, so abort it first
+      await Promise.allSettled([...this._writers].map((w) => w.abort()));
+      await Promise.allSettled(this._queue);
       if (this._createdDir) {
         await this._store.remove(this._createdDir);
       }
@@ -318,6 +334,9 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         inv.add(logicalPath, digest, fixity);
       },
     });
+    this._writers.add(writer);
+    const forget = () => this._writers.delete(writer);
+    writer.closed.then(forget, forget);
     this._track(writer.closed);
 
     return ws;
@@ -380,20 +399,26 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   async import(source: string, target?: string) {
     return this._transact(async () => {
       const dest = target ?? path.basename(source);
+      checkLogicalPath(dest);
       const srcStat = await this._store.stat(source);
       if (srcStat.isFile()) {
         await this.importFile(source, dest);
       } else if (srcStat.isDirectory()) {
         const files = await this._store.readdir(source);
-        await parallelize(files, async (filename) => {
+        const res = await parallelize(files, async (filename) => {
           await this.import(path.join(source, filename), path.join(dest, filename));
         });
+        const errors = res.filter((r) => r instanceof Error);
+        if (errors.length) {
+          throw new AggregateError(errors, `Cannot import the directory ${source}`);
+        }
       }
     });
   }
 
   async copy(source: string, target: string) {
     return this._transact(async () => {
+      checkLogicalPath(target);
       this._inventory.copy(source, target);
     });
   }
@@ -420,6 +445,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
 
   async remove(logicalPath: string, options?: RemoveOptions) {
     return this._transact(async () => {
+      const realPath = this._getRealPath(logicalPath);
       if (options?.purge) {
         // completely remove content from all versions
         let ver = this._inventory.versionNumber.previous();
@@ -429,7 +455,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         }
       }
       if (this._inventory.delete(logicalPath)) {
-        return this._store.remove(this._getRealPath(logicalPath));
+        return this._store.remove(realPath);
       }
     });
   }
