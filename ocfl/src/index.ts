@@ -12,7 +12,8 @@ import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig } from '.
 
 export { OcflConstants } from './constants.ts';
 export { OcflDigest } from './digest.ts';
-export { ObjectNotFoundError, ObjectNotLoadedError } from './error.ts';
+export type { OcflErrorCode } from './error.ts';
+export { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 export { OcflExtension, OcflStorageLayout } from './extension.ts';
 export type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direct-storage-layout.ts';
 export type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
@@ -28,6 +29,7 @@ export { OcflStore } from './store.ts';
 export type { CommitOptions, RemoveOptions } from './transaction.ts';
 export { OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
 export type * from './types.ts';
+export { ValidationError } from './validation.ts';
 export { extensions };
 
 /**

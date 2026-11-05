@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Writable } from 'node:stream';
 import { OcflConstants } from './constants.ts';
 import { OcflDigest } from './digest.ts';
+import { OcflError } from './error.ts';
 import type { OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
 import type { OcflStore, WriteFileData } from './store.ts';
@@ -200,7 +201,10 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   static async create(ocflObject: OcflObject, ocflStore: OcflStore, inventory: OcflObjectInventoryMut, workspacePath: string) {
     const workspaceVersionPath = path.join(workspacePath, inventory.head);
     if (await ocflStore.exists(workspaceVersionPath)) {
-      throw new Error('Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt');
+      throw new OcflError(
+        'UPDATE_IN_PROGRESS',
+        'Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt',
+      );
     }
     await ocflStore.mkdir(workspacePath);
     return new OcflObjectTransactionImpl(ocflObject, ocflStore, inventory, workspaceVersionPath, workspacePath);
