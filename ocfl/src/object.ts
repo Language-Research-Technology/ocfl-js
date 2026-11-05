@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { type ContentAlgorithm, OcflDigest } from './digest.ts';
+import { ObjectNotFoundError, ObjectNotLoadedError } from './error.ts';
 import type { OcflExtension } from './extension.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
@@ -43,6 +44,7 @@ class OcflObject {
   fixityAlgorithms: string[] | undefined;
   contentDirectory: string;
   _inventory: { [version: string]: OcflObjectInventory } = {};
+  #latestRead = false;
 
   /**
    * Create a new OCFL Object
@@ -225,6 +227,9 @@ class OcflObject {
       if (inv) {
         this._setInventory(inv, version);
       }
+      if (version === 'latest') {
+        this.#latestRead = true;
+      }
     }
     return this._inventory[version];
   }
@@ -232,7 +237,7 @@ class OcflObject {
   async _requireInventory(): Promise<OcflObjectInventory> {
     const inv = await this.getInventory();
     if (!inv) {
-      throw new Error(`OCFL Object "${this.id}" does not exist`);
+      throw new ObjectNotFoundError(this.#label);
     }
     return inv;
   }
@@ -350,10 +355,12 @@ class OcflObject {
   /**
    * Return a file representation by the content path and version,
    * @param version - Defaults to `'latest'`.
+   * @returns `undefined` if the object has no such file.
+   * @throws {ObjectNotFoundError} If the object does not exist.
    */
   async fileByContentPath(contentPath: string, version?: string) {
-    const inv = await this.getInventory();
-    const fr = inv?.getFileByContentPath(contentPath, version);
+    const inv = await this._requireInventory();
+    const fr = inv.getFileByContentPath(contentPath, version);
     if (fr) {
       return new OcflObjectFile(this, fr);
     }
@@ -362,10 +369,12 @@ class OcflObject {
   /**
    * Return a file representation by the digest and version,
    * @param version - Defaults to `'latest'`.
+   * @returns `undefined` if the object has no such file.
+   * @throws {ObjectNotFoundError} If the object does not exist.
    */
   async fileByDigest(digest: string, version?: string) {
-    const inv = await this.getInventory();
-    const fr = inv?.getFileByDigest(digest, version);
+    const inv = await this._requireInventory();
+    const fr = inv.getFileByDigest(digest, version);
     if (fr) {
       return new OcflObjectFile(this, fr);
     }
@@ -374,10 +383,12 @@ class OcflObject {
   /**
    * Return a file representation by the logical path and version,
    * @param version - Defaults to `'latest'`.
+   * @returns `undefined` if the object has no such file.
+   * @throws {ObjectNotFoundError} If the object does not exist.
    */
   async fileByLogicalPath(logicalPath: string, version?: string) {
-    const inv = await this.getInventory();
-    const fr = inv?.getFile(logicalPath, version);
+    const inv = await this._requireInventory();
+    const fr = inv.getFile(logicalPath, version);
     if (fr) {
       return new OcflObjectFile(this, fr);
     }
@@ -392,24 +403,29 @@ class OcflObject {
    * digest of the file content, or content path (eg: 'v1/content/test')
    * @param version - The object version name, eg: 'v1', 'v2'. Default to 'latest'. Only used if opt is a LogicalPath. Defaults to `'latest'`.
    * @param lazy - If true, always return a file instance even if the object inventory file is not loaded.
+   * @returns `undefined` if the object has no such file.
+   * @throws {ObjectNotLoadedError} If not lazy and the inventory has not been read, by {@link load} or any method that reads it.
+   * @throws {ObjectNotFoundError} If not lazy and the loaded object does not exist.
    */
   getFile(opt: LogicalPath | FileRefLogical | FileRefDigest | FileRefContent, version?: string, lazy?: boolean): OcflObjectFile | undefined {
     const inv = this.inventory;
     const file: FileRef = typeof opt === 'string' ? { logicalPath: opt, version: version } : { ...opt };
-    if (inv) {
-      let fr: InventoryFile | undefined;
-      if (file.logicalPath) {
-        fr = inv?.getFile(file.logicalPath, file.version);
-      } else if (file.digest) {
-        fr = inv?.getFileByDigest(file.digest, file.version);
-      } else if (file.contentPath) {
-        fr = inv?.getFileByContentPath(file.contentPath, file.version);
+    if (!inv) {
+      if (lazy) {
+        return new OcflObjectFile(this, file);
       }
-      if (fr) {
-        return new OcflObjectFile(this, fr);
-      }
-    } else if (lazy) {
-      return new OcflObjectFile(this, file);
+      throw this.#latestRead ? new ObjectNotFoundError(this.#label) : new ObjectNotLoadedError(this.#label);
+    }
+    let fr: InventoryFile | undefined;
+    if (file.logicalPath) {
+      fr = inv.getFile(file.logicalPath, file.version);
+    } else if (file.digest) {
+      fr = inv.getFileByDigest(file.digest, file.version);
+    } else if (file.contentPath) {
+      fr = inv.getFileByContentPath(file.contentPath, file.version);
+    }
+    if (fr) {
+      return new OcflObjectFile(this, fr);
     }
   }
 
@@ -425,8 +441,12 @@ class OcflObject {
    * Optionally, preloads and reads all files metadata from the underlying storage.
    */
   async load({ filesMetadata }: { filesMetadata?: boolean | undefined } = {}) {
-    this._inventory = {}; // reset inventory cache
-    const inv = await this.getInventory();
+    const inv = await this._readInventory();
+    this._inventory = {};
+    if (inv) {
+      this._setInventory(inv);
+    }
+    this.#latestRead = true;
     //await this.loadExtensions();
     if (inv && filesMetadata) {
       //load file metadata from underlying storage
@@ -459,6 +479,10 @@ class OcflObject {
    */
   async stat(relPath: string) {
     return this.#store.stat(path.join(this.root, relPath));
+  }
+
+  get #label() {
+    return this.id ?? this.root;
   }
 
   toString() {

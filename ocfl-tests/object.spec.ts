@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { after, before, describe, it } from 'node:test';
-import type { Inventory, OcflObject, OcflObjectConfig, OcflVersion } from '@ocfl/ocfl';
+import { type Inventory, ObjectNotFoundError, ObjectNotLoadedError, type OcflObject, type OcflObjectConfig, type OcflVersion } from '@ocfl/ocfl';
 import type { Ocfl } from './index.ts';
 
 export default (ocfl: Ocfl) => {
@@ -431,6 +431,82 @@ export default (ocfl: Ocfl) => {
     after(async () => {
       // delete temp dir
       await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+  });
+
+  describe('file lookup errors', () => {
+    const fixture = path.join(import.meta.dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full');
+    let tempdir: string;
+    const missingObject = () => ocfl.object({ id: 'missing', root: path.join(tempdir, 'missing') });
+
+    before(async () => {
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-lookup-'));
+    });
+
+    after(async () => {
+      await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+
+    it('keeps serving getFile from the loaded inventory while reloading', async () => {
+      const o = ocfl.object({ root: fixture });
+      await o.load();
+      const reload = o.load();
+      assert.ok(o.getFile('foo/bar.xml'));
+      await reload;
+    });
+
+    it('throws ObjectNotLoadedError from getFile before load', () => {
+      const o = ocfl.object({ root: fixture });
+      assert.throws(() => o.getFile('foo/bar.xml'), ObjectNotLoadedError);
+      assert.throws(() => o.getFile('foo/bar.xml'), { name: 'ObjectNotLoadedError', message: /spec-ex-full.*load\(\)/ });
+    });
+
+    it('throws ObjectNotFoundError from getFile after loading an object that does not exist', async () => {
+      const o = missingObject();
+      await o.load();
+      assert.throws(() => o.getFile('a.txt'), ObjectNotFoundError);
+      assert.throws(() => o.getFile('a.txt'), { name: 'ObjectNotFoundError', message: 'OCFL Object "missing" does not exist' });
+    });
+
+    it('throws ObjectNotFoundError from fileBy* for an object that does not exist', async () => {
+      const o = missingObject();
+      await assert.rejects(o.fileByLogicalPath('a.txt'), ObjectNotFoundError);
+      await assert.rejects(o.fileByDigest('abc'), ObjectNotFoundError);
+      await assert.rejects(o.fileByContentPath('v1/content/a.txt'), ObjectNotFoundError);
+    });
+
+    it('returns a lazy file without loading, which throws ObjectNotFoundError on read if the object does not exist', async () => {
+      const o = missingObject();
+      const file = o.getFile('a.txt', undefined, true);
+      assert.strictEqual(file?.logicalPath, 'a.txt');
+      await assert.rejects(file.text(), ObjectNotFoundError);
+      await assert.rejects(o.count(), ObjectNotFoundError);
+      await assert.rejects(o.files(), ObjectNotFoundError);
+    });
+
+    it('reads a lazy file from an existing object without loading', async () => {
+      const o = ocfl.object({ root: fixture });
+      const expected = await fs.promises.readFile(path.join(fixture, 'v2/content/foo/bar.xml'), 'utf8');
+      assert.strictEqual(await o.getFile('foo/bar.xml', undefined, true)?.text(), expected);
+    });
+
+    it('finds a file in an existing object by logical path, digest and content path', async () => {
+      const o = ocfl.object({ root: fixture });
+      const byPath = await o.fileByLogicalPath('foo/bar.xml');
+      assert.strictEqual(byPath?.contentPath, 'v2/content/foo/bar.xml');
+      assert.strictEqual((await o.fileByDigest(byPath.digest!))?.contentPath, 'v2/content/foo/bar.xml');
+      assert.strictEqual((await o.fileByContentPath('v2/content/foo/bar.xml'))?.logicalPath, 'foo/bar.xml');
+    });
+
+    it('returns undefined for a file that is not in an existing object', async () => {
+      const o = ocfl.object({ root: fixture });
+      await o.load();
+      assert.strictEqual(o.getFile('nope.txt'), undefined);
+      assert.strictEqual(o.getFile({ digest: 'abc' }), undefined);
+      assert.strictEqual(o.getFile({ contentPath: 'v1/content/nope.txt' }), undefined);
+      assert.strictEqual(await o.fileByLogicalPath('nope.txt'), undefined);
+      assert.strictEqual(await o.fileByDigest('abc'), undefined);
+      assert.strictEqual(await o.fileByContentPath('v1/content/nope.txt'), undefined);
     });
   });
 

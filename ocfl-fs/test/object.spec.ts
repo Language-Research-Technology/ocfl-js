@@ -6,7 +6,7 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import type { Inventory } from '@ocfl/ocfl';
 import ocflTests from '@ocfl/ocfl-tests';
-import ocfl from '../src/index.ts';
+import ocfl, { ObjectNotFoundError, ObjectNotLoadedError } from '../src/index.ts';
 
 describe('OcflObject class using OcflFsStore', () => {
   // it("constructor", function() {
@@ -131,6 +131,13 @@ describe('OcflObject with a malformed or missing inventory', () => {
       o.update(async (t) => t.write('a.txt', 'a'), 'replace'),
       { name: 'TypeError', message: "Invalid mode 'replace'" },
     );
+  });
+
+  it('exports the object errors for instanceof checks', async () => {
+    const o = ocfl.object({ id: 'exported-errors', root: path.join(tempdir, 'exported-errors') });
+    assert.throws(() => o.getFile('a.txt'), ObjectNotLoadedError);
+    await o.load();
+    assert.throws(() => o.getFile('a.txt'), ObjectNotFoundError);
   });
 
   it('rejects counting or listing files of an object without an inventory', async () => {

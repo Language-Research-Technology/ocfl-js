@@ -6,4 +6,18 @@ class NotImplementedError extends Error {
   }
 }
 
-export { NotImplementedError };
+class ObjectNotLoadedError extends Error {
+  constructor(label: string) {
+    super(`OCFL Object "${label}" is not loaded; call load() first`);
+    this.name = 'ObjectNotLoadedError';
+  }
+}
+
+class ObjectNotFoundError extends Error {
+  constructor(label: string) {
+    super(`OCFL Object "${label}" does not exist`);
+    this.name = 'ObjectNotFoundError';
+  }
+}
+
+export { NotImplementedError, ObjectNotFoundError, ObjectNotLoadedError };
