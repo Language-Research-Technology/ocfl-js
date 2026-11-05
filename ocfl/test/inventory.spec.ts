@@ -15,6 +15,9 @@ function assertHeadStateValid(inv: OcflObjectInventory) {
       assert.strictEqual(inv.getDigest(path), digest, `index disagrees with state for ${path}`);
     }
   }
+  for (const path of seen) {
+    assert.ok(!seen.has(path.slice(0, path.lastIndexOf('/'))), `logical path ${path} is under a file`);
+  }
 }
 
 describe('OcflObjectInventory class', () => {
@@ -247,6 +250,57 @@ describe('OcflObjectInventory class', () => {
       inv = OcflObjectInventory.newVersion(inv);
       inv.reinstate('x', 'v1');
       assert.deepStrictEqual(inv.state, { d2: ['z'], d1: ['x'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('renames a directory onto paths that share digests', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('x/a', 'd1');
+      inv.add('x/b', 'd2');
+      inv.add('y/a', 'd1');
+      inv.rename('x', 'y');
+      assert.deepStrictEqual(inv.state, { d1: ['y/a'], d2: ['y/b'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('renames a file onto a directory, replacing the paths under it', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('x', 'd1');
+      inv.add('y/f', 'd2');
+      inv.rename('x', 'y');
+      assert.deepStrictEqual(inv.state, { d1: ['y'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('deletes a directory and every path under it', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a/b', 'd1');
+      inv.add('a/c', 'd1');
+      inv.add('ab', 'd1');
+      assert.strictEqual(inv.delete('a'), 2);
+      assert.deepStrictEqual(inv.state, { d1: ['ab'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('leaves the state unchanged when reinstating an unchanged path', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv.add('x', 'd1');
+      inv.add('y', 'd1');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.reinstate('x', 'v1');
+      assert.deepStrictEqual(inv.state, { d1: ['x', 'y'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('reinstates a file over a directory, replacing the paths under it', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv.add('x', 'd1');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.delete('x');
+      inv.add('x/y', 'd2');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.reinstate('x', 'v1');
+      assert.deepStrictEqual(inv.state, { d1: ['x'] });
       assertHeadStateValid(inv);
     });
   });

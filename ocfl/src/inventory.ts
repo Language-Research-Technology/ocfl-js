@@ -509,7 +509,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     if (this.getDigest(logicalPath) === digest) {
       return false;
     }
-    // a digest already in the manifest is a reinstatement or a duplicate, otherwise new content
+    // reinstated or duplicate content is already in the manifest
     if (!this.manifest[digest]?.length) {
       this.manifest[digest] = [contentPath];
     }
@@ -555,7 +555,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
         /** @todo decide: throw error or silently ignore non-existant file? */
         continue;
       }
-      this.#unlist(dest); //overwrite
+      this.delete(dest); // overwrite, including any paths under dest
       this.#list(dest, digest, digests);
     }
   }
@@ -609,8 +609,10 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
       const digests = this._indexGet(lp, versionName);
       const digest = digests?.[this.digestAlgorithm];
       if (digests && digest) {
-        this.#unlist(lp);
-        this.#list(lp, digest, digests);
+        if (this.getDigest(lp) !== digest) {
+          this.delete(lp);
+          this.#list(lp, digest, digests);
+        }
         count++;
       }
     }
