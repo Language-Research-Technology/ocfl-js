@@ -8,7 +8,7 @@ import { OcflObject } from './object.ts';
 import { findNamasteVersion, isDirEmpty } from './utils.ts';
 import { createError } from './validation.ts';
 
-const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
+const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
 
 import { OcflDigest } from './digest.ts';
 
@@ -126,6 +126,7 @@ class OcflStorageImpl extends OcflStorage {
   #layout: OcflStorageLayout | undefined;
   #store: OcflStore;
   #objectConfig: Omit<OcflObjectConfig, 'root' | 'workspace' | 'id' | 'ocflVersion'>;
+  #configuredOcflVersion: OcflVersion | undefined;
 
   constructor(config: OcflStorageConfig, store: OcflStore) {
     super();
@@ -148,6 +149,7 @@ class OcflStorageImpl extends OcflStorage {
     if (ocflVersion) {
       this.ocflVersion = ocflVersion;
     }
+    this.#configuredOcflVersion = ocflVersion;
     this.#objectConfig = objectConfig;
   }
 
@@ -216,6 +218,13 @@ class OcflStorageImpl extends OcflStorage {
     if (!ocflVersion) {
       throw createError('E069', this.root);
     }
+    const rootVersion = ocflVersion as OcflVersion;
+    const configured = this.#configuredOcflVersion;
+    // OCFL_VERSIONS is ordered newest first
+    if (configured && OCFL_VERSIONS.indexOf(configured) < OCFL_VERSIONS.indexOf(rootVersion)) {
+      throw createError('E081', this.root, `configured ocflVersion ${configured} is later than the storage root's ${rootVersion}`);
+    }
+    this.ocflVersion = configured ?? rootVersion;
     let layoutName: string | undefined;
     let layoutConfig: OcflExtensionConfig | undefined;
     // load layout
