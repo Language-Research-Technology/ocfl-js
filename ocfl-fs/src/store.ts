@@ -109,16 +109,27 @@ class OcflFsStore extends OcflStore {
   }
 
   async move(source: string, target: string) {
+    const { cp, mkdir, mkdtemp, rename, rm } = this.fs.promises;
+    const parent = path.dirname(target);
+    await mkdir(parent, { recursive: true });
     try {
-      await this.fs.promises.mkdir(path.dirname(target), { recursive: true });
-      return this.fs.promises.rename(source, target);
+      await rename(source, target);
+      return;
     } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'EXDEV') {
-        await this.fs.promises.cp(source, path.dirname(target), { recursive: true, preserveTimestamps: true });
-        return this.fs.promises.rm(target, { recursive: true, force: true });
+      if (!(error instanceof Error && 'code' in error && error.code === 'EXDEV')) {
+        throw error;
       }
-      throw error;
     }
+    // Stage on the target's filesystem so the final step is an atomic rename.
+    const staging = await mkdtemp(path.join(parent, `.${path.basename(target)}-`));
+    try {
+      const staged = path.join(staging, path.basename(target));
+      await cp(source, staged, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
+      await rename(staged, target);
+    } finally {
+      await rm(staging, { recursive: true, force: true });
+    }
+    await rm(source, { recursive: true, force: true });
   }
 
   async remove(filePath: string) {
