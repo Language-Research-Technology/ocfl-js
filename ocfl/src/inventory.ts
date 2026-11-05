@@ -546,10 +546,15 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
       pairs.push([srcLogicalPath, destLogicalPath]);
     }
     for (const [src, dest] of pairs) {
+      if (src === dest) {
+        continue;
+      }
+      if (this.#stateEntry(src)) {
+        this.#unlist(dest); //overwrite
+      }
       const entry = this.#stateEntry(src);
       const index = entry?.files.indexOf(src) ?? -1;
       if (entry && index >= 0) {
-        this.delete(dest); //overwrite
         entry.files[index] = dest;
         const digests = this._indexRemove(src, this.head);
         if (digests) {
