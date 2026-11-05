@@ -167,4 +167,45 @@ describe('OcflObject with a malformed or missing inventory', () => {
       ocflError('DIRECTORY_NOT_EMPTY'),
     );
   });
+
+  it('rolls back and rethrows the update error when an earlier operation failed', async () => {
+    const o = ocfl.object({ id: 'rollback', root: path.join(tempdir, 'rollback') });
+    await assert.rejects(
+      o.update(async (t) => {
+        await t.write('a.txt', 'a');
+        await t.write('../escape.txt', 'x').catch(() => {});
+        throw new Error('callback failed');
+      }),
+      { message: 'callback failed' },
+    );
+    await o.update(async (t) => t.write('b.txt', 'b'));
+    assert.strictEqual(await o.count(), 1);
+  });
+
+  it('fails a directory import when one of its files fails', async () => {
+    const dir = path.join(tempdir, 'import-dir');
+    await fs.promises.mkdir(dir);
+    await fs.promises.writeFile(path.join(dir, 'ok.txt'), 'ok');
+    await fs.promises.writeFile(path.join(dir, 'locked.txt'), 'locked');
+    await fs.promises.chmod(path.join(dir, 'locked.txt'), 0o000);
+    const o = ocfl.object({ id: 'import-dir', root: path.join(tempdir, 'import-dir-object') });
+    try {
+      await assert.rejects(o.import(dir));
+      await assert.rejects(o.count(), ocflError('OBJECT_NOT_FOUND'));
+    } finally {
+      await fs.promises.chmod(path.join(dir, 'locked.txt'), 0o600);
+    }
+  });
+
+  it('rolls back an update that leaves a writable stream open', async () => {
+    const o = ocfl.object({ id: 'open-writer', root: path.join(tempdir, 'open-writer') });
+    await assert.rejects(
+      o.update(async (t) => {
+        await t.createWritable('a.txt');
+      }),
+      /Unfinished operations detected/,
+    );
+    await o.update(async (t) => t.write('b.txt', 'b'));
+    assert.strictEqual(await o.count(), 1);
+  });
 });

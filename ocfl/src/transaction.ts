@@ -183,6 +183,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   _inventory: OcflObjectInventoryMut;
   _createdDir: string;
   _queue: TrackedPromise<unknown>[] = [];
+  _writers = new Set<WritableStreamDefaultWriter>();
   _committed = false;
 
   constructor(ocflObject: OcflObject, ocflStore: OcflStore, inventory: OcflObjectInventoryMut, workspaceVersionPath: string, createdDir: string) {
@@ -220,7 +221,9 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
 
   async rollback() {
     if (!this._committed) {
-      await Promise.all(this._queue);
+      // An unclosed writer's `closed` never settles, so abort it first
+      await Promise.allSettled([...this._writers].map((w) => w.abort()));
+      await Promise.allSettled(this._queue);
       if (this._createdDir) {
         await this._store.remove(this._createdDir);
       }
@@ -318,6 +321,9 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         inv.add(logicalPath, digest, fixity);
       },
     });
+    this._writers.add(writer);
+    const forget = () => this._writers.delete(writer);
+    writer.closed.then(forget, forget);
     this._track(writer.closed);
 
     return ws;
@@ -385,9 +391,13 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         await this.importFile(source, dest);
       } else if (srcStat.isDirectory()) {
         const files = await this._store.readdir(source);
-        await parallelize(files, async (filename) => {
+        const res = await parallelize(files, async (filename) => {
           await this.import(path.join(source, filename), path.join(dest, filename));
         });
+        const errors = res.filter((r) => r instanceof Error);
+        if (errors.length) {
+          throw new AggregateError(errors, `Cannot import the directory ${source}`);
+        }
       }
     });
   }

@@ -162,3 +162,6 @@ try {
 
 - Looking up a file in a version that doesn't exist returns `undefined` (or `0` from `count()`) instead of throwing.
 - `object.import()` no longer empties the array of sources passed to it.
+- Importing a directory fails if any of its files fails. Previously the other files were committed and the failures were dropped.
+- An update that leaves a stream from `createWritable()` open now rolls back and rejects with "Unfinished operations detected" instead of never settling.
+- When an `update()` callback throws after one of its operations failed, the update now rolls back fully and rethrows the callback's error. Previously it rethrew the operation's error and left the workspace behind, so the next update of that object failed with `UPDATE_IN_PROGRESS`.
