@@ -176,8 +176,6 @@ class OcflStorageLayout<C extends object = object> extends OcflExtension<C> {
     return true;
   }
 
-  async validate() {}
-
   /**
    * Map an object identifier to a path
    * @param id - The identifier of the OCFL Object

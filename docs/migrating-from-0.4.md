@@ -87,6 +87,17 @@ Other invalid input that used to cause a `TypeError` now throws a descriptive er
 - calling `count()` or `files()` on an object that has no inventory
 - calling `storage.object()` with neither an id nor a root
 
+## Validation methods removed
+
+The library reads and writes OCFL objects and storage roots, but it isn't a validator. It raises a `ValidationError` only for the codes listed under [Errors for invalid OCFL content](#errors-for-invalid-ocfl-content), and only when it finds the problem while opening, reading or writing an object or storage root.
+
+These stub methods have been removed:
+
+- `OcflObject.validate()` and `OcflObject.verify()`, which only ever threw `Not Implemented`
+- `OcflStorageLayout.validate()`, which did nothing. Custom layouts that override it or call `super.validate()` should drop that code.
+
+To check an object or storage root against the spec, use a dedicated OCFL validator.
+
 ## Other behaviour changes
 
 - Looking up a file in a version that doesn't exist returns `undefined` (or `0` from `count()`) instead of throwing.
