@@ -12,6 +12,7 @@ import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig } from '.
 
 export { OcflConstants } from './constants.ts';
 export { OcflDigest } from './digest.ts';
+export { ObjectNotFoundError, ObjectNotLoadedError } from './error.ts';
 export { OcflExtension, OcflStorageLayout } from './extension.ts';
 export type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direct-storage-layout.ts';
 export type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';

@@ -36,14 +36,14 @@ The packages now declare their own types, so delete any hand-written module decl
 
 The declarations show where a value can be missing, so code that assumed otherwise may no longer compile. The most common cases:
 
-| API                                                                                | Now returns                                                                                   |
-| ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `object.getInventory()`                                                            | `Promise<OcflObjectInventory \| undefined>`, `undefined` when the object has no inventory yet |
-| `object.inventory`                                                                 | `OcflObjectInventory \| undefined` until the object is loaded                                 |
-| `object.getFile()`, `fileByLogicalPath()`, `fileByDigest()`, `fileByContentPath()` | `undefined` when the file isn't found                                                         |
-| `object.id`, `object.workspace`                                                    | `string \| undefined`                                                                         |
-| `inventory.getDigest()`, `inventory.versionState()`                                | `undefined` for an unknown logical path or version                                            |
-| `file.size`, `file.lastModified`                                                   | `number \| undefined`; set only when the object was loaded with `{ filesMetadata: true }`     |
+| API                                                                                | Now returns                                                                                                  |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `object.getInventory()`                                                            | `Promise<OcflObjectInventory \| undefined>`, `undefined` when the object has no inventory yet                |
+| `object.inventory`                                                                 | `OcflObjectInventory \| undefined` until the object is loaded                                                |
+| `object.getFile()`, `fileByLogicalPath()`, `fileByDigest()`, `fileByContentPath()` | `undefined` when the object has no such file (see [Errors for missing objects](#errors-for-missing-objects)) |
+| `object.id`, `object.workspace`                                                    | `string \| undefined`                                                                                        |
+| `inventory.getDigest()`, `inventory.versionState()`                                | `undefined` for an unknown logical path or version                                                           |
+| `file.size`, `file.lastModified`                                                   | `number \| undefined`; set only when the object was loaded with `{ filesMetadata: true }`                    |
 
 Optional config properties (`OcflStorageConfig`, `OcflObjectConfig`, commit and remove options) accept an explicit `undefined`, so they work with `exactOptionalPropertyTypes`.
 
@@ -97,6 +97,36 @@ These stub methods have been removed:
 - `OcflStorageLayout.validate()`, which did nothing. Custom layouts that override it or call `super.validate()` should drop that code.
 
 To check an object or storage root against the spec, use a dedicated OCFL validator.
+
+## Errors for missing objects
+
+`getFile()` and the `fileBy*()` methods used to return `undefined` whether the object wasn't loaded, didn't exist, or didn't contain the file. Only the last case still returns `undefined`:
+
+| Case                                           | `getFile()`                   | `fileByLogicalPath()`, `fileByDigest()`, `fileByContentPath()` |
+| ---------------------------------------------- | ----------------------------- | -------------------------------------------------------------- |
+| The inventory hasn't been read yet<sup>1</sup> | throws `ObjectNotLoadedError` | read the inventory as before                                   |
+| The object doesn't exist (no inventory)        | throws `ObjectNotFoundError`  | throw `ObjectNotFoundError`                                    |
+| The object exists but doesn't contain the file | `undefined`                   | `undefined`                                                    |
+
+<sup>1</sup> By `load()`, or by any method that reads the inventory, such as `getInventory()`, `count()`, `files()`, `fileBy*()` or `update()`.
+
+`getFile(..., true)` (lazy) still returns a file instance without a loaded inventory. `count()`, `files()`, and reading the content of a lazy file looked up by logical path or digest, also throw `ObjectNotFoundError` when the object doesn't exist.
+
+Both classes are exported from `@ocfl/ocfl` and `@ocfl/ocfl-fs`:
+
+```ts
+import { ObjectNotFoundError } from '@ocfl/ocfl-fs';
+
+await object.load();
+try {
+  const file = object.getFile('data.csv');
+  if (!file) return reply.code(404).send();
+  return reply.send(await file.stream());
+} catch (e) {
+  if (e instanceof ObjectNotFoundError) return reply.code(404).send();
+  throw e;
+}
+```
 
 ## Other behaviour changes
 
