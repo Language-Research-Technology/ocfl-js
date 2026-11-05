@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import type { OcflStorage } from '@ocfl/ocfl';
+import type { OcflStorage, OcflVersion } from '@ocfl/ocfl';
 import type { Ocfl } from './index.ts';
 
 export default (ocfl: Ocfl) => {
@@ -83,6 +83,55 @@ export default (ocfl: Ocfl) => {
     after(async () => {
       // delete temp dir
       await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+  });
+  describe('OCFL version of a loaded storage root', () => {
+    let tempdir: string;
+    before(async () => {
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-storage-version-'));
+    });
+    after(async () => {
+      await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+    const createRoot = async (name: string, ocflVersion: OcflVersion) => {
+      const root = path.join(tempdir, name);
+      await ocfl.storage({ root, ocflVersion }).create();
+      return root;
+    };
+
+    it('takes the version from a 1.0 root', async () => {
+      const root = await createRoot('root-1.0', '1.0');
+      const storage = await ocfl.storage({ root }).load();
+      assert.strictEqual(storage.ocflVersion, '1.0');
+    });
+
+    it('takes the version from a 1.1 root', async () => {
+      const root = await createRoot('root-1.1', '1.1');
+      const storage = await ocfl.storage({ root }).load();
+      assert.strictEqual(storage.ocflVersion, '1.1');
+    });
+
+    it('creates objects at the version of a 1.0 root', async () => {
+      const root = await createRoot('root-1.0-objects', '1.0');
+      const storage = await ocfl.storage({ root }).load();
+      const o = storage.object('http://example.org/object-1.0');
+      await o.update(async (t) => {
+        await t.write('test.txt', 'test');
+      });
+      assert.strictEqual(await fs.promises.readFile(path.join(o.root, '0=ocfl_object_1.0'), 'utf8'), 'ocfl_object_1.0\n');
+      const inventory = JSON.parse(await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8'));
+      assert.strictEqual(inventory.type, 'https://ocfl.io/1.0/spec/#inventory');
+    });
+
+    it('reports E081 when the configured version is later than the root', async () => {
+      const root = await createRoot('root-1.0-configured-1.1', '1.0');
+      await assert.rejects(ocfl.storage({ root, ocflVersion: '1.1' }).load(), { code: 'E081', path: root });
+    });
+
+    it('keeps an earlier configured version on a 1.1 root', async () => {
+      const root = await createRoot('root-1.1-configured-1.0', '1.1');
+      const storage = await ocfl.storage({ root, ocflVersion: '1.0' }).load();
+      assert.strictEqual(storage.ocflVersion, '1.0');
     });
   });
   describe('spec violations', () => {

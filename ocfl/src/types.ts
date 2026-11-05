@@ -83,7 +83,11 @@ export type OcflStorageConfig = {
   digestAlgorithm?: ContentAlgorithm | undefined;
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
   contentDirectory?: string | undefined;
-  /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstants.OCFL_VERSION} */
+  /**
+   * Ocfl version of a newly created storage root and its objects. When loading an existing root, defaults to
+   * the root's declared version; `load()` rejects with E081 if this is later than the root's version.
+   * @defaultValue {@link OcflConstants.OCFL_VERSION}
+   */
   ocflVersion?: OcflVersion | undefined;
 };
 
