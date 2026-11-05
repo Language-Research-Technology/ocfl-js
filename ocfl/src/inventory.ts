@@ -610,15 +610,15 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   reinstate(logicalPath: string, versionName: string) {
     const names = this._indexFindPaths(logicalPath, versionName);
-    //let digest = this.getDigest(logicalPath, versionName);
     const state = this.state;
     let count = 0;
     for (const lp of names) {
       const digests = this._indexGet(lp, versionName);
       const digest = digests?.[this.digestAlgorithm];
       if (digests && digest) {
-        this.delete(lp);
-        state[digest] = [lp];
+        this.#unlist(lp);
+        state[digest] ??= [];
+        state[digest].push(lp);
         this._indexAdd(lp, this.head, digests);
         count++;
       }

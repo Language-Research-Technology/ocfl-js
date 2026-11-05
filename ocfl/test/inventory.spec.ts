@@ -217,5 +217,30 @@ describe('OcflObjectInventory class', () => {
       assert.deepStrictEqual(inv.state, { d1: ['a'] });
       assertHeadStateValid(inv);
     });
+
+    it('reinstates a logical path without dropping other paths with the same digest', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv.add('x', 'd1');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.delete('x');
+      inv.add('y', 'd1');
+      inv = OcflObjectInventory.newVersion(inv);
+      assert.strictEqual(inv.reinstate('x', 'v1'), 1);
+      assert.deepStrictEqual(inv.state, { d1: ['y', 'x'] });
+      assert.strictEqual(inv.getDigest('y'), 'd1');
+      assertHeadStateValid(inv);
+    });
+
+    it('reinstates a logical path over its current content', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv.add('x', 'd1');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.add('x', 'd2');
+      inv.add('z', 'd2');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.reinstate('x', 'v1');
+      assert.deepStrictEqual(inv.state, { d2: ['z'], d1: ['x'] });
+      assertHeadStateValid(inv);
+    });
   });
 });
