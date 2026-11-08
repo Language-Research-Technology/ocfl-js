@@ -90,7 +90,8 @@ try {
 | `UPDATE_IN_PROGRESS`          | An update finds uncommitted changes, because another process is updating the object or an earlier update failed              |
 | `DIRECTORY_NOT_EMPTY`         | An object or storage root is created in a non-empty directory                                                                |
 | `ID_INCOMPATIBLE_WITH_LAYOUT` | The storage layout can't map the object id                                                                                   |
-| `UNSUPPORTED_LAYOUT`          | A storage root's `ocfl_layout.json` names a layout this library doesn't support                                              |
+| `UNSUPPORTED_LAYOUT`          | A storage root's `ocfl_layout.json` names a layout this library doesn't support, and no layout is configured                 |
+| `LAYOUT_MISMATCH`             | A configured layout's name or parameters differ from the layout the storage root declares                                    |
 | `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`                                                 |
 | `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain               |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                |
@@ -111,6 +112,7 @@ Spec violations now throw a `ValidationError`, an `OcflError` whose `code` is th
 | E050 | An inventory's state lists a digest that isn't in its manifest                       |
 | E060 | The inventory sidecar digest doesn't match the inventory                             |
 | E069 | A storage root has no conformance declaration                                        |
+| E070 | A configured layout meets an `ocfl_layout.json` with no readable `extension`         |
 | E080 | A storage root's version declaration has the wrong contents                          |
 | E081 | A storage is loaded with an `ocflVersion` later than its root's version declaration  |
 | E082 | An object root is nested inside another object                                       |
@@ -206,3 +208,4 @@ async function moveObject(id: string) {
 - `rename()` throws `FILE_NOT_FOUND` when the source doesn't exist, instead of doing nothing.
 - A logical path with a `..` segment, such as `a/../b`, is rejected instead of being normalised. A name that only starts with two dots, such as `..notes.txt`, is now accepted.
 - When a storage root's layout extension `config.json` has no `extensionName`, the layout named in `ocfl_layout.json` is used. Previously the storage loaded with no layout.
+- `load()` keeps a layout passed in the storage config, instead of always replacing it with the root's. The configured layout is used when the root has no `ocfl_layout.json` or names a layout this library doesn't implement, so a custom `OcflStorageLayout` can read such a root. If the root names a supported layout with a different name or parameters, `load()` throws `LAYOUT_MISMATCH`. If the file exists but has no readable `extension`, the configured layout can't be checked, so `load()` throws `E070`.

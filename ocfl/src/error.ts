@@ -9,6 +9,7 @@ type OcflErrorCode =
   | 'INVALID_LOGICAL_PATH'
   | 'FILE_NOT_FOUND'
   | 'UNSUPPORTED_LAYOUT'
+  | 'LAYOUT_MISMATCH'
   | ValidationErrorCode;
 
 /** Base class for errors a client can handle by their `code`. The message isn't part of the contract. */

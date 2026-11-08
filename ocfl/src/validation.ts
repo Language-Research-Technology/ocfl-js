@@ -8,6 +8,7 @@ const ERRORS = {
   E050: 'The keys of [the state JSON object] are digest values, each of which MUST correspond to an entry in the manifest of the inventory.',
   E060: 'The digest sidecar file must contain the digest of the inventory file.',
   E069: 'An OCFL Storage Root MUST contain a Root Conformance Declaration identifying it as such.',
+  E070: 'If present, [the ocfl_layout.json document] MUST include the following two keys in the root JSON object: [extension, description].',
   E080: 'The text contents of [the OCFL version declaration file] MUST be the same as dvalue, followed by a newline (\\n).',
   E081: 'OCFL Objects within the OCFL Storage Root also include a conformance declaration which MUST indicate OCFL Object conformance to the same or earlier version of the specification.',
   E082: 'OCFL Object Roots MUST be stored either as the terminal resource at the end of a directory storage hierarchy or as direct children of a containing OCFL Storage Root.',

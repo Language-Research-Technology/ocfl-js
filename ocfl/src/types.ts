@@ -75,7 +75,11 @@ export type OcflStorageConfig = {
   root: string;
   /** Absolute path to storage workspace directory. */
   workspace?: string | undefined;
-  /** A layout that identifies an arrangement of directories and OCFL objects under the storage root */
+  /**
+   * A layout that identifies an arrangement of directories and OCFL objects under the storage root.
+   * Loading a root that declares a supported layout with a different name or parameters throws `LAYOUT_MISMATCH`,
+   * and loading one whose `ocfl_layout.json` has no readable `extension` throws `E070`.
+   */
   layout?: OcflStorageLayout | OcflExtensionConfig | string | undefined;
   /** A default list of digest algorithm names to be added to the fixity block of objects under this storage. */
   fixityAlgorithms?: string[] | undefined;

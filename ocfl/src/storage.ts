@@ -1,9 +1,10 @@
 //@todo add default layout
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import { NotImplementedError, OcflError } from './error.ts';
-import { createByName, OcflStorageLayout } from './extension.ts';
+import { createByName, differingParameters, OcflStorageLayout } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { OcflObject } from './object.ts';
 import { findNamasteVersion, isDirEmpty } from './utils.ts';
@@ -133,6 +134,7 @@ class OcflStorageImpl extends OcflStorage {
   #root: string;
   #workspace: string;
   #layout: OcflStorageLayout | undefined;
+  #configuredLayout: OcflStorageLayout | undefined;
   #store: OcflStore;
   #objectConfig: Omit<OcflObjectConfig, 'root' | 'workspace' | 'id' | 'ocflVersion'>;
   #configuredOcflVersion: OcflVersion | undefined;
@@ -153,7 +155,8 @@ class OcflStorageImpl extends OcflStorage {
       throw new Error('[OcflStorage] config.workspace cannot be the same as or a subpath of config.root');
     }
     if (layout) {
-      this.#layout = layout instanceof OcflStorageLayout ? layout : this.#createLayout(layout);
+      this.#configuredLayout = layout instanceof OcflStorageLayout ? layout : this.#createLayout(layout);
+      this.#layout = this.#configuredLayout;
     }
     if (ocflVersion) {
       this.ocflVersion = ocflVersion;
@@ -162,8 +165,8 @@ class OcflStorageImpl extends OcflStorage {
     this.#objectConfig = objectConfig;
   }
 
-  #createLayout(option: OcflExtensionConfig | string | undefined) {
-    const name = typeof option === 'string' ? option : option?.extensionName;
+  #createLayout(option: OcflExtensionConfig | string) {
+    const name = typeof option === 'string' ? option : option.extensionName;
     const config = typeof option === 'object' ? option : undefined;
     if (name) {
       return createByName<OcflStorageLayout>(OcflStorageLayout, 'Layout', name, config);
@@ -171,6 +174,36 @@ class OcflStorageImpl extends OcflStorage {
     // else if (useDefault) {
     //   return DEFAULT_LAYOUT.create(config);
     // }
+  }
+
+  #resolveLayout(declaredName: string | undefined, rootLayoutConfig: OcflExtensionConfig | undefined) {
+    const configured = this.#configuredLayout;
+    const rootLayoutName = configured ? declaredName : (rootLayoutConfig?.extensionName ?? declaredName);
+    if (!rootLayoutName) {
+      return configured;
+    }
+    const rootLayoutClass = OcflStorageLayout.class(rootLayoutName);
+    // Some registered layouts are stubs that don't implement map()
+    if (configured && (!rootLayoutClass || rootLayoutClass.prototype.map === OcflStorageLayout.prototype.map)) {
+      return configured;
+    }
+    if (!rootLayoutClass) {
+      throw new OcflError('UNSUPPORTED_LAYOUT', `Layout "${rootLayoutName}" is not supported.`);
+    }
+    if (configured && configured.name !== rootLayoutClass.NAME) {
+      throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's layout "${rootLayoutClass.NAME}".`);
+    }
+    const rootLayout = rootLayoutClass.create({ ...rootLayoutConfig, extensionName: rootLayoutClass.NAME });
+    if (!configured) {
+      return rootLayout;
+    }
+    const differences = differingParameters(configured, rootLayout).map(
+      (name) => `configured ${name}: ${inspect(configured.get(name))}, root ${name}: ${inspect(rootLayout.get(name))}`,
+    );
+    if (differences.length) {
+      throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's: ${differences.join('; ')}.`);
+    }
+    return configured;
   }
 
   get root() {
@@ -242,6 +275,9 @@ class OcflStorageImpl extends OcflStorage {
         layoutName = JSON.parse(layout).extension;
       }
     } catch (_error) {}
+    if (layout !== undefined && typeof layoutName !== 'string' && this.#configuredLayout) {
+      throw createError('E070', path.join(this.root, OCFL_LAYOUT), 'the configured layout cannot be checked against this file');
+    }
     // load ext config if exists
     if (layoutName) {
       try {
@@ -249,11 +285,7 @@ class OcflStorageImpl extends OcflStorage {
         layoutConfig = JSON.parse(cfgstr as string);
       } catch (_error) {}
     }
-    const extensionName = layoutConfig?.extensionName ?? layoutName;
-    if (extensionName && !OcflStorageLayout.class(extensionName)) {
-      throw new OcflError('UNSUPPORTED_LAYOUT', `Layout "${extensionName}" is not supported.`);
-    }
-    this.#layout = this.#createLayout(layoutConfig && extensionName ? { ...layoutConfig, extensionName } : extensionName);
+    this.#layout = this.#resolveLayout(layoutName, layoutConfig);
     const layoutDigestAlgorithm = this.#layout?.get('digestAlgorithm');
     if (layoutDigestAlgorithm) {
       await OcflDigest.initSync(layoutDigestAlgorithm);

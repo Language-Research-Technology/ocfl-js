@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { NotImplementedError } from './error.ts';
 import type { StorageLayout } from './extensions/index.ts';
 import type { OcflExtensionConfig } from './types.ts';
@@ -201,4 +202,19 @@ function createByName<T extends OcflExtension>(
   return cls.create(config);
 }
 
-export { createByName, OcflExtension, OcflStorageLayout };
+/** Parameter values as config.json stores them, which can't represent a RegExp */
+const asStored = (value: unknown) => JSON.parse(JSON.stringify({ value }));
+
+/** Names of the parameters of `reference` whose effective values, defaults included, differ in `extension` */
+function differingParameters(extension: OcflExtension, reference: OcflExtension) {
+  const names: string[] = [];
+  // for...in includes the defaults inherited from the parameters prototype
+  for (const name in reference.parameters) {
+    if (name !== 'extensionName' && !isDeepStrictEqual(asStored(extension.get(name)), asStored(reference.get(name)))) {
+      names.push(name);
+    }
+  }
+  return names;
+}
+
+export { createByName, differingParameters, OcflExtension, OcflStorageLayout };
