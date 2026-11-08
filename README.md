@@ -70,6 +70,12 @@ let layout = new ocfl.StorageLayout.PathDirectStorageLayout({ omitScheme: true }
 storage = ocfl.createStorage({ root: '/var/data/myocfl', layout });
 ```
 
+To include a human-readable copy of the OCFL spec in a new storage root, pass `ocflSpecText` to `create`:
+
+```js
+await ocfl.storage({ root: '/var/data/myocfl' }).create({ ocflSpecText: true });
+```
+
 Use the `storage` instance to create an object and import files:
 
 ```js

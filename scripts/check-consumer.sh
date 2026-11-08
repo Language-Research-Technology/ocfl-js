@@ -98,6 +98,10 @@ const _unknownCode: OcflErrorCode = 'NO_SUCH_CODE';
 const codeOf = (e: unknown): OcflErrorCode | undefined => (e instanceof OcflError ? e.code : undefined);
 const missingCode = await storage.object('missing').files().then(() => undefined, codeOf);
 
+for (const ocflVersion of ocflFs.OCFL_VERSIONS) {
+  await ocflFs.storage({ root: join(import.meta.dirname, `spec-${ocflVersion}`), ocflVersion }).create({ ocflSpecText: true });
+}
+
 if (
   !(store instanceof OcflStore) ||
   custom.OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
@@ -111,5 +115,10 @@ EOF
 
 pnpm -C "$consumer" install --prefer-offline --silent
 (cd "$consumer" && node consumer.ts) || fail "importing the packed packages failed"
+for dir in "$consumer"/spec-*; do
+  version=${dir##*/spec-}
+  written=("$dir/ocfl_$version".*)
+  cmp -s "$root/ocfl/resources/${written[0]##*/}" "${written[0]}" || fail "the packed package wrote the wrong spec text for $version"
+done
 pnpm -C "$consumer" exec tsc || fail "consumer.ts doesn't typecheck against the packed types"
 echo "lint:consumer: packed @ocfl/ocfl and @ocfl/ocfl-fs install, import and typecheck"
