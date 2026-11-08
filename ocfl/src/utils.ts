@@ -8,6 +8,10 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
 }
 
+function isNotFound(error: unknown) {
+  return isErrnoException(error) && error.code === 'ENOENT';
+}
+
 /**
  * Run `asyncFn` over every element of `inputStack` with at most `count` calls in flight.
  * Rejections are returned in the result array rather than thrown.
@@ -44,7 +48,7 @@ async function isDirEmpty(store: OcflStore, dirPath: string): Promise<boolean> {
     de = await dir.read();
     await dir.close();
   } catch (error) {
-    return isErrnoException(error) && error.code === 'ENOENT';
+    return isNotFound(error);
   }
   return !de;
 }
@@ -62,7 +66,7 @@ async function findNamasteVersion(store: OcflStore, prefix: string, rootPath: st
       return '';
     }
   } catch (error) {
-    if (!(error instanceof AggregateError) || error.errors.some((e) => !isErrnoException(e) || e.code !== 'ENOENT')) {
+    if (!(error instanceof AggregateError) || error.errors.some((e) => !isNotFound(e))) {
       throw error;
     }
   }
@@ -91,4 +95,4 @@ function joinTypedArray(target: ArrayBuffer | TypedArray, source: ArrayBuffer | 
   return mergedArray;
 }
 
-export { findNamasteVersion, isDirEmpty, isErrnoException, joinTypedArray, parallelize };
+export { findNamasteVersion, isDirEmpty, isNotFound, joinTypedArray, parallelize };

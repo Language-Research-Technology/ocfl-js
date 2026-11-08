@@ -83,6 +83,9 @@ class OcflObjectInventory {
 
   metadata: { [contentPath: string]: { size: number; lastModified: number } } | undefined;
 
+  /** Digest of this inventory's bytes in storage, as recorded in its sidecar */
+  _digest: string | undefined;
+
   /**
    * Helper function to find the digest by logical file path and cached it by indexing
    */

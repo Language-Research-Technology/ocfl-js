@@ -9,7 +9,7 @@ import { type InventoryFile, OcflObjectInventory, type OcflObjectInventoryMut, V
 import type { OcflStore } from './store.ts';
 import { type OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
 import type { Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
-import { findNamasteVersion, isDirEmpty, isErrnoException, parallelize } from './utils.ts';
+import { findNamasteVersion, isDirEmpty, isNotFound, parallelize } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
@@ -25,6 +25,11 @@ function contentDigestAlgorithm(algorithm: string | undefined): ContentAlgorithm
     throw new Error('Invalid digest algorithm. Must be one of `sha256` or `sha512`.');
   }
   return name;
+}
+
+/** Failures of reading a root inventory that a writer has only partly replaced. `_readInventory` handles a missing inventory, so ENOENT means its sidecar. */
+function isMidCommitRead(err: unknown) {
+  return err instanceof SyntaxError || isNotFound(err) || (err instanceof OcflError && err.code === 'E060');
 }
 
 /**
@@ -169,18 +174,17 @@ class OcflObject {
     try {
       datastr = await this.readFile(invPath, 'utf8');
     } catch (err) {
-      if (!isErrnoException(err) || err.code !== 'ENOENT') {
+      if (!isNotFound(err)) {
         throw err;
       }
       //inventory does not exist yet
       return;
     }
     const data = JSON.parse(datastr) as Inventory;
-    const [sidecar, actualDigest] = await Promise.all([
-      this.readFile(`${invPath}.${data.digestAlgorithm}`, 'utf8'),
+    const [digest, actualDigest] = await Promise.all([
+      this.#readSidecarDigest(invPath, data.digestAlgorithm),
       OcflDigest.digest(data.digestAlgorithm, datastr),
     ]);
-    const digest = sidecar.match(/[^\s]+/)?.[0];
     if (digest !== actualDigest) {
       throw createError('E060', path.join(this.root, invPath), `recorded=${digest} actual=${actualDigest}`);
     }
@@ -190,7 +194,14 @@ class OcflObject {
     if (data.head === '') {
       throw createError('E040', path.join(this.root, invPath), 'empty head');
     }
-    return new OcflObjectInventory(data);
+    const inventory = new OcflObjectInventory(data);
+    inventory._digest = actualDigest;
+    return inventory;
+  }
+
+  async #readSidecarDigest(invPath: string, digestAlgorithm: string) {
+    const sidecar = await this.readFile(`${invPath}.${digestAlgorithm}`, 'utf8');
+    return sidecar.match(/[^\s]+/)?.[0];
   }
 
   /**
@@ -459,6 +470,47 @@ class OcflObject {
           lastModified: file.lastModified.getTime(),
         };
       }
+    }
+  }
+
+  /**
+   * Bring the cached latest inventory up to date, reading only the sidecar file if the object hasn't changed.
+   * A loaded object keeps its last good inventory if a commit is in progress, and a later refresh picks up the new version.
+   * With nothing cached, behaves like {@link load}.
+   * File metadata from `load({ filesMetadata: true })` doesn't carry over to a new inventory.
+   */
+  async refresh(): Promise<void> {
+    const cached = this.inventory;
+    if (!cached) {
+      return this.load();
+    }
+    try {
+      if ((await this.#readSidecarDigest(INVENTORY_NAME, cached.digestAlgorithm)) === cached._digest) {
+        return;
+      }
+    } catch (err) {
+      // Only the inventory can tell a deleted object from a changed digest algorithm
+      if (!isNotFound(err)) {
+        throw err;
+      }
+    }
+    let inventory: OcflObjectInventory | undefined;
+    try {
+      inventory = await this._readInventory();
+    } catch (err) {
+      if (isMidCommitRead(err)) {
+        return;
+      }
+      throw err;
+    }
+    // A load or commit that finished during the read has cached something newer
+    if (this.inventory !== cached) {
+      return;
+    }
+    if (inventory) {
+      this._setInventory(inventory);
+    } else {
+      this._inventory = {};
     }
   }
 

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { after, before, describe, it } from 'node:test';
+import { after, before, describe, it, mock } from 'node:test';
 import { type Inventory, ObjectNotFoundError, ObjectNotLoadedError, type OcflObject, type OcflObjectConfig, type OcflVersion } from '@ocfl/ocfl';
 import type { Ocfl } from './index.ts';
 
@@ -507,6 +507,199 @@ export default (ocfl: Ocfl) => {
       assert.strictEqual(await o.fileByLogicalPath('nope.txt'), undefined);
       assert.strictEqual(await o.fileByDigest('abc'), undefined);
       assert.strictEqual(await o.fileByContentPath('v1/content/nope.txt'), undefined);
+    });
+  });
+
+  describe('refresh', () => {
+    let tempdir: string;
+    let objectCount = 0;
+
+    async function committedObject() {
+      const root = path.join(tempdir, `refresh-${++objectCount}`);
+      await ocfl.object({ id: `refresh-${objectCount}`, root }).update(async (t) => t.write('a.txt', 'v1'));
+      return root;
+    }
+
+    async function loadedObject() {
+      const root = await committedObject();
+      const o = ocfl.object({ root });
+      await o.load();
+      return { root, o };
+    }
+
+    /** Rewrite the root inventory and its sidecar so that the two match */
+    async function rewriteInventory(root: string, edit: (inv: Inventory) => void) {
+      const inv: Inventory = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8'));
+      edit(inv);
+      const data = JSON.stringify(inv);
+      await fs.promises.writeFile(path.join(root, 'inventory.json'), data);
+      await fs.promises.writeFile(
+        path.join(root, `inventory.json.${inv.digestAlgorithm}`),
+        `${createHash(inv.digestAlgorithm).update(data).digest('hex')} inventory.json\n`,
+      );
+    }
+
+    before(async () => {
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-refresh-'));
+    });
+
+    after(async () => {
+      await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+
+    it('behaves like load on a never-loaded object', async () => {
+      const root = await committedObject();
+      const o = ocfl.object({ root });
+      await o.refresh();
+      assert.strictEqual(o.inventory?.head, 'v1');
+    });
+
+    it('rejects with E060 on a mismatched never-loaded object', async () => {
+      const root = await committedObject();
+      await fs.promises.writeFile(path.join(root, 'inventory.json.sha512'), 'abc inventory.json\n');
+      await assert.rejects(ocfl.object({ root }).refresh(), { code: 'E060' });
+    });
+
+    it('reports a never-loaded object that does not exist as missing', async () => {
+      const o = ocfl.object({ id: 'missing', root: path.join(tempdir, 'missing') });
+      await o.refresh();
+      assert.strictEqual(o.inventory, undefined);
+      assert.throws(() => o.getFile('a.txt'), ObjectNotFoundError);
+    });
+
+    it('picks up a version committed by another instance', async () => {
+      const { root, o } = await loadedObject();
+      await ocfl.object({ root }).update(async (t) => t.write('b.txt', 'v2'));
+      assert.strictEqual(o.inventory?.head, 'v1');
+      await o.refresh();
+      assert.strictEqual(o.inventory?.head, 'v2');
+      assert.strictEqual(await o.getFile('b.txt')?.text(), 'v2');
+      assert.strictEqual((await o.getInventory('v1'))?.head, 'v1');
+    });
+
+    it('does not read inventory.json while the sidecar is unchanged', async () => {
+      const { root, o } = await loadedObject();
+      await fs.promises.rm(path.join(root, 'inventory.json'));
+      await o.refresh();
+      assert.strictEqual(o.inventory?.head, 'v1');
+    });
+
+    it('does not read inventory.json after committing through the same instance', async () => {
+      const root = await committedObject();
+      const o = ocfl.object({ root });
+      await o.update(async (t) => t.write('b.txt', 'v2'));
+      await fs.promises.rm(path.join(root, 'inventory.json'));
+      await o.refresh();
+      assert.strictEqual(o.inventory?.head, 'v2');
+    });
+
+    it('keeps the last good inventory during a commit, then picks up the new one', async () => {
+      const { root, o } = await loadedObject();
+      const sidecar = path.join(root, 'inventory.json.sha512');
+      await ocfl.object({ root }).update(async (t) => t.write('b.txt', 'v2'));
+      const committed = await fs.promises.readFile(sidecar);
+      await fs.promises.writeFile(sidecar, 'abc inventory.json\n');
+      await o.refresh();
+      assert.strictEqual(o.inventory?.head, 'v1');
+      assert.ok(o.getFile('a.txt'));
+      await fs.promises.writeFile(sidecar, committed);
+      await o.refresh();
+      assert.strictEqual(o.inventory?.head, 'v2');
+    });
+
+    it('keeps the last good inventory when inventory.json is partly written', async () => {
+      const { root, o } = await loadedObject();
+      await fs.promises.writeFile(path.join(root, 'inventory.json'), '{"id":');
+      await fs.promises.writeFile(path.join(root, 'inventory.json.sha512'), 'abc inventory.json\n');
+      await o.refresh();
+      assert.strictEqual(o.inventory?.head, 'v1');
+    });
+
+    it('keeps the last good inventory when the sidecar is missing but inventory.json is not', async () => {
+      const { root, o } = await loadedObject();
+      await fs.promises.rm(path.join(root, 'inventory.json.sha512'));
+      await o.refresh();
+      assert.strictEqual(o.inventory?.head, 'v1');
+    });
+
+    it('still rejects a new inventory that matches its sidecar but is invalid', async () => {
+      const { root, o } = await loadedObject();
+      await rewriteInventory(root, (inv) => {
+        inv.head = '';
+      });
+      await assert.rejects(o.refresh(), { code: 'E040' });
+      assert.strictEqual(o.inventory?.head, 'v1');
+    });
+
+    it('keeps cached past version inventories when a new version arrives', async () => {
+      const root = await committedObject();
+      const writer = ocfl.object({ root });
+      await writer.update(async (t) => t.write('b.txt', 'v2'));
+      const o = ocfl.object({ root });
+      await o.load();
+      const v1 = await o.getInventory('v1');
+      await writer.update(async (t) => t.write('c.txt', 'v3'));
+      await fs.promises.rm(path.join(root, 'v1/inventory.json'));
+      await o.refresh();
+      assert.strictEqual(o.inventory?.head, 'v3');
+      assert.strictEqual(await o.getInventory('v1'), v1);
+    });
+
+    it('keeps the cached inventory of the former head when a new version arrives', async () => {
+      const { root, o } = await loadedObject();
+      const v1 = await o.getInventory('v1');
+      await ocfl.object({ root }).update(async (t) => t.write('b.txt', 'v2'));
+      await fs.promises.rm(path.join(root, 'v1/inventory.json'));
+      await o.refresh();
+      assert.strictEqual(o.inventory?.head, 'v2');
+      assert.strictEqual(await o.getInventory('v1'), v1);
+    });
+
+    it('does not replace an inventory that became newer while refreshing', async () => {
+      const { root, o } = await loadedObject();
+      const writer = ocfl.object({ root });
+      await writer.update(async (t) => t.write('b.txt', 'v2'));
+      const reached = Promise.withResolvers<void>();
+      const release = Promise.withResolvers<void>();
+      const readFile = o.readFile.bind(o) as (relPath: string, options?: unknown) => Promise<string>;
+      let sidecarReads = 0;
+      const spy = mock.method(o, 'readFile', async (relPath: string, options?: unknown) => {
+        const data = await readFile(relPath, options);
+        // The first read detects the change, the second verifies the v2 inventory
+        if (relPath === 'inventory.json.sha512' && ++sidecarReads === 2) {
+          reached.resolve();
+          await release.promise;
+        }
+        return data;
+      });
+      const refreshing = o.refresh();
+      await reached.promise;
+      spy.mock.restore();
+      await writer.update(async (t) => t.write('c.txt', 'v3'));
+      await o.load();
+      release.resolve();
+      await refreshing;
+      assert.strictEqual(o.inventory?.head, 'v3');
+    });
+
+    it('clears the cache when the object no longer exists', async () => {
+      const { root, o } = await loadedObject();
+      await o.getInventory('v1');
+      await fs.promises.rm(root, { recursive: true });
+      await o.refresh();
+      assert.strictEqual(o.inventory, undefined);
+      assert.strictEqual(await o.getInventory('v1'), undefined);
+      assert.throws(() => o.getFile('a.txt'), ObjectNotFoundError);
+    });
+
+    it('picks up a new version whose digest algorithm changed', async () => {
+      const { root, o } = await loadedObject();
+      await rewriteInventory(root, (inv) => {
+        inv.digestAlgorithm = 'sha256';
+      });
+      await fs.promises.rm(path.join(root, 'inventory.json.sha512'));
+      await o.refresh();
+      assert.strictEqual(o.inventory?.digestAlgorithm, 'sha256');
     });
   });
 
