@@ -1,17 +1,10 @@
 import assert from 'node:assert';
-import { before, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 import { extensions } from '../../src/index.ts';
 
 const { HashAndIdNTupleStorageLayout } = extensions;
 
-import { OcflDigest } from '../../src/digest.ts';
-
 describe('HashAndIdNTupleStorageLayout class', () => {
-  before(async () => {
-    await OcflDigest.initSync('sha256');
-    await OcflDigest.initSync('md5');
-  });
-
   it('can map valid id with default config', () => {
     const layout = new HashAndIdNTupleStorageLayout();
     const ids: [string, string][] = [

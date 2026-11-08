@@ -1,17 +1,10 @@
 import assert from 'node:assert';
-import { before, describe, it } from 'node:test';
+import { describe, it } from 'node:test';
 import { extensions } from '../../src/index.ts';
 
 const { HashedNTupleStorageLayout } = extensions;
 
-import { OcflDigest } from '../../src/digest.ts';
-
 describe('HashedNTupleStorageLayout class', () => {
-  before(async () => {
-    await OcflDigest.initSync('sha256');
-    await OcflDigest.initSync('md5');
-  });
-
   it('can use default config', () => {
     const layout = new HashedNTupleStorageLayout();
     const cases: [string, string][] = [

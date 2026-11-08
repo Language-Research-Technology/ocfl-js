@@ -55,6 +55,7 @@ function hasher(digestSize: number, start: () => HashState): CommonHasher {
 }
 
 const hasherFactory: { [key: string]: () => Promise<CommonHasher> } = {};
+const builtinSyncHasher: { [key: string]: () => CommonHasher } = {};
 const hasherSyncCache: { [key: string]: CommonHasher } = {};
 
 /**
@@ -63,7 +64,17 @@ const hasherSyncCache: { [key: string]: CommonHasher } = {};
 function registerHasherFactory(name: string, factory: () => Promise<CommonHasher>) {
   if (typeof factory === 'function') {
     hasherFactory[name] = factory;
+    delete builtinSyncHasher[name];
   }
+}
+
+function registerBuiltinHasher(name: string, factory: () => CommonHasher) {
+  registerHasherFactory(name, async () => factory());
+  let instance: CommonHasher | undefined;
+  builtinSyncHasher[name] = () => {
+    instance ??= factory();
+    return instance;
+  };
 }
 
 function hasAlgorithm(name: string) {
@@ -72,7 +83,7 @@ function hasAlgorithm(name: string) {
 
 for (const [algo, nativeName] of Object.entries(NATIVE)) {
   const digestSize = crypto.createHash(nativeName).digest().length;
-  registerHasherFactory(algo, async () =>
+  registerBuiltinHasher(algo, () =>
     hasher(digestSize, () => {
       const h = crypto.createHash(nativeName);
       let result: Buffer | undefined;
@@ -85,7 +96,7 @@ for (const [algo, nativeName] of Object.entries(NATIVE)) {
   );
 }
 
-registerHasherFactory('crc32', async () =>
+registerBuiltinHasher('crc32', () =>
   hasher(4, () => {
     let crc = 0;
     return {
@@ -102,7 +113,7 @@ registerHasherFactory('crc32', async () =>
   }),
 );
 
-registerHasherFactory('size', async () =>
+registerBuiltinHasher('size', () =>
   hasher(8, () => {
     let size = 0;
     return {
@@ -218,10 +229,10 @@ async function initSync(algorithm: string) {
 }
 
 /**
- * For this sync function to work correctly, it requires a call to initSync() to be awaited for each algorithm before calling this function.
+ * Algorithms added through registerHasherFactory() need initSync() to be awaited first.
  */
 function digestSync(algorithm: string, input: IDataType): string {
-  const hasher = hasherSyncCache[algorithm];
+  const hasher = hasherSyncCache[algorithm] ?? builtinSyncHasher[algorithm]?.();
   if (!hasher) {
     throw new Error(`Hasher for algorithm ${algorithm} is not initialized. Please call and await initSync('${algorithm}') before calling this function.`);
   }

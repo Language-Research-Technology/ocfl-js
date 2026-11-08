@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { describe, it } from 'node:test';
 import { OcflDigest } from '../src/digest.ts';
+import type { CommonHasher } from '../src/types.ts';
 
 describe('OcflDigest', () => {
   const inputData =
@@ -73,6 +74,48 @@ describe('OcflDigest', () => {
       const outputData = Buffer.concat(buffers).toString('utf8');
       assert.strictEqual(inputData, outputData);
       assert.strictEqual(hs.digest(), controlDigest);
+    });
+  });
+
+  describe('digestSync', () => {
+    const SHA256_OF_ABC = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
+
+    function fixedHasherFactory(digest: string): () => Promise<CommonHasher> {
+      return async () => {
+        const hasher = { digestSize: 1, init: () => hasher, update: () => hasher, digest: () => digest } as unknown as CommonHasher;
+        return hasher;
+      };
+    }
+
+    it('digests with a built-in algorithm repeatedly without initSync', () => {
+      assert.strictEqual(OcflDigest.digestSync('sha256', 'abc'), SHA256_OF_ABC);
+      assert.strictEqual(OcflDigest.digestSync('sha256', 'abc'), SHA256_OF_ABC);
+    });
+
+    it('still accepts initSync for a built-in algorithm', async () => {
+      await OcflDigest.initSync('sha256');
+      assert.strictEqual(OcflDigest.digestSync('sha256', 'abc'), SHA256_OF_ABC);
+    });
+
+    it('requires initSync for a registered algorithm', async () => {
+      OcflDigest.registerHasherFactory('custom', fixedHasherFactory('custom-digest'));
+      assert.throws(() => OcflDigest.digestSync('custom', 'abc'), /is not initialized/);
+      await OcflDigest.initSync('custom');
+      assert.strictEqual(OcflDigest.digestSync('custom', 'abc'), 'custom-digest');
+    });
+
+    it('requires initSync for a factory that replaces a built-in algorithm already used', async () => {
+      OcflDigest.digestSync('sha1', 'abc');
+      OcflDigest.registerHasherFactory('sha1', fixedHasherFactory('replaced-digest'));
+      assert.throws(() => OcflDigest.digestSync('sha1', 'abc'), /is not initialized/);
+      await OcflDigest.initSync('sha1');
+      assert.strictEqual(OcflDigest.digestSync('sha1', 'abc'), 'replaced-digest');
+    });
+
+    it('keeps the hasher from initSync when its factory is replaced afterwards', async () => {
+      await OcflDigest.initSync('md5');
+      OcflDigest.registerHasherFactory('md5', fixedHasherFactory('replaced-digest'));
+      assert.strictEqual(OcflDigest.digestSync('md5', 'abc'), '900150983cd24fb0d6963f7d28e17f72');
     });
   });
 
