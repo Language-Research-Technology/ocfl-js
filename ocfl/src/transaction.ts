@@ -7,7 +7,7 @@ import { OcflError } from './error.ts';
 import type { OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
 import type { OcflStore, WriteFileData } from './store.ts';
-import { isErrnoException, parallelize } from './utils.ts';
+import { isNotFound, parallelize } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 
@@ -283,7 +283,8 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     let invDigestPath = `${invPath}.${digestAlgorithm}`;
 
     const inventoryContent = inventory.toString();
-    const digest = `${await OcflDigest.digest(digestAlgorithm, inventoryContent)} ${INVENTORY_NAME}`;
+    inventory._digest = await OcflDigest.digest(digestAlgorithm, inventoryContent);
+    const digest = `${inventory._digest} ${INVENTORY_NAME}`;
 
     // write inventory.json to workspace
     await this._store.writeFile(invPath, inventoryContent);
@@ -431,7 +432,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         const realTarget = this._getRealPath(target);
         await this._store.move(realSource, realTarget);
       } catch (error) {
-        if (!isErrnoException(error) || error.code !== 'ENOENT') {
+        if (!isNotFound(error)) {
           throw error;
         }
       }
