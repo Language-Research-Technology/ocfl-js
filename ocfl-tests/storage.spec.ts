@@ -134,6 +134,67 @@ export default (ocfl: Ocfl) => {
       assert.strictEqual(storage.ocflVersion, '1.0');
     });
   });
+  describe('OCFL spec text', () => {
+    const resources = path.join(import.meta.dirname, '../ocfl/resources');
+    const specFiles = async (root: string) => (await fs.promises.readdir(root)).filter((f) => /^ocfl_\d/.test(f));
+    let tempdir: string;
+    before(async () => {
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-storage-spec-text-'));
+    });
+    after(async () => {
+      await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+
+    for (const [ocflVersion, file] of [
+      ['1.1', 'ocfl_1.1.md'],
+      ['1.0', 'ocfl_1.0.txt'],
+    ] as const) {
+      it(`writes ${file} to a ${ocflVersion} root when asked`, async () => {
+        const root = path.join(tempdir, `with-${ocflVersion}`);
+        await ocfl.storage({ root, ocflVersion }).create({ ocflSpecText: true });
+        assert.deepStrictEqual(await fs.promises.readFile(path.join(root, file)), await fs.promises.readFile(path.join(resources, file)));
+        assert.deepStrictEqual(await specFiles(root), [file]);
+      });
+    }
+
+    it('writes no spec file by default', async () => {
+      const root = path.join(tempdir, 'default');
+      await ocfl.storage({ root }).create();
+      assert.deepStrictEqual(await specFiles(root), []);
+    });
+
+    it('writes no spec file when ocflSpecText is false', async () => {
+      const root = path.join(tempdir, 'disabled');
+      await ocfl.storage({ root }).create({ ocflSpecText: false });
+      assert.deepStrictEqual(await specFiles(root), []);
+    });
+
+    it('does not add a spec file when loading an existing root', async () => {
+      const root = path.join(tempdir, 'loaded');
+      await ocfl.storage({ root }).create();
+      await ocfl.storage({ root }).load();
+      assert.deepStrictEqual(await specFiles(root), []);
+    });
+
+    for (const ocflVersion of ['1.1', '1.0'] as const) {
+      it(`ignores the spec file when loading and using a ${ocflVersion} root`, async () => {
+        const root = path.join(tempdir, `usable-${ocflVersion}`);
+        await ocfl.storage({ root, ocflVersion }).create({ ocflSpecText: true });
+        const storage = await ocfl.storage({ root }).load();
+        assert.strictEqual(storage.ocflVersion, ocflVersion);
+        const created = storage.object('http://example.org/spec-text');
+        await created.update(async (t) => {
+          await t.write('test.txt', 'test');
+        });
+        const roots = [];
+        for await (const o of storage) {
+          await o.load();
+          roots.push(o.root);
+        }
+        assert.deepStrictEqual(roots, [created.root]);
+      });
+    }
+  });
   describe('spec violations', () => {
     let tempdir: string;
     before(async () => {

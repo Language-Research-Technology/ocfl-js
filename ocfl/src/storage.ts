@@ -1,4 +1,5 @@
 //@todo add default layout
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { NotImplementedError, OcflError } from './error.ts';
@@ -16,6 +17,13 @@ const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 
 import type { OcflStore } from './store.ts';
 import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
+
+const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1.1': 'ocfl_1.1.md' };
+
+async function readSpecText(ocflVersion: OcflVersion) {
+  const file = SPEC_TEXT_FILES[ocflVersion];
+  return { file, content: await readFile(new URL(`../resources/${file}`, import.meta.url)) };
+}
 
 /**
  * An abstraction to represent the OCFL Storage Root, which is
@@ -68,6 +76,7 @@ class OcflStorage {
   /**
    * Create the storage root in the underlying storage backend
    * @param options - Additional options for creating storage root
+   * @param options.ocflSpecText - Write a human-readable copy of the OCFL spec for this root's version into the root
    */
   async create(_options?: { ocflSpecText?: boolean | undefined }): Promise<OcflStorage> {
     throw new NotImplementedError();
@@ -261,9 +270,10 @@ class OcflStorageImpl extends OcflStorage {
     if (await this.exists()) {
       //cannot create, storage root already exists .
       throw new OcflError('DIRECTORY_NOT_EMPTY', '[OcflStorage] Cannot create storage root in a non-empty directory');
-    } else {
-      await this.#store.mkdir(this.root);
     }
+    // read before the first write: a failed create can't be retried once the root is non-empty
+    const specText = options?.ocflSpecText ? await readSpecText(this.ocflVersion) : undefined;
+    await this.#store.mkdir(this.root);
     // create namaste
     const prefix = NAMASTE_PREFIX_STORAGE;
     const filenamePrefix = NAMASTE_T + prefix;
@@ -289,7 +299,8 @@ class OcflStorageImpl extends OcflStorage {
     }
 
     // todo: create other extensions
-    if (options?.ocflSpecText) {
+    if (specText) {
+      await this.#store.writeFile(path.join(this.root, specText.file), specText.content);
     }
     return this;
   }
