@@ -240,7 +240,11 @@ class OcflStorageImpl extends OcflStorage {
         layoutConfig = JSON.parse(cfgstr as string);
       } catch (_error) {}
     }
-    this.#layout = this.#createLayout(layoutConfig || layoutName);
+    const extensionName = layoutConfig?.extensionName ?? layoutName;
+    if (extensionName && !OcflStorageLayout.class(extensionName)) {
+      throw new OcflError('UNSUPPORTED_LAYOUT', `Layout "${extensionName}" is not supported.`);
+    }
+    this.#layout = this.#createLayout(layoutConfig && extensionName ? { ...layoutConfig, extensionName } : extensionName);
     const layoutDigestAlgorithm = this.#layout?.get('digestAlgorithm');
     if (layoutDigestAlgorithm) {
       await OcflDigest.initSync(layoutDigestAlgorithm);
