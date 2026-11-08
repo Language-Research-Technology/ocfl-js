@@ -10,6 +10,7 @@ import type { Ocfl } from './index.ts';
 
 export default (ocfl: Ocfl) => {
   let objcount = 0;
+  const fixture = path.join(import.meta.dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full');
 
   async function validateFile(object: OcflObject, srcPath: string, logicalPath: string) {
     const content = await fs.promises.readFile(srcPath);
@@ -435,7 +436,6 @@ export default (ocfl: Ocfl) => {
   });
 
   describe('file lookup errors', () => {
-    const fixture = path.join(import.meta.dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full');
     let tempdir: string;
     const missingObject = () => ocfl.object({ id: 'missing', root: path.join(tempdir, 'missing') });
 
@@ -700,6 +700,51 @@ export default (ocfl: Ocfl) => {
       await fs.promises.rm(path.join(root, 'inventory.json.sha512'));
       await o.refresh();
       assert.strictEqual(o.inventory?.digestAlgorithm, 'sha256');
+    });
+  });
+
+  describe("'latest' version name", () => {
+    const logicalPath = 'foo/bar.xml';
+    const headContentPath = 'v2/content/foo/bar.xml';
+
+    it('finds the head file like the explicit head version', async () => {
+      const o = ocfl.object({ root: fixture });
+      await o.load();
+      const explicit = o.getFile(logicalPath, 'v3');
+      assert.strictEqual(explicit?.version, 'v3');
+      assert.strictEqual(explicit.contentPath, headContentPath);
+      const digest = explicit.digest!;
+      const found = [
+        o.getFile(logicalPath, 'latest'),
+        o.getFile({ logicalPath, version: 'latest' }),
+        o.getFile({ digest, version: 'latest' }),
+        o.getFile({ contentPath: headContentPath, version: 'latest' }),
+        await o.fileByLogicalPath(logicalPath, 'latest'),
+        await o.fileByDigest(digest, 'latest'),
+        await o.fileByContentPath(headContentPath, 'latest'),
+      ];
+      for (const file of found) {
+        assert.deepStrictEqual(file, explicit);
+      }
+    });
+
+    it('treats an empty version name as a version that does not exist', async () => {
+      const o = ocfl.object({ root: fixture });
+      await o.load();
+      const digest = o.getFile(logicalPath)!.digest!;
+      assert.strictEqual(o.getFile(logicalPath, ''), undefined);
+      assert.strictEqual(await o.fileByLogicalPath(logicalPath, ''), undefined);
+      assert.strictEqual(await o.fileByDigest(digest, ''), undefined);
+      assert.strictEqual(await o.fileByContentPath(headContentPath, ''), undefined);
+      await assert.rejects(ocfl.object({ root: fixture }).getFile(logicalPath, '', true)!.text(), { code: 'FILE_NOT_FOUND' });
+    });
+
+    it('leaves explicit older versions unchanged', async () => {
+      const o = ocfl.object({ root: fixture });
+      await o.load();
+      const file = await o.fileByLogicalPath(logicalPath, 'v1');
+      assert.strictEqual(file?.version, 'v1');
+      assert.strictEqual(file.contentPath, 'v1/content/foo/bar.xml');
     });
   });
 

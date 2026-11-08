@@ -55,7 +55,7 @@ class OcflObjectFile {
     if (fileRef.digest) {
       this.digest = fileRef.digest;
     }
-    if (fileRef.version) {
+    if (fileRef.version !== undefined) {
       this.version = fileRef.version;
     }
     if (fileRef.lastModified != null) {
@@ -76,12 +76,11 @@ class OcflObjectFile {
     let contentPath = this.contentPath;
     if (!contentPath) {
       const inv = await this.#ocflObject._requireInventory();
-      const version = !this.version || this.version === 'latest' ? inv.head : this.version;
-      contentPath = this.digest ? inv.getContentPath(this.digest) : this.logicalPath && inv.getFile(this.logicalPath, version)?.contentPath;
+      contentPath = this.digest ? inv.getContentPath(this.digest) : this.logicalPath && inv.getFile(this.logicalPath, this.version)?.contentPath;
       if (!contentPath) {
         throw new OcflError(
           'FILE_NOT_FOUND',
-          `Cannot find content "${this.toString()}" in the OCFL Object "${this.#ocflObject.id}" version "${this.version || 'latest'}"`,
+          `Cannot find content "${this.toString()}" in the OCFL Object "${this.#ocflObject.id}" version "${this.version ?? 'latest'}"`,
         );
       }
     }
