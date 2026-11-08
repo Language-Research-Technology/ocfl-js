@@ -275,6 +275,9 @@ class OcflStorageImpl extends OcflStorage {
         layoutName = JSON.parse(layout).extension;
       }
     } catch (_error) {}
+    if (layout !== undefined && typeof layoutName !== 'string' && this.#configuredLayout) {
+      throw createError('E070', path.join(this.root, OCFL_LAYOUT), 'the configured layout cannot be checked against this file');
+    }
     // load ext config if exists
     if (layoutName) {
       try {

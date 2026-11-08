@@ -230,10 +230,23 @@ export default (ocfl: Ocfl) => {
       assert.strictEqual(storage.objectRoot('abc'), 'abc');
     });
 
-    it('keeps the configured layout when ocfl_layout.json cannot be parsed', async () => {
+    for (const [problem, layoutFile] of [
+      ['is not JSON', 'not json'],
+      ['is empty', ''],
+      ['has a non-object root', 'null'],
+      ['has no extension', '{}'],
+      ['has a non-string extension', '{"extension":5}'],
+    ] as const) {
+      it(`rejects a configured layout when ocfl_layout.json ${problem}`, async () => {
+        const root = await createRoot({ layoutFile });
+        await assert.rejects(ocfl.storage({ root, layout: 'FlatDirectStorageLayout' }).load(), { code: 'E070', path: path.join(root, 'ocfl_layout.json') });
+      });
+    }
+
+    it('still loads a root with an unparsable ocfl_layout.json when no layout is configured', async () => {
       const root = await createRoot({ layoutFile: 'not json' });
-      const storage = await ocfl.storage({ root, layout: 'FlatDirectStorageLayout' }).load();
-      assert.strictEqual(storage.objectRoot('abc'), 'abc');
+      const storage = await ocfl.storage({ root }).load();
+      assert.throws(() => storage.objectRoot('abc'), /No layout defined/);
     });
 
     it('reads a root naming an unsupported extension with a custom layout instance', async () => {
