@@ -89,7 +89,8 @@ class OcflObjectInventory {
   /**
    * Helper function to find the digest by logical file path and cached it by indexing
    */
-  _indexGet(logicalPath: string, version: string, onlyUsecache?: boolean): Digests | undefined {
+  _indexGet(logicalPath: string, versionName?: string, onlyUsecache?: boolean): Digests | undefined {
+    const version = this.#resolveVersion(versionName);
     let digests = this.#fileIndex[version]?.[logicalPath];
     if (!digests && !onlyUsecache) {
       // search and then index
@@ -123,8 +124,8 @@ class OcflObjectInventory {
     this.#fileIndex[version][logicalPath] = digests;
   }
 
-  _indexRemove(logicalPath: string, version = this.head) {
-    const index = this.#fileIndex[version];
+  _indexRemove(logicalPath: string, versionName?: string) {
+    const index = this.#fileIndex[this.#resolveVersion(versionName)];
     const val = index?.[logicalPath];
     delete index?.[logicalPath];
     return val;
@@ -172,9 +173,9 @@ class OcflObjectInventory {
     }
   }
 
-  _indexFindPaths(prefix: string, version = this.head) {
+  _indexFindPaths(prefix: string, versionName?: string) {
     const res: string[] = [];
-    const index = this.#fileIndex[version];
+    const index = this.#fileIndex[this.#resolveVersion(versionName)];
     const prefixWithSlash = prefix.endsWith('/') ? prefix : `${prefix}/`;
     for (const lp in index) {
       if (index[lp] && (lp === prefix || lp.startsWith(prefixWithSlash))) {
@@ -307,13 +308,14 @@ class OcflObjectInventory {
 
   /**
    * Return the state of the specified version
-   * @param version - The inventory version, default to the latest
+   * @param versionName - The inventory version, default to the latest
    */
-  versionState(version?: string) {
-    if (!version || version === 'latest') {
-      version = this.head;
-    }
-    return this.versions[version]?.state;
+  versionState(versionName?: string) {
+    return this.versions[this.#resolveVersion(versionName)]?.state;
+  }
+
+  #resolveVersion(versionName?: string): string {
+    return versionName === undefined || versionName === 'latest' ? this.head : versionName;
   }
 
   toString() {
@@ -325,16 +327,11 @@ class OcflObjectInventory {
   }
 
   /**
-   * @param version - The version name
+   * @param versionName - The version name
    */
-  *files(version?: string): Generator<InventoryFile> {
-    let state: InventoryDigests | undefined;
-    if (!version || version === 'latest') {
-      state = this.state;
-      version = this.head;
-    } else {
-      state = this.versions[version]?.state;
-    }
+  *files(versionName?: string): Generator<InventoryFile> {
+    const version = this.#resolveVersion(versionName);
+    const state = version === this.head ? this.state : this.versionState(version);
     for (const [digest, files] of Object.entries(state ?? {})) {
       const [contentPath] = this.#requireContentPaths(digest);
       for (const logicalPath of files) {
@@ -385,16 +382,16 @@ class OcflObjectInventory {
   /**
    * Get the digest of a content represented by the logicalPath of the specified version
    */
-  getDigest(logicalPath: string, versionName: string = this.head) {
+  getDigest(logicalPath: string, versionName?: string) {
     return this._indexGet(logicalPath, versionName, true)?.[this.digestAlgorithm];
   }
 
   /**
    * Get the file information by the logicalPath of the specified version
    */
-  getFile(logicalPath: string, versionName: string = this.head): InventoryFile | undefined {
-    const digest = this.getDigest(logicalPath, versionName);
-    const version = versionName;
+  getFile(logicalPath: string, versionName?: string): InventoryFile | undefined {
+    const version = this.#resolveVersion(versionName);
+    const digest = this.getDigest(logicalPath, version);
     if (digest) {
       const [contentPath] = this.#requireContentPaths(digest);
       return {
@@ -409,8 +406,8 @@ class OcflObjectInventory {
   }
 
   getFileByDigest(digest: string, versionName?: string): InventoryFile | undefined {
-    if (versionName) {
-      const logicalPath = this.versions[versionName]?.state[digest]?.[0];
+    if (versionName !== undefined) {
+      const logicalPath = this.versionState(versionName)?.[digest]?.[0];
       return logicalPath ? this.getFile(logicalPath, versionName) : undefined;
     }
     for (const [version, { state }] of Object.entries(this.versions)) {
@@ -432,7 +429,7 @@ class OcflObjectInventory {
   /**
    * Get the fixity of a content represented by the logicalPath of the specified version
    */
-  getFixity(logicalPath: string, versionName: string = this.head): Digests {
+  getFixity(logicalPath: string, versionName?: string): Digests {
     const { [this.digestAlgorithm]: digest, ...fixity } = this._indexGet(logicalPath, versionName, true) || {};
     return fixity;
   }
@@ -466,7 +463,7 @@ class OcflObjectInventory {
  */
 class OcflObjectInventoryMut extends OcflObjectInventory {
   /** The digest of a logical path and the state entry listing it */
-  #stateEntry(logicalPath: string, version: string = this.head): { digest: string; files: string[] } | undefined {
+  #stateEntry(logicalPath: string, version?: string): { digest: string; files: string[] } | undefined {
     const digest = this.getDigest(logicalPath, version);
     const files = digest ? this.versionState(version)?.[digest] : undefined;
     return digest && files ? { digest, files } : undefined;
@@ -476,7 +473,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * Remove exactly one logical path from its digest's list in the version state
    * @returns the removed path's digests, or undefined if it wasn't listed
    */
-  #unlist(logicalPath: string, version: string = this.head): Digests | undefined {
+  #unlist(logicalPath: string, version?: string): Digests | undefined {
     const entry = this.#stateEntry(logicalPath, version);
     const index = entry?.files.indexOf(logicalPath) ?? -1;
     if (!entry || index < 0) {
@@ -595,7 +592,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   /**
    * Delete a file
    */
-  delete(logicalPath: string, version: string = this.head) {
+  delete(logicalPath: string, version?: string) {
     let count = 0;
     for (const lp of this._indexFindPaths(logicalPath, version)) {
       if (this.#unlist(lp, version)) {

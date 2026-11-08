@@ -197,6 +197,8 @@ async function moveObject(id: string) {
 ## Other behaviour changes
 
 - Looking up a file in a version that doesn't exist returns `undefined` (or `0` from `count()`) instead of throwing.
+- `'latest'` now works as a version name in `getFile()`, the `fileBy*()` methods and the inventory methods that take a version. It previously matched nothing, and `fileByDigest()` and `fileByContentPath()` threw a `TypeError`.
+- An empty-string version is now always a version that doesn't exist. `inventory.versionState('')`, `inventory.files('')` and reading a lazy file looked up by logical path used to mean the head version, and `fileByDigest(digest, '')` and `fileByContentPath(path, '')` used to search every version.
 - `object.import()` no longer empties the array of sources passed to it.
 - Importing a directory fails if any of its files fails. Previously the other files were committed and the failures were dropped.
 - An update that leaves a stream from `createWritable()` open now rolls back and rejects with "Unfinished operations detected" instead of never settling.

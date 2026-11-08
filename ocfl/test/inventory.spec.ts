@@ -184,6 +184,77 @@ describe('OcflObjectInventory class', () => {
     assertHeadStateValid(inv);
   });
 
+  it('rejects iterating the files of an inventory whose head is not in versions', () => {
+    const inv = new OcflObjectInventory(data);
+    assert.throws(() => [...inv.files()], { code: 'E040' });
+    assert.throws(() => [...inv.files('latest')], { code: 'E040' });
+  });
+
+  describe("'latest' version name", () => {
+    let inv: ReturnType<typeof OcflObjectInventory.newVersion>;
+    beforeEach(() => {
+      inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1', { md5: 'm1' });
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.add('a', 'd2', { md5: 'm2' });
+    });
+
+    it('resolves to head in getDigest and getFixity', () => {
+      assert.strictEqual(inv.getDigest('a', 'latest'), 'd2');
+      assert.deepStrictEqual(inv.getFixity('a', 'latest'), { md5: 'm2' });
+    });
+
+    it('reports the real version name from getFile', () => {
+      const headFile = { logicalPath: 'a', version: 'v2', digest: 'd2', contentPath: 'v2/content/a', fixity: { md5: 'm2' } };
+      assert.deepStrictEqual(inv.getFile('a', 'latest'), headFile);
+      assert.deepStrictEqual(inv.getFile('a', 'v2'), headFile);
+    });
+
+    it('resolves to head in getFileByDigest and getFileByContentPath', () => {
+      assert.strictEqual(inv.getFileByDigest('d2', 'latest')?.version, 'v2');
+      assert.strictEqual(inv.getFileByContentPath('v2/content/a', 'latest')?.version, 'v2');
+      assert.strictEqual(inv.getFileByDigest('d1', 'latest'), undefined);
+    });
+
+    it('resolves to head in delete', () => {
+      assert.strictEqual(inv.delete('a', 'latest'), 1);
+      assert.deepStrictEqual(inv.state, {});
+      assert.strictEqual(inv.getDigest('a'), undefined);
+    });
+
+    it('resolves to head in reinstate', () => {
+      assert.strictEqual(inv.reinstate('a', 'latest'), 1);
+      assert.deepStrictEqual(inv.state, { d2: ['a'] });
+    });
+
+    it('treats an empty version name as a version that does not exist', () => {
+      assert.strictEqual(inv.versionState(''), undefined);
+      assert.deepStrictEqual([...inv.files('')], []);
+      assert.strictEqual(inv.getDigest('a', ''), undefined);
+      assert.deepStrictEqual(inv.getFixity('a', ''), {});
+      assert.strictEqual(inv.getFile('a', ''), undefined);
+      assert.strictEqual(inv.getFileByDigest('d2', ''), undefined);
+      assert.strictEqual(inv.getFileByContentPath('v2/content/a', ''), undefined);
+      assert.strictEqual(inv.delete('a', ''), 0);
+      assert.strictEqual(inv.reinstate('a', ''), 0);
+      assert.deepStrictEqual(inv.state, { d2: ['a'] });
+    });
+
+    it('leaves explicit older versions unchanged', () => {
+      assert.strictEqual(inv.getDigest('a', 'v1'), 'd1');
+      assert.deepStrictEqual(inv.getFixity('a', 'v1'), { md5: 'm1' });
+      assert.deepStrictEqual(inv.getFile('a', 'v1'), {
+        logicalPath: 'a',
+        version: 'v1',
+        digest: 'd1',
+        contentPath: 'v1/content/a',
+        fixity: { md5: 'm1' },
+      });
+      assert.strictEqual(inv.getFileByDigest('d1', 'v1')?.logicalPath, 'a');
+      assert.strictEqual(inv.getFileByContentPath('v1/content/a', 'v1')?.version, 'v1');
+    });
+  });
+
   describe('head version state stays valid', () => {
     it('moves an updated logical path to a digest that already has other paths', () => {
       let inv = OcflObjectInventory.newVersion(data);
