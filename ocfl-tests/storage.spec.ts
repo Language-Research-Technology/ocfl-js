@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import type { OcflStorage, OcflVersion } from '@ocfl/ocfl';
+import type { OcflError, OcflStorage, OcflVersion } from '@ocfl/ocfl';
+import { OcflDigest, OcflStorageLayout } from '@ocfl/ocfl';
 import type { Ocfl } from './index.ts';
 
 export default (ocfl: Ocfl) => {
@@ -194,6 +195,183 @@ export default (ocfl: Ocfl) => {
         assert.deepStrictEqual(roots, [created.root]);
       });
     }
+  });
+  describe('configured layout of a loaded storage root', () => {
+    const HASHED = '0004-hashed-n-tuple-storage-layout';
+    const ABC_SHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
+    let tempdir: string;
+    let rootCount = 0;
+    before(async () => {
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-storage-layout-'));
+    });
+    after(async () => {
+      await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+    const createRoot = async ({ layoutFile, extensionConfig }: { layoutFile?: string; extensionConfig?: object } = {}) => {
+      const root = path.join(tempdir, `root-${rootCount++}`);
+      await fs.promises.mkdir(root);
+      await fs.promises.writeFile(path.join(root, '0=ocfl_1.1'), 'ocfl_1.1\n');
+      if (layoutFile !== undefined) {
+        await fs.promises.writeFile(path.join(root, 'ocfl_layout.json'), layoutFile);
+      }
+      if (extensionConfig) {
+        await fs.promises.mkdir(path.join(root, 'extensions', HASHED), { recursive: true });
+        await fs.promises.writeFile(path.join(root, 'extensions', HASHED, 'config.json'), JSON.stringify(extensionConfig));
+      }
+      return root;
+    };
+    const declaring = (extension: string) => JSON.stringify({ extension });
+
+    it('keeps the configured layout when the root has no ocfl_layout.json', async () => {
+      const root = await createRoot();
+      const storage = ocfl.storage({ root, layout: 'FlatDirectStorageLayout' });
+      assert.strictEqual(storage.objectRoot('abc'), 'abc');
+      await storage.load();
+      assert.strictEqual(storage.objectRoot('abc'), 'abc');
+    });
+
+    it('keeps the configured layout when ocfl_layout.json cannot be parsed', async () => {
+      const root = await createRoot({ layoutFile: 'not json' });
+      const storage = await ocfl.storage({ root, layout: 'FlatDirectStorageLayout' }).load();
+      assert.strictEqual(storage.objectRoot('abc'), 'abc');
+    });
+
+    it('reads a root naming an unsupported extension with a custom layout instance', async () => {
+      class UppercaseLayout extends OcflStorageLayout {
+        map(id: string) {
+          return id.toUpperCase();
+        }
+      }
+      const root = await createRoot({ layoutFile: declaring('9999-unimplemented-layout') });
+      const storage = await ocfl.storage({ root, layout: new UppercaseLayout() }).load();
+      assert.strictEqual(storage.objectRoot('abc'), 'ABC');
+      assert.strictEqual(storage.object('abc').root, path.join(root, 'ABC'));
+    });
+
+    it('rejects a configured layout that differs from the supported layout the root declares, naming both', async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED) });
+      await assert.rejects(ocfl.storage({ root, layout: 'FlatDirectStorageLayout' }).load(), (error: OcflError) => {
+        assert.strictEqual(error.code, 'LAYOUT_MISMATCH');
+        assert.match(error.message, /0002-flat-direct-storage-layout/);
+        assert.match(error.message, /0004-hashed-n-tuple-storage-layout/);
+        return true;
+      });
+    });
+
+    it('reports a differing layout by name even when the root extension config is invalid', async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { digestAlgorithm: 'not-a-digest' } });
+      await assert.rejects(ocfl.storage({ root, layout: 'FlatDirectStorageLayout' }).load(), { code: 'LAYOUT_MISMATCH' });
+    });
+
+    it('keeps a configured layout matching the name and parameters the root declares', async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: HASHED, tupleSize: 2, numberOfTuples: 3 } });
+      const storage = await ocfl.storage({ root, layout: { extensionName: HASHED, tupleSize: 2 } }).load();
+      assert.strictEqual(storage.objectRoot('abc'), path.join('ba', '78', '16', ABC_SHA256));
+    });
+
+    it('keeps the configured instance when it matches the layout the root declares', async () => {
+      class CustomisedHashedLayout extends ocfl.StorageLayout.HashedNTupleStorageLayout {
+        map() {
+          return 'customised';
+        }
+      }
+      const root = await createRoot({ layoutFile: declaring(HASHED) });
+      const storage = await ocfl.storage({ root, layout: new CustomisedHashedLayout() }).load();
+      assert.strictEqual(storage.objectRoot('abc'), 'customised');
+    });
+
+    it('rejects a configured layout whose parameters differ from the root extension config, naming them', async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: HASHED, numberOfTuples: 2 } });
+      await assert.rejects(ocfl.storage({ root, layout: { extensionName: HASHED, tupleSize: 2 } }).load(), (error: OcflError) => {
+        assert.strictEqual(error.code, 'LAYOUT_MISMATCH');
+        assert.match(error.message, /configured tupleSize: 2, root tupleSize: 3/);
+        assert.match(error.message, /configured numberOfTuples: 3, root numberOfTuples: 2/);
+        assert.doesNotMatch(error.message, /digestAlgorithm|extensionName/);
+        return true;
+      });
+    });
+
+    it('compares against the defaults when the root has no extension config', async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED) });
+      await assert.rejects(ocfl.storage({ root, layout: { extensionName: HASHED, tupleSize: 2 } }).load(), {
+        code: 'LAYOUT_MISMATCH',
+      });
+    });
+
+    it('treats a configured parameter set to its default as matching a root config that omits it', async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: HASHED } });
+      await ocfl.storage({ root, layout: { extensionName: HASHED, tupleSize: 3 } }).load();
+    });
+
+    it('treats a root parameter set to its default as matching a configured layout that omits it', async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: HASHED, tupleSize: 3 } });
+      await ocfl.storage({ root, layout: HASHED }).load();
+    });
+
+    it('compares a configured layout with ocfl_layout.json, not the extensionName in the extension config', async () => {
+      const staleName = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: 'no-such-layout' } });
+      await assert.rejects(ocfl.storage({ root: staleName, layout: 'FlatDirectStorageLayout' }).load(), { code: 'LAYOUT_MISMATCH' });
+
+      const otherName = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: '0002-flat-direct-storage-layout' } });
+      await ocfl.storage({ root: otherName, layout: HASHED }).load();
+    });
+
+    it('reads a root naming a registered layout that has no map() with a custom layout', async () => {
+      class UppercaseLayout extends OcflStorageLayout {
+        map(id: string) {
+          return id.toUpperCase();
+        }
+      }
+      const root = await createRoot({ layoutFile: declaring('0006-flat-omit-prefix-storage-layout') });
+      const storage = await ocfl.storage({ root, layout: new UppercaseLayout() }).load();
+      assert.strictEqual(storage.objectRoot('abc'), 'ABC');
+    });
+
+    it('loads a root with the configured RegExp parameter that created it', async () => {
+      const root = path.join(tempdir, `root-${rootCount++}`);
+      const layout = { extensionName: '000N-path-direct-storage-layout', replace: [[/x/g, 'y']] };
+      await ocfl.createStorage({ root, layout });
+      const storage = await ocfl.storage({ root, layout }).load();
+      assert.strictEqual(storage.objectRoot('xa'), path.join('ya', '__object__'));
+    });
+
+    it('ignores a parameter that only a configured subclass defines', async () => {
+      class SaltedHashedLayout extends ocfl.StorageLayout.HashedNTupleStorageLayout {
+        constructor() {
+          super();
+          (this.parameters as unknown as { salt: string }).salt = 'x';
+        }
+      }
+      const root = await createRoot({ layoutFile: declaring(HASHED) });
+      await ocfl.storage({ root, layout: new SaltedHashedLayout() }).load();
+    });
+
+    it('initialises the digest algorithm of a configured layout', async () => {
+      const algorithm = 'test-configured-layout-digest';
+      OcflDigest.registerHasherFactory(algorithm, async () => {
+        const hasher: unknown = { digestSize: 1, init: () => hasher, update: () => hasher, digest: () => 'digested' };
+        return hasher as never;
+      });
+      class DigestLayout extends OcflStorageLayout<{ digestAlgorithm: string }> {
+        constructor() {
+          super(undefined, { digestAlgorithm: algorithm });
+        }
+        map(id: string) {
+          return OcflDigest.digestSync(algorithm, id);
+        }
+      }
+      const root = await createRoot();
+      const storage = ocfl.storage({ root, layout: new DigestLayout() });
+      assert.throws(() => storage.objectRoot('abc'), /not initialized/);
+      await storage.load();
+      assert.strictEqual(storage.objectRoot('abc'), 'digested');
+    });
+
+    it('uses the layout and extension config of the root when no layout is configured', async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: HASHED, tupleSize: 2 } });
+      const storage = await ocfl.storage({ root }).load();
+      assert.strictEqual(storage.objectRoot('abc'), path.join('ba', '78', '16', ABC_SHA256));
+    });
   });
   describe('spec violations', () => {
     let tempdir: string;
