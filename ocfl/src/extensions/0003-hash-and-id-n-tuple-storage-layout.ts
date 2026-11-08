@@ -2,8 +2,13 @@ import path from 'node:path';
 import { OcflDigest } from '../digest.ts';
 import { OcflStorageLayout } from '../extension.ts';
 
-function encodeIdentifier(id: string) {
-  return encodeURIComponent(id).toLowerCase().replace(/\./g, '%2e');
+const MAX_ENCODED_ID_LENGTH = 100;
+
+function encapsulationDirectory(id: string, digest: string) {
+  const encoded = encodeURIComponent(id)
+    .replace(/%[0-9A-F]{2}/g, (hexEscape) => hexEscape.toLowerCase())
+    .replace(/[.!'()*~]/g, (char) => `%${char.charCodeAt(0).toString(16)}`);
+  return encoded.length > MAX_ENCODED_ID_LENGTH ? `${encoded.slice(0, MAX_ENCODED_ID_LENGTH)}-${digest}` : encoded;
 }
 
 const DefaultConfig = {
@@ -48,7 +53,7 @@ class HashAndIdNTupleStorageLayout extends OcflStorageLayout<typeof DefaultConfi
     for (i = 0; i < n; ++i) {
       segments.push(digest.slice(s * i, s * i + s));
     }
-    segments.push(encodeIdentifier(id));
+    segments.push(encapsulationDirectory(id, digest));
     return segments.join(path.sep);
   }
 }

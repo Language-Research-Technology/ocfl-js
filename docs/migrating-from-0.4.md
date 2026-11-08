@@ -163,6 +163,37 @@ try {
 }
 ```
 
+## Storage layout 0003 paths
+
+`0003-hash-and-id-n-tuple-storage-layout` now builds the encapsulation directory as the [extension](https://ocfl.github.io/extensions/0003-hash-and-id-n-tuple-storage-layout.html) specifies, so storage roots it wrote can be read by other implementations and vice versa. The digest-tuple directories are unchanged. There is no fallback: an object written under the old name isn't found until it's moved.
+
+An object is affected if its id has any of these:
+
+| Id contains                           | Old directory name      | New directory name                                   |
+| ------------------------------------- | ----------------------- | ---------------------------------------------------- |
+| Upper-case letters                    | Lower-cased: `object-a` | Case kept: `Object-A`                                |
+| Any of `!'()*~`                       | Left as is: `a!b`       | Percent-encoded: `a%21b`                             |
+| More than 100 characters once encoded | The whole encoded id    | First 100 characters, `-`, then the id's full digest |
+
+To move existing objects, compute each object's directory name under both rules and rename it if they differ. An object's id is the `id` in its `inventory.json`:
+
+```ts
+import { existsSync } from 'node:fs';
+import { rename } from 'node:fs/promises';
+import path from 'node:path';
+import ocfl from '@ocfl/ocfl-fs';
+
+const storage = await ocfl.loadStorage({ root: '/var/data/myocfl' });
+
+const oldName = (id: string) => encodeURIComponent(id).toLowerCase().replace(/\./g, '%2e');
+
+async function moveObject(id: string) {
+  const newPath = storage.objectRootAbs(id);
+  const oldPath = path.join(path.dirname(newPath), oldName(id));
+  if (oldPath !== newPath && existsSync(oldPath)) await rename(oldPath, newPath);
+}
+```
+
 ## Other behaviour changes
 
 - Looking up a file in a version that doesn't exist returns `undefined` (or `0` from `count()`) instead of throwing.

@@ -34,6 +34,46 @@ describe('HashAndIdNTupleStorageLayout class', () => {
     }
   });
 
+  describe('encapsulation directory', () => {
+    const encapsulationDirectory = (id: string, digestAlgorithm = 'sha256') =>
+      new HashAndIdNTupleStorageLayout({ digestAlgorithm, tupleSize: 0, numberOfTuples: 0 }).map(id);
+
+    it("keeps the identifier's own letter case and lower-cases the percent-encoding", () => {
+      assert.strictEqual(encapsulationDirectory('..Hor/rib:lè-$id'), '%2e%2eHor%2frib%3al%c3%a8-%24id');
+    });
+
+    it('percent-encodes everything except letters, digits, hyphen and underscore', () => {
+      assert.strictEqual(encapsulationDirectory("a!'()*~b"), 'a%21%27%28%29%2a%7eb');
+      assert.strictEqual(encapsulationDirectory('Az-_09'), 'Az-_09');
+    });
+
+    const first100Chars = 'abcdefghij'.repeat(10);
+    const id101Chars = `${first100Chars}a`;
+    const id101CharsSha256 = '5cc73e648fbcff136510e330871180922ddacf193b68fdeff855683a01464220';
+
+    it('keeps an identifier that encodes to exactly 100 characters', () => {
+      assert.strictEqual(encapsulationDirectory(first100Chars), first100Chars);
+    });
+
+    it('truncates an identifier that encodes to more than 100 characters and appends its digest', () => {
+      assert.strictEqual(encapsulationDirectory(id101Chars), `${first100Chars}-${id101CharsSha256}`);
+    });
+
+    it('measures the encoded identifier, not the original', () => {
+      assert.strictEqual(encapsulationDirectory(`${'/'.repeat(33)}a`), `${'%2f'.repeat(33)}a`);
+      assert.strictEqual(encapsulationDirectory('/'.repeat(34)), `${'%2f'.repeat(33)}%-1f62aeee9540aa9022a24e0c65a754e3434d310c30a4ecc682361bde1e7a8760`);
+    });
+
+    it('truncates using the configured digestAlgorithm', () => {
+      assert.strictEqual(encapsulationDirectory(id101Chars, 'md5'), `${first100Chars}-6b302f372e9f340c58d7366ec90ab6df`);
+    });
+
+    it('still prefixes a truncated directory with the digest tuples', () => {
+      const layout = new HashAndIdNTupleStorageLayout();
+      assert.strictEqual(layout.map(id101Chars), `5cc/73e/648/${first100Chars}-${id101CharsSha256}`);
+    });
+  });
+
   it('rejects a digestAlgorithm that is not lowercase', () => {
     assert.throws(() => new HashAndIdNTupleStorageLayout({ digestAlgorithm: 'MD5' }), { message: 'Invalid digestAlgorithm' });
   });
