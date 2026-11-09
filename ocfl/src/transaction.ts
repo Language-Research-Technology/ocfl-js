@@ -6,7 +6,7 @@ import { OcflError } from './error.ts';
 import type { ContentRelease, OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
 import type { OcflStore, WriteFileData } from './store.ts';
-import { isAlreadyExists, isNotFound, parallelize } from './utils.ts';
+import { isAlreadyExists, parallelize } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 
@@ -66,6 +66,7 @@ function splitDigests(digests: { [algorithm: string]: string }, algorithm: strin
  * once its queued writes finish and it closes, and while open it doesn't hold up other operations. A failed operation
  * rejects its own promise and leaves nothing behind; later operations carry on. An operation
  * waits for all the earlier ones, so one whose input never ends holds up those called after it.
+ * If a failed operation's changes to the stored files can't be undone, the transaction can't commit.
  */
 class OcflObjectTransaction {
   /**
@@ -209,6 +210,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   _stagedCount = 0;
   _writers = new Set<WritableStreamDefaultWriter>();
   _committed = false;
+  _commitBlocker: Error | undefined;
 
   constructor(
     ocflObject: OcflObject,
@@ -284,6 +286,10 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         throw new Error(
           `Unfinished operations detected (${count}). Make sure that updater callback is async function and there are no floating promises inside.`,
         );
+      }
+      if (this._commitBlocker) {
+        await this.rollback();
+        throw this._commitBlocker;
       }
       // if there is no changes, abort commit
       if (!options?.force && !this._inventory.isChanged) {
@@ -415,14 +421,14 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
    */
   async _addContent(logicalPath: string, [digest, fixity]: Hashes, staging: string, stage?: () => Promise<void>) {
     const inventory = this._inventory;
-    const release = inventory.getDigest(logicalPath) === digest ? undefined : inventory._contentRelease(logicalPath);
+    const releases = inventory.getDigest(logicalPath) === digest ? [] : inventory._contentReleases([logicalPath]);
     const isNew = !inventory.getContentPath(digest);
     await this._removeStagedOnFailure(staging, async () => {
       const realPath = isNew ? this._getRealPath(logicalPath) : undefined;
       if (isNew) {
         await stage?.();
       }
-      await this._applyContentRelease(release, realPath, async () => {
+      await this._applyContentReleases(releases, realPath, async () => {
         if (realPath) {
           await this._store.move(staging, realPath);
         } else if (!stage) {
@@ -434,31 +440,52 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   }
 
   /**
-   * Make a release's changes to the stored files around `place`, undoing a move if `place` fails.
+   * Make releases' changes to the stored files around `place`, undoing every move if a move or `place` fails.
    * @param placedAt - The file `place` fills, if it stores any content
    */
-  async _applyContentRelease(release: ContentRelease | undefined, placedAt: string | undefined, place: () => Promise<void>) {
-    if (!release) {
-      return place();
-    }
-    const from = this._contentFilePath(release.from);
-    const to = release.to === undefined ? undefined : this._contentFilePath(release.to);
-    const moving = to !== undefined && to !== from;
-    if (moving) {
-      await this._store.move(from, to);
-    }
-    await place().catch(async (error) => {
-      if (moving) {
-        await this._store.move(to, from);
-        await this._pruneEmptyDirectories(path.dirname(to));
+  async _applyContentReleases(releases: ContentRelease[], placedAt?: string, place?: () => Promise<void>) {
+    const files = releases.map(({ from, to }) => ({
+      from: this._contentFilePath(from),
+      to: to === undefined ? undefined : this._contentFilePath(to),
+    }));
+    const moved: { from: string; to: string }[] = [];
+    try {
+      for (const { from, to } of files) {
+        if (to !== undefined) {
+          await this._store.move(from, to);
+          moved.push({ from, to });
+        }
       }
+      await place?.();
+    } catch (error) {
+      await this._blockCommitOnFailure(async () => {
+        for (const { from, to } of moved.reverse()) {
+          await this._store.move(to, from);
+          await this._pruneEmptyDirectories(path.dirname(to));
+        }
+      }).catch(() => {});
       throw error;
-    });
-    if (to !== from && from !== placedAt) {
-      if (to === undefined) {
-        await this._store.remove(from);
+    }
+    const vacated = files.filter(({ from }) => from !== placedAt);
+    await this._blockCommitOnFailure(async () => {
+      for (const { from, to } of vacated) {
+        if (to === undefined) {
+          await this._store.remove(from);
+        }
       }
-      await this._pruneEmptyDirectories(path.dirname(from));
+    });
+    for (const dir of new Set(vacated.map(({ from }) => path.dirname(from)))) {
+      await this._pruneEmptyDirectories(dir);
+    }
+  }
+
+  /** For a file change that can't be reversed if it fails, which leaves the files and inventory out of step */
+  async _blockCommitOnFailure(change: () => Promise<void>) {
+    try {
+      await change();
+    } catch (error) {
+      this._commitBlocker ??= new Error('Update cannot be committed: a change to its files failed and could not be undone', { cause: error });
+      throw error;
     }
   }
 
@@ -573,18 +600,11 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
 
   async rename(source: string, target: string) {
     return this._transact(async () => {
-      const realSource = this._getRealPath(source);
-      const realTarget = this._getRealPath(target);
-      const transfers = this._inventory._planTransfer(source, target);
-      // if file already exists in the workspace, rename the actual file
-      try {
-        await this._store.move(realSource, realTarget);
-      } catch (error) {
-        if (!isNotFound(error)) {
-          throw error;
-        }
-      }
-      this._inventory._applyRename(transfers);
+      checkLogicalPath(source);
+      checkLogicalPath(target);
+      const plan = this._inventory._planRename(source, target);
+      await this._applyContentReleases(plan.releases);
+      this._inventory._applyRename(plan);
     });
   }
 
@@ -594,18 +614,19 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
 
   async remove(logicalPath: string, options?: RemoveOptions) {
     return this._transact(async () => {
-      const realPath = this._getRealPath(logicalPath);
+      checkLogicalPath(logicalPath);
+      const inventory = this._inventory;
+      const plan = inventory._planDelete(logicalPath);
+      await this._applyContentReleases(plan.releases);
       if (options?.purge) {
         // completely remove content from all versions
-        let ver = this._inventory.versionNumber.previous();
+        let ver = inventory.versionNumber.previous();
         while (ver) {
-          this._inventory.delete(logicalPath, ver.toString());
+          inventory.delete(logicalPath, ver.toString());
           ver = ver.previous();
         }
       }
-      if (this._inventory.delete(logicalPath)) {
-        return this._store.remove(realPath);
-      }
+      inventory._applyDelete(plan);
     });
   }
 

@@ -424,6 +424,94 @@ describe('OcflObjectInventory class', () => {
     });
   });
 
+  describe('deleting or renaming a logical path within the version being built', () => {
+    function newContent() {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1', { md5: 'm1' });
+      return inv;
+    }
+
+    function committedContent() {
+      return OcflObjectInventory.newVersion(newContent());
+    }
+
+    it('delete drops the manifest and fixity entries of content nothing else uses', () => {
+      const inv = newContent();
+      assert.strictEqual(inv.delete('a'), 1);
+      assert.deepStrictEqual(inv.manifest, {});
+      assert.strictEqual(inv.fixity?.md5, undefined);
+      assertHeadStateValid(inv);
+    });
+
+    it('delete moves shared content to a remaining path, with its fixity', () => {
+      const inv = newContent();
+      inv.copy('a', 'b');
+      inv.delete('a');
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/b'] });
+      assert.deepStrictEqual(inv.fixity?.md5, { m1: ['v1/content/b'] });
+      assert.deepStrictEqual(inv.getFile('b')?.contentPath, 'v1/content/b');
+      assert.deepStrictEqual(inv.getFixity('b'), { md5: 'm1' });
+      assertHeadStateValid(inv);
+    });
+
+    it('delete keeps content stored at a remaining path where it is', () => {
+      const inv = newContent();
+      inv.copy('a', 'b');
+      inv.delete('b');
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
+      assert.deepStrictEqual(inv.fixity?.md5, { m1: ['v1/content/a'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('delete drops the entry when a directory holds every path using the content', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('d/x', 'd1');
+      inv.add('d/y', 'd1');
+      assert.strictEqual(inv.delete('d'), 2);
+      assert.deepStrictEqual(inv.manifest, {});
+      assertHeadStateValid(inv);
+    });
+
+    it('delete leaves the manifest and fixity of committed content unchanged', () => {
+      const inv = committedContent();
+      inv.delete('a');
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
+      assert.deepStrictEqual(inv.fixity?.md5, { m1: ['v1/content/a'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('delete from an earlier version leaves the manifest unchanged', () => {
+      const inv = committedContent();
+      assert.strictEqual(inv.delete('a', 'v1'), 1);
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
+    });
+
+    it('rename moves the manifest and fixity entries of a path this version stored', () => {
+      const inv = newContent();
+      inv.rename('a', 'x/b');
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/x/b'] });
+      assert.deepStrictEqual(inv.fixity?.md5, { m1: ['v1/content/x/b'] });
+      assert.deepStrictEqual(inv.getFixity('x/b'), { md5: 'm1' });
+      assertHeadStateValid(inv);
+    });
+
+    it('rename leaves entries alone when the content is stored at another path', () => {
+      const inv = newContent();
+      inv.copy('a', 'b');
+      inv.rename('b', 'c');
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('rename leaves entries of committed content unchanged', () => {
+      const inv = committedContent();
+      inv.rename('a', 'b');
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
+      assert.deepStrictEqual(inv.fixity?.md5, { m1: ['v1/content/a'] });
+      assertHeadStateValid(inv);
+    });
+  });
+
   describe('replacing a logical path within the version being built', () => {
     it('moves shared content to the other logical path, with its fixity', () => {
       const inv = OcflObjectInventory.newVersion(data);

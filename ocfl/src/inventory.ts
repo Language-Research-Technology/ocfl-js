@@ -20,7 +20,7 @@ export interface InventoryFile {
 export interface ContentRelease {
   digest: string;
   from: string;
-  /** Where the content belongs next: `from` if it stays, undefined if nothing uses it any more */
+  /** Where the content moves to; undefined if nothing uses it any more */
   to?: string;
 }
 
@@ -100,7 +100,7 @@ class OcflObjectInventory {
    * Helper function to find the digest by logical file path and cached it by indexing
    */
   _indexGet(logicalPath: string, versionName?: string, onlyUsecache?: boolean): Digests | undefined {
-    const version = this.#resolveVersion(versionName);
+    const version = this._resolveVersion(versionName);
     let digests = this.#fileIndex[version]?.[logicalPath];
     if (!digests && !onlyUsecache) {
       // search and then index
@@ -129,7 +129,7 @@ class OcflObjectInventory {
   }
 
   _indexRemove(logicalPath: string, versionName?: string) {
-    delete this.#fileIndex[this.#resolveVersion(versionName)]?.[logicalPath];
+    delete this.#fileIndex[this._resolveVersion(versionName)]?.[logicalPath];
   }
 
   _indexGetFixity(contentPath: string): Digests {
@@ -184,7 +184,7 @@ class OcflObjectInventory {
 
   _indexFindPaths(prefix: string, versionName?: string) {
     const res: string[] = [];
-    const index = this.#fileIndex[this.#resolveVersion(versionName)];
+    const index = this.#fileIndex[this._resolveVersion(versionName)];
     const prefixWithSlash = prefix.endsWith('/') ? prefix : `${prefix}/`;
     for (const lp in index) {
       if (index[lp] && (lp === prefix || lp.startsWith(prefixWithSlash))) {
@@ -321,10 +321,10 @@ class OcflObjectInventory {
    * @param versionName - The inventory version, default to the latest
    */
   versionState(versionName?: string) {
-    return this.versions[this.#resolveVersion(versionName)]?.state;
+    return this.versions[this._resolveVersion(versionName)]?.state;
   }
 
-  #resolveVersion(versionName?: string): string {
+  _resolveVersion(versionName?: string): string {
     return versionName === undefined || versionName === 'latest' ? this.head : versionName;
   }
 
@@ -340,7 +340,7 @@ class OcflObjectInventory {
    * @param versionName - The version name
    */
   *files(versionName?: string): Generator<InventoryFile> {
-    const version = this.#resolveVersion(versionName);
+    const version = this._resolveVersion(versionName);
     const state = version === this.head ? this.state : this.versionState(version);
     for (const [digest, files] of Object.entries(state ?? {})) {
       const [contentPath] = this.#requireContentPaths(digest);
@@ -400,7 +400,7 @@ class OcflObjectInventory {
    * Get the file information by the logicalPath of the specified version
    */
   getFile(logicalPath: string, versionName?: string): InventoryFile | undefined {
-    const version = this.#resolveVersion(versionName);
+    const version = this._resolveVersion(versionName);
     const digest = this.getDigest(logicalPath, version);
     if (digest) {
       const [contentPath] = this.#requireContentPaths(digest);
@@ -475,6 +475,16 @@ interface Transfer {
   digests: Digests;
 }
 
+interface RenamePlan {
+  transfers: Transfer[];
+  releases: ContentRelease[];
+}
+
+interface DeletePlan {
+  paths: string[];
+  releases: ContentRelease[];
+}
+
 /**
  * Wrapper class with mutable methods for inventory data
  */
@@ -519,14 +529,15 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    */
   add(logicalPath: string, digest: string, fixity?: { [x: string]: string }): boolean {
     if (this.getDigest(logicalPath) !== digest) {
-      this.#applyContentRelease(logicalPath);
+      const releases = this._contentReleases([logicalPath]);
+      this.#unlist(logicalPath);
+      this.#applyContentReleases(releases);
     }
     const existingPath = this.getContentPath(digest);
     const digests = existingPath ? this.#fillFixity(existingPath, digest, fixity) : this.#addContent(logicalPath, digest, fixity);
     if (this.getDigest(logicalPath) === digest) {
       return false;
     }
-    this.#unlist(logicalPath);
     this.#list(logicalPath, digest, digests);
     return true;
   }
@@ -535,28 +546,33 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     return `${this.head}/${this.contentDirectory}/${logicalPath}`;
   }
 
-  /** What happens to a logical path's content once the path stops using it, if this version stored that content */
-  _contentRelease(logicalPath: string): ContentRelease | undefined {
-    const entry = this.#stateEntry(logicalPath);
-    const from = entry && this.getContentPath(entry.digest);
-    if (!entry || !from?.startsWith(`${this.head}/`)) {
-      return undefined;
-    }
-    const heir = entry.files.find((file) => file !== logicalPath);
-    if (heir === undefined) {
-      return { digest: entry.digest, from };
-    }
-    return { digest: entry.digest, from, to: from === this.#ownContentPath(logicalPath) ? this.#ownContentPath(heir) : from };
+  /** What happens to the content of logical paths once they all stop using it, for content this version stored */
+  _contentReleases(logicalPaths: string[]): ContentRelease[] {
+    const leaving = new Set(logicalPaths);
+    const ownPaths = new Set(logicalPaths.map((logicalPath) => this.#ownContentPath(logicalPath)));
+    const digests = new Set(logicalPaths.map((logicalPath) => this.getDigest(logicalPath)).filter((digest) => digest !== undefined));
+    return [...digests].flatMap((digest) => {
+      const from = this.getContentPath(digest);
+      if (!from?.startsWith(`${this.head}/`)) {
+        return [];
+      }
+      const heir = this.state[digest]?.find((file) => !leaving.has(file));
+      if (heir === undefined) {
+        return [{ digest, from }];
+      }
+      return ownPaths.has(from) ? [{ digest, from, to: this.#ownContentPath(heir) }] : [];
+    });
   }
 
-  #applyContentRelease(logicalPath: string) {
-    const release = this._contentRelease(logicalPath);
-    if (release && release.to === undefined) {
-      this.#unlist(logicalPath);
-      delete this.manifest[release.digest];
-      this.#forgetFixity(release.from);
-    } else if (release?.to && release.to !== release.from) {
-      this.#moveContent(release.digest, release.from, release.to);
+  /** The state must already be free of any digest a release removes, because recording fixity can rebuild the index from it */
+  #applyContentReleases(releases: ContentRelease[]) {
+    for (const { digest, from, to } of releases) {
+      if (to === undefined) {
+        delete this.manifest[digest];
+        this.#forgetFixity(from);
+      } else {
+        this.#moveContent(digest, from, to);
+      }
     }
   }
 
@@ -676,11 +692,26 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * @throws OcflError FILE_EXISTS if the target exists
    */
   rename(srcLogicalPath: string, destLogicalPath: string) {
-    this._applyRename(this._planTransfer(srcLogicalPath, destLogicalPath));
+    this._applyRename(this._planRename(srcLogicalPath, destLogicalPath));
   }
 
-  /** Apply a plan from {@link _planTransfer}, which must be from the current head state */
-  _applyRename(transfers: Transfer[]) {
+  /**
+   * Resolve a rename to its transfers and the content it moves, changing nothing. Only files this
+   * version stored at a source's own content path move.
+   * @throws OcflError FILE_NOT_FOUND if the source is missing, FILE_EXISTS if the target exists
+   */
+  _planRename(srcLogicalPath: string, destLogicalPath: string): RenamePlan {
+    const transfers = this._planTransfer(srcLogicalPath, destLogicalPath);
+    const releases = transfers.flatMap(({ src, dest, digest }) => {
+      const from = this.getContentPath(digest);
+      return from === this.#ownContentPath(src) ? [{ digest, from, to: this.#ownContentPath(dest) }] : [];
+    });
+    return { transfers, releases };
+  }
+
+  /** Apply a plan from {@link _planRename}, which must be from the current head state */
+  _applyRename({ transfers, releases }: RenamePlan) {
+    this.#applyContentReleases(releases);
     for (const { src, dest, digest, digests } of transfers) {
       this.#unlist(src);
       this.#list(dest, digest, digests);
@@ -698,11 +729,29 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   }
 
   /**
-   * Delete a file
+   * Delete a file or directory. Content the head version stored moves to a remaining logical path
+   * that uses it, or leaves the manifest if none does.
    */
   delete(logicalPath: string, version?: string) {
+    return this._applyDelete(this._planDelete(logicalPath, version), version);
+  }
+
+  /** Resolve a delete to the paths it unlists and what happens to their content, changing nothing */
+  _planDelete(logicalPath: string, version?: string): DeletePlan {
+    const paths = this._indexFindPaths(logicalPath, version);
+    return { paths, releases: this._resolveVersion(version) === this.head ? this._contentReleases(paths) : [] };
+  }
+
+  /** Apply a plan from {@link _planDelete}, which must be from the current state */
+  _applyDelete({ paths, releases }: DeletePlan, version?: string) {
+    const count = this.#delist(paths, version);
+    this.#applyContentReleases(releases);
+    return count;
+  }
+
+  #delist(logicalPaths: string[], version?: string) {
     let count = 0;
-    for (const lp of this._indexFindPaths(logicalPath, version)) {
+    for (const lp of logicalPaths) {
       if (this.#unlist(lp, version)) {
         count++;
       }
@@ -718,7 +767,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
       const digest = digests?.[this.digestAlgorithm];
       if (digests && digest) {
         if (this.getDigest(lp) !== digest) {
-          this.delete(lp);
+          this.#delist(this._indexFindPaths(lp));
           this.#list(lp, digest, digests);
         }
         count++;

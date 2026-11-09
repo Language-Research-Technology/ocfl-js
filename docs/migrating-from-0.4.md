@@ -260,6 +260,18 @@ When a logical path is replaced within the update that added its content:
 
 Content from earlier versions is never changed.
 
+## Renaming or removing a file within one update
+
+**Warning for earlier versions:** renaming or removing a file added in the same update may have damaged existing objects. After a rename the manifest could list a file that isn't on disk, so the file couldn't be read, and a removal could delete content another logical path still used or leave a manifest entry for a file that's gone. To check an existing object, compare the files in each version's content directory with its manifest, and each file's content with its digest in the manifest, for example with a dedicated OCFL validator. This library doesn't detect or repair affected objects.
+
+For content stored by the update in progress:
+
+- `rename()` and `move()` move the file to the new logical path's content path, and its manifest and fixity entries follow it. If the content is stored at another logical path's content path, no file moves.
+- `remove()` follows the rules for [replacing a file](#replacing-a-file-within-one-update): content another logical path still uses moves to that path's content path, and content nothing uses is removed along with its manifest and fixity entries.
+- Directories are handled file by file, so one can mix committed and new files.
+
+Renaming or removing a file from an earlier version still changes only the logical path.
+
 ## Other behaviour changes
 
 - Looking up a file in a version that doesn't exist returns `undefined` (or `0` from `count()`) instead of throwing.
