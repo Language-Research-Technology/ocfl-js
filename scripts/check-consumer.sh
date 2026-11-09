@@ -80,8 +80,19 @@ cat >"$consumer/tsconfig.json" <<'EOF'
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["consumer.ts"]
+  "include": ["consumer.ts", "removed-api.ts"]
 }
+EOF
+# Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
+cat >"$consumer/removed-api.ts" <<'EOF'
+import type { OcflObject, OcflObjectInventory, OcflObjectTransaction, OcflStorage } from '@ocfl/ocfl';
+
+declare const storage: OcflStorage;
+declare const object: OcflObject;
+declare const inventory: OcflObjectInventory;
+declare const transaction: OcflObjectTransaction;
+
+export { inventory, object, storage, transaction };
 EOF
 cat >"$consumer/consumer.ts" <<'EOF'
 import { join } from 'node:path';

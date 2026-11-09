@@ -274,6 +274,13 @@ For content stored by the update in progress:
 
 Renaming or removing a file from an earlier version still changes only the logical path.
 
+## API removed before 1.0
+
+Each public member now corresponds to something the OCFL specification or the library's role as an OCFL client calls for, with one name per operation.
+
+| Removed | Use instead |
+| ------- | ----------- |
+
 ## Other behaviour changes
 
 - Looking up a file in a version that doesn't exist returns `undefined` (or `0` from `count()`) instead of throwing.
