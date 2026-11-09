@@ -1,6 +1,6 @@
 import type { Dir, Stats } from 'node:fs';
 import path from 'node:path';
-import { isNotFound, joinTypedArray } from './utils.ts';
+import { isNotFound } from './utils.ts';
 
 const emptyOptions = {};
 
@@ -19,6 +19,25 @@ export interface ListOptions {
   encoding?: BufferEncoding;
   bufferSize?: number;
   recursive?: boolean;
+}
+
+type Chunk = string | ArrayBuffer | ArrayBufferView;
+
+function toBytes(chunk: Chunk): Uint8Array {
+  if (typeof chunk === 'string') {
+    return Buffer.from(chunk);
+  }
+  return ArrayBuffer.isView(chunk) ? new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength) : new Uint8Array(chunk);
+}
+
+function joinBytes(parts: Uint8Array[]) {
+  const joined = new Uint8Array(parts.reduce((total, part) => total + part.byteLength, 0));
+  let offset = 0;
+  for (const part of parts) {
+    joined.set(part, offset);
+    offset += part.byteLength;
+  }
+  return joined;
 }
 
 /**
@@ -87,25 +106,16 @@ class OcflStore {
   async readFile(filePath: string, options: Encoding): Promise<string>;
   async readFile(filePath: string, options?: unknown): Promise<Uint8Array>;
   async readFile(filePath: string, options?: unknown): Promise<string | Uint8Array> {
-    const rs = await this.createReadable(filePath, options);
-    let buffer: string | Uint8Array =
-      typeof options === 'string' || (options as { encoding?: string } | undefined)?.encoding
-        ? ''
-        : new Uint8Array(new ArrayBuffer(0, { maxByteLength: 16 * 1024 }));
-    for await (const chunk of rs) {
-      if (typeof chunk === 'string') {
-        if (typeof buffer !== 'string') {
-          buffer = new TextDecoder().decode(buffer);
-        }
-        buffer += chunk;
-      } else {
-        if (typeof buffer === 'string') {
-          buffer = new TextEncoder().encode(buffer);
-        }
-        buffer = joinTypedArray(buffer, chunk) as Uint8Array;
-      }
+    const encoding = (typeof options === 'string' ? options : (options as { encoding?: string } | undefined)?.encoding) as BufferEncoding | undefined;
+    const chunks: Chunk[] = [];
+    for await (const chunk of await this.createReadable(filePath, options)) {
+      chunks.push(chunk);
     }
-    return buffer;
+    if (chunks.length > 0 && chunks.every((chunk) => typeof chunk === 'string')) {
+      return chunks.join('');
+    }
+    const bytes = joinBytes(chunks.map(toBytes));
+    return encoding ? Buffer.from(bytes.buffer).toString(encoding) : bytes;
   }
 
   /**

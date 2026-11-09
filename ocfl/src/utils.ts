@@ -77,26 +77,4 @@ async function findNamasteVersion(store: OcflStore, prefix: string, rootPath: st
   return version ?? undefined;
 }
 
-type TypedArray = ArrayLike<number> & { buffer: ArrayBufferLike; byteLength: number; set(array: ArrayLike<number>, offset?: number): void };
-
-function isTypedArray(obj: unknown): obj is TypedArray {
-  return ArrayBuffer.isView(obj) && !(obj instanceof DataView);
-}
-
-function joinTypedArray(target: ArrayBuffer | TypedArray, source: ArrayBuffer | TypedArray): TypedArray {
-  const sourceArray = isTypedArray(source) ? source : new Uint8Array(source);
-  const [targetBuffer, targetArray] = isTypedArray(target) ? [target.buffer as ArrayBuffer, target] : [target, new Uint8Array(target)];
-  const targetLength = targetArray.byteLength;
-  const totalSize = targetLength + sourceArray.byteLength;
-  let mergedArray = targetArray;
-  if (targetBuffer.resizable && targetBuffer.maxByteLength >= totalSize) {
-    targetBuffer.resize(totalSize);
-  } else {
-    mergedArray = new Uint8Array(totalSize);
-    mergedArray.set(targetArray, 0);
-  }
-  mergedArray.set(sourceArray, targetLength);
-  return mergedArray;
-}
-
-export { findNamasteVersion, isAlreadyExists, isDirEmpty, isNotFound, joinTypedArray, parallelize };
+export { findNamasteVersion, isAlreadyExists, isDirEmpty, isNotFound, parallelize };
