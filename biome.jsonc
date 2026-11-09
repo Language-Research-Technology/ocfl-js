@@ -24,7 +24,7 @@
   },
   "overrides": [
     // Tests index into fixtures whose keys they know exist
-    { "includes": ["**/*.spec.ts", "**/*.suite.ts"], "linter": { "rules": { "style": { "noNonNullAssertion": "off" } } } }
+    { "includes": ["**/*.spec.ts"], "linter": { "rules": { "style": { "noNonNullAssertion": "off" } } } }
   ],
   "javascript": { "formatter": { "quoteStyle": "single" } },
   "assist": {

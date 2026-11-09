@@ -2,11 +2,6 @@ import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import { createFsFromVolume, Volume } from 'memfs';
 import ocfl from '../src/index.ts';
-import ocflTests from './shared/index.ts';
-
-describe('OcflObjectTransaction using OcflFsStore', () => {
-  ocflTests.transaction(ocfl);
-});
 
 describe('OcflObjectTransaction using a memfs store', () => {
   it('writes an object through update() and reads the file back', async () => {

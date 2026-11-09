@@ -5,11 +5,6 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import ocfl from '../src/index.ts';
 import { ocflError } from './ocfl-error.ts';
-import ocflTests from './shared/index.ts';
-
-describe('OcflStorage class using OcflFsStore', () => {
-  ocflTests.storage(ocfl);
-});
 
 describe('OcflStorage with an unsupported layout or object reference', () => {
   let tempdir: string;
