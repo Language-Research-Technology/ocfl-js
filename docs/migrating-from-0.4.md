@@ -47,6 +47,8 @@ The declarations show where a value can be missing, so code that assumed otherwi
 
 Optional config properties (`OcflStorageConfig`, `OcflObjectConfig`, commit and remove options) accept an explicit `undefined`, so they work with `exactOptionalPropertyTypes`.
 
+`readFile()` on `OcflObject` and `OcflStore` is typed `Promise<string>` when given an encoding and `Promise<Uint8Array>` otherwise. An encoding has to be a `BufferEncoding` known at compile time, so a value typed `string` or `BufferEncoding | undefined` no longer compiles: narrow it or cast it first. `null` is no longer accepted as the options argument, and an options object declared as an `interface` has to be spread or redeclared as a `type`. `file.buffer()` is typed for bytes only and doesn't accept an encoding, so use `file.text(encoding)` for a string. A custom `OcflStore` that overrides `readFile()` can use the exported `EncodingOptions` and `BinaryOptions` types for its overloads.
+
 ## Option values are matched exactly
 
 Option values used to be matched case-insensitively. They now have to match exactly:

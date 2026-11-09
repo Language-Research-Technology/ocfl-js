@@ -4,7 +4,8 @@ import { isNotFound } from './utils.ts';
 
 const emptyOptions = {};
 
-type Encoding = BufferEncoding | { encoding: BufferEncoding };
+export type EncodingOptions = BufferEncoding | { encoding: BufferEncoding; [key: string]: unknown };
+export type BinaryOptions = { encoding?: null | undefined; [key: string]: unknown };
 
 export type WriteFileData = string | Uint8Array | DataView | ArrayBuffer | ReadableStream;
 
@@ -103,10 +104,10 @@ class OcflStore {
    * A concrete subclass MAY implement this method to provide read access to its underlying storage backend.
    * The default implementation uses the {@linkcode OcflStore#createReadable} method.
    */
-  async readFile(filePath: string, options: Encoding): Promise<string>;
-  async readFile(filePath: string, options?: unknown): Promise<Uint8Array>;
-  async readFile(filePath: string, options?: unknown): Promise<string | Uint8Array> {
-    const encoding = (typeof options === 'string' ? options : (options as { encoding?: string } | undefined)?.encoding) as BufferEncoding | undefined;
+  async readFile(filePath: string, options: EncodingOptions): Promise<string>;
+  async readFile(filePath: string, options?: BinaryOptions): Promise<Uint8Array>;
+  async readFile(filePath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array> {
+    const encoding = typeof options === 'string' ? options : options?.encoding;
     const chunks: Chunk[] = [];
     for await (const chunk of await this.createReadable(filePath, options)) {
       chunks.push(chunk);

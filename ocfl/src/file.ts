@@ -1,5 +1,6 @@
 import { OcflError } from './error.ts';
 import type { OcflObject } from './object.ts';
+import type { BinaryOptions } from './store.ts';
 
 export interface FileRef {
   /** Actual path to the file location relative to the ocfl object root. */
@@ -110,7 +111,7 @@ class OcflObjectFile {
    * Get the file content as a buffer
    * @param options Options to be passed to underlying data store specific implementation
    */
-  async buffer(options?: unknown): Promise<Uint8Array> {
+  async buffer(options?: BinaryOptions): Promise<Uint8Array> {
     return this.#ocflObject.readFile(await this.#resolveContentPath(), options);
   }
 
