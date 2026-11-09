@@ -41,12 +41,12 @@ class OcflObject {
   #workspace: string | undefined;
   #id: string | undefined;
   #digestAlgorithm: ContentAlgorithm;
+  #contentDirectory: string;
   #store: OcflStore;
   /**
    * A default list of digest algorithms to be calculated for each file in this object and added to the fixity block.
    */
   fixityAlgorithms: string[] | undefined;
-  contentDirectory: string;
   _inventory: { [version: string]: OcflObjectInventory } = {};
   #latestRead = false;
 
@@ -71,17 +71,27 @@ class OcflObject {
     //this.fixityDigest = config.fixityDigest ?? this.digestAlgorithm;
     this.#digestAlgorithm = contentDigestAlgorithm(config.digestAlgorithm);
     this.#workspace = config.workspace ? path.resolve(config.workspace) : undefined;
-    this.contentDirectory = config.contentDirectory ?? 'content';
+    this.#contentDirectory = config.contentDirectory ?? 'content';
     this._inventory = {};
     this.fixityAlgorithms = config.fixityAlgorithms;
   }
 
-  /** the digest algorithm used to identify files within the OCFL object */
+  /**
+   * The digest algorithm used to identify files within the OCFL object. For an existing object, only reliable once its
+   * root inventory has been read, by {@link load} or any method that reads it. Until then, and for an object that
+   * doesn't exist yet, this is the configured algorithm or the library default.
+   */
   get digestAlgorithm(): ContentAlgorithm {
-    return this.#digestAlgorithm;
+    return this.inventory?.digestAlgorithm ?? this.#digestAlgorithm;
   }
-  set digestAlgorithm(algorithm: string) {
-    this.#digestAlgorithm = contentDigestAlgorithm(algorithm);
+
+  /**
+   * The name of the directory holding each version's content. For an existing object, only reliable once its root
+   * inventory has been read, by {@link load} or any method that reads it. Until then, and for an object that doesn't
+   * exist yet, this is the configured directory or the library default.
+   */
+  get contentDirectory(): string {
+    return this.inventory?.contentDirectory ?? this.#contentDirectory;
   }
 
   /**

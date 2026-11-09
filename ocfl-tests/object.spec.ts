@@ -1487,6 +1487,113 @@ export default (ocfl: Ocfl) => {
     });
   });
 
+  describe('digestAlgorithm and contentDirectory', () => {
+    let tempdir: string;
+    let written: string;
+
+    before(async () => {
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-properties-'));
+      written = path.join(tempdir, 'written');
+      await ocfl.object({ id: 'written', root: written, digestAlgorithm: 'sha256', contentDirectory: 'data' }).update(async (t) => t.write('a.txt', 'a'));
+    });
+
+    after(async () => {
+      await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+
+    it('reports the values of an existing object loaded with default config', async () => {
+      const o = ocfl.object({ root: written });
+      await o.load();
+      assert.strictEqual(o.digestAlgorithm, 'sha256');
+      assert.strictEqual(o.contentDirectory, 'data');
+    });
+
+    it('reports the configured values until the inventory has been read', async () => {
+      const o = ocfl.object({ root: written, digestAlgorithm: 'sha512', contentDirectory: 'stuff' });
+      assert.strictEqual(o.digestAlgorithm, 'sha512');
+      assert.strictEqual(o.contentDirectory, 'stuff');
+      await o.getInventory();
+      assert.strictEqual(o.digestAlgorithm, 'sha256');
+      assert.strictEqual(o.contentDirectory, 'data');
+    });
+
+    it('reports the defaults before the inventory has been read when nothing is configured', () => {
+      const o = ocfl.object({ root: written });
+      assert.strictEqual(o.digestAlgorithm, 'sha512');
+      assert.strictEqual(o.contentDirectory, 'content');
+    });
+
+    it('reports the configured values for an object that does not exist yet, even after a load', async () => {
+      const o = ocfl.object({ root: path.join(tempdir, 'not-yet'), digestAlgorithm: 'sha256', contentDirectory: 'data' });
+      await o.getInventory();
+      assert.strictEqual(o.digestAlgorithm, 'sha256');
+      assert.strictEqual(o.contentDirectory, 'data');
+    });
+
+    it('reports the defaults for an object that does not exist yet with nothing configured', () => {
+      const o = ocfl.object({ root: path.join(tempdir, 'not-yet') });
+      assert.strictEqual(o.digestAlgorithm, 'sha512');
+      assert.strictEqual(o.contentDirectory, 'content');
+    });
+
+    it('reports the spec default for an inventory with no contentDirectory, whatever is configured', async () => {
+      const o = ocfl.object({ root: fixture, digestAlgorithm: 'sha256', contentDirectory: 'data' });
+      await o.load();
+      assert.strictEqual(o.digestAlgorithm, 'sha512');
+      assert.strictEqual(o.contentDirectory, 'content');
+    });
+
+    it('creates a new object with its configured values', async () => {
+      const root = path.join(tempdir, 'configured');
+      const content = 'configured content';
+      const o = ocfl.object({ id: 'configured', root, digestAlgorithm: 'sha256', contentDirectory: 'data' });
+      await o.update(async (t) => t.write('a.txt', content));
+
+      const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8')) as Inventory;
+      const digest = createHash('sha256').update(content).digest('hex');
+      assert.strictEqual(inv.digestAlgorithm, 'sha256');
+      assert.strictEqual(inv.contentDirectory, 'data');
+      assert.deepStrictEqual(inv.manifest, { [digest]: ['v1/data/a.txt'] });
+      assert.strictEqual(await fs.promises.readFile(path.join(root, 'v1/data/a.txt'), 'utf8'), content);
+      assert.strictEqual(o.digestAlgorithm, 'sha256');
+      assert.strictEqual(o.contentDirectory, 'data');
+    });
+
+    it('creates a new object with the defaults when nothing is configured', async () => {
+      const root = path.join(tempdir, 'defaulted');
+      await ocfl.object({ id: 'defaulted', root }).update(async (t) => t.write('a.txt', 'a'));
+
+      const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8')) as Inventory;
+      assert.strictEqual(inv.digestAlgorithm, 'sha512');
+      assert.strictEqual(inv.contentDirectory, 'content');
+      assert.ok(fs.existsSync(path.join(root, 'v1/content/a.txt')));
+    });
+
+    it('keeps the object values when an update is configured differently', async () => {
+      const root = path.join(tempdir, 'differs');
+      await ocfl.object({ id: 'differs', root, digestAlgorithm: 'sha256', contentDirectory: 'data' }).update(async (t) => t.write('a.txt', 'a'));
+
+      const o = ocfl.object({ root, digestAlgorithm: 'sha512', contentDirectory: 'stuff' });
+      await o.update(async (t) => t.write('b.txt', 'b'));
+
+      const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8')) as Inventory;
+      assert.strictEqual(inv.digestAlgorithm, 'sha256');
+      assert.strictEqual(inv.contentDirectory, 'data');
+      assert.ok(fs.existsSync(path.join(root, 'v2/data/b.txt')));
+      assert.strictEqual(o.digestAlgorithm, 'sha256');
+      assert.strictEqual(o.contentDirectory, 'data');
+    });
+
+    for (const property of ['digestAlgorithm', 'contentDirectory'] as const) {
+      it(`has no setter for ${property}`, () => {
+        const o: Record<typeof property, string> = ocfl.object({ root: written });
+        assert.throws(() => {
+          o[property] = 'sha256';
+        }, TypeError);
+      });
+    }
+  });
+
   describe('file lookup errors', () => {
     let tempdir: string;
     const missingObject = () => ocfl.object({ id: 'missing', root: path.join(tempdir, 'missing') });

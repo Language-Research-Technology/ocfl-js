@@ -144,6 +144,10 @@ layoutClass.forStorage;
 extension.minOcflVersion;
 // @ts-expect-error OcflObjectConfig.extensions is gone
 const objectConfig: OcflObjectConfig = { root: '/tmp/object', extensions: [] };
+// @ts-expect-error OcflObject.digestAlgorithm has no setter, configure it when creating the object
+object.digestAlgorithm = 'sha256';
+// @ts-expect-error OcflObject.contentDirectory is read-only, configure it when creating the object
+object.contentDirectory = 'data';
 
 export { extension, inventory, object, storage, transaction };
 EOF
