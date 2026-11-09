@@ -14,6 +14,7 @@ import ocfl, {
   type OcflObjectTransaction,
   type OcflVersion,
 } from '../../src/index.ts';
+import { withFsFailure } from '../fs-failures.ts';
 
 let objcount = 0;
 const fixture = path.join(import.meta.dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full');
@@ -129,27 +130,6 @@ describe('update', () => {
       config.workspace = `${config.root}-tmp`;
     }
     return ocfl.object(config);
-  }
-
-  async function withFsFailure<T>(
-    method: 'rename' | 'copyFile' | 'writeFile' | 'rmdir' | 'rm',
-    failing: string | ((source: string, target: string) => boolean),
-    fn: () => Promise<T>,
-  ) {
-    const fails = typeof failing === 'string' ? (source: string, target: string) => source === failing || target === failing : failing;
-    const fsp = fs.promises as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
-    const real = fsp[method]!;
-    const spy = mock.method(fsp, method, async (...args: unknown[]) => {
-      if (fails(args[0] as string, args[1] as string)) {
-        throw Object.assign(new Error('injected failure'), { code: 'EIO' });
-      }
-      return real.apply(fs.promises, args);
-    });
-    try {
-      return await fn();
-    } finally {
-      spy.mock.restore();
-    }
   }
 
   async function readInventory(object: OcflObject): Promise<Inventory> {
