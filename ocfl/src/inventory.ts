@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { OcflError } from './error.ts';
 import type { Inventory, InventoryDigests, InventoryVersion } from './types.ts';
 import { createError } from './validation.ts';
@@ -120,10 +121,7 @@ class OcflObjectInventory {
   }
 
   _indexRemove(logicalPath: string, versionName?: string) {
-    const index = this.#fileIndex[this.#resolveVersion(versionName)];
-    const val = index?.[logicalPath];
-    delete index?.[logicalPath];
-    return val;
+    delete this.#fileIndex[this.#resolveVersion(versionName)]?.[logicalPath];
   }
 
   _indexGetFixity(contentPath: string): Digests {
@@ -462,6 +460,13 @@ class OcflObjectInventory {
   }
 }
 
+interface Transfer {
+  src: string;
+  dest: string;
+  digest: string;
+  digests: Digests;
+}
+
 /**
  * Wrapper class with mutable methods for inventory data
  */
@@ -475,20 +480,21 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   /**
    * Remove exactly one logical path from its digest's list in the version state
-   * @returns the removed path's digests, or undefined if it wasn't listed
+   * @returns true if the path was listed
    */
-  #unlist(logicalPath: string, version?: string): Digests | undefined {
+  #unlist(logicalPath: string, version?: string): boolean {
     const entry = this.#stateEntry(logicalPath, version);
     const index = entry?.files.indexOf(logicalPath) ?? -1;
     if (!entry || index < 0) {
-      return undefined;
+      return false;
     }
     if (entry.files.length === 1) {
       delete this.versionState(version)?.[entry.digest];
     } else {
       entry.files.splice(index, 1);
     }
-    return this._indexRemove(logicalPath, version);
+    this._indexRemove(logicalPath, version);
+    return true;
   }
 
   /** Append a logical path to its digest's list in the head version state */
@@ -586,54 +592,68 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     this._indexAddFixity(contentPath, digestName, digestValue);
   }
 
-  /**
-   * Rename a logical path. This will overwrite dest if exists
-   */
-  rename(srcLogicalPath: string, destLogicalPath: string) {
-    const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
-    const destPrefix = destLogicalPath.endsWith('/') ? destLogicalPath : `${destLogicalPath}/`;
-    const srcList = this._indexFindPaths(srcPrefix);
-    const pairs = srcList.map((src): [string, string] => [src, destPrefix + src.slice(srcPrefix.length)]);
-    if (pairs.length === 0) {
-      pairs.push([srcLogicalPath, destLogicalPath]);
+  /** True if a file or directory occupies the path, or the path is inside a file, in the head state */
+  #isOccupied(logicalPath: string) {
+    if (this._indexFindPaths(logicalPath).length > 0) {
+      return true;
     }
-    for (const [src, dest] of pairs) {
-      const digests = this.#unlist(src);
+    const segments = logicalPath.split('/');
+    return segments.some((_, depth) => depth > 0 && this.getDigest(segments.slice(0, depth).join('/')));
+  }
+
+  /**
+   * Resolve a copy or rename to the files it transfers, changing nothing.
+   * @throws OcflError FILE_NOT_FOUND if the source is missing, FILE_EXISTS if the target exists
+   */
+  _planTransfer(srcLogicalPath: string, destLogicalPath: string): Transfer[] {
+    // Stores normalise paths, so the check and the state must use the same form as the file on disk
+    const target = path.posix.normalize(destLogicalPath).replace(/\/$/, '');
+    const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
+    const srcList = this._indexFindPaths(srcPrefix);
+    const pairs = srcList.map((src): [string, string] => [src, `${target}/${src.slice(srcPrefix.length)}`]);
+    if (pairs.length === 0) {
+      pairs.push([srcLogicalPath, target]);
+    }
+    const transfers = pairs.map(([src, dest]) => {
+      const digests = this._indexGet(src, this.head, true);
       const digest = digests?.[this.digestAlgorithm];
       if (!digests || !digest) {
         throw new OcflError('FILE_NOT_FOUND', `Source logical path "${src}" does not exist in object [${this.id}]`);
       }
-      this.delete(dest); // overwrite, including any paths under dest
+      return { src, dest, digest, digests };
+    });
+    if (!target || target === '.') {
+      throw new Error(`Target logical path cannot be empty`);
+    }
+    if (this.#isOccupied(target)) {
+      throw new OcflError('FILE_EXISTS', `Target logical path "${destLogicalPath}" already exists in object [${this.id}]`);
+    }
+    return transfers;
+  }
+
+  /**
+   * Rename a logical path or directory
+   * @throws OcflError FILE_EXISTS if the target exists
+   */
+  rename(srcLogicalPath: string, destLogicalPath: string) {
+    this._applyRename(this._planTransfer(srcLogicalPath, destLogicalPath));
+  }
+
+  /** Apply a plan from {@link _planTransfer}, which must be from the current head state */
+  _applyRename(transfers: Transfer[]) {
+    for (const { src, dest, digest, digests } of transfers) {
+      this.#unlist(src);
       this.#list(dest, digest, digests);
     }
   }
 
   /**
-   * Create an alias or reference of a logical path
+   * Create an alias or reference of a logical path or directory
+   * @throws OcflError FILE_EXISTS if the target exists
    */
   copy(srcLogicalPath: string, destLogicalPath: string) {
-    const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
-    const destPrefix = destLogicalPath.endsWith('/') ? destLogicalPath : `${destLogicalPath}/`;
-    const srcList = this._indexFindPaths(srcPrefix);
-    const pairs = srcList.map((src): [string, string] => [src, destPrefix + src.slice(srcPrefix.length)]);
-    if (pairs.length === 0) {
-      pairs.push([srcLogicalPath, destLogicalPath]);
-    }
-    for (const [src, dest] of pairs) {
-      if (!dest) {
-        throw new Error(`Target logical path cannot be empty`);
-      }
-      const digests = this._indexGet(src, this.head, true);
-      const entry = this.#stateEntry(src);
-      if (!digests || !entry) {
-        throw new OcflError('FILE_NOT_FOUND', `Source logical path "${src}" does not exist in object [${this.id}]`);
-      }
-      if (entry.files.indexOf(dest) >= 0) {
-        /** @todo decide: throw error or silently ignore existing dest file? */
-      } else {
-        entry.files.push(dest);
-        this._indexAdd(dest, this.head, digests);
-      }
+    for (const { dest, digest, digests } of this._planTransfer(srcLogicalPath, destLogicalPath)) {
+      this.#list(dest, digest, digests);
     }
   }
 

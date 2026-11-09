@@ -94,6 +94,7 @@ try {
 | `LAYOUT_MISMATCH`             | A configured layout's name or parameters differ from the layout the storage root declares                                    |
 | `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`                                                 |
 | `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain               |
+| `FILE_EXISTS`                 | `copy()`, `rename()` or `move()` names a target that exists; see [Other behaviour changes](#other-behaviour-changes)         |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                |
 
 Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`. That includes an unsupported layout named in your own config.
@@ -257,6 +258,7 @@ Operations called concurrently in one update, such as with `Promise.all`, now gi
 - An update that leaves a stream from `createWritable()` open now rolls back and rejects with "Unfinished operations detected" instead of never settling.
 - When an `update()` callback throws after one of its operations failed, the update now rolls back fully and rethrows the callback's error. Previously it rethrew the operation's error and left the workspace behind, so the next update of that object failed with `UPDATE_IN_PROGRESS`.
 - `rename()` throws `FILE_NOT_FOUND` when the source doesn't exist, instead of doing nothing.
+- **Breaking:** `rename()`, `move()` and `copy()` throw `FILE_EXISTS` when the target exists, even with identical content or when the target is the source. A target exists if it's a file, if it's a directory with anything in it (directories are never merged), or if it's inside a file. When they throw, nothing has changed. `rename()` and `move()` used to replace the target, and `copy()` onto an existing target wrote an invalid object. To replace a target, remove it first in the same update, then copy or rename onto it.
 - A logical path with a `..` segment, such as `a/../b`, is rejected instead of being normalised. A name that only starts with two dots, such as `..notes.txt`, is now accepted.
 - When a storage root's layout extension `config.json` has no `extensionName`, the layout named in `ocfl_layout.json` is used. Previously the storage loaded with no layout.
 - Once an existing object's root inventory has been read, by `load()`, `refresh()`, `update()` or any other method that reads it, `object.ocflVersion` is the version that object declares. It used to report the configured version or the library default, so a 1.0 object in a 1.1 storage root reported 1.1. A configured version only applies when an object is created, and one that differs from an existing object is ignored without an error.
