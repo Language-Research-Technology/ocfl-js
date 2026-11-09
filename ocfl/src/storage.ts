@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
-import { NotImplementedError, OcflError } from './error.ts';
+import { NotImplementedError, ObjectNotFoundError, OcflError } from './error.ts';
 import { createByName, differingParameters, OcflStorageLayout } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { OcflObject } from './object.ts';
@@ -12,7 +12,7 @@ import { createError } from './validation.ts';
 
 const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
 
-import { OcflDigest } from './digest.ts';
+import { Hashing } from './digest.ts';
 
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 
@@ -49,14 +49,6 @@ class OcflStorage {
    */
   objectRoot(_id: string): string {
     throw new NotImplementedError();
-  }
-
-  /**
-   * Absolute path to the object root
-   * @param id - Identifier of the object
-   */
-  objectRootAbs(id: string) {
-    return path.join(this.root, this.objectRoot(id));
   }
 
   /**
@@ -103,23 +95,12 @@ class OcflStorage {
   }
 
   /**
-   * Return a new AsyncIterator that contains all the OCFL objects in this Storage.
+   * Delete an object and any parent directories it leaves empty, up to but not including the storage root.
+   * Not guarded against a concurrent update of the object.
+   * @param id - Identifier of the object
+   * @throws {ObjectNotFoundError} If the object does not exist.
+   * @throws {OcflError} `NOT_AN_OBJECT` if the path holds something with no OCFL object declaration; nothing is deleted.
    */
-  objects(): AsyncIterableIterator<OcflObject> {
-    return this[Symbol.asyncIterator]();
-    // const objects = [];
-    // for await (const o of this) objects.push(o);
-    // return objects;
-  }
-
-  async delete(id: string) {
-    return this.remove(id);
-  }
-
-  async purge(id: string) {
-    return this.remove(id);
-  }
-
   async remove(_id: string): Promise<void> {
     throw new NotImplementedError();
   }
@@ -288,9 +269,8 @@ class OcflStorageImpl extends OcflStorage {
     this.#layout = this.#resolveLayout(layoutName, layoutConfig);
     const layoutDigestAlgorithm = this.#layout?.get('digestAlgorithm');
     if (layoutDigestAlgorithm) {
-      await OcflDigest.initSync(layoutDigestAlgorithm);
+      await Hashing.initSync(layoutDigestAlgorithm);
     }
-    //@todo: load storage level extensions
 
     return this;
   }
@@ -318,7 +298,7 @@ class OcflStorageImpl extends OcflStorage {
     }
     const layoutDigestAlgorithm = this.#layout.get('digestAlgorithm');
     if (layoutDigestAlgorithm) {
-      await OcflDigest.initSync(layoutDigestAlgorithm);
+      await Hashing.initSync(layoutDigestAlgorithm);
     }
     const layout = { extension: this.#layout.name, description: this.#layout.description };
     await this.#store.writeFile(path.join(this.root, OCFL_LAYOUT), JSON.stringify(layout, null, 2), 'utf8');
@@ -330,11 +310,44 @@ class OcflStorageImpl extends OcflStorage {
       );
     }
 
-    // todo: create other extensions
     if (specText) {
       await this.#store.writeFile(path.join(this.root, specText.file), specText.content);
     }
     return this;
+  }
+
+  async remove(id: string) {
+    const object = this.object(id);
+    const objectRoot = object.root;
+    const relative = path.relative(this.root, objectRoot);
+    const [firstSegment] = relative.split(path.sep);
+    if (!relative || firstSegment === '..' || firstSegment === EXTENSIONS_DIR) {
+      throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> maps to "${objectRoot}", which can't hold an object in this storage root.`);
+    }
+    if (!(await object.exists())) {
+      throw new ObjectNotFoundError(id);
+    }
+    const declaredVersion = await findNamasteVersion(this.#store, NAMASTE_PREFIX_OBJECT, objectRoot);
+    if (declaredVersion === '') {
+      throw createError('E007', objectRoot);
+    }
+    if (!declaredVersion) {
+      throw new OcflError('NOT_AN_OBJECT', `"${objectRoot}" has no OCFL object declaration, so nothing was deleted.`);
+    }
+    await object._validateObjectPath();
+    // A layout can map several ids to one path, such as an id with a `..` segment
+    const inventory = await object.getInventory();
+    if (inventory?.id !== id) {
+      throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `"${objectRoot}" holds the object <${inventory?.id}>, not <${id}>, so nothing was deleted.`);
+    }
+    await this.#store.remove(objectRoot);
+    try {
+      for (let dir = path.dirname(objectRoot); dir !== this.root; dir = path.dirname(dir)) {
+        await this.#store.removeIfEmpty(dir);
+      }
+    } catch (_error) {
+      // The object is gone, so a retry would throw ObjectNotFoundError; a leftover empty directory is harmless
+    }
   }
 
   /**

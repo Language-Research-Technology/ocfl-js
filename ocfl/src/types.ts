@@ -1,5 +1,8 @@
 import type { ContentAlgorithm } from './digest.ts';
 
+/** `T` and everything nested in it, read-only at compile time. The data isn't frozen. */
+export type DeepReadonly<T> = { readonly [K in keyof T]: DeepReadonly<T[K]> };
+
 export interface InventoryDigests {
   [key: string]: string[];
 }
@@ -55,15 +58,6 @@ export interface CommonHasher {
   digestSize: number;
 }
 
-export interface MultiHasher {
-  multi: true;
-  update: (data: IDataType) => MultiHasher;
-  digest: {
-    (outputType: 'binary'): { [key: string]: Uint8Array };
-    (outputType?: 'hex'): { [key: string]: string };
-  };
-}
-
 export type OcflVersion = '1.0' | '1.1';
 
 export type OcflExtensionConfig = { extensionName?: string; [key: string]: unknown };
@@ -90,7 +84,7 @@ export type OcflStorageConfig = {
   /**
    * Ocfl version of a newly created storage root and its objects. When loading an existing root, defaults to
    * the root's declared version; `load()` rejects with E081 if this is later than the root's version.
-   * @defaultValue {@link OcflConstants.OCFL_VERSION}
+   * @defaultValue `"1.1"`
    */
   ocflVersion?: OcflVersion | undefined;
 };
@@ -103,14 +97,12 @@ export type OcflObjectConfig = {
   workspace?: string | undefined;
   /** Identifier for the object.  Only be used in a newly created object. */
   id?: string | undefined;
-  /** Reference to existing extensions defined outside of the object, such as in the storage root. */
-  extensions?: import('./extension.ts').OcflExtension[] | undefined;
   /** Additional digest algorithms to be calculated for each file and added to the fixity block. */
   fixityAlgorithms?: string[] | undefined;
   /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
   digestAlgorithm?: ContentAlgorithm | undefined;
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
   contentDirectory?: string | undefined;
-  /** Ocfl version. Only applies to a newly created object. @defaultValue {@link OcflConstants.OCFL_VERSION} */
+  /** Ocfl version. Only applies to a newly created object. @defaultValue `"1.1"` */
   ocflVersion?: OcflVersion | undefined;
 };

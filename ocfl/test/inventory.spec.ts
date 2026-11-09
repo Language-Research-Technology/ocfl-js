@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { readFile } from 'node:fs/promises';
 import { beforeEach, describe, it } from 'node:test';
-import { OcflObjectInventory } from '../src/inventory.ts';
+import { OcflObjectInventory, OcflObjectInventoryMut } from '../src/inventory.ts';
 import type { Inventory } from '../src/types.ts';
 
 function assertHeadStateValid(inv: OcflObjectInventory) {
@@ -62,7 +62,7 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can create new version', () => {
-    const inv = OcflObjectInventory.newVersion(data);
+    const inv = OcflObjectInventoryMut.newVersion(data);
     assert.strictEqual(inv.head, 'v1');
     assert.strictEqual(typeof inv.versions.v1, 'object');
     assert.strictEqual(Object.keys(inv.versions.v1!.state).length, 0);
@@ -70,7 +70,7 @@ describe('OcflObjectInventory class', () => {
 
   it('can create new version from existing', async () => {
     const data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
-    const inv = OcflObjectInventory.newVersion(data);
+    const inv = OcflObjectInventoryMut.newVersion(data);
     //console.log(inv.toJSON());
     const data2 = inv.toJSON();
     assert.strictEqual(data2.head, 'v4');
@@ -78,7 +78,7 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can add file to a new version', () => {
-    const inv = OcflObjectInventory.newVersion(data);
+    const inv = OcflObjectInventoryMut.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
     const data2 = inv.toJSON();
     assert.strictEqual(inv.head, 'v1');
@@ -88,7 +88,7 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can add file with identical content but different name', () => {
-    const inv = OcflObjectInventory.newVersion(data);
+    const inv = OcflObjectInventoryMut.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
     inv.add('test2.txt', 'aabbccddeeff');
     assert.strictEqual(inv.head, 'v1');
@@ -103,9 +103,9 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can add file with identical content and name', () => {
-    let inv = OcflObjectInventory.newVersion(data);
+    let inv = OcflObjectInventoryMut.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
-    inv = OcflObjectInventory.newVersion(inv.toJSON());
+    inv = OcflObjectInventoryMut.newVersion(inv.toJSON());
     inv.add('test.txt', 'aabbccddeeff');
     assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test.txt');
     assert.strictEqual(inv.manifest.aabbccddeeff!.length, 1);
@@ -120,9 +120,9 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can add file with different content but identical name', () => {
-    let inv = OcflObjectInventory.newVersion(data);
+    let inv = OcflObjectInventoryMut.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
-    inv = OcflObjectInventory.newVersion(inv.toJSON());
+    inv = OcflObjectInventoryMut.newVersion(inv.toJSON());
     inv.add('test.txt', 'aabbccddeeff2');
     assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test.txt');
     assert.strictEqual(inv.manifest.aabbccddeeff2![0], 'v2/content/test.txt');
@@ -135,11 +135,11 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can add same file after it has been deleted', () => {
-    let inv = OcflObjectInventory.newVersion(data);
+    let inv = OcflObjectInventoryMut.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
-    inv = OcflObjectInventory.newVersion(inv.toJSON());
+    inv = OcflObjectInventoryMut.newVersion(inv.toJSON());
     inv.add('test.txt', 'aabbccddeeff2'); // aabbccddeeff effectively deleted from v2
-    inv = OcflObjectInventory.newVersion(inv.toJSON());
+    inv = OcflObjectInventoryMut.newVersion(inv.toJSON());
     inv.add('test.txt', 'aabbccddeeff'); // reinstatement
     assert.strictEqual(Object.keys(inv.manifest).length, 2);
     assert.strictEqual(inv.versions.v3!.state.aabbccddeeff![0], 'test.txt');
@@ -149,7 +149,7 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can add file with extra fixity', () => {
-    const inv = OcflObjectInventory.newVersion(data);
+    const inv = OcflObjectInventoryMut.newVersion(data);
     inv.add('test1.txt', 'aabbccddeeff', { crc32: '12345678', size: '1024' });
     assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test1.txt');
     assert.strictEqual(inv.fixity!.crc32!['12345678']![0], 'v1/content/test1.txt');
@@ -158,17 +158,26 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can detect state change', () => {
-    let inv = OcflObjectInventory.newVersion(data);
+    let inv = OcflObjectInventoryMut.newVersion(data);
     assert.ok(inv.isChanged);
-    inv = OcflObjectInventory.newVersion(inv);
+    inv = OcflObjectInventoryMut.newVersion(inv);
     inv.add('test.txt', 'aabbccddeeff');
     assert.ok(inv.isChanged);
-    inv = OcflObjectInventory.newVersion(inv);
+    inv = OcflObjectInventoryMut.newVersion(inv);
     assert.ok(!inv.isChanged);
     inv.add('test.txt', 'aabbccddeeff');
     assert.ok(!inv.isChanged);
     inv.add('test1.txt', 'aabbccddeeff');
     assert.ok(inv.isChanged);
+  });
+
+  it('makes an independent copy from toJSON', () => {
+    const inv = OcflObjectInventoryMut.newVersion(data);
+    inv.add('a', 'd1');
+    const copy = new OcflObjectInventory(inv.toJSON());
+    inv.add('b', 'd2');
+    assert.deepStrictEqual(copy.state, { d1: ['a'] });
+    assert.strictEqual(copy.getDigest('a'), 'd1');
   });
 
   it('can iterate files', async () => {
@@ -181,13 +190,13 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can reinstate removed file from older version', () => {
-    let inv = OcflObjectInventory.newVersion(data);
+    let inv = OcflObjectInventoryMut.newVersion(data);
     inv.add('test.txt', 'aabbccddeeff');
     assert.strictEqual(inv.versions.v1!.state.aabbccddeeff![0], 'test.txt');
-    inv = OcflObjectInventory.newVersion(inv);
+    inv = OcflObjectInventoryMut.newVersion(inv);
     inv.delete('test.txt');
     assert(!inv.versions.v2!.state.aabbccddeeff);
-    inv = OcflObjectInventory.newVersion(inv);
+    inv = OcflObjectInventoryMut.newVersion(inv);
     inv.reinstate('test.txt', 'v1');
     assert(inv.versions.v3!.state.aabbccddeeff);
     assertHeadStateValid(inv);
@@ -200,11 +209,11 @@ describe('OcflObjectInventory class', () => {
   });
 
   describe("'latest' version name", () => {
-    let inv: ReturnType<typeof OcflObjectInventory.newVersion>;
+    let inv: ReturnType<typeof OcflObjectInventoryMut.newVersion>;
     beforeEach(() => {
-      inv = OcflObjectInventory.newVersion(data);
+      inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1', { md5: 'm1' });
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       inv.add('a', 'd2', { md5: 'm2' });
     });
 
@@ -225,12 +234,6 @@ describe('OcflObjectInventory class', () => {
       assert.strictEqual(inv.getFileByDigest('d1', 'latest'), undefined);
     });
 
-    it('resolves to head in delete', () => {
-      assert.strictEqual(inv.delete('a', 'latest'), 1);
-      assert.deepStrictEqual(inv.state, {});
-      assert.strictEqual(inv.getDigest('a'), undefined);
-    });
-
     it('resolves to head in reinstate', () => {
       assert.strictEqual(inv.reinstate('a', 'latest'), 1);
       assert.deepStrictEqual(inv.state, { d2: ['a'] });
@@ -244,7 +247,6 @@ describe('OcflObjectInventory class', () => {
       assert.strictEqual(inv.getFile('a', ''), undefined);
       assert.strictEqual(inv.getFileByDigest('d2', ''), undefined);
       assert.strictEqual(inv.getFileByContentPath('v2/content/a', ''), undefined);
-      assert.strictEqual(inv.delete('a', ''), 0);
       assert.strictEqual(inv.reinstate('a', ''), 0);
       assert.deepStrictEqual(inv.state, { d2: ['a'] });
     });
@@ -266,10 +268,10 @@ describe('OcflObjectInventory class', () => {
 
   describe('head version state stays valid', () => {
     it('moves an updated logical path to a digest that already has other paths', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1');
       inv.add('b', 'd2');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       assert.strictEqual(inv.add('a', 'd2'), true);
       assert.deepStrictEqual(inv.state, { d2: ['b', 'a'] });
       assert.deepStrictEqual([...inv.files()].map((f) => f.logicalPath).sort(), ['a', 'b']);
@@ -283,7 +285,7 @@ describe('OcflObjectInventory class', () => {
     for (const op of ['copy', 'rename'] as const) {
       describe(`${op}() target`, () => {
         function inventoryWith(files: Record<string, string>) {
-          const inv = OcflObjectInventory.newVersion(data);
+          const inv = OcflObjectInventoryMut.newVersion(data);
           for (const [logicalPath, digest] of Object.entries(files)) {
             inv.add(logicalPath, digest);
           }
@@ -367,12 +369,12 @@ describe('OcflObjectInventory class', () => {
     }
 
     it('reinstates a logical path without dropping other paths with the same digest', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('x', 'd1');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       inv.delete('x');
       inv.add('y', 'd1');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       assert.strictEqual(inv.reinstate('x', 'v1'), 1);
       assert.deepStrictEqual(inv.state, { d1: ['y', 'x'] });
       assert.strictEqual(inv.getDigest('y'), 'd1');
@@ -380,19 +382,19 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('reinstates a logical path over its current content', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('x', 'd1');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       inv.add('x', 'd2');
       inv.add('z', 'd2');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       inv.reinstate('x', 'v1');
       assert.deepStrictEqual(inv.state, { d2: ['z'], d1: ['x'] });
       assertHeadStateValid(inv);
     });
 
     it('deletes a directory and every path under it', () => {
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a/b', 'd1');
       inv.add('a/c', 'd1');
       inv.add('ab', 'd1');
@@ -402,22 +404,22 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('leaves the state unchanged when reinstating an unchanged path', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('x', 'd1');
       inv.add('y', 'd1');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       inv.reinstate('x', 'v1');
       assert.deepStrictEqual(inv.state, { d1: ['x', 'y'] });
       assertHeadStateValid(inv);
     });
 
     it('reinstates a file over a directory, replacing the paths under it', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('x', 'd1');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       inv.delete('x');
       inv.add('x/y', 'd2');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       inv.reinstate('x', 'v1');
       assert.deepStrictEqual(inv.state, { d1: ['x'] });
       assertHeadStateValid(inv);
@@ -426,13 +428,13 @@ describe('OcflObjectInventory class', () => {
 
   describe('deleting or renaming a logical path within the version being built', () => {
     function newContent() {
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1', { md5: 'm1' });
       return inv;
     }
 
     function committedContent() {
-      return OcflObjectInventory.newVersion(newContent());
+      return OcflObjectInventoryMut.newVersion(newContent());
     }
 
     it('delete drops the manifest and fixity entries of content nothing else uses', () => {
@@ -464,7 +466,7 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('delete drops the entry when a directory holds every path using the content', () => {
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('d/x', 'd1');
       inv.add('d/y', 'd1');
       assert.strictEqual(inv.delete('d'), 2);
@@ -478,12 +480,6 @@ describe('OcflObjectInventory class', () => {
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
       assert.deepStrictEqual(inv.fixity?.md5, { m1: ['v1/content/a'] });
       assertHeadStateValid(inv);
-    });
-
-    it('delete from an earlier version leaves the manifest unchanged', () => {
-      const inv = committedContent();
-      assert.strictEqual(inv.delete('a', 'v1'), 1);
-      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
     });
 
     it('rename moves the manifest and fixity entries of a path this version stored', () => {
@@ -514,7 +510,7 @@ describe('OcflObjectInventory class', () => {
 
   describe('replacing a logical path within the version being built', () => {
     it('moves shared content to the other logical path, with its fixity', () => {
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1', { md5: 'm1' });
       inv.add('b', 'd1', { md5: 'm1' });
       inv.add('a', 'd2', { md5: 'm2' });
@@ -526,7 +522,7 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('forgets content nothing uses once its logical path takes content stored elsewhere', () => {
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1', { md5: 'm1' });
       inv.add('b', 'd2', { md5: 'm2' });
       assert.strictEqual(inv.add('a', 'd2', { md5: 'm2' }), true);
@@ -536,7 +532,7 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('moves content shared through copy()', () => {
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1', { md5: 'm1' });
       inv.copy('a', 'b');
       inv.add('a', 'd2', { md5: 'm2' });
@@ -546,7 +542,7 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('leaves shared content where it is when the replaced path did not hold it', () => {
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1');
       inv.add('b', 'd1');
       inv.add('b', 'd2');
@@ -555,10 +551,10 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('never changes content, manifest entries or fixity from an earlier version', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1', { md5: 'm1' });
       inv.add('b', 'd1', { md5: 'm1' });
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       inv.add('a', 'd2', { md5: 'm2' });
       inv.add('a', 'd3', { md5: 'm3' });
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d3: ['v2/content/a'] });
@@ -571,7 +567,7 @@ describe('OcflObjectInventory class', () => {
 
   describe('fixity only lists content paths in the manifest', () => {
     it('drops the digest and fixity of content replaced at its own content path', () => {
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1', { md5: 'm1' });
       inv.add('a', 'd2', { md5: 'm2' });
       assert.deepStrictEqual(Object.keys(inv.manifest), ['d2']);
@@ -580,7 +576,7 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('replaces content that had no fixity with content that has some', () => {
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1');
       inv.add('a', 'd2', { md5: 'm2' });
       assert.deepStrictEqual(Object.keys(inv.manifest), ['d2']);
@@ -596,9 +592,9 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('records nothing new when a new logical path duplicates content', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a.txt', 'd1', { md5: 'm1' });
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       assert.strictEqual(inv.add('b.txt', 'd1', { md5: 'm1' }), true);
       assert.deepStrictEqual(inv.fixity, { md5: { m1: ['v1/content/a.txt'] } });
       assert.deepStrictEqual(inv.getFixity('b.txt'), { md5: 'm1' });
@@ -606,27 +602,27 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('records nothing new when a logical path is rewritten unchanged', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a.txt', 'd1', { md5: 'm1' });
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       assert.strictEqual(inv.add('a.txt', 'd1', { md5: 'm1' }), false);
       assert.deepStrictEqual(inv.fixity, { md5: { m1: ['v1/content/a.txt'] } });
       assertHeadStateValid(inv);
     });
 
     it('attaches a new value to the existing content path', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a.txt', 'd1');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       assert.strictEqual(inv.add('b.txt', 'd1', { md5: 'm1' }), true);
       assert.deepStrictEqual(inv.fixity, { md5: { m1: ['v1/content/a.txt'] } });
       assertHeadStateValid(inv);
     });
 
     it('keeps the existing value when a different one is supplied', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a.txt', 'd1', { md5: 'm1' });
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       inv.add('b.txt', 'd1', { md5: 'other', crc32: 'c1' });
       assert.deepStrictEqual(inv.fixity, {
         md5: { m1: ['v1/content/a.txt'] },
@@ -637,20 +633,20 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('shows a newly attached value on every logical path sharing the content', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a.txt', 'd1');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       assert.strictEqual(inv.add('a.txt', 'd1', { md5: 'm1' }), false);
       assert.deepStrictEqual(inv.getFixity('a.txt'), { md5: 'm1' });
       assert.deepStrictEqual(inv.getFixity('a.txt', 'v1'), { md5: 'm1' });
     });
 
     it('records nothing new when deleted content is written again', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a.txt', 'd1', { md5: 'm1' });
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       inv.delete('a.txt');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       assert.strictEqual(inv.add('a.txt', 'd1', { md5: 'm1' }), true);
       assert.deepStrictEqual(inv.fixity, { md5: { m1: ['v1/content/a.txt'] } });
       assert.deepStrictEqual(inv.getFixity('a.txt'), { md5: 'm1' });
@@ -662,7 +658,7 @@ describe('OcflObjectInventory class', () => {
       data.manifest = { d1: ['v1/content/a', 'v1/content/b'] };
       data.versions = { v1: { created: '2026-01-01T00:00:00Z', state: { d1: ['a'] } } };
       data.fixity = { md5: { m1: ['v1/content/a'] }, crc32: { c1: ['v1/content/b'] } };
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('c', 'd1', { sha256: 's1' });
       const expected = { md5: 'm1', crc32: 'c1', sha256: 's1' };
       assert.deepStrictEqual(inv.getFixity('a'), expected);
@@ -671,22 +667,22 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('reflects an assigned fixity block in file lookups', () => {
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1', { md5: 'm1' });
       inv.fixity = { md5: { m2: ['v1/content/a'] } };
       assert.deepStrictEqual(inv.getFixity('a'), { md5: 'm2' });
     });
 
     it('ignores an empty fixity value', () => {
-      const inv = OcflObjectInventory.newVersion(data);
+      const inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a', 'd1', { md5: '' });
       assert.strictEqual(inv.fixity, undefined);
     });
 
     it('does not count fixity alone as a change', () => {
-      let inv = OcflObjectInventory.newVersion(data);
+      let inv = OcflObjectInventoryMut.newVersion(data);
       inv.add('a.txt', 'd1');
-      inv = OcflObjectInventory.newVersion(inv);
+      inv = OcflObjectInventoryMut.newVersion(inv);
       inv.add('a.txt', 'd1', { md5: 'm1' });
       assert.strictEqual(inv.isChanged, false);
     });

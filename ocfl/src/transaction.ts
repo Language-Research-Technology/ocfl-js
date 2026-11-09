@@ -1,9 +1,9 @@
 /** Models a set of ocfl object modifying operations as a transaction that is as close as atomic as possible */
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
-import { OcflDigest } from './digest.ts';
+import { Hashing } from './digest.ts';
 import { OcflError } from './error.ts';
-import type { ContentRelease, OcflObjectInventoryMut } from './inventory.ts';
+import { type ContentRelease, OcflObjectInventory, type OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
 import type { OcflStore, WriteFileData } from './store.ts';
 import { isAlreadyExists, parallelize } from './utils.ts';
@@ -33,13 +33,6 @@ export interface CommitOptions {
         address?: string;
       }
     | undefined;
-  /** If true, force to commit. Use it after a purge. */
-  force?: boolean | undefined;
-}
-
-export interface RemoveOptions {
-  /** If true, completely remove the content from all versions */
-  purge?: boolean | undefined;
 }
 
 type TrackedPromise<T> = Promise<T> & { done?: boolean };
@@ -84,14 +77,6 @@ class OcflObjectTransaction {
    */
   async commit(_options?: CommitOptions): Promise<void> {
     throw new Error('Not Implemented');
-  }
-
-  /**
-   * Completely remove a file path and corresponding content from all versions of an OCFL Object.
-   * This is a special case that is not supported as part of regular OCFL versioning operations.
-   */
-  async purge(logicalPath: string): Promise<void> {
-    return await this.remove(logicalPath, { purge: true });
   }
 
   /**
@@ -150,27 +135,12 @@ class OcflObjectTransaction {
   }
 
   /**
-   * Alias of {@link OcflObjectTransaction.rename}
-   */
-  async move(source: string, target: string): Promise<void> {
-    return this.rename(source, target);
-  }
-
-  /**
    * Remove a file or directory
    * @abstract
    * @param logicalPath - A path relative to the object content directory
    */
-  async remove(_logicalPath: string, _options?: RemoveOptions): Promise<void> {
+  async remove(_logicalPath: string): Promise<void> {
     throw new Error('Not Implemented');
-  }
-
-  /**
-   * Remove a file or directory. Alias of {@link OcflObjectTransaction.remove}
-   * @param logicalPath - A path relative to the object content directory
-   */
-  async delete(logicalPath: string, options?: RemoveOptions): Promise<void> {
-    return this.remove(logicalPath, options);
   }
 
   /**
@@ -292,7 +262,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         throw this._commitBlocker;
       }
       // if there is no changes, abort commit
-      if (!options?.force && !this._inventory.isChanged) {
+      if (!this._inventory.isChanged) {
         return await this.rollback();
       }
       try {
@@ -301,7 +271,9 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         await this.rollback();
         throw error;
       }
-      this._object._setInventory(this._inventory);
+      const committed = new OcflObjectInventory(this._inventory.toJSON());
+      committed._digest = this._inventory._digest;
+      this._object._setInventory(committed);
       this._committed = true;
       await this._removeWorkspaceIfEmpty();
     }
@@ -370,7 +342,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     let invDigestPath = `${invPath}.${digestAlgorithm}`;
 
     const inventoryContent = inventory.toString();
-    inventory._digest = await OcflDigest.digest(digestAlgorithm, inventoryContent);
+    inventory._digest = await Hashing.digest(digestAlgorithm, inventoryContent);
     const digest = `${inventory._digest} ${INVENTORY_NAME}`;
 
     // write inventory.json to workspace
@@ -505,7 +477,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       throw new Error('Transaction already commited');
     }
     const digestAlgo = this._inventory.digestAlgorithm;
-    const hs = await OcflDigest.createStream(this._digestAlgorithms);
+    const hs = await Hashing.createStream(this._digestAlgorithms);
     checkLogicalPath(logicalPath);
     const staging = this._stagingPath();
     const writer = (await this._store.createWritable(staging, options)).getWriter();
@@ -539,11 +511,11 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
           ArrayBuffer.isView(data) && !(data instanceof Uint8Array || data instanceof Uint16Array || data instanceof Uint32Array)
             ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
             : data;
-        const hashes = splitDigests(await OcflDigest.digest(digestAlgos, content as string | Uint8Array), digestAlgo);
+        const hashes = splitDigests(await Hashing.digest(digestAlgos, content as string | Uint8Array), digestAlgo);
         return () => this._addContent(logicalPath, hashes, staging, () => this._store.writeFile(staging, content, options));
       }
       if (data instanceof ReadableStream) {
-        const hs = await OcflDigest.createStreamThrough(digestAlgos);
+        const hs = await Hashing.createStreamThrough(digestAlgos);
         await this._removeStagedOnFailure(staging, () => this._store.writeFile(staging, data.pipeThrough(hs), options));
         const hashes = splitDigests(hs.digest(), digestAlgo);
         return () => this._addContent(logicalPath, hashes, staging);
@@ -557,7 +529,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       throw new TypeError('Target logical path must not be empty if source is a file.');
     }
     const rs = await this._store.createReadable(source);
-    const hashes = splitDigests(await OcflDigest.digest(this._digestAlgorithms, rs), this._inventory.digestAlgorithm);
+    const hashes = splitDigests(await Hashing.digest(this._digestAlgorithms, rs), this._inventory.digestAlgorithm);
     const staging = this._stagingPath();
     return () => this._addContent(target, hashes, staging, () => this._store.copyFile(source, staging));
   }
@@ -612,20 +584,12 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     return this._transact(async () => this._inventory.reinstate(logicalPath, versionName));
   }
 
-  async remove(logicalPath: string, options?: RemoveOptions) {
+  async remove(logicalPath: string) {
     return this._transact(async () => {
       checkLogicalPath(logicalPath);
       const inventory = this._inventory;
       const plan = inventory._planDelete(logicalPath);
       await this._applyContentReleases(plan.releases);
-      if (options?.purge) {
-        // completely remove content from all versions
-        let ver = inventory.versionNumber.previous();
-        while (ver) {
-          inventory.delete(logicalPath, ver.toString());
-          ver = ver.previous();
-        }
-      }
       inventory._applyDelete(plan);
     });
   }

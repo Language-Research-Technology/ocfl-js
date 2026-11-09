@@ -1,6 +1,14 @@
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
-import type { CommonHasher, IDataType, MultiHasher } from './types.ts';
+import type { CommonHasher, IDataType } from './types.ts';
+
+interface MultiHasher {
+  update: (data: IDataType) => MultiHasher;
+  digest: {
+    (outputType: 'binary'): { [key: string]: Uint8Array };
+    (outputType?: 'hex'): { [key: string]: string };
+  };
+}
 
 const CONTENT = ['sha256', 'sha512'] as const;
 type ContentAlgorithm = (typeof CONTENT)[number];
@@ -144,7 +152,6 @@ async function createMultiHasher(algorithms: string | string[]): Promise<MultiHa
   const algoNames = Array.isArray(algorithms) ? (algorithms.length ? [...new Set(algorithms)] : ['sha512']) : [algorithms];
   const hashers = await Promise.all(algoNames.map(async (name) => [name, await createHasher(name)] as const));
   const multiHasher: MultiHasher = {
-    multi: true,
     update(data) {
       for (const [, hash] of hashers) {
         hash.update(data);
@@ -255,15 +262,17 @@ function getHexDigestLength(algorithm: string) {
 }
 
 const OcflDigest = {
-  CONTENT,
+  registerHasherFactory,
+  hasAlgorithm,
+};
+
+const Hashing = {
   createStream,
   createStreamThrough,
   digest,
-  registerHasherFactory,
-  hasAlgorithm,
   getHexDigestLength,
   digestSync,
   initSync,
 };
 
-export { type ContentAlgorithm, OcflDigest };
+export { type ContentAlgorithm, Hashing, OcflDigest };

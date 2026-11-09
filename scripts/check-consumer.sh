@@ -80,13 +80,139 @@ cat >"$consumer/tsconfig.json" <<'EOF'
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["consumer.ts"]
+  "include": ["consumer.ts", "removed-api.ts"]
 }
+EOF
+# Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
+cat >"$consumer/removed-api.ts" <<'EOF'
+import type { OcflExtension, OcflObject, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl';
+import { extensions, OcflDigest } from '@ocfl/ocfl';
+// @ts-expect-error OcflStorageImpl is not exported
+import { OcflStorageImpl } from '@ocfl/ocfl';
+// @ts-expect-error OcflObjectTransactionImpl is not exported
+import { OcflObjectTransactionImpl } from '@ocfl/ocfl';
+// @ts-expect-error RemoveOptions is gone, remove takes only a logical path
+import type { RemoveOptions } from '@ocfl/ocfl';
+// @ts-expect-error OcflObjectInventoryMut is not exported
+import type { OcflObjectInventoryMut } from '@ocfl/ocfl';
+// @ts-expect-error OcflConstants is not exported
+import { OcflConstants } from '@ocfl/ocfl';
+// @ts-expect-error the StorageLayout type is gone, use extensions
+import type { StorageLayout } from '@ocfl/ocfl';
+// @ts-expect-error the StorageLayout export is gone, use extensions
+import { StorageLayout as FsStorageLayout } from '@ocfl/ocfl-fs';
+import ocflFs from '@ocfl/ocfl-fs';
+
+declare const storage: OcflStorage;
+declare const object: OcflObject;
+declare const inventory: OcflObjectInventory;
+declare const transaction: OcflObjectTransaction;
+declare const extension: OcflExtension;
+declare const extensionClass: typeof OcflExtension;
+declare const layoutClass: typeof OcflStorageLayout;
+declare const inventoryClass: typeof OcflObjectInventory;
+
+// @ts-expect-error OcflObject.add is gone, use import
+await object.add('/tmp/source');
+// @ts-expect-error OcflObjectTransaction.move is gone, use rename
+await transaction.move('a.txt', 'b.txt');
+// @ts-expect-error OcflObjectTransaction.delete is gone, use remove
+await transaction.delete('a.txt');
+// @ts-expect-error OcflStorage.objects is gone, iterate the storage
+storage.objects();
+// @ts-expect-error OcflStorage.objectRootAbs is gone, use storage.object(id).root
+storage.objectRootAbs('id');
+// @ts-expect-error OcflExtension.p is gone, use parameters
+extension.p;
+// @ts-expect-error OcflStorage.delete is gone
+storage.delete('id');
+// @ts-expect-error OcflStorage.purge is gone
+storage.purge('id');
+// @ts-expect-error OcflDigest.digest is gone
+OcflDigest.digest('sha256', 'a');
+// @ts-expect-error OcflDigest.digestSync is gone
+OcflDigest.digestSync('sha256', 'a');
+// @ts-expect-error OcflDigest.createStream is gone
+OcflDigest.createStream('sha256');
+// @ts-expect-error OcflDigest.CONTENT is gone
+OcflDigest.CONTENT;
+// @ts-expect-error OcflObject.fileByLogicalPath is gone, use load then getFile
+await object.fileByLogicalPath('a.txt');
+// @ts-expect-error OcflObject.fileByDigest is gone, use load then getFile
+await object.fileByDigest('abc');
+// @ts-expect-error OcflObject.fileByContentPath is gone, use load then getFile
+await object.fileByContentPath('v1/content/a.txt');
+// @ts-expect-error OcflExtension.object is gone, use class
+extensionClass.object('name');
+// @ts-expect-error OcflExtension.storage is gone, use class
+extensionClass.storage('name');
+// @ts-expect-error OcflExtension.forObject is gone
+extensionClass.forObject;
+// @ts-expect-error OcflExtension.forStorage is gone
+extensionClass.forStorage;
+// @ts-expect-error OcflStorageLayout.forStorage is gone
+layoutClass.forStorage;
+// @ts-expect-error OcflExtension.minOcflVersion is gone
+extension.minOcflVersion;
+// @ts-expect-error OcflObjectConfig.extensions is gone
+const objectConfig: OcflObjectConfig = { root: '/tmp/object', extensions: [] };
+// @ts-expect-error OcflObject.digestAlgorithm has no setter, configure it when creating the object
+object.digestAlgorithm = 'sha256';
+// @ts-expect-error OcflObject.contentDirectory is read-only, configure it when creating the object
+object.contentDirectory = 'data';
+// @ts-expect-error OcflObjectTransaction.purge is gone
+await transaction.purge('a.txt');
+// @ts-expect-error the purge remove option is gone
+await transaction.remove('a.txt', { purge: true });
+// @ts-expect-error CommitOptions.force is gone
+await transaction.commit({ force: true });
+// @ts-expect-error OcflObjectInventory.newVersion is gone, object.update creates versions
+inventoryClass.newVersion({});
+// @ts-expect-error OcflObjectInventory.isChanged is gone, use diffState
+inventory.isChanged;
+// @ts-expect-error OcflObjectInventory.clone is gone, use new OcflObjectInventory(inv.toJSON())
+inventory.clone();
+// @ts-expect-error the created setter is gone
+inventory.created = '2026-01-01T00:00:00Z';
+// @ts-expect-error the message setter is gone
+inventory.message = 'x';
+// @ts-expect-error the user setter is gone
+inventory.user = { name: 'x' };
+// @ts-expect-error the fixity setter is gone
+inventory.fixity = {};
+// @ts-expect-error manifest is read-only
+inventory.manifest.d = [];
+// @ts-expect-error manifest entries are read-only
+inventory.manifest.d!.push('x');
+// @ts-expect-error versions is read-only
+inventory.versions.v1!.message = 'x';
+// @ts-expect-error version is read-only
+inventory.version.message = 'x';
+// @ts-expect-error a version's state is read-only
+inventory.version.state.d!.push('x');
+// @ts-expect-error state is read-only
+inventory.state.d = [];
+// @ts-expect-error fixity is read-only
+inventory.fixity!.md5 = {};
+// @ts-expect-error versionState is read-only
+inventory.versionState('v1')!.d = [];
+// @ts-expect-error user is read-only
+inventory.user!.name = 'x';
+// @ts-expect-error OcflObject.export is gone
+object.export;
+// @ts-expect-error extensions.DigestAlgorithm is gone
+extensions.DigestAlgorithm;
+// @ts-expect-error OcflStorageLayout.layout is gone, use extensions
+layoutClass.layout;
+// @ts-expect-error StorageLayout is gone from the default API, use extensions
+ocflFs.StorageLayout;
+
+export { extension, inventory, inventoryClass, object, storage, transaction };
 EOF
 cat >"$consumer/consumer.ts" <<'EOF'
 import { join } from 'node:path';
-import { implementOcfl, type OcflStorage, OcflStore } from '@ocfl/ocfl';
-import ocflFs, { createStorage, OcflError, type OcflErrorCode, OcflFsStore, type OcflFsStoreConfig, ValidationError } from '@ocfl/ocfl-fs';
+import { type CommonHasher, implementOcfl, OcflDigest, type OcflStorage, OcflStore } from '@ocfl/ocfl';
+import ocflFs, { createStorage, extensions, OCFL_VERSIONS, OcflError, type OcflErrorCode, OcflFsStore, type OcflFsStoreConfig, ValidationError } from '@ocfl/ocfl-fs';
 
 const config: OcflFsStoreConfig = {};
 const store: OcflStore = OcflFsStore.getInstance(config);
@@ -102,9 +228,33 @@ for (const ocflVersion of ocflFs.OCFL_VERSIONS) {
   await ocflFs.storage({ root: join(import.meta.dirname, `spec-${ocflVersion}`), ocflVersion }).create({ ocflSpecText: true });
 }
 
+const customStorage = await custom.createStorage({ root: join(import.meta.dirname, 'custom-backend'), layout: 'HashedNTupleStorageLayout' });
+const customObject = customStorage.object('custom-object');
+await customObject.update(async (t) => t.write('a.txt', 'written through a custom backend'));
+
+OcflDigest.registerHasherFactory('consumer-digest', async (): Promise<CommonHasher> => {
+  throw new Error('only registered, never used');
+});
+
+class PrefixedLayout extends extensions.FlatDirectStorageLayout {
+  map(id: string) {
+    return `prefix-${super.map(id)}`;
+  }
+}
+const layoutInstance: extensions.PathDirectStorageLayout = new ocflFs.extensions.PathDirectStorageLayout();
+const prefixedStorage = ocflFs.storage({ root: join(import.meta.dirname, 'prefixed'), layout: new PrefixedLayout() });
+
 if (
   !(store instanceof OcflStore) ||
   custom.OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
+  OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
+  !OCFL_VERSIONS.includes('1.1') ||
+  extensions !== ocflFs.extensions ||
+  custom.extensions !== extensions ||
+  !(layoutInstance instanceof extensions.PathDirectStorageLayout) ||
+  prefixedStorage.objectRoot('abc') !== 'prefix-abc' ||
+  (await customObject.getFile('a.txt')?.text()) !== 'written through a custom backend' ||
+  !OcflDigest.hasAlgorithm('consumer-digest') ||
   (await storage.has('missing')) ||
   missingCode !== 'OBJECT_NOT_FOUND' ||
   !(ValidationError.prototype instanceof OcflError)

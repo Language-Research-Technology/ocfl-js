@@ -57,7 +57,7 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
   });
 
   it('rejects creating a layout with an unsupported extension name', () => {
-    assert.throws(() => ocfl.StorageLayout.HashedNTupleStorageLayout.create({ extensionName: 'no-such-extension' }), {
+    assert.throws(() => ocfl.extensions.HashedNTupleStorageLayout.create({ extensionName: 'no-such-extension' }), {
       message: 'Extension "no-such-extension" is not supported.',
     });
   });
@@ -69,6 +69,20 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
     });
     const [firstTuple] = storage.objectRoot('an-object').split('/');
     assert.strictEqual(firstTuple!.length, 4);
+  });
+
+  it('deletes an object on a backend that rejects stat on a directory', async () => {
+    const root = path.join(tempdir, 'no-directory-stat');
+    const created = await ocfl.createStorage({ root, layout: 'FlatDirectStorageLayout' });
+    await created.object('an-object').update(async (t) => {
+      await t.write('a.txt', 'a');
+    });
+    const stat = async () => {
+      throw Object.assign(new Error('no such key'), { code: 'ENOENT' });
+    };
+    const storage = await ocfl.loadStorage({ root }, { fs: { ...fs, promises: { ...fs.promises, stat } } as typeof fs });
+    await storage.remove('an-object');
+    assert.strictEqual(fs.existsSync(path.join(root, 'an-object')), false);
   });
 
   it('rejects an object reference with neither id nor root', () => {

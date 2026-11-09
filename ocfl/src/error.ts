@@ -3,6 +3,7 @@ import type { ValidationErrorCode } from './validation.ts';
 type OcflErrorCode =
   | 'OBJECT_NOT_FOUND'
   | 'OBJECT_NOT_LOADED'
+  | 'NOT_AN_OBJECT'
   | 'UPDATE_IN_PROGRESS'
   | 'DIRECTORY_NOT_EMPTY'
   | 'ID_INCOMPATIBLE_WITH_LAYOUT'

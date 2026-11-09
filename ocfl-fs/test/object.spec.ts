@@ -87,9 +87,10 @@ describe('OcflObject with a malformed or missing inventory', () => {
     const root = path.join(tempdir, 'missing-version');
     const o = ocfl.object({ id: 'missing-version', root });
     await o.update(async (t) => t.write('a.txt', 'a'));
-    const { digest } = (await o.fileByLogicalPath('a.txt'))!;
-    assert.strictEqual(await o.fileByDigest(digest!, 'v9'), undefined);
-    assert.strictEqual(await o.fileByLogicalPath('a.txt', 'v9'), undefined);
+    await o.load();
+    const { digest } = o.getFile('a.txt')!;
+    assert.strictEqual(o.getFile({ digest: digest!, version: 'v9' }), undefined);
+    assert.strictEqual(o.getFile('a.txt', 'v9'), undefined);
     assert.strictEqual(await o.count('v9'), 0);
   });
 
@@ -230,7 +231,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
     );
   });
 
-  for (const op of ['copy', 'rename', 'move'] as const) {
+  for (const op of ['copy', 'rename'] as const) {
     describe(`${op}() onto an occupied target`, () => {
       const files = { 'a.txt': 'a', 'b.txt': 'b', 'same.txt': 'a', 'dir/c.txt': 'c', 'other/d.txt': 'd' };
       const cases = [

@@ -477,6 +477,20 @@ export default (ocfl: Ocfl) => {
       assert.strictEqual(await o.getFile('test')!.text(), 'testv4');
     });
 
+    it('lists and reads an older version after a later version changed or removed its files', async () => {
+      const o = createObject('object-older-version', true);
+      await o.update(async (t) => {
+        await t.write('changed.txt', 'original');
+        await t.write('removed.txt', 'removed later');
+      });
+      await o.update(async (t) => {
+        await t.write('changed.txt', 'replaced');
+        await t.remove('removed.txt');
+      });
+      const contents = await Promise.all([...(await o.files('v1'))].map(async (f) => [f.logicalPath, await f.text()]));
+      assert.deepStrictEqual(Object.fromEntries(contents), { 'changed.txt': 'original', 'removed.txt': 'removed later' });
+    });
+
     it('can add a directory without using transaction directly', async () => {
       const f1 = path.join(datadir, 'fixtures/1.1/content/spec-ex-full/v3');
       const o = createObject('object-import-1', true);
@@ -623,8 +637,15 @@ export default (ocfl: Ocfl) => {
         ],
       ];
       const noOp: Outcome = ['a no-op update', (o) => o.update(async () => {})];
+      const emptyCommit: Outcome = [
+        'a commit with no changes',
+        async (o) => {
+          const t = (await o.update())!;
+          await t.commit();
+        },
+      ];
 
-      for (const [name, end] of [...endings, noOp]) {
+      for (const [name, end] of [...endings, noOp, emptyCommit]) {
         it(`leaves an existing object intact after ${name} with no workspace`, async () => {
           const { root } = dirs();
           const o = ocfl.object({ id: 'scoped', root });
@@ -1244,7 +1265,6 @@ export default (ocfl: Ocfl) => {
       const scenarios: [string, Step[], Record<string, string>, string[]][] = [
         ['rename a directory', [(t) => t.write('d/x', 'XXX'), (t) => t.rename('d', 'e')], { 'e/x': 'XXX' }, ['v1/content/e/x']],
         ['rename to a target in a new directory', [(t) => t.write('a', 'AAA'), (t) => t.rename('a', 'x/y/b')], { 'x/y/b': 'AAA' }, ['v1/content/x/y/b']],
-        ['move()', [(t) => t.write('a', 'AAA'), (t) => t.move('a', 'b')], { b: 'AAA' }, ['v1/content/b']],
         [
           'rename a file that has a copy',
           [(t) => t.write('a', 'AAA'), (t) => t.copy('a', 'b'), (t) => t.rename('a', 'c')],
@@ -1297,7 +1317,6 @@ export default (ocfl: Ocfl) => {
           ['v1/content/a'],
         ],
         ['remove a directory', [(t) => t.write('d/x', 'XXX'), (t) => t.write('d/y/z', 'ZZZ'), (t) => t.remove('d')], {}, []],
-        ['delete()', [(t) => t.write('a', 'AAA'), (t) => t.delete('a')], {}, []],
         [
           'remove a directory whose content is also used outside it',
           [(t) => t.write('d/x', 'AAA'), (t) => t.write('d/y', 'AAA'), (t) => t.write('z', 'AAA'), (t) => t.remove('d')],
@@ -1475,6 +1494,113 @@ export default (ocfl: Ocfl) => {
     });
   });
 
+  describe('digestAlgorithm and contentDirectory', () => {
+    let tempdir: string;
+    let written: string;
+
+    before(async () => {
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-properties-'));
+      written = path.join(tempdir, 'written');
+      await ocfl.object({ id: 'written', root: written, digestAlgorithm: 'sha256', contentDirectory: 'data' }).update(async (t) => t.write('a.txt', 'a'));
+    });
+
+    after(async () => {
+      await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+
+    it('reports the values of an existing object loaded with default config', async () => {
+      const o = ocfl.object({ root: written });
+      await o.load();
+      assert.strictEqual(o.digestAlgorithm, 'sha256');
+      assert.strictEqual(o.contentDirectory, 'data');
+    });
+
+    it('reports the configured values until the inventory has been read', async () => {
+      const o = ocfl.object({ root: written, digestAlgorithm: 'sha512', contentDirectory: 'stuff' });
+      assert.strictEqual(o.digestAlgorithm, 'sha512');
+      assert.strictEqual(o.contentDirectory, 'stuff');
+      await o.getInventory();
+      assert.strictEqual(o.digestAlgorithm, 'sha256');
+      assert.strictEqual(o.contentDirectory, 'data');
+    });
+
+    it('reports the defaults before the inventory has been read when nothing is configured', () => {
+      const o = ocfl.object({ root: written });
+      assert.strictEqual(o.digestAlgorithm, 'sha512');
+      assert.strictEqual(o.contentDirectory, 'content');
+    });
+
+    it('reports the configured values for an object that does not exist yet, even after a load', async () => {
+      const o = ocfl.object({ root: path.join(tempdir, 'not-yet'), digestAlgorithm: 'sha256', contentDirectory: 'data' });
+      await o.getInventory();
+      assert.strictEqual(o.digestAlgorithm, 'sha256');
+      assert.strictEqual(o.contentDirectory, 'data');
+    });
+
+    it('reports the defaults for an object that does not exist yet with nothing configured', () => {
+      const o = ocfl.object({ root: path.join(tempdir, 'not-yet') });
+      assert.strictEqual(o.digestAlgorithm, 'sha512');
+      assert.strictEqual(o.contentDirectory, 'content');
+    });
+
+    it('reports the spec default for an inventory with no contentDirectory, whatever is configured', async () => {
+      const o = ocfl.object({ root: fixture, digestAlgorithm: 'sha256', contentDirectory: 'data' });
+      await o.load();
+      assert.strictEqual(o.digestAlgorithm, 'sha512');
+      assert.strictEqual(o.contentDirectory, 'content');
+    });
+
+    it('creates a new object with its configured values', async () => {
+      const root = path.join(tempdir, 'configured');
+      const content = 'configured content';
+      const o = ocfl.object({ id: 'configured', root, digestAlgorithm: 'sha256', contentDirectory: 'data' });
+      await o.update(async (t) => t.write('a.txt', content));
+
+      const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8')) as Inventory;
+      const digest = createHash('sha256').update(content).digest('hex');
+      assert.strictEqual(inv.digestAlgorithm, 'sha256');
+      assert.strictEqual(inv.contentDirectory, 'data');
+      assert.deepStrictEqual(inv.manifest, { [digest]: ['v1/data/a.txt'] });
+      assert.strictEqual(await fs.promises.readFile(path.join(root, 'v1/data/a.txt'), 'utf8'), content);
+      assert.strictEqual(o.digestAlgorithm, 'sha256');
+      assert.strictEqual(o.contentDirectory, 'data');
+    });
+
+    it('creates a new object with the defaults when nothing is configured', async () => {
+      const root = path.join(tempdir, 'defaulted');
+      await ocfl.object({ id: 'defaulted', root }).update(async (t) => t.write('a.txt', 'a'));
+
+      const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8')) as Inventory;
+      assert.strictEqual(inv.digestAlgorithm, 'sha512');
+      assert.strictEqual(inv.contentDirectory, 'content');
+      assert.ok(fs.existsSync(path.join(root, 'v1/content/a.txt')));
+    });
+
+    it('keeps the object values when an update is configured differently', async () => {
+      const root = path.join(tempdir, 'differs');
+      await ocfl.object({ id: 'differs', root, digestAlgorithm: 'sha256', contentDirectory: 'data' }).update(async (t) => t.write('a.txt', 'a'));
+
+      const o = ocfl.object({ root, digestAlgorithm: 'sha512', contentDirectory: 'stuff' });
+      await o.update(async (t) => t.write('b.txt', 'b'));
+
+      const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8')) as Inventory;
+      assert.strictEqual(inv.digestAlgorithm, 'sha256');
+      assert.strictEqual(inv.contentDirectory, 'data');
+      assert.ok(fs.existsSync(path.join(root, 'v2/data/b.txt')));
+      assert.strictEqual(o.digestAlgorithm, 'sha256');
+      assert.strictEqual(o.contentDirectory, 'data');
+    });
+
+    for (const property of ['digestAlgorithm', 'contentDirectory'] as const) {
+      it(`has no setter for ${property}`, () => {
+        const o: Record<typeof property, string> = ocfl.object({ root: written });
+        assert.throws(() => {
+          o[property] = 'sha256';
+        }, TypeError);
+      });
+    }
+  });
+
   describe('file lookup errors', () => {
     let tempdir: string;
     const missingObject = () => ocfl.object({ id: 'missing', root: path.join(tempdir, 'missing') });
@@ -1508,11 +1634,11 @@ export default (ocfl: Ocfl) => {
       assert.throws(() => o.getFile('a.txt'), { name: 'ObjectNotFoundError', message: 'OCFL Object "missing" does not exist' });
     });
 
-    it('throws ObjectNotFoundError from fileBy* for an object that does not exist', async () => {
+    it('throws ObjectNotFoundError from getFile by digest and content path after loading an object that does not exist', async () => {
       const o = missingObject();
-      await assert.rejects(o.fileByLogicalPath('a.txt'), ObjectNotFoundError);
-      await assert.rejects(o.fileByDigest('abc'), ObjectNotFoundError);
-      await assert.rejects(o.fileByContentPath('v1/content/a.txt'), ObjectNotFoundError);
+      await o.load();
+      assert.throws(() => o.getFile({ digest: 'abc' }), ObjectNotFoundError);
+      assert.throws(() => o.getFile({ contentPath: 'v1/content/a.txt' }), ObjectNotFoundError);
     });
 
     it('returns a lazy file without loading, which throws ObjectNotFoundError on read if the object does not exist', async () => {
@@ -1532,10 +1658,11 @@ export default (ocfl: Ocfl) => {
 
     it('finds a file in an existing object by logical path, digest and content path', async () => {
       const o = ocfl.object({ root: fixture });
-      const byPath = await o.fileByLogicalPath('foo/bar.xml');
+      await o.load();
+      const byPath = o.getFile('foo/bar.xml');
       assert.strictEqual(byPath?.contentPath, 'v2/content/foo/bar.xml');
-      assert.strictEqual((await o.fileByDigest(byPath.digest!))?.contentPath, 'v2/content/foo/bar.xml');
-      assert.strictEqual((await o.fileByContentPath('v2/content/foo/bar.xml'))?.logicalPath, 'foo/bar.xml');
+      assert.strictEqual(o.getFile({ digest: byPath.digest! })?.contentPath, 'v2/content/foo/bar.xml');
+      assert.strictEqual(o.getFile({ contentPath: 'v2/content/foo/bar.xml' })?.logicalPath, 'foo/bar.xml');
     });
 
     it('returns undefined for a file that is not in an existing object', async () => {
@@ -1544,9 +1671,6 @@ export default (ocfl: Ocfl) => {
       assert.strictEqual(o.getFile('nope.txt'), undefined);
       assert.strictEqual(o.getFile({ digest: 'abc' }), undefined);
       assert.strictEqual(o.getFile({ contentPath: 'v1/content/nope.txt' }), undefined);
-      assert.strictEqual(await o.fileByLogicalPath('nope.txt'), undefined);
-      assert.strictEqual(await o.fileByDigest('abc'), undefined);
-      assert.strictEqual(await o.fileByContentPath('v1/content/nope.txt'), undefined);
     });
   });
 
@@ -1759,9 +1883,6 @@ export default (ocfl: Ocfl) => {
         o.getFile({ logicalPath, version: 'latest' }),
         o.getFile({ digest, version: 'latest' }),
         o.getFile({ contentPath: headContentPath, version: 'latest' }),
-        await o.fileByLogicalPath(logicalPath, 'latest'),
-        await o.fileByDigest(digest, 'latest'),
-        await o.fileByContentPath(headContentPath, 'latest'),
       ];
       for (const file of found) {
         assert.deepStrictEqual(file, explicit);
@@ -1773,18 +1894,21 @@ export default (ocfl: Ocfl) => {
       await o.load();
       const digest = o.getFile(logicalPath)!.digest!;
       assert.strictEqual(o.getFile(logicalPath, ''), undefined);
-      assert.strictEqual(await o.fileByLogicalPath(logicalPath, ''), undefined);
-      assert.strictEqual(await o.fileByDigest(digest, ''), undefined);
-      assert.strictEqual(await o.fileByContentPath(headContentPath, ''), undefined);
+      assert.strictEqual(o.getFile({ logicalPath, version: '' }), undefined);
+      assert.strictEqual(o.getFile({ digest, version: '' }), undefined);
+      assert.strictEqual(o.getFile({ contentPath: headContentPath, version: '' }), undefined);
       await assert.rejects(ocfl.object({ root: fixture }).getFile(logicalPath, '', true)!.text(), { code: 'FILE_NOT_FOUND' });
     });
 
     it('leaves explicit older versions unchanged', async () => {
       const o = ocfl.object({ root: fixture });
       await o.load();
-      const file = await o.fileByLogicalPath(logicalPath, 'v1');
+      const file = o.getFile(logicalPath, 'v1');
       assert.strictEqual(file?.version, 'v1');
       assert.strictEqual(file.contentPath, 'v1/content/foo/bar.xml');
+      assert.deepStrictEqual(o.getFile({ logicalPath, version: 'v1' }), file);
+      assert.deepStrictEqual(o.getFile({ digest: file.digest!, version: 'v1' }), file);
+      assert.deepStrictEqual(o.getFile({ contentPath: 'v1/content/foo/bar.xml', version: 'v1' }), file);
     });
   });
 

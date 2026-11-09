@@ -1,11 +1,10 @@
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
-import { type ContentAlgorithm, OcflDigest } from './digest.ts';
+import { type ContentAlgorithm, Hashing } from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
-import type { OcflExtension } from './extension.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
-import { type InventoryFile, OcflObjectInventory, type OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
+import { type InventoryFile, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
 import type { BinaryOptions, EncodingOptions, OcflStore } from './store.ts';
 import { type OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
 import type { Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
@@ -42,13 +41,12 @@ class OcflObject {
   #workspace: string | undefined;
   #id: string | undefined;
   #digestAlgorithm: ContentAlgorithm;
-  #extensions: OcflExtension[] | undefined;
+  #contentDirectory: string;
   #store: OcflStore;
   /**
    * A default list of digest algorithms to be calculated for each file in this object and added to the fixity block.
    */
   fixityAlgorithms: string[] | undefined;
-  contentDirectory: string;
   _inventory: { [version: string]: OcflObjectInventory } = {};
   #latestRead = false;
 
@@ -70,21 +68,30 @@ class OcflObject {
     this.#configuredOcflVersion = config.ocflVersion || (OCFL_VERSION as OcflVersion);
     //this.contentVersion = null; // No content yet
     this.#id = config.id;
-    this.#extensions = config.extensions;
     //this.fixityDigest = config.fixityDigest ?? this.digestAlgorithm;
     this.#digestAlgorithm = contentDigestAlgorithm(config.digestAlgorithm);
     this.#workspace = config.workspace ? path.resolve(config.workspace) : undefined;
-    this.contentDirectory = config.contentDirectory ?? 'content';
+    this.#contentDirectory = config.contentDirectory ?? 'content';
     this._inventory = {};
     this.fixityAlgorithms = config.fixityAlgorithms;
   }
 
-  /** the digest algorithm used to identify files within the OCFL object */
+  /**
+   * The digest algorithm used to identify files within the OCFL object. For an existing object, only reliable once its
+   * root inventory has been read, by {@link load} or any method that reads it. Until then, and for an object that
+   * doesn't exist yet, this is the configured algorithm or the library default.
+   */
   get digestAlgorithm(): ContentAlgorithm {
-    return this.#digestAlgorithm;
+    return this.inventory?.digestAlgorithm ?? this.#digestAlgorithm;
   }
-  set digestAlgorithm(algorithm: string) {
-    this.#digestAlgorithm = contentDigestAlgorithm(algorithm);
+
+  /**
+   * The name of the directory holding each version's content. For an existing object, only reliable once its root
+   * inventory has been read, by {@link load} or any method that reads it. Until then, and for an object that doesn't
+   * exist yet, this is the configured directory or the library default.
+   */
+  get contentDirectory(): string {
+    return this.inventory?.contentDirectory ?? this.#contentDirectory;
   }
 
   /**
@@ -183,10 +190,7 @@ class OcflObject {
       return;
     }
     const data = JSON.parse(datastr) as Inventory;
-    const [digest, actualDigest] = await Promise.all([
-      this.#readSidecarDigest(invPath, data.digestAlgorithm),
-      OcflDigest.digest(data.digestAlgorithm, datastr),
-    ]);
+    const [digest, actualDigest] = await Promise.all([this.#readSidecarDigest(invPath, data.digestAlgorithm), Hashing.digest(data.digestAlgorithm, datastr)]);
     if (digest !== actualDigest) {
       throw createError('E060', path.join(this.root, invPath), `recorded=${digest} actual=${actualDigest}`);
     }
@@ -276,7 +280,7 @@ class OcflObject {
       throw new TypeError(`Invalid mode '${mode_}'`);
     }
     const inv = (await this.getInventory()) ?? this._baseInventory();
-    const newInv = await OcflObjectInventory.newVersion(inv, mode_ === 'REPLACE');
+    const newInv = OcflObjectInventoryMut.newVersion(inv, mode_ === 'REPLACE');
     const t = await this.#createTransaction(newInv);
     if (typeof updater === 'function') {
       try {
@@ -314,14 +318,6 @@ class OcflObject {
   }
 
   /**
-   * Alias for import
-   * @see {@link OcflObject.import}
-   */
-  async add(sourceDir: string | string[] | string[][], mode: UpdateMode = 'MERGE') {
-    await this.import(sourceDir, mode);
-  }
-
-  /**
    * Count the number of files contained in this object
    */
   async count(version?: string) {
@@ -343,13 +339,6 @@ class OcflObject {
   }
 
   /**
-   * Copy all content of this Object to a directory in local filesystem
-   */
-  async export(_targetDir: string, _version: string) {
-    throw new Error('Not Implemented');
-  }
-
-  /**
    * Iterate through the content files contained in the specified version.
    * Returns an Iterator that contains FileRef which consists of logical path, content path, and digest, in no particular order.
    * The iterator is implemented as a generator.
@@ -363,48 +352,6 @@ class OcflObject {
       }
     }
     return files();
-  }
-
-  /**
-   * Return a file representation by the content path and version,
-   * @param version - Defaults to `'latest'`.
-   * @returns `undefined` if the object has no such file.
-   * @throws {ObjectNotFoundError} If the object does not exist.
-   */
-  async fileByContentPath(contentPath: string, version?: string) {
-    const inv = await this._requireInventory();
-    const fr = inv.getFileByContentPath(contentPath, version);
-    if (fr) {
-      return new OcflObjectFile(this, fr);
-    }
-  }
-
-  /**
-   * Return a file representation by the digest and version,
-   * @param version - Defaults to `'latest'`.
-   * @returns `undefined` if the object has no such file.
-   * @throws {ObjectNotFoundError} If the object does not exist.
-   */
-  async fileByDigest(digest: string, version?: string) {
-    const inv = await this._requireInventory();
-    const fr = inv.getFileByDigest(digest, version);
-    if (fr) {
-      return new OcflObjectFile(this, fr);
-    }
-  }
-
-  /**
-   * Return a file representation by the logical path and version,
-   * @param version - Defaults to `'latest'`.
-   * @returns `undefined` if the object has no such file.
-   * @throws {ObjectNotFoundError} If the object does not exist.
-   */
-  async fileByLogicalPath(logicalPath: string, version?: string) {
-    const inv = await this._requireInventory();
-    const fr = inv.getFile(logicalPath, version);
-    if (fr) {
-      return new OcflObjectFile(this, fr);
-    }
   }
 
   /**
@@ -460,7 +407,6 @@ class OcflObject {
       this._setInventory(inv);
     }
     this.#latestRead = true;
-    //await this.loadExtensions();
     if (inv && filesMetadata) {
       //load file metadata from underlying storage
       const metadata: OcflObjectInventory['metadata'] = {};
