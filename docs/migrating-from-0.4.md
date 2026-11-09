@@ -306,6 +306,12 @@ Each public member now corresponds to something the OCFL specification or the li
 | `remove(path, { purge: true })`                                                                          | A new object without the file; see [Removing a file from all versions](#removing-a-file-from-all-versions)                            |
 | `RemoveOptions`                                                                                          | Nothing: `remove()` takes only a logical path                                                                                         |
 | `CommitOptions.force`                                                                                    | Nothing: a commit with no changes rolls back                                                                                          |
+| `OcflObjectInventory.newVersion()`                                                                       | `object.update()`, which creates each new version                                                                                     |
+| `inventory.isChanged`                                                                                    | `inventory.diffState(version0, version1)`; see [Read-only inventories](#read-only-inventories)                                        |
+| `inventory.clone()`                                                                                      | `new OcflObjectInventory(inventory.toJSON())`                                                                                         |
+| The `inventory.created`, `message` and `user` setters                                                    | `transaction.commit({ message, user })`; `created` is set when a version is committed                                                 |
+| The `inventory.fixity` setter                                                                            | The `fixityAlgorithms` option of an object or storage                                                                                 |
+| The `OcflObjectInventoryMut` type                                                                        | `OcflObjectInventory`                                                                                                                 |
 
 ### Deleting an object
 
@@ -357,6 +363,19 @@ await storage.remove('original-id');
 The new object needs its own identifier, because a layout maps each identifier to one path.
 
 This example copies only the head version, so the new object starts with a single version. To keep earlier versions, create one version in the new object for each version of the original, using `files(version)` and leaving out the file.
+
+### Read-only inventories
+
+OCFL versions are immutable, so the inventory you read from an object now only offers reading operations. Its setters changed a cached inventory without touching storage, and they've gone.
+
+`manifest`, `versions`, `version`, `state`, `fixity`, `user` and `versionState()` return read-only types, so code like `inventory.versions.v1.message = 'x'` or `inventory.manifest[digest].push(path)` no longer compiles. This is only enforced at compile time; the data isn't frozen. Passing one of these values to a function that takes a mutable type needs a copy, which `inventory.toJSON()` gives you.
+
+To find out what changed between two versions, use `diffState`. It returns the files in the first version but not the second, then the files in the second but not the first:
+
+```ts
+const [added, removed] = inventory.diffState('v2', 'v1');
+const changed = Object.keys(added).length > 0 || Object.keys(removed).length > 0;
+```
 
 ## Other behaviour changes
 

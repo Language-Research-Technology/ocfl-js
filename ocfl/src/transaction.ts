@@ -3,7 +3,7 @@ import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { Hashing } from './digest.ts';
 import { OcflError } from './error.ts';
-import type { ContentRelease, OcflObjectInventoryMut } from './inventory.ts';
+import { type ContentRelease, OcflObjectInventory, type OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
 import type { OcflStore, WriteFileData } from './store.ts';
 import { isAlreadyExists, parallelize } from './utils.ts';
@@ -271,7 +271,9 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         await this.rollback();
         throw error;
       }
-      this._object._setInventory(this._inventory);
+      const committed = new OcflObjectInventory(this._inventory.toJSON());
+      committed._digest = this._inventory._digest;
+      this._object._setInventory(committed);
       this._committed = true;
       await this._removeWorkspaceIfEmpty();
     }

@@ -93,6 +93,8 @@ import { OcflStorageImpl } from '@ocfl/ocfl';
 import { OcflObjectTransactionImpl } from '@ocfl/ocfl';
 // @ts-expect-error RemoveOptions is gone, remove takes only a logical path
 import type { RemoveOptions } from '@ocfl/ocfl';
+// @ts-expect-error OcflObjectInventoryMut is not exported
+import type { OcflObjectInventoryMut } from '@ocfl/ocfl';
 
 declare const storage: OcflStorage;
 declare const object: OcflObject;
@@ -101,6 +103,7 @@ declare const transaction: OcflObjectTransaction;
 declare const extension: OcflExtension;
 declare const extensionClass: typeof OcflExtension;
 declare const layoutClass: typeof OcflStorageLayout;
+declare const inventoryClass: typeof OcflObjectInventory;
 
 // @ts-expect-error OcflObject.add is gone, use import
 await object.add('/tmp/source');
@@ -156,8 +159,40 @@ await transaction.purge('a.txt');
 await transaction.remove('a.txt', { purge: true });
 // @ts-expect-error CommitOptions.force is gone
 await transaction.commit({ force: true });
+// @ts-expect-error OcflObjectInventory.newVersion is gone, object.update creates versions
+inventoryClass.newVersion({});
+// @ts-expect-error OcflObjectInventory.isChanged is gone, use diffState
+inventory.isChanged;
+// @ts-expect-error OcflObjectInventory.clone is gone, use new OcflObjectInventory(inv.toJSON())
+inventory.clone();
+// @ts-expect-error the created setter is gone
+inventory.created = '2026-01-01T00:00:00Z';
+// @ts-expect-error the message setter is gone
+inventory.message = 'x';
+// @ts-expect-error the user setter is gone
+inventory.user = { name: 'x' };
+// @ts-expect-error the fixity setter is gone
+inventory.fixity = {};
+// @ts-expect-error manifest is read-only
+inventory.manifest.d = [];
+// @ts-expect-error manifest entries are read-only
+inventory.manifest.d!.push('x');
+// @ts-expect-error versions is read-only
+inventory.versions.v1!.message = 'x';
+// @ts-expect-error version is read-only
+inventory.version.message = 'x';
+// @ts-expect-error a version's state is read-only
+inventory.version.state.d!.push('x');
+// @ts-expect-error state is read-only
+inventory.state.d = [];
+// @ts-expect-error fixity is read-only
+inventory.fixity!.md5 = {};
+// @ts-expect-error versionState is read-only
+inventory.versionState('v1')!.d = [];
+// @ts-expect-error user is read-only
+inventory.user!.name = 'x';
 
-export { extension, inventory, object, storage, transaction };
+export { extension, inventory, inventoryClass, object, storage, transaction };
 EOF
 cat >"$consumer/consumer.ts" <<'EOF'
 import { join } from 'node:path';

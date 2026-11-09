@@ -4,7 +4,7 @@ import { type ContentAlgorithm, Hashing } from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
-import { type InventoryFile, OcflObjectInventory, type OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
+import { type InventoryFile, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
 import type { BinaryOptions, EncodingOptions, OcflStore } from './store.ts';
 import { type OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
 import type { Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
@@ -280,7 +280,7 @@ class OcflObject {
       throw new TypeError(`Invalid mode '${mode_}'`);
     }
     const inv = (await this.getInventory()) ?? this._baseInventory();
-    const newInv = await OcflObjectInventory.newVersion(inv, mode_ === 'REPLACE');
+    const newInv = OcflObjectInventoryMut.newVersion(inv, mode_ === 'REPLACE');
     const t = await this.#createTransaction(newInv);
     if (typeof updater === 'function') {
       try {

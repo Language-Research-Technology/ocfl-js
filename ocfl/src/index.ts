@@ -19,7 +19,7 @@ export type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direc
 export type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 export type { StorageLayout } from './extensions/index.ts';
 export type { FileRef, FileStat, OcflObjectFile } from './file.ts';
-export type { InventoryFile, OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
+export type { InventoryFile, VersionNumber } from './inventory.ts';
 export { OcflObjectInventory } from './inventory.ts';
 export type { UpdateMode } from './object.ts';
 export { OcflObject } from './object.ts';

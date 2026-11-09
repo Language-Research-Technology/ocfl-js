@@ -1,5 +1,8 @@
 import type { ContentAlgorithm } from './digest.ts';
 
+/** `T` and everything nested in it, read-only at compile time. The data isn't frozen. */
+export type DeepReadonly<T> = { readonly [K in keyof T]: DeepReadonly<T[K]> };
+
 export interface InventoryDigests {
   [key: string]: string[];
 }

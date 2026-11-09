@@ -18,7 +18,7 @@ export default (ocfl: Ocfl) => {
     let object: OcflObject;
 
     const read = (file: string) => fs.readFileSync(file, 'utf-8');
-    const begin = async () => (await object.update()) as OcflObjectTransaction;
+    const begin = async (o = object) => (await o.update()) as OcflObjectTransaction;
 
     beforeEach(async () => {
       tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-transaction-'));
@@ -109,12 +109,81 @@ export default (ocfl: Ocfl) => {
 
     it('write with fixity', async () => {
       const withFixity = ocfl.object({ id: 'test', root, workspace, fixityAlgorithms: ['size', 'crc32'] });
-      const trx = (await withFixity.update()) as OcflObjectTransaction;
+      const trx = await begin(withFixity);
       await trx.write('test.txt', 'Hello, World!');
       await trx.commit();
       const { fixity } = withFixity.inventory!;
       assert(fixity!.size!['13']!.includes('v1/content/test.txt'));
       assert(fixity!.crc32!.ec4ac3d0!.includes('v1/content/test.txt'));
+    });
+
+    it('records created, message, user and fixity on a later version, leaving earlier versions as they were', async () => {
+      const withFixity = ocfl.object({ id: 'test', root, workspace, fixityAlgorithms: ['size'] });
+      let trx = await begin(withFixity);
+      await trx.write('a.txt', 'first');
+      await trx.commit({ message: 'one', user: { name: 'ann' } });
+      const v1 = withFixity.inventory!.toJSON().versions.v1;
+      const started = Date.now();
+      trx = await begin(withFixity);
+      await trx.write('b.txt', 'second!');
+      await trx.commit({ message: 'two', user: { name: 'bob', address: 'mailto:bob@example.com' } });
+
+      const inventory = (await ocfl.object({ root }).getInventory())!;
+      assert.strictEqual(inventory.head, 'v2');
+      assert.strictEqual(inventory.message, 'two');
+      assert.deepStrictEqual(inventory.user, { name: 'bob', address: 'mailto:bob@example.com' });
+      assert.ok(Date.parse(inventory.created) >= started - 1000);
+      assert.deepStrictEqual(inventory.fixity!.size, { 5: ['v1/content/a.txt'], 7: ['v2/content/b.txt'] });
+      assert.deepStrictEqual(inventory.toJSON().versions.v1, v1);
+    });
+
+    it('rolls back a commit with no changes, keeping the current version', async () => {
+      let trx = await begin();
+      await trx.write('a.txt', 'same');
+      await trx.commit();
+      trx = await begin();
+      await trx.write('a.txt', 'same');
+      await trx.commit();
+      assert.strictEqual(object.inventory!.head, 'v1');
+      assert.strictEqual((await ocfl.object({ root }).getInventory())!.head, 'v1');
+      assert(!fs.existsSync(path.join(root, 'v2')));
+      assert(!fs.existsSync(path.join(workspace, 'v2')));
+    });
+
+    it('reads every version and reports what changed between them', async () => {
+      let trx = await begin();
+      await trx.write('a.txt', 'one');
+      await trx.write('b.txt', 'two');
+      await trx.commit();
+      trx = await begin();
+      await trx.write('a.txt', 'changed');
+      await trx.write('c.txt', 'three');
+      await trx.remove('b.txt');
+      await trx.commit();
+
+      const reader = ocfl.object({ root });
+      await reader.load();
+      const inventory = reader.inventory!;
+      assert.deepStrictEqual(Object.keys(inventory.versions), ['v1', 'v2']);
+      assert.strictEqual(await reader.getFile('a.txt', 'v1')!.text(), 'one');
+      assert.strictEqual(await reader.getFile('a.txt', 'v2')!.text(), 'changed');
+      assert.strictEqual(inventory.getDigest('b.txt', 'v1'), sha512('two'));
+      assert.strictEqual(inventory.getDigest('b.txt', 'v2'), undefined);
+      assert.deepStrictEqual([...inventory.files('v1')].map((f) => f.logicalPath).sort(), ['a.txt', 'b.txt']);
+      assert.deepStrictEqual([...inventory.files('v2')].map((f) => f.logicalPath).sort(), ['a.txt', 'c.txt']);
+      assert.deepStrictEqual(inventory.diffState('v2', 'v1'), [
+        { [sha512('changed')]: ['a.txt'], [sha512('three')]: ['c.txt'] },
+        { [sha512('one')]: ['a.txt'], [sha512('two')]: ['b.txt'] },
+      ]);
+    });
+
+    it('caches a committed inventory that offers only reading operations', async () => {
+      const trx = await begin();
+      await trx.write('a.txt', 'a');
+      await trx.commit();
+      for (const member of ['add', 'rename', 'copy', 'delete', 'reinstate', 'addFixity', 'isChanged', 'clone']) {
+        assert(!(member in object.inventory!), `${member} is on the committed inventory`);
+      }
     });
 
     it('import', async () => {
