@@ -477,6 +477,20 @@ export default (ocfl: Ocfl) => {
       assert.strictEqual(await o.getFile('test')!.text(), 'testv4');
     });
 
+    it('lists and reads an older version after a later version changed or removed its files', async () => {
+      const o = createObject('object-older-version', true);
+      await o.update(async (t) => {
+        await t.write('changed.txt', 'original');
+        await t.write('removed.txt', 'removed later');
+      });
+      await o.update(async (t) => {
+        await t.write('changed.txt', 'replaced');
+        await t.remove('removed.txt');
+      });
+      const contents = await Promise.all([...(await o.files('v1'))].map(async (f) => [f.logicalPath, await f.text()]));
+      assert.deepStrictEqual(Object.fromEntries(contents), { 'changed.txt': 'original', 'removed.txt': 'removed later' });
+    });
+
     it('can add a directory without using transaction directly', async () => {
       const f1 = path.join(datadir, 'fixtures/1.1/content/spec-ex-full/v3');
       const o = createObject('object-import-1', true);
@@ -1506,11 +1520,11 @@ export default (ocfl: Ocfl) => {
       assert.throws(() => o.getFile('a.txt'), { name: 'ObjectNotFoundError', message: 'OCFL Object "missing" does not exist' });
     });
 
-    it('throws ObjectNotFoundError from fileBy* for an object that does not exist', async () => {
+    it('throws ObjectNotFoundError from getFile by digest and content path after loading an object that does not exist', async () => {
       const o = missingObject();
-      await assert.rejects(o.fileByLogicalPath('a.txt'), ObjectNotFoundError);
-      await assert.rejects(o.fileByDigest('abc'), ObjectNotFoundError);
-      await assert.rejects(o.fileByContentPath('v1/content/a.txt'), ObjectNotFoundError);
+      await o.load();
+      assert.throws(() => o.getFile({ digest: 'abc' }), ObjectNotFoundError);
+      assert.throws(() => o.getFile({ contentPath: 'v1/content/a.txt' }), ObjectNotFoundError);
     });
 
     it('returns a lazy file without loading, which throws ObjectNotFoundError on read if the object does not exist', async () => {
@@ -1530,10 +1544,11 @@ export default (ocfl: Ocfl) => {
 
     it('finds a file in an existing object by logical path, digest and content path', async () => {
       const o = ocfl.object({ root: fixture });
-      const byPath = await o.fileByLogicalPath('foo/bar.xml');
+      await o.load();
+      const byPath = o.getFile('foo/bar.xml');
       assert.strictEqual(byPath?.contentPath, 'v2/content/foo/bar.xml');
-      assert.strictEqual((await o.fileByDigest(byPath.digest!))?.contentPath, 'v2/content/foo/bar.xml');
-      assert.strictEqual((await o.fileByContentPath('v2/content/foo/bar.xml'))?.logicalPath, 'foo/bar.xml');
+      assert.strictEqual(o.getFile({ digest: byPath.digest! })?.contentPath, 'v2/content/foo/bar.xml');
+      assert.strictEqual(o.getFile({ contentPath: 'v2/content/foo/bar.xml' })?.logicalPath, 'foo/bar.xml');
     });
 
     it('returns undefined for a file that is not in an existing object', async () => {
@@ -1542,9 +1557,6 @@ export default (ocfl: Ocfl) => {
       assert.strictEqual(o.getFile('nope.txt'), undefined);
       assert.strictEqual(o.getFile({ digest: 'abc' }), undefined);
       assert.strictEqual(o.getFile({ contentPath: 'v1/content/nope.txt' }), undefined);
-      assert.strictEqual(await o.fileByLogicalPath('nope.txt'), undefined);
-      assert.strictEqual(await o.fileByDigest('abc'), undefined);
-      assert.strictEqual(await o.fileByContentPath('v1/content/nope.txt'), undefined);
     });
   });
 
@@ -1757,9 +1769,6 @@ export default (ocfl: Ocfl) => {
         o.getFile({ logicalPath, version: 'latest' }),
         o.getFile({ digest, version: 'latest' }),
         o.getFile({ contentPath: headContentPath, version: 'latest' }),
-        await o.fileByLogicalPath(logicalPath, 'latest'),
-        await o.fileByDigest(digest, 'latest'),
-        await o.fileByContentPath(headContentPath, 'latest'),
       ];
       for (const file of found) {
         assert.deepStrictEqual(file, explicit);
@@ -1771,18 +1780,21 @@ export default (ocfl: Ocfl) => {
       await o.load();
       const digest = o.getFile(logicalPath)!.digest!;
       assert.strictEqual(o.getFile(logicalPath, ''), undefined);
-      assert.strictEqual(await o.fileByLogicalPath(logicalPath, ''), undefined);
-      assert.strictEqual(await o.fileByDigest(digest, ''), undefined);
-      assert.strictEqual(await o.fileByContentPath(headContentPath, ''), undefined);
+      assert.strictEqual(o.getFile({ logicalPath, version: '' }), undefined);
+      assert.strictEqual(o.getFile({ digest, version: '' }), undefined);
+      assert.strictEqual(o.getFile({ contentPath: headContentPath, version: '' }), undefined);
       await assert.rejects(ocfl.object({ root: fixture }).getFile(logicalPath, '', true)!.text(), { code: 'FILE_NOT_FOUND' });
     });
 
     it('leaves explicit older versions unchanged', async () => {
       const o = ocfl.object({ root: fixture });
       await o.load();
-      const file = await o.fileByLogicalPath(logicalPath, 'v1');
+      const file = o.getFile(logicalPath, 'v1');
       assert.strictEqual(file?.version, 'v1');
       assert.strictEqual(file.contentPath, 'v1/content/foo/bar.xml');
+      assert.deepStrictEqual(o.getFile({ logicalPath, version: 'v1' }), file);
+      assert.deepStrictEqual(o.getFile({ digest: file.digest!, version: 'v1' }), file);
+      assert.deepStrictEqual(o.getFile({ contentPath: 'v1/content/foo/bar.xml', version: 'v1' }), file);
     });
   });
 

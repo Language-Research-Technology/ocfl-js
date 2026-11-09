@@ -355,48 +355,6 @@ class OcflObject {
   }
 
   /**
-   * Return a file representation by the content path and version,
-   * @param version - Defaults to `'latest'`.
-   * @returns `undefined` if the object has no such file.
-   * @throws {ObjectNotFoundError} If the object does not exist.
-   */
-  async fileByContentPath(contentPath: string, version?: string) {
-    const inv = await this._requireInventory();
-    const fr = inv.getFileByContentPath(contentPath, version);
-    if (fr) {
-      return new OcflObjectFile(this, fr);
-    }
-  }
-
-  /**
-   * Return a file representation by the digest and version,
-   * @param version - Defaults to `'latest'`.
-   * @returns `undefined` if the object has no such file.
-   * @throws {ObjectNotFoundError} If the object does not exist.
-   */
-  async fileByDigest(digest: string, version?: string) {
-    const inv = await this._requireInventory();
-    const fr = inv.getFileByDigest(digest, version);
-    if (fr) {
-      return new OcflObjectFile(this, fr);
-    }
-  }
-
-  /**
-   * Return a file representation by the logical path and version,
-   * @param version - Defaults to `'latest'`.
-   * @returns `undefined` if the object has no such file.
-   * @throws {ObjectNotFoundError} If the object does not exist.
-   */
-  async fileByLogicalPath(logicalPath: string, version?: string) {
-    const inv = await this._requireInventory();
-    const fr = inv.getFile(logicalPath, version);
-    if (fr) {
-      return new OcflObjectFile(this, fr);
-    }
-  }
-
-  /**
    * Return a file representation by either the [logical path and version], digest, or content path.
    * The returned file object can be used to retrieve the content of a file either as string, buffer, or stream.
    * If the object inventory file is not loaded, this file object will not include the full file metadata information.

@@ -122,6 +122,12 @@ OcflDigest.digestSync('sha256', 'a');
 OcflDigest.createStream('sha256');
 // @ts-expect-error OcflDigest.CONTENT is gone
 OcflDigest.CONTENT;
+// @ts-expect-error OcflObject.fileByLogicalPath is gone, use load then getFile
+await object.fileByLogicalPath('a.txt');
+// @ts-expect-error OcflObject.fileByDigest is gone, use load then getFile
+await object.fileByDigest('abc');
+// @ts-expect-error OcflObject.fileByContentPath is gone, use load then getFile
+await object.fileByContentPath('v1/content/a.txt');
 
 export { extension, inventory, object, storage, transaction };
 EOF

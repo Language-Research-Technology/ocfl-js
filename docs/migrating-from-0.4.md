@@ -36,14 +36,14 @@ The packages now declare their own types, so delete any hand-written module decl
 
 The declarations show where a value can be missing, so code that assumed otherwise may no longer compile. The most common cases:
 
-| API                                                                                | Now returns                                                                                                  |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `object.getInventory()`                                                            | `Promise<OcflObjectInventory \| undefined>`, `undefined` when the object has no inventory yet                |
-| `object.inventory`                                                                 | `OcflObjectInventory \| undefined` until the object is loaded                                                |
-| `object.getFile()`, `fileByLogicalPath()`, `fileByDigest()`, `fileByContentPath()` | `undefined` when the object has no such file (see [Errors for missing objects](#errors-for-missing-objects)) |
-| `object.id`, `object.workspace`                                                    | `string \| undefined`                                                                                        |
-| `inventory.getDigest()`, `inventory.versionState()`                                | `undefined` for an unknown logical path or version                                                           |
-| `file.size`, `file.lastModified`                                                   | `number \| undefined`; set only when the object was loaded with `{ filesMetadata: true }`                    |
+| API                                                 | Now returns                                                                                                  |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `object.getInventory()`                             | `Promise<OcflObjectInventory \| undefined>`, `undefined` when the object has no inventory yet                |
+| `object.inventory`                                  | `OcflObjectInventory \| undefined` until the object is loaded                                                |
+| `object.getFile()`                                  | `undefined` when the object has no such file (see [Errors for missing objects](#errors-for-missing-objects)) |
+| `object.id`, `object.workspace`                     | `string \| undefined`                                                                                        |
+| `inventory.getDigest()`, `inventory.versionState()` | `undefined` for an unknown logical path or version                                                           |
+| `file.size`, `file.lastModified`                    | `number \| undefined`; set only when the object was loaded with `{ filesMetadata: true }`                    |
 
 Optional config properties (`OcflStorageConfig`, `OcflObjectConfig`, commit and remove options) accept an explicit `undefined`, so they work with `exactOptionalPropertyTypes`.
 
@@ -166,15 +166,15 @@ A custom `OcflStore` should drop any overrides of the removed methods and implem
 
 ## Errors for missing objects
 
-`getFile()` and the `fileBy*()` methods used to return `undefined` whether the object wasn't loaded, didn't exist, or didn't contain the file. Only the last case still returns `undefined`:
+`getFile()` used to return `undefined` whether the object wasn't loaded, didn't exist, or didn't contain the file. Only the last case still returns `undefined`, so call `await object.load()` before `getFile()`:
 
-| Case                                           | `getFile()`                   | `fileByLogicalPath()`, `fileByDigest()`, `fileByContentPath()` |
-| ---------------------------------------------- | ----------------------------- | -------------------------------------------------------------- |
-| The inventory hasn't been read yet<sup>1</sup> | throws `ObjectNotLoadedError` | read the inventory as before                                   |
-| The object doesn't exist (no inventory)        | throws `ObjectNotFoundError`  | throw `ObjectNotFoundError`                                    |
-| The object exists but doesn't contain the file | `undefined`                   | `undefined`                                                    |
+| Case                                           | `getFile()`                   |
+| ---------------------------------------------- | ----------------------------- |
+| The inventory hasn't been read yet<sup>1</sup> | throws `ObjectNotLoadedError` |
+| The object doesn't exist (no inventory)        | throws `ObjectNotFoundError`  |
+| The object exists but doesn't contain the file | `undefined`                   |
 
-<sup>1</sup> By `load()`, or by any method that reads the inventory, such as `getInventory()`, `count()`, `files()`, `fileBy*()` or `update()`.
+<sup>1</sup> By `load()`, or by any method that reads the inventory, such as `getInventory()`, `count()`, `files()` or `update()`.
 
 `getFile(..., true)` (lazy) still returns a file instance without a loaded inventory. `count()`, `files()`, and reading the content of a lazy file looked up by logical path or digest, also throw `ObjectNotFoundError` when the object doesn't exist.
 
@@ -293,6 +293,9 @@ Each public member now corresponds to something the OCFL specification or the li
 | `OcflDigest.digest()`, `digestSync()`, `createStream()`, `createStreamThrough()`, `getHexDigestLength()` | `createHash()` from `node:crypto`, or `crc32()` from `node:zlib`                                                                      |
 | `OcflDigest.initSync()`                                                                                  | Nothing: `storage.load()` and `create()` prepare the digest algorithm of a storage layout                                             |
 | `OcflDigest.CONTENT`                                                                                     | The values `'sha256'` and `'sha512'`                                                                                                  |
+| `OcflObject.fileByLogicalPath(path, version)`                                                            | `await object.load()`, then `object.getFile(path, version)`                                                                           |
+| `OcflObject.fileByDigest(digest, version)`                                                               | `await object.load()`, then `object.getFile({ digest, version })`                                                                     |
+| `OcflObject.fileByContentPath(path, version)`                                                            | `await object.load()`, then `object.getFile({ contentPath: path, version })`                                                          |
 
 ### Deleting an object
 
@@ -308,11 +311,23 @@ It throws, and deletes nothing, when:
 - the object's inventory can't be read or is invalid (the `ValidationError` for that problem)
 - the object is nested inside another object (`E082`)
 
+### Looking up a file
+
+`getFile()` is the only file lookup. It's synchronous and doesn't read the inventory itself, whereas the `fileBy*()` methods read it for you. Read the inventory once first, or `getFile()` throws `ObjectNotLoadedError`:
+
+```diff
+- const file = await object.fileByDigest(digest, 'v1');
++ await object.load();
++ const file = object.getFile({ digest, version: 'v1' });
+```
+
+When you look up a file with an object, put `version` in that object. The second argument of `getFile()` applies only to a logical path given as a string.
+
 ## Other behaviour changes
 
 - Looking up a file in a version that doesn't exist returns `undefined` (or `0` from `count()`) instead of throwing.
-- `'latest'` now works as a version name in `getFile()`, the `fileBy*()` methods and the inventory methods that take a version. It previously matched nothing, and `fileByDigest()` and `fileByContentPath()` threw a `TypeError`.
-- An empty-string version is now always a version that doesn't exist. `inventory.versionState('')`, `inventory.files('')` and reading a lazy file looked up by logical path used to mean the head version, and `fileByDigest(digest, '')` and `fileByContentPath(path, '')` used to search every version.
+- `'latest'` now works as a version name in `getFile()` and the inventory methods that take a version. It previously matched nothing, and looking up a file by digest or content path threw a `TypeError`.
+- An empty-string version is now always a version that doesn't exist. `inventory.versionState('')`, `inventory.files('')` and reading a lazy file looked up by logical path used to mean the head version, and looking up a file by digest or content path with an empty version used to search every version.
 - `object.import()` no longer empties the array of sources passed to it.
 - Importing a directory fails if any of its files fails. Previously the other files were committed and the failures were dropped.
 - An update that leaves a stream from `createWritable()` open now rolls back and rejects with "Unfinished operations detected" instead of never settling.
