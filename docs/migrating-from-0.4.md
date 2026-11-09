@@ -45,7 +45,7 @@ The declarations show where a value can be missing, so code that assumed otherwi
 | `inventory.getDigest()`, `inventory.versionState()` | `undefined` for an unknown logical path or version                                                           |
 | `file.size`, `file.lastModified`                    | `number \| undefined`; set only when the object was loaded with `{ filesMetadata: true }`                    |
 
-Optional config properties (`OcflStorageConfig`, `OcflObjectConfig`, commit and remove options) accept an explicit `undefined`, so they work with `exactOptionalPropertyTypes`.
+Optional config properties (`OcflStorageConfig`, `OcflObjectConfig`, commit options) accept an explicit `undefined`, so they work with `exactOptionalPropertyTypes`.
 
 `readFile()` on `OcflObject` and `OcflStore` is typed `Promise<string>` when given an encoding and `Promise<Uint8Array>` otherwise. An encoding has to be a `BufferEncoding`, so a value typed `string` no longer compiles: narrow it or cast it first. When the compiler can't tell whether there's an encoding, as with a value typed `BufferEncoding | undefined`, the result is typed `Promise<string | Uint8Array>`. `null` is no longer accepted as the options argument, and an options object declared as an `interface` has to be spread or redeclared as a `type`. `file.buffer()` is typed for bytes only and doesn't accept an encoding, so use `file.text(encoding)` for a string. A custom `OcflStore` that overrides `readFile()` can use the exported `EncodingOptions` and `BinaryOptions` types for its overloads.
 
@@ -318,6 +318,7 @@ Each public member now corresponds to something the OCFL specification or the li
 | The `StorageLayout` type                                                                                 | `typeof extensions`, or `extensions.PathDirectStorageLayout` and the other classes as types                                           |
 | `OcflStorageLayout.layout`                                                                               | `extensions`, or `OcflStorageLayout.class(name)` to find a registered custom layout; see [Layout classes](#layout-classes)            |
 | `OcflConstants`                                                                                          | `OCFL_VERSIONS`, on the default API and as a named export of `@ocfl/ocfl-fs`. The other values were internal                          |
+| The `MultiHasher` type                                                                                   | Nothing: no public signature used it                                                                                                  |
 
 ### Deleting an object
 
@@ -330,7 +331,7 @@ It throws, and deletes nothing, when:
 - the object's declaration has the wrong contents (`E007`)
 - the layout maps the id to the storage root, outside it, or into its `extensions` directory (`ID_INCOMPATIBLE_WITH_LAYOUT`)
 - the object's inventory has a different id, or there is no inventory to confirm it, for example because an id such as `a/../b` resolves to another object's path (`ID_INCOMPATIBLE_WITH_LAYOUT`)
-- the object's inventory can't be read or is invalid (the `ValidationError` for that problem)
+- the object's inventory can't be read or is invalid: `storage.remove` rejects with the underlying error, such as a `SyntaxError` for a corrupt `inventory.json` or `ENOENT` for a missing sidecar, and deletes nothing. Such an object has to be deleted by hand
 - the object is nested inside another object (`E082`)
 
 ### Looking up a file
@@ -358,7 +359,7 @@ const files = await original.files();
 await storage.object('new-id').update(async (transaction) => {
   for (const file of files) {
     if (file.logicalPath !== 'secret.txt') {
-      await transaction.write(file.logicalPath, await file.stream());
+      await transaction.write(file.logicalPath!, await file.stream());
     }
   }
 });
