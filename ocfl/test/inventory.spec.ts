@@ -383,6 +383,23 @@ describe('OcflObjectInventory class', () => {
   });
 
   describe('fixity only lists content paths in the manifest', () => {
+    it('drops the digest and fixity of content replaced at its own content path', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1', { md5: 'm1' });
+      inv.add('a', 'd2', { md5: 'm2' });
+      assert.deepStrictEqual(Object.keys(inv.manifest), ['d2']);
+      assert.deepStrictEqual(Object.keys(inv.fixity!.md5!), ['m2']);
+      assertHeadStateValid(inv);
+    });
+
+    it('replaces content that had no fixity with content that has some', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1');
+      inv.add('a', 'd2', { md5: 'm2' });
+      assert.deepStrictEqual(Object.keys(inv.manifest), ['d2']);
+      assertHeadStateValid(inv);
+    });
+
     it('does not pollute Object.prototype from a crafted content path', () => {
       data.fixity = { polluted: { value: ['__proto__'] } };
       new OcflObjectInventory(data);

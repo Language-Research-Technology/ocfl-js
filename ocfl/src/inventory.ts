@@ -148,6 +148,10 @@ class OcflObjectInventory {
     digests[algorithm] = value;
   }
 
+  _indexRemoveFixity(contentPath: string) {
+    this.#fixityIndex.delete(contentPath);
+  }
+
   _indexBuild() {
     this.#fixityIndex.clear();
     for (const [algorithm, digestBlock] of Object.entries(this.fixity ?? {})) {
@@ -510,8 +514,33 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     return true;
   }
 
+  /** New content is about to overwrite this logical path's file, so forget the digest only that file held */
+  #releaseContentPath(logicalPath: string, contentPath: string) {
+    const entry = this.#stateEntry(logicalPath);
+    const paths = entry && this.manifest[entry.digest];
+    if (!entry || entry.files.length > 1 || paths?.length !== 1 || paths[0] !== contentPath) {
+      return;
+    }
+    this.#unlist(logicalPath);
+    delete this.manifest[entry.digest];
+    for (const [algorithm, value] of Object.entries(this._indexGetFixity(contentPath))) {
+      const block = this.fixity?.[algorithm];
+      const contentPaths = block?.[value]?.filter((p) => p !== contentPath);
+      if (block && contentPaths?.length) {
+        block[value] = contentPaths;
+      } else if (block) {
+        delete block[value];
+      }
+      if (block && Object.keys(block).length === 0) {
+        delete this.fixity?.[algorithm];
+      }
+    }
+    this._indexRemoveFixity(contentPath);
+  }
+
   #addContent(logicalPath: string, digest: string, fixity: Digests = {}): Digests {
     const contentPath = `${this.head}/${this.contentDirectory}/${logicalPath}`;
+    this.#releaseContentPath(logicalPath, contentPath);
     this.manifest[digest] = [contentPath];
     for (const [digestName, digestValue] of Object.entries(fixity)) {
       this.addFixity(contentPath, digestName, digestValue);

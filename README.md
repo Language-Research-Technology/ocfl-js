@@ -130,11 +130,13 @@ Add multiple files from different sources as one transaction. All changes will b
 ```js
 await object.update(async (t) => {
   // create a new text file test.txt
-  t.write('test.txt', 'abc');
+  await t.write('test.txt', 'abc');
   // add a file or folder '/home/john/data/b' to 'data/b'
-  t.import('/home/john/data/b', 'data/b');
+  await t.import('/home/john/data/b', 'data/b');
 });
 ```
+
+Operations called concurrently in one transaction, such as with `Promise.all`, give the same result as awaiting them one after another in the order they were called. A stream from `t.createWritable()` takes its place in that order once its queued writes finish and it closes.
 
 List all existing files in the object
 

@@ -210,6 +210,17 @@ A custom `OcflStore` inherits the new `removeIfEmpty()`, which uses `readdir()`.
 
 Starting an update while another update of the same version is open now throws `UPDATE_IN_PROGRESS` straight away. Previously it was detected only once the first update had written a file.
 
+## Concurrent operations in one update
+
+**Warning for earlier versions:** concurrent operations in one update could write content files that the manifest doesn't list, which is invalid OCFL ([E023](https://ocfl.io/1.1/spec/#E023)). The usual cause is importing a directory containing two files with the same content, even with no concurrency in your own code, because `import()` reads a directory's files concurrently. Concurrent `t.write()` calls could leave the same files, and calls to one logical path could also store a manifest entry for the wrong content or delete the only stored copy. To check an existing object, compare the files in each version's content directory with its manifest. This library doesn't repair affected objects.
+
+Operations called concurrently in one update, such as with `Promise.all`, now give the same result as awaiting them one after another in the order they were called:
+
+- A stream from `createWritable()` takes its place in that order once its queued writes finish and it closes, and doesn't hold up other operations while it's open.
+- Each operation waits for the ones called before it. A stream passed to `write()` that's still waiting for input holds up later operations, so finish it before awaiting one of them.
+- A failed operation rejects its own promise and leaves nothing behind. Later operations carry on, so a later write of the same content stores it.
+- Every operation has to be awaited. `copy()` and `reinstate()` calls left unawaited used to take effect, but now count as unfinished operations and roll back the update.
+
 ## Other behaviour changes
 
 - Looking up a file in a version that doesn't exist returns `undefined` (or `0` from `count()`) instead of throwing.

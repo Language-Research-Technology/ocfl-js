@@ -45,8 +45,10 @@ export interface RemoveOptions {
 
 type TrackedPromise<T> = Promise<T> & { done?: boolean };
 
+type Hashes = [digest: string, fixity: { [algorithm: string]: string }];
+
 /** Split the digests into the content digest and the remaining fixity digests */
-function splitDigests(digests: { [algorithm: string]: string }, algorithm: string): [string, { [algorithm: string]: string }] {
+function splitDigests(digests: { [algorithm: string]: string }, algorithm: string): Hashes {
   const { [algorithm]: digest, ...fixity } = digests;
   if (!digest) {
     throw new Error(`Digest "${algorithm}" was not calculated.`);
@@ -58,6 +60,13 @@ function splitDigests(digests: { [algorithm: string]: string }, algorithm: strin
  * A Transaction represent an atomic update on an OCFL Object.
  * When a transaction is commited, all changes are saved as a new version.
  * This is a wrapper class to hide all the storage specific implementation.
+ *
+ * Operations called concurrently, such as with `Promise.all`, give the same result as awaiting
+ * them one after another in the order they were called. A stream from
+ * {@link OcflObjectTransaction.createWritable | createWritable()} takes its place in that order
+ * once its queued writes finish and it closes, and while open it doesn't hold up other operations. A failed operation
+ * rejects its own promise and leaves nothing behind; later operations carry on. An operation
+ * waits for all the earlier ones, so one whose input never ends holds up those called after it.
  */
 class OcflObjectTransaction {
   /**
@@ -199,6 +208,8 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   _rootInventoryReplaced = false;
   _previousRootInventory: Uint8Array | undefined;
   _queue: TrackedPromise<unknown>[] = [];
+  _lastTurn: Promise<unknown> = Promise.resolve();
+  _stagedCount = 0;
   _writers = new Set<WritableStreamDefaultWriter>();
   _committed = false;
 
@@ -383,111 +394,129 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     await this._store.move(rootInv.digestTmp, rootInv.digest);
   }
 
+  get _digestAlgorithms() {
+    return [this._inventory.digestAlgorithm, ...(this._object.fixityAlgorithms || [])];
+  }
+
+  /** Content waits here, outside the content directory, until its digest decides whether it's kept */
+  _stagingPath() {
+    return path.join(this._versionPath, `.staged-${++this._stagedCount}`);
+  }
+
+  async _removeStagedOnFailure<T>(staging: string, step: () => Promise<T>): Promise<T> {
+    try {
+      return await step();
+    } catch (error) {
+      await this._store.remove(staging).catch(() => {});
+      throw error;
+    }
+  }
+
+  /**
+   * Must run in the operation's turn.
+   * @param stage - Fills `staging`, if it isn't already, once the content is known to be needed
+   */
+  async _addContent(logicalPath: string, [digest, fixity]: Hashes, staging: string, stage?: () => Promise<void>) {
+    await this._removeStagedOnFailure(staging, async () => {
+      if (!this._inventory.getContentPath(digest)) {
+        await stage?.();
+        await this._store.move(staging, this._getRealPath(logicalPath));
+      } else if (!stage) {
+        await this._store.remove(staging);
+      }
+    });
+    this._inventory.add(logicalPath, digest, fixity);
+  }
+
   async createWritable(logicalPath: string, options?: unknown): Promise<WritableStream> {
     if (this._committed) {
       throw new Error('Transaction already commited');
     }
     const digestAlgo = this._inventory.digestAlgorithm;
-    const digestAlgos = [digestAlgo, ...(this._object.fixityAlgorithms || [])];
-    const hs = await OcflDigest.createStream(digestAlgos);
-    const realPath = this._getRealPath(logicalPath);
-    const writer = (await this._store.createWritable(realPath, options)).getWriter();
-    const inv = this._inventory;
-    const store = this._store;
+    const hs = await OcflDigest.createStream(this._digestAlgorithms);
+    checkLogicalPath(logicalPath);
+    const staging = this._stagingPath();
+    const writer = (await this._store.createWritable(staging, options)).getWriter();
     const ws = new WritableStream({
       write(chunk) {
         hs.update(chunk);
         return writer.write(chunk);
       },
-      async close() {
-        await writer.close();
-        const [digest, fixity] = splitDigests(hs.digest(), digestAlgo);
-        if (inv.getContentPath(digest)) {
-          await store.remove(realPath);
-        }
-        inv.add(logicalPath, digest, fixity);
-      },
+      close: () =>
+        this._inTurn(async () => {
+          await writer.close();
+          const hashes = splitDigests(hs.digest(), digestAlgo);
+          return () => this._addContent(logicalPath, hashes, staging);
+        }),
+      abort: (reason) => writer.abort(reason),
     });
     this._writers.add(writer);
-    const forget = () => this._writers.delete(writer);
-    writer.closed.then(forget, forget);
-    this._track(writer.closed);
+    this._track(writer.closed.finally(() => this._writers.delete(writer)).catch(() => this._store.remove(staging)));
 
     return ws;
   }
 
   async write(logicalPath: string, data: WriteFileData, options?: object | string) {
-    return this._transact(async () => {
-      const realPath = this._getRealPath(logicalPath);
+    return this._inTurn(async () => {
+      checkLogicalPath(logicalPath);
       const digestAlgo = this._inventory.digestAlgorithm;
-      const digestAlgos = [digestAlgo, ...(this._object.fixityAlgorithms || [])];
-      let digest: string;
-      let fixity: { [algorithm: string]: string };
+      const digestAlgos = this._digestAlgorithms;
+      const staging = this._stagingPath();
       if (typeof data === 'string' || ArrayBuffer.isView(data)) {
-        // if data is not stream, check digest first
-        if (ArrayBuffer.isView(data) && !(data instanceof Uint8Array || data instanceof Uint16Array || data instanceof Uint32Array)) {
-          data = new Uint8Array(data.buffer);
-        }
-        const hashes = await OcflDigest.digest(digestAlgos, data as string | Uint8Array);
-        [digest, fixity] = splitDigests(hashes, digestAlgo);
-        if (!this._inventory.getContentPath(digest)) {
-          // no digest yet, write the file to storage backend
-          await this._store.writeFile(realPath, data, options);
-        }
-      } else if (data instanceof ReadableStream) {
-        // save the stream first
-        const hs = await OcflDigest.createStreamThrough(digestAlgos);
-        const rs = data.pipeThrough(hs);
-        await this._store.writeFile(realPath, rs, options);
-        [digest, fixity] = splitDigests(hs.digest(), digestAlgo);
-        // already exists, delete temp file
-        if (this._inventory.getContentPath(digest)) {
-          await this._store.remove(realPath);
-        }
-      } else {
-        throw new TypeError(`Unsupported data type: ${Object.prototype.toString.call(data)}`);
+        const content =
+          ArrayBuffer.isView(data) && !(data instanceof Uint8Array || data instanceof Uint16Array || data instanceof Uint32Array)
+            ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+            : data;
+        const hashes = splitDigests(await OcflDigest.digest(digestAlgos, content as string | Uint8Array), digestAlgo);
+        return () => this._addContent(logicalPath, hashes, staging, () => this._store.writeFile(staging, content, options));
       }
-      this._inventory.add(logicalPath, digest, fixity);
+      if (data instanceof ReadableStream) {
+        const hs = await OcflDigest.createStreamThrough(digestAlgos);
+        await this._removeStagedOnFailure(staging, () => this._store.writeFile(staging, data.pipeThrough(hs), options));
+        const hashes = splitDigests(hs.digest(), digestAlgo);
+        return () => this._addContent(logicalPath, hashes, staging);
+      }
+      throw new TypeError(`Unsupported data type: ${Object.prototype.toString.call(data)}`);
     });
   }
 
-  /**
-   * Import a single file from source. This is a helper method for {@link OcflObjectTransaction.import | import()} method.
-   */
-  async importFile(source: string, target: string) {
+  async _prepareImportFile(source: string, target: string) {
     if (!target) {
       throw new TypeError('Target logical path must not be empty if source is a file.');
     }
-    const realPath = this._getRealPath(target);
     const rs = await this._store.createReadable(source);
-    const digestAlgo = this._inventory.digestAlgorithm;
-    const digestAlgos = [digestAlgo, ...(this._object.fixityAlgorithms || [])];
-    const [digest, fixity] = splitDigests(await OcflDigest.digest(digestAlgos, rs), digestAlgo);
+    const hashes = splitDigests(await OcflDigest.digest(this._digestAlgorithms, rs), this._inventory.digestAlgorithm);
+    const staging = this._stagingPath();
+    return () => this._addContent(target, hashes, staging, () => this._store.copyFile(source, staging));
+  }
 
-    if (!this._inventory.getContentPath(digest)) {
-      await this._store.copyFile(source, realPath);
+  /** @returns the step that adds the prepared files, which must run in the import's turn */
+  async _prepareImport(source: string, dest: string): Promise<() => Promise<void>> {
+    checkLogicalPath(dest);
+    const srcStat = await this._store.stat(source);
+    if (srcStat.isFile()) {
+      return this._prepareImportFile(source, dest);
     }
-    this._inventory.add(target, digest, fixity);
+    if (!srcStat.isDirectory()) {
+      return async () => {};
+    }
+    const files = await this._store.readdir(source);
+    const prepared = await parallelize(files, (filename) => this._prepareImport(path.join(source, filename), path.join(dest, filename)));
+    return async () => {
+      const errors: unknown[] = prepared.filter((step) => step instanceof Error);
+      for (const step of prepared) {
+        if (!(step instanceof Error)) {
+          await step().catch((error) => errors.push(error));
+        }
+      }
+      if (errors.length) {
+        throw new AggregateError(errors, `Cannot import the directory ${source}`);
+      }
+    };
   }
 
   async import(source: string, target?: string) {
-    return this._transact(async () => {
-      const dest = target ?? path.basename(source);
-      checkLogicalPath(dest);
-      const srcStat = await this._store.stat(source);
-      if (srcStat.isFile()) {
-        await this.importFile(source, dest);
-      } else if (srcStat.isDirectory()) {
-        const files = await this._store.readdir(source);
-        const res = await parallelize(files, async (filename) => {
-          await this.import(path.join(source, filename), path.join(dest, filename));
-        });
-        const errors = res.filter((r) => r instanceof Error);
-        if (errors.length) {
-          throw new AggregateError(errors, `Cannot import the directory ${source}`);
-        }
-      }
-    });
+    return this._inTurn(() => this._prepareImport(source, target ?? path.basename(source)));
   }
 
   async copy(source: string, target: string) {
@@ -514,7 +543,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   }
 
   async reinstate(logicalPath: string, versionName: string) {
-    return this._inventory.reinstate(logicalPath, versionName);
+    return this._transact(async () => this._inventory.reinstate(logicalPath, versionName));
   }
 
   async remove(logicalPath: string, options?: RemoveOptions) {
@@ -534,15 +563,28 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     });
   }
 
+  /** {@link _inTurn} for an operation with nothing to prepare */
+  async _transact<T>(op: () => Promise<T>): Promise<T> {
+    return this._inTurn(async () => op);
+  }
+
   /**
    * A function wrapper to provide safe mutating operation that
    * will check if a transaction is already committed and track any unfinished promises.
+   * `prepare` starts straight away and may overlap other operations, so it mustn't touch the
+   * inventory or content directory. The step it resolves to runs once every operation called
+   * earlier has finished.
    */
-  async _transact<T>(op: () => Promise<T>): Promise<T> {
+  async _inTurn<T>(prepare: () => Promise<() => Promise<T>>): Promise<T> {
     if (this._committed) {
       throw new Error('Transaction already commited');
     }
-    return this._track(op());
+    const prepared = prepare();
+    // A rejection surfaces at this operation's turn, which may come much later
+    prepared.catch(() => {});
+    const turn = this._lastTurn.then(async () => (await prepared)());
+    this._lastTurn = turn.catch(() => {});
+    return this._track(turn);
   }
 
   private _track<T>(p: TrackedPromise<T>): Promise<T> {

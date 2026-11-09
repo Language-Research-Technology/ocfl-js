@@ -148,6 +148,25 @@ export default (ocfl: Ocfl) => {
       return ocfl.object(config);
     }
 
+    async function withFsFailure<T>(method: 'rename' | 'copyFile' | 'writeFile' | 'rmdir', failingPath: string, fn: () => Promise<T>) {
+      const fsp = fs.promises as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+      const real = fsp[method]!;
+      const spy = mock.method(fsp, method, async (...args: unknown[]) => {
+        if (args.slice(0, 2).includes(failingPath)) {
+          throw Object.assign(new Error('injected failure'), { code: 'EIO' });
+        }
+        return real.apply(fs.promises, args);
+      });
+      try {
+        return await fn();
+      } finally {
+        spy.mock.restore();
+      }
+    }
+
+    async function readInventory(object: OcflObject): Promise<Inventory> {
+      return JSON.parse(await fs.promises.readFile(path.join(object.root, 'inventory.json'), 'utf8'));
+    }
     before(async () => {
       tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-object-'));
       objectx = createObject('object-x', true);
@@ -440,10 +459,6 @@ export default (ocfl: Ocfl) => {
     describe('fixity block on disk', () => {
       const md5 = (content: string) => createHash('md5').update(content).digest('hex');
 
-      async function readInventory(object: OcflObject): Promise<Inventory> {
-        return JSON.parse(await fs.promises.readFile(path.join(object.root, 'inventory.json'), 'utf8'));
-      }
-
       async function assertFixityPathsExist(object: OcflObject, inventory: Inventory) {
         const manifestPaths = Object.values(inventory.manifest).flat();
         for (const block of Object.values(inventory.fixity ?? {})) {
@@ -647,22 +662,6 @@ export default (ocfl: Ocfl) => {
         assert.strictEqual(a.headVersion?.toString(), 'v2');
       });
 
-      async function withFsFailure<T>(method: 'rename' | 'copyFile' | 'writeFile' | 'rmdir', failingPath: string, fn: () => Promise<T>) {
-        const fsp = fs.promises as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
-        const real = fsp[method]!;
-        const spy = mock.method(fsp, method, async (...args: unknown[]) => {
-          if (args.slice(0, 2).includes(failingPath)) {
-            throw Object.assign(new Error('injected failure'), { code: 'EIO' });
-          }
-          return real.apply(fs.promises, args);
-        });
-        try {
-          return await fn();
-        } finally {
-          spy.mock.restore();
-        }
-      }
-
       const assertGone = (dir: string | undefined) => dir && assert.rejects(fs.promises.access(dir), { code: 'ENOENT' });
 
       const commitSteps: {
@@ -792,6 +791,233 @@ export default (ocfl: Ocfl) => {
 
         assert.strictEqual(await o.getFile('b.txt')!.asString(), 'b');
         assert.strictEqual(o.headVersion?.toString(), 'v1');
+      });
+    });
+
+    describe('concurrent operations in one transaction', () => {
+      const ROUNDS = 20;
+      let scenario = 0;
+
+      const encode = (text: string) => new TextEncoder().encode(text);
+      const streamOf = (content: string) =>
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(encode(content));
+            controller.close();
+          },
+        });
+
+      const newObject = () => createObject(`concurrent-${++scenario}`, false);
+
+      async function contentFiles(o: OcflObject, version: string) {
+        const dir = path.join(o.root, version);
+        const entries = await fs.promises.readdir(dir, { recursive: true, withFileTypes: true });
+        return entries
+          .filter((e) => e.isFile() && !/^inventory\.json/.test(e.name))
+          .map((e) => path.relative(o.root, path.join(e.parentPath, e.name)))
+          .sort();
+      }
+
+      /** Every file in `version` is in the manifest, and every manifest path is on disk */
+      async function assertManifestMatchesFiles(o: OcflObject, version = 'v1') {
+        const inventory = await readInventory(o);
+        const manifested = Object.values(inventory.manifest)
+          .flat()
+          .filter((p) => p.startsWith(`${version}/`))
+          .sort();
+        assert.deepStrictEqual(await contentFiles(o, version), manifested);
+        return inventory;
+      }
+
+      async function assertReads(o: OcflObject, expected: Record<string, string>) {
+        const reloaded = ocfl.object({ root: o.root });
+        await reloaded.load();
+        for (const [logicalPath, content] of Object.entries(expected)) {
+          assert.strictEqual(await reloaded.getFile(logicalPath)!.asString(), content, logicalPath);
+        }
+        const inventory = await readInventory(o);
+        assert.deepStrictEqual(Object.values(inventory.versions[inventory.head]!.state).flat().sort(), Object.keys(expected).sort());
+      }
+
+      for (let round = 0; round < ROUNDS; round++) {
+        describe(`round ${round}`, () => {
+          it('importing a directory stores duplicate files once, including in subdirectories', async () => {
+            const source = path.join(tempdir, `dup-source-${++scenario}`);
+            await fs.promises.mkdir(path.join(source, 'sub/deeper'), { recursive: true });
+            for (const file of ['a.txt', 'b.txt', 'sub/c.txt', 'sub/deeper/d.txt']) {
+              await fs.promises.writeFile(path.join(source, file), 'identical');
+            }
+            await fs.promises.writeFile(path.join(source, 'sub/other.txt'), 'other');
+
+            const o = newObject();
+            await o.update(async (t) => t.import(source, ''));
+
+            const inventory = await assertManifestMatchesFiles(o);
+            assert.strictEqual(Object.keys(inventory.manifest).length, 2);
+            await assertReads(o, {
+              'a.txt': 'identical',
+              'b.txt': 'identical',
+              'sub/c.txt': 'identical',
+              'sub/deeper/d.txt': 'identical',
+              'sub/other.txt': 'other',
+            });
+          });
+
+          const identicalWrites: [string, (t: OcflObjectTransaction, logicalPath: string, index: number) => Promise<void>][] = [
+            ['strings', (t, p) => t.write(p, 'same')],
+            ['buffers', (t, p) => t.write(p, encode('same'))],
+            ['streams', (t, p) => t.write(p, streamOf('same'))],
+            ['a mix of strings and streams', (t, p, i) => t.write(p, i % 2 ? streamOf('same') : 'same')],
+          ];
+
+          for (const [kind, write] of identicalWrites) {
+            it(`concurrent writes of identical ${kind} leave one content file`, async () => {
+              const o = newObject();
+              const paths = ['a', 'b', 'c', 'd'];
+              await o.update(async (t) => {
+                await Promise.all(paths.map((p, i) => write(t, p, i)));
+              });
+
+              await assertManifestMatchesFiles(o);
+              assert.strictEqual((await contentFiles(o, 'v1')).length, 1);
+              await assertReads(o, { a: 'same', b: 'same', c: 'same', d: 'same' });
+            });
+          }
+
+          it('concurrent writes of identical streams to one logical path leave it readable', async () => {
+            const o = newObject();
+            await o.update(async (t) => {
+              await Promise.all([t.write('a', streamOf('same')), t.write('a', streamOf('same'))]);
+            });
+
+            await assertManifestMatchesFiles(o);
+            await assertReads(o, { a: 'same' });
+          });
+
+          it('concurrent writes of different content to one logical path end with the last one called', async () => {
+            const o = newObject();
+            const longer = 'A'.repeat(1_000_000);
+            await o.update(async (t) => {
+              await Promise.all([t.write('a', longer), t.write('a', 'BBB')]);
+            });
+
+            const inventory = await assertManifestMatchesFiles(o);
+            assert.strictEqual(Object.keys(inventory.manifest).length, 1);
+            assert.deepStrictEqual(Object.values(inventory.fixity!.md5!), [['v1/content/a']]);
+            await assertReads(o, { a: 'BBB' });
+          });
+
+          it('concurrent write, copy and remove give the same result as awaiting them in call order', async () => {
+            const steps: ((t: OcflObjectTransaction) => Promise<void>)[] = [
+              (t) => t.write('new', 'N'.repeat(100_000)),
+              (t) => t.copy('new', 'copied'),
+              (t) => t.remove('old'),
+              (t) => t.copy('kept', 'old'),
+              (t) => t.write('new-2', 'second'),
+              (t) => t.copy('new-2', 'copied-2'),
+            ];
+            const seed = (o: OcflObject) =>
+              o.update(async (t) => {
+                await t.write('old', 'old');
+                await t.write('kept', 'kept');
+              });
+            const sequential = newObject();
+            await seed(sequential);
+            await sequential.update(async (t) => {
+              for (const step of steps) {
+                await step(t);
+              }
+            });
+            const concurrent = newObject();
+            await seed(concurrent);
+            await concurrent.update(async (t) => {
+              await Promise.all(steps.map((step) => step(t)));
+            });
+
+            assert.deepStrictEqual((await readInventory(concurrent)).versions.v2!.state, (await readInventory(sequential)).versions.v2!.state);
+            await assertManifestMatchesFiles(concurrent, 'v2');
+          });
+
+          it('streams from createWritable take effect when closed, in either order, without blocking', async () => {
+            for (const [first, second] of [
+              ['X', 'Y'],
+              ['Y', 'X'],
+            ] as const) {
+              const o = newObject();
+              await o.update(async (t) => {
+                const writers = {
+                  X: (await t.createWritable('a')).getWriter(),
+                  Y: (await t.createWritable('a')).getWriter(),
+                };
+                await writers.X.write(encode('X'));
+                await writers.Y.write(encode('Y'));
+                await t.write('during', 'written while the streams are open');
+                await writers[first].close();
+                await t.write('after-first', `${first} closed first`);
+                await writers[second].close();
+              });
+
+              await assertManifestMatchesFiles(o);
+              await assertReads(o, { a: second, 'after-first': `${first} closed first`, during: 'written while the streams are open' });
+            }
+          });
+
+          it('streams from createWritable closed together take effect in the order they were closed', async () => {
+            const o = newObject();
+            await o.update(async (t) => {
+              const first = (await t.createWritable('a')).getWriter();
+              const second = (await t.createWritable('a')).getWriter();
+              await first.write(encode('X'.repeat(100_000)));
+              await second.write(encode('Y'));
+              await Promise.all([first.close(), second.close()]);
+            });
+
+            await assertManifestMatchesFiles(o);
+            await assertReads(o, { a: 'Y' });
+          });
+
+          it('a failed write rejects, leaves nothing behind, and a later write of that content stores it', async () => {
+            const o = newObject();
+            await o.update(async (t) => {
+              const failed = path.join(o.root, 'v1/content/a');
+              const [first, second] = await withFsFailure('rename', failed, () => Promise.allSettled([t.write('a', 'same'), t.write('b', 'same')]));
+              assert.strictEqual(first.status, 'rejected');
+              assert.strictEqual(second.status, 'fulfilled');
+            });
+
+            await assertManifestMatchesFiles(o);
+            await assertReads(o, { b: 'same' });
+          });
+        });
+      }
+
+      it('a stream that fails leaves nothing behind', async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          const broken = new ReadableStream({
+            pull(controller) {
+              controller.error(new Error('source failed'));
+            },
+          });
+          await assert.rejects(t.write('broken', broken), /source failed/);
+          await t.write('ok', 'ok');
+        });
+
+        await assertManifestMatchesFiles(o);
+        await assertReads(o, { ok: 'ok' });
+      });
+
+      it('aborting a stream from createWritable leaves nothing behind', async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          const writer = (await t.createWritable('aborted')).getWriter();
+          await writer.write(encode('partial'));
+          await writer.abort(new Error('changed my mind'));
+          await t.write('ok', 'ok');
+        });
+
+        await assertManifestMatchesFiles(o);
+        await assertReads(o, { ok: 'ok' });
       });
     });
 
