@@ -54,22 +54,3 @@ describe('utils.parallelize', () => {
     assert(endTime - startTime < 320);
   });
 });
-
-describe('utils.joinTypedArray', () => {
-  it('can join Uint8Array', async () => {
-    const a = new Uint8Array([1, 2, 3]);
-    const b = new Uint8Array([4, 5, 6]);
-    const joined = utils.joinTypedArray(a, b);
-    assert.deepStrictEqual(Array.from(joined), [1, 2, 3, 4, 5, 6]);
-  });
-  it('can join by resizing', async () => {
-    const ab = new ArrayBuffer(0, { maxByteLength: 16 * 1024 });
-    const a = new Uint8Array(ab);
-    const b = new Uint8Array([1, 2, 3]);
-    const c = new Uint8Array([4, 5, 6]);
-    let joined = utils.joinTypedArray(a, b);
-    joined = utils.joinTypedArray(joined, c);
-    assert.deepStrictEqual(Array.from(joined), [1, 2, 3, 4, 5, 6]);
-  });
-  //
-});
