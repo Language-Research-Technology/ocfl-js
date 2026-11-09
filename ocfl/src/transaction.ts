@@ -3,7 +3,7 @@ import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { OcflDigest } from './digest.ts';
 import { OcflError } from './error.ts';
-import type { OcflObjectInventoryMut } from './inventory.ts';
+import type { ContentRelease, OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
 import type { OcflStore, WriteFileData } from './store.ts';
 import { isAlreadyExists, isNotFound, parallelize } from './utils.ts';
@@ -414,15 +414,63 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
    * @param stage - Fills `staging`, if it isn't already, once the content is known to be needed
    */
   async _addContent(logicalPath: string, [digest, fixity]: Hashes, staging: string, stage?: () => Promise<void>) {
+    const inventory = this._inventory;
+    const release = inventory.getDigest(logicalPath) === digest ? undefined : inventory._contentRelease(logicalPath);
+    const isNew = !inventory.getContentPath(digest);
     await this._removeStagedOnFailure(staging, async () => {
-      if (!this._inventory.getContentPath(digest)) {
+      const realPath = isNew ? this._getRealPath(logicalPath) : undefined;
+      if (isNew) {
         await stage?.();
-        await this._store.move(staging, this._getRealPath(logicalPath));
-      } else if (!stage) {
-        await this._store.remove(staging);
       }
+      await this._applyContentRelease(release, realPath, async () => {
+        if (realPath) {
+          await this._store.move(staging, realPath);
+        } else if (!stage) {
+          await this._store.remove(staging);
+        }
+      });
     });
-    this._inventory.add(logicalPath, digest, fixity);
+    inventory.add(logicalPath, digest, fixity);
+  }
+
+  /**
+   * Make a release's changes to the stored files around `place`, undoing a move if `place` fails.
+   * @param placedAt - The file `place` fills, if it stores any content
+   */
+  async _applyContentRelease(release: ContentRelease | undefined, placedAt: string | undefined, place: () => Promise<void>) {
+    if (!release) {
+      return place();
+    }
+    const from = this._contentFilePath(release.from);
+    const to = release.to === undefined ? undefined : this._contentFilePath(release.to);
+    const moving = to !== undefined && to !== from;
+    if (moving) {
+      await this._store.move(from, to);
+    }
+    await place().catch(async (error) => {
+      if (moving) {
+        await this._store.move(to, from);
+        await this._pruneEmptyDirectories(path.dirname(to));
+      }
+      throw error;
+    });
+    if (to !== from && from !== placedAt) {
+      if (to === undefined) {
+        await this._store.remove(from);
+      }
+      await this._pruneEmptyDirectories(path.dirname(from));
+    }
+  }
+
+  _contentFilePath(contentPath: string) {
+    return path.join(path.dirname(this._versionPath), contentPath);
+  }
+
+  /** A version shouldn't contain empty directories, so remove any at or above `start`, up to and including the content directory */
+  async _pruneEmptyDirectories(start: string) {
+    for (let dir = start; dir !== this._versionPath; dir = path.dirname(dir)) {
+      await this._tidy(dir);
+    }
   }
 
   async createWritable(logicalPath: string, options?: unknown): Promise<WritableStream> {
