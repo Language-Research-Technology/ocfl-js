@@ -688,7 +688,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * @throws OcflError FILE_NOT_FOUND if the source is missing, FILE_EXISTS if the target exists
    */
   _planTransfer(srcLogicalPath: string, destLogicalPath: string): Transfer[] {
-    // Stores normalise paths, so the check and the state must use the same form as the file on disk
+    // Filesystem paths are normalised, so the check and the state must use the same form as the file on disk
     const target = path.posix.normalize(destLogicalPath).replace(/\/$/, '');
     const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
     const srcList = this._indexFindPaths(srcPrefix);

@@ -1,4 +1,4 @@
-import type { OcflStore } from './backend-store.ts';
+import fs from 'node:fs';
 import { OcflConstants } from './constants.ts';
 import type { OcflVersion } from './types.ts';
 
@@ -45,10 +45,10 @@ async function parallelize<T, R>(inputStack: T[], asyncFn: (input: T) => Promise
   return result;
 }
 
-async function isDirEmpty(store: OcflStore, dirPath: string): Promise<boolean> {
+async function isDirEmpty(dirPath: string): Promise<boolean> {
   let de: unknown;
   try {
-    const dir = await store.opendir(dirPath);
+    const dir = await fs.promises.opendir(dirPath);
     de = await dir.read();
     await dir.close();
   } catch (error) {
@@ -61,11 +61,11 @@ async function isDirEmpty(store: OcflStore, dirPath: string): Promise<boolean> {
  * Check if there is any valid namaste in the rootPath and return the version number.
  * @returns The version, `''` if a namaste exists but is invalid, or `undefined` if there is none.
  */
-async function findNamasteVersion(store: OcflStore, prefix: string, rootPath: string): Promise<OcflVersion | '' | undefined> {
+async function findNamasteVersion(prefix: string, rootPath: string): Promise<OcflVersion | '' | undefined> {
   const namastePath = `${rootPath}/${NAMASTE_T}${prefix}`;
   let version: OcflVersion | null | undefined;
   try {
-    version = await Promise.any(OCFL_VERSIONS.map(async (v) => ((await store.readFile(namastePath + v, 'utf8')) === `${prefix}${v}\n` ? v : null)));
+    version = await Promise.any(OCFL_VERSIONS.map(async (v) => ((await fs.promises.readFile(namastePath + v, 'utf8')) === `${prefix}${v}\n` ? v : null)));
     if (!version) {
       return '';
     }
@@ -78,4 +78,4 @@ async function findNamasteVersion(store: OcflStore, prefix: string, rootPath: st
   return version ?? undefined;
 }
 
-export { findNamasteVersion, isAlreadyExists, isDirEmpty, isNotFound, parallelize };
+export { findNamasteVersion, isAlreadyExists, isDirEmpty, isErrnoException, isNotFound, parallelize };

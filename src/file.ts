@@ -1,6 +1,6 @@
-import type { BinaryOptions } from './backend-store.ts';
 import { OcflError } from './error.ts';
 import type { OcflObject } from './object.ts';
+import type { BinaryOptions } from './types.ts';
 
 export interface FileRef {
   /** Actual path to the file location relative to the ocfl object root. */
@@ -109,7 +109,7 @@ class OcflObjectFile {
 
   /**
    * Get the file content as a buffer
-   * @param options Options to be passed to underlying data store specific implementation
+   * @param options Options passed to `fs.promises.readFile`
    */
   async buffer(options?: BinaryOptions): Promise<Uint8Array> {
     return this.#ocflObject.readFile(await this.#resolveContentPath(), options);
@@ -125,7 +125,7 @@ class OcflObjectFile {
 
   /**
    * Get the file content as a ES Streams standard ReadableStream
-   * @param options Options to be passed to underlying data store specific implementation
+   * @param options Options passed to `fs.createReadStream`
    */
   async stream(options?: unknown): Promise<ReadableStream> {
     return this.#ocflObject.createReadable(await this.#resolveContentPath(), options);

@@ -3,10 +3,8 @@ import { createByName, OcflStorageLayout } from './extension.ts';
 import * as extensions from './extensions/index.ts';
 import { OcflObject } from './object.ts';
 import { type OcflStorage, OcflStorageImpl } from './storage.ts';
-import { OcflFsStore } from './store.ts';
 import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig } from './types.ts';
 
-export type { BinaryOptions, EncodingOptions, WriteFileData } from './backend-store.ts';
 export { OcflDigest } from './digest.ts';
 export type { OcflErrorCode } from './error.ts';
 export { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
@@ -24,8 +22,6 @@ export { OcflObjectTransaction } from './transaction.ts';
 export type * from './types.ts';
 export { ValidationError } from './validation.ts';
 export { extensions };
-
-const store = new OcflFsStore();
 
 export const OCFL_VERSIONS = OcflConstants.OCFL_VERSIONS;
 
@@ -49,28 +45,28 @@ export function storageLayout(config: string | OcflExtensionConfig): OcflStorage
  * Instantiate an OCFL Object
  */
 export function object(config: OcflObjectConfig): OcflObject {
-  return new OcflObject(config, store);
+  return new OcflObject(config);
 }
 
 /**
  * Instantiate an OCFL Storage root
  */
 export function storage(config: OcflStorageConfig): OcflStorage {
-  return new OcflStorageImpl(config, store);
+  return new OcflStorageImpl(config);
 }
 
 /**
  * Create a new OCFL Storage
  */
 export async function createStorage(config: OcflStorageConfig): Promise<OcflStorage> {
-  return new OcflStorageImpl(config, store).create();
+  return new OcflStorageImpl(config).create();
 }
 
 /**
  * Load an existing OCFL Storage
  */
 export async function loadStorage(config: OcflStorageConfig): Promise<OcflStorage> {
-  return new OcflStorageImpl(config, store).load();
+  return new OcflStorageImpl(config).load();
 }
 
 for (const ext of Object.values(extensions)) {

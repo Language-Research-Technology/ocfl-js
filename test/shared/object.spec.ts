@@ -1650,6 +1650,25 @@ describe('file lookup errors', () => {
     assert.strictEqual(o.getFile({ digest: 'abc' }), undefined);
     assert.strictEqual(o.getFile({ contentPath: 'v1/content/nope.txt' }), undefined);
   });
+
+  it('rejects load with the stat error when filesMetadata meets a dangling symlink', async () => {
+    const root = path.join(tempdir, 'dangling-symlink');
+    await ocfl.object({ id: 'dangling-symlink', root }).update(async (t) => t.write('a.txt', 'a'));
+    await fs.promises.symlink(path.join(tempdir, 'nowhere'), path.join(root, 'dangling'));
+    await assert.rejects(ocfl.object({ root }).load({ filesMetadata: true }), { code: 'ENOENT', syscall: 'stat' });
+  });
+
+  it('rejects load with the opendir error when filesMetadata meets an unreadable directory', { skip: process.getuid?.() === 0 }, async () => {
+    const root = path.join(tempdir, 'unreadable-directory');
+    await ocfl.object({ id: 'unreadable-directory', root }).update(async (t) => t.write('a.txt', 'a'));
+    const unreadable = path.join(root, 'unreadable');
+    await fs.promises.mkdir(unreadable, { mode: 0o000 });
+    try {
+      await assert.rejects(ocfl.object({ root }).load({ filesMetadata: true }), { code: 'EACCES', syscall: 'opendir' });
+    } finally {
+      await fs.promises.chmod(unreadable, 0o700);
+    }
+  });
 });
 
 describe('refresh', () => {

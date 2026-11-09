@@ -1,13 +1,15 @@
+import fs from 'node:fs';
 import path from 'node:path';
-import type { BinaryOptions, EncodingOptions, OcflStore } from './backend-store.ts';
+import { Readable } from 'node:stream';
 import { OcflConstants } from './constants.ts';
 import { type ContentAlgorithm, Hashing } from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
 import { type InventoryFile, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
+import * as store from './store.ts';
 import { type OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
-import type { Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
+import type { BinaryOptions, EncodingOptions, Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
 import { findNamasteVersion, isDirEmpty, isNotFound, parallelize } from './utils.ts';
 import { createError } from './validation.ts';
 
@@ -33,7 +35,7 @@ function isMidCommitRead(err: unknown) {
 }
 
 /**
- * A class representing an OCFL Object allowing to read and write the content of an OCFL Object in the underlying store.
+ * A class representing an OCFL Object allowing to read and write the content of an OCFL Object on the filesystem.
  */
 class OcflObject {
   #configuredOcflVersion: OcflVersion;
@@ -42,7 +44,6 @@ class OcflObject {
   #id: string | undefined;
   #digestAlgorithm: ContentAlgorithm;
   #contentDirectory: string;
-  #store: OcflStore;
   /**
    * A default list of digest algorithms to be calculated for each file in this object and added to the fixity block.
    */
@@ -53,11 +54,7 @@ class OcflObject {
   /**
    * Create a new OCFL Object
    */
-  constructor(config: OcflObjectConfig, store: OcflStore) {
-    if (!store) {
-      throw new TypeError('[OcflObject] store is required.');
-    }
-    this.#store = store;
+  constructor(config: OcflObjectConfig) {
     if (!config.root) {
       throw new TypeError('[OcflObject] config.root is required.');
     }
@@ -140,19 +137,10 @@ class OcflObject {
     return (declared as OcflVersion | undefined) ?? this.#configuredOcflVersion;
   }
 
-  /**
-   * Create a new backend-specific update transaction
-   */
-  async #createTransaction(inventory: OcflObjectInventoryMut): Promise<OcflObjectTransaction> {
-    await this._validateObjectPath();
-    const workspacePath = this.workspace || this.root;
-    return OcflObjectTransactionImpl.create(this, this.#store, inventory, workspacePath);
-  }
-
   /** @returns The path of the declaration file, if this call wrote one */
   async _ensureNamaste(): Promise<string | undefined> {
     const prefix = NAMASTE_PREFIX_OBJECT;
-    const nv = await findNamasteVersion(this.#store, prefix, this.root);
+    const nv = await findNamasteVersion(prefix, this.root);
     if (nv === '') {
       throw createError('E007', this.root);
     }
@@ -162,14 +150,14 @@ class OcflObject {
     // namaste not found, check if object root is not empty
     let files: string[] | undefined;
     try {
-      files = await this.#store.readdir(this.root);
+      files = await fs.promises.readdir(this.root);
     } catch (_error) {}
     if (files && files.length > 0) {
       throw new OcflError('DIRECTORY_NOT_EMPTY', 'Cannot create an OCFL Object in a non-empty directory');
     }
     //create the namaste file
     const filePath = path.join(this.root, NAMASTE_T + prefix + this.ocflVersion);
-    await this.#store.writeFile(filePath, `${prefix + this.ocflVersion}\n`, 'utf8');
+    await store.writeFile(filePath, `${prefix + this.ocflVersion}\n`, 'utf8');
     return filePath;
   }
 
@@ -226,7 +214,7 @@ class OcflObject {
     var p = this.root;
     while (p !== '.' && p !== '/') {
       p = path.dirname(p);
-      const nv = await findNamasteVersion(this.#store, NAMASTE_PREFIX_OBJECT, p);
+      const nv = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, p);
       if (nv) {
         throw createError('E082', this.root, `nested under the object at ${p}`);
       }
@@ -281,7 +269,8 @@ class OcflObject {
     }
     const inv = (await this.getInventory()) ?? this._baseInventory();
     const newInv = OcflObjectInventoryMut.newVersion(inv, mode_ === 'REPLACE');
-    const t = await this.#createTransaction(newInv);
+    await this._validateObjectPath();
+    const t = await OcflObjectTransactionImpl.create(this, newInv, this.workspace || this.root);
     if (typeof updater === 'function') {
       try {
         await updater(t);
@@ -326,7 +315,7 @@ class OcflObject {
   }
 
   async createReadable(filePath: string, options?: unknown): Promise<ReadableStream> {
-    return this.#store.createReadable(path.join(this.root, filePath), options);
+    return Readable.toWeb(fs.createReadStream(path.join(this.root, filePath), options as Parameters<typeof fs.createReadStream>[1])) as ReadableStream;
   }
 
   /**
@@ -334,7 +323,7 @@ class OcflObject {
    * The existing directory may or may not be a valid OCFL Object.
    */
   async exists(): Promise<boolean> {
-    return !(await isDirEmpty(this.#store, this.root));
+    return !(await isDirEmpty(this.root));
   }
 
   /**
@@ -397,7 +386,7 @@ class OcflObject {
 
   /**
    * Reads the object inventory file and cache it in the memory.
-   * Optionally, preloads and reads all files metadata from the underlying storage.
+   * Optionally, preloads and reads all files metadata from the filesystem.
    */
   async load({ filesMetadata }: { filesMetadata?: boolean | undefined } = {}) {
     const inv = await this._readInventory();
@@ -407,10 +396,9 @@ class OcflObject {
     }
     this.#latestRead = true;
     if (inv && filesMetadata) {
-      //load file metadata from underlying storage
       const metadata: OcflObjectInventory['metadata'] = {};
       inv.metadata = metadata;
-      for await (const file of await this.#store.list(this.root, { recursive: true })) {
+      for await (const file of store.listFiles(this.root)) {
         const contentPath = file.path;
         metadata[contentPath] = {
           size: file.size,
@@ -464,13 +452,13 @@ class OcflObject {
   /**
    * Read the content of a file inside an object.
    * @param relPath - The file path relative to the object root.
-   * @param options - Options to be passed to the underlying method
+   * @param options - Options passed to `fs.promises.readFile`
    */
   async readFile(relPath: string, options: EncodingOptions): Promise<string>;
   async readFile(relPath: string, options?: BinaryOptions): Promise<Uint8Array>;
   async readFile(relPath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array>;
   async readFile(relPath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array> {
-    return this.#store.readFile(path.join(this.root, relPath), options);
+    return fs.promises.readFile(path.join(this.root, relPath), options);
   }
 
   /**
@@ -478,7 +466,7 @@ class OcflObject {
    * @param relPath - The file path relative to the object root.
    */
   async stat(relPath: string) {
-    return this.#store.stat(path.join(this.root, relPath));
+    return fs.promises.stat(path.join(this.root, relPath));
   }
 
   get #label() {

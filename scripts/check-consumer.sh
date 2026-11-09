@@ -78,8 +78,8 @@ cat >"$consumer/tsconfig.json" <<'EOF'
 EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'
-import type { OcflExtension, OcflObject, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl-fs';
-import { extensions, OcflDigest } from '@ocfl/ocfl-fs';
+import type { OcflExtension, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl-fs';
+import { extensions, OcflDigest, OcflObject } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflStorageImpl is not exported
 import { OcflStorageImpl } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflObjectTransactionImpl is not exported
@@ -219,6 +219,8 @@ ocflFs.object({ root: '/tmp/object' }, {});
 await ocflFs.createStorage({ root: '/tmp/storage' }, {});
 // @ts-expect-error loadStorage takes one argument
 await ocflFs.loadStorage({ root: '/tmp/storage' }, {});
+// @ts-expect-error the OcflObject constructor takes one argument
+new OcflObject({ root: '/tmp/object' }, {});
 
 export { extension, inventory, inventoryClass, object, storage, transaction };
 EOF

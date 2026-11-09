@@ -1,11 +1,14 @@
 /** Models a set of ocfl object modifying operations as a transaction that is as close as atomic as possible */
+import fs from 'node:fs';
 import path from 'node:path';
-import type { OcflStore, WriteFileData } from './backend-store.ts';
+import { Readable } from 'node:stream';
 import { OcflConstants } from './constants.ts';
 import { Hashing } from './digest.ts';
 import { OcflError } from './error.ts';
 import { type ContentRelease, OcflObjectInventory, type OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
+import * as store from './store.ts';
+import type { WriteFileData } from './types.ts';
 import { isAlreadyExists, parallelize } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
@@ -51,7 +54,6 @@ function splitDigests(digests: { [algorithm: string]: string }, algorithm: strin
 /**
  * A Transaction represent an atomic update on an OCFL Object.
  * When a transaction is commited, all changes are saved as a new version.
- * This is a wrapper class to hide all the storage specific implementation.
  *
  * Operations called concurrently, such as with `Promise.all`, give the same result as awaiting
  * them one after another in the order they were called. A stream from
@@ -161,13 +163,12 @@ class OcflObjectTransaction {
 }
 
 /**
- * Base class for any transaction implementation on different storage backend
+ * Implementation of {@link OcflObjectTransaction}, kept separate so that only the abstract interface is public.
  */
 class OcflObjectTransactionImpl extends OcflObjectTransaction {
   _versionPath: string;
   _contentRoot: string;
   _object: OcflObject;
-  _store: OcflStore;
   _inventory: OcflObjectInventoryMut;
   _workspace: string | undefined;
   _rootExisted: boolean;
@@ -184,7 +185,6 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
 
   constructor(
     ocflObject: OcflObject,
-    ocflStore: OcflStore,
     inventory: OcflObjectInventoryMut,
     versionPath: string,
     workspace: string | undefined,
@@ -195,7 +195,6 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     this._versionPath = versionPath;
     this._contentRoot = path.join(versionPath, inventory.contentDirectory);
     this._object = ocflObject;
-    this._store = ocflStore;
     this._inventory = inventory;
     this._workspace = workspace;
     this._rootExisted = rootExisted;
@@ -205,27 +204,27 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   /**
    * Create a new transaction instance.
    */
-  static async create(ocflObject: OcflObject, ocflStore: OcflStore, inventory: OcflObjectInventoryMut, workspacePath: string) {
-    const rootExisted = await ocflStore.exists(ocflObject.root);
+  static async create(ocflObject: OcflObject, inventory: OcflObjectInventoryMut, workspacePath: string) {
+    const rootExisted = await fs.promises.stat(ocflObject.root).then(
+      () => true,
+      () => false,
+    );
     const inPlace = workspacePath === ocflObject.root;
     const createdNamaste = inPlace ? await ocflObject._ensureNamaste() : undefined;
     const versionPath = path.join(workspacePath, inventory.head);
-    const updateInProgress = new OcflError(
-      'UPDATE_IN_PROGRESS',
-      'Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt',
-    );
-    // A backend without real directories can't fail the exclusive mkdir below
-    if (await ocflStore.exists(versionPath)) {
-      throw updateInProgress;
-    }
-    await ocflStore.mkdir(workspacePath);
+    await fs.promises.mkdir(workspacePath, { recursive: true });
     try {
       // Exclusive, so of any overlapping updates only one reserves the version
-      await ocflStore.mkdir(versionPath, { recursive: false });
+      await fs.promises.mkdir(versionPath);
     } catch (error) {
-      throw isAlreadyExists(error) ? updateInProgress : error;
+      throw isAlreadyExists(error)
+        ? new OcflError(
+            'UPDATE_IN_PROGRESS',
+            'Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt',
+          )
+        : error;
     }
-    return new OcflObjectTransactionImpl(ocflObject, ocflStore, inventory, versionPath, inPlace ? undefined : workspacePath, rootExisted, createdNamaste);
+    return new OcflObjectTransactionImpl(ocflObject, inventory, versionPath, inPlace ? undefined : workspacePath, rootExisted, createdNamaste);
   }
 
   _getRealPath(logicalPath: string) {
@@ -281,7 +280,6 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
 
   /** Remove everything this transaction created, restoring the root inventory if it was replaced */
   async _undo() {
-    const store = this._store;
     const root = this._object.root;
     const rootInv = this._rootInventoryPaths;
     if (this._rootInventoryReplaced) {
@@ -289,16 +287,16 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         await store.writeFile(rootInv.inventoryTmp, this._previousRootInventory);
         await store.move(rootInv.inventoryTmp, rootInv.inventory);
       } else {
-        await store.remove(rootInv.inventory);
+        await fs.promises.rm(rootInv.inventory, { recursive: true, force: true });
       }
     }
     if (this._rootInventoryStaged) {
-      await store.remove(rootInv.inventoryTmp);
-      await store.remove(rootInv.digestTmp);
+      await fs.promises.rm(rootInv.inventoryTmp, { recursive: true, force: true });
+      await fs.promises.rm(rootInv.digestTmp, { recursive: true, force: true });
     }
-    await store.remove(this._versionPath);
+    await fs.promises.rm(this._versionPath, { recursive: true, force: true });
     if (this._createdNamaste) {
-      await store.remove(this._createdNamaste);
+      await fs.promises.rm(this._createdNamaste, { recursive: true, force: true });
     }
     if (!this._rootExisted) {
       await this._tidy(root);
@@ -314,7 +312,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
 
   /** A leftover empty directory is harmless, so failing to remove one must not mask the update's outcome */
   async _tidy(dirPath: string) {
-    await this._store.removeIfEmpty(dirPath).catch(() => {});
+    await store.removeIfEmpty(dirPath).catch(() => {});
   }
 
   get _rootInventoryPaths() {
@@ -346,11 +344,11 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     const digest = `${inventory._digest} ${INVENTORY_NAME}`;
 
     // write inventory.json to workspace
-    await this._store.writeFile(invPath, inventoryContent);
-    await this._store.writeFile(invDigestPath, digest);
+    await store.writeFile(invPath, inventoryContent);
+    await store.writeFile(invDigestPath, digest);
     if (this._workspace) {
       this._createdNamaste = await this._object._ensureNamaste();
-      await this._store.move(this._versionPath, objectVersionPath);
+      await store.move(this._versionPath, objectVersionPath);
       this._versionPath = objectVersionPath;
     }
     // replace root inventory
@@ -359,14 +357,14 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     invPath = path.join(objectVersionPath, INVENTORY_NAME);
     invDigestPath = `${invPath}.${digestAlgorithm}`;
     this._rootInventoryStaged = true;
-    await this._store.copyFile(invPath, rootInv.inventoryTmp);
-    await this._store.copyFile(invDigestPath, rootInv.digestTmp);
+    await store.copyFile(invPath, rootInv.inventoryTmp);
+    await store.copyFile(invDigestPath, rootInv.digestTmp);
     if (inventory.versionNumber.previous()) {
-      this._previousRootInventory = await this._store.readFile(rootInv.inventory);
+      this._previousRootInventory = await fs.promises.readFile(rootInv.inventory);
     }
-    await this._store.move(rootInv.inventoryTmp, rootInv.inventory);
+    await store.move(rootInv.inventoryTmp, rootInv.inventory);
     this._rootInventoryReplaced = true;
-    await this._store.move(rootInv.digestTmp, rootInv.digest);
+    await store.move(rootInv.digestTmp, rootInv.digest);
   }
 
   get _digestAlgorithms() {
@@ -382,7 +380,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     try {
       return await step();
     } catch (error) {
-      await this._store.remove(staging).catch(() => {});
+      await fs.promises.rm(staging, { recursive: true, force: true }).catch(() => {});
       throw error;
     }
   }
@@ -402,9 +400,9 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       }
       await this._applyContentReleases(releases, realPath, async () => {
         if (realPath) {
-          await this._store.move(staging, realPath);
+          await store.move(staging, realPath);
         } else if (!stage) {
-          await this._store.remove(staging);
+          await fs.promises.rm(staging, { recursive: true, force: true });
         }
       });
     });
@@ -424,7 +422,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     try {
       for (const { from, to } of files) {
         if (to !== undefined) {
-          await this._store.move(from, to);
+          await store.move(from, to);
           moved.push({ from, to });
         }
       }
@@ -432,7 +430,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     } catch (error) {
       await this._blockCommitOnFailure(async () => {
         for (const { from, to } of moved.reverse()) {
-          await this._store.move(to, from);
+          await store.move(to, from);
           await this._pruneEmptyDirectories(path.dirname(to));
         }
       }).catch(() => {});
@@ -442,7 +440,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     await this._blockCommitOnFailure(async () => {
       for (const { from, to } of vacated) {
         if (to === undefined) {
-          await this._store.remove(from);
+          await fs.promises.rm(from, { recursive: true, force: true });
         }
       }
     });
@@ -480,7 +478,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     const hs = await Hashing.createStream(this._digestAlgorithms);
     checkLogicalPath(logicalPath);
     const staging = this._stagingPath();
-    const writer = (await this._store.createWritable(staging, options)).getWriter();
+    const writer = (await store.createWritable(staging, options)).getWriter();
     const ws = new WritableStream({
       write(chunk) {
         hs.update(chunk);
@@ -495,7 +493,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       abort: (reason) => writer.abort(reason),
     });
     this._writers.add(writer);
-    this._track(writer.closed.finally(() => this._writers.delete(writer)).catch(() => this._store.remove(staging)));
+    this._track(writer.closed.finally(() => this._writers.delete(writer)).catch(() => fs.promises.rm(staging, { recursive: true, force: true })));
 
     return ws;
   }
@@ -512,11 +510,11 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
             ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
             : data;
         const hashes = splitDigests(await Hashing.digest(digestAlgos, content as string | Uint8Array), digestAlgo);
-        return () => this._addContent(logicalPath, hashes, staging, () => this._store.writeFile(staging, content, options));
+        return () => this._addContent(logicalPath, hashes, staging, () => store.writeFile(staging, content, options));
       }
       if (data instanceof ReadableStream) {
         const hs = await Hashing.createStreamThrough(digestAlgos);
-        await this._removeStagedOnFailure(staging, () => this._store.writeFile(staging, data.pipeThrough(hs), options));
+        await this._removeStagedOnFailure(staging, () => store.writeFile(staging, data.pipeThrough(hs), options));
         const hashes = splitDigests(hs.digest(), digestAlgo);
         return () => this._addContent(logicalPath, hashes, staging);
       }
@@ -528,23 +526,23 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     if (!target) {
       throw new TypeError('Target logical path must not be empty if source is a file.');
     }
-    const rs = await this._store.createReadable(source);
+    const rs = Readable.toWeb(fs.createReadStream(source)) as ReadableStream;
     const hashes = splitDigests(await Hashing.digest(this._digestAlgorithms, rs), this._inventory.digestAlgorithm);
     const staging = this._stagingPath();
-    return () => this._addContent(target, hashes, staging, () => this._store.copyFile(source, staging));
+    return () => this._addContent(target, hashes, staging, () => store.copyFile(source, staging));
   }
 
   /** @returns the step that adds the prepared files, which must run in the import's turn */
   async _prepareImport(source: string, dest: string): Promise<() => Promise<void>> {
     checkLogicalPath(dest);
-    const srcStat = await this._store.stat(source);
+    const srcStat = await fs.promises.stat(source);
     if (srcStat.isFile()) {
       return this._prepareImportFile(source, dest);
     }
     if (!srcStat.isDirectory()) {
       return async () => {};
     }
-    const files = await this._store.readdir(source);
+    const files = await fs.promises.readdir(source);
     const prepared = await parallelize(files, (filename) => this._prepareImport(path.join(source, filename), path.join(dest, filename)));
     return async () => {
       const errors: unknown[] = prepared.filter((step) => step instanceof Error);
