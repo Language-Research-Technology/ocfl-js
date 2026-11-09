@@ -80,6 +80,7 @@ function headNotInVersionsError(id: string, head: string) {
 class OcflObjectInventory {
   #data: Inventory;
   #fileIndex: { [version: string]: { [logicalPath: string]: Digests } } = {};
+  #fixityIndex = new Map<string, Digests>();
 
   metadata: { [contentPath: string]: { size: number; lastModified: number } } | undefined;
 
@@ -94,20 +95,14 @@ class OcflObjectInventory {
     let digests = this.#fileIndex[version]?.[logicalPath];
     if (!digests && !onlyUsecache) {
       // search and then index
-      const fixity = this.fixity;
       const algo = this.digestAlgorithm;
       const digestArr: [string, string][] = [];
       const mainDigest = findKey(logicalPath, this.versionState(version) ?? {});
       if (mainDigest) {
         digestArr.push([algo, mainDigest]);
         const cp = this.getContentPath(mainDigest);
-        if (fixity && cp) {
-          for (const [fixityDigest, digestBlock] of Object.entries(fixity)) {
-            const digest = findKey(cp, digestBlock);
-            if (digest) {
-              digestArr.push([fixityDigest, digest]);
-            }
-          }
+        if (cp) {
+          digestArr.push(...Object.entries(this._indexGetFixity(cp)));
         }
       }
       if (digestArr.length > 0) {
@@ -131,18 +126,34 @@ class OcflObjectInventory {
     return val;
   }
 
+  _indexGetFixity(contentPath: string): Digests {
+    return this.#fixityIndex.get(contentPath) ?? {};
+  }
+
+  /** A digest's file index entry, with the fixity of all its content paths */
+  _indexDigests(digest: string): Digests {
+    const digests: Digests = { [this.digestAlgorithm]: digest };
+    for (const cp of this.#requireContentPaths(digest)) {
+      Object.assign(digests, this._indexGetFixity(cp));
+    }
+    return digests;
+  }
+
+  _indexAddFixity(contentPath: string, algorithm: string, value: string) {
+    let digests = this.#fixityIndex.get(contentPath);
+    if (!digests) {
+      digests = Object.create(null) as Digests;
+      this.#fixityIndex.set(contentPath, digests);
+    }
+    digests[algorithm] = value;
+  }
+
   _indexBuild() {
-    // index fixity contentPaths
-    const fixity = this.fixity;
-    const fixityIndex: { [algorithm: string]: { [contentPath: string]: string } } = {};
-    if (fixity) {
-      for (const [fixityAlgo, digestBlock] of Object.entries(fixity)) {
-        const fixityIndexDigest: { [contentPath: string]: string } = {};
-        fixityIndex[fixityAlgo] = fixityIndexDigest;
-        for (const [digest, cps] of Object.entries(digestBlock)) {
-          for (const cp of cps) {
-            fixityIndexDigest[cp] = digest;
-          }
+    this.#fixityIndex.clear();
+    for (const [algorithm, digestBlock] of Object.entries(this.fixity ?? {})) {
+      for (const [value, cps] of Object.entries(digestBlock)) {
+        for (const cp of cps) {
+          this._indexAddFixity(cp, algorithm, value);
         }
       }
     }
@@ -150,24 +161,12 @@ class OcflObjectInventory {
     // { v1: { 'dir/file.txt': { sha512: 'abcdef' } } }
     const index: { [version: string]: { [logicalPath: string]: Digests } } = {};
     this.#fileIndex = index;
-    const algo = this.digestAlgorithm;
-    const fixityEntries = Object.entries(fixityIndex);
     for (const [verName, ver] of Object.entries(this.versions)) {
       const indexVer: { [logicalPath: string]: Digests } = {};
       index[verName] = indexVer;
       for (const [digest, lps] of Object.entries(ver.state)) {
-        const cps = this.#requireContentPaths(digest);
         for (const lp of lps) {
-          const file: Digests = { [algo]: digest };
-          indexVer[lp] = file;
-          for (const [fixityAlgo, fixityIndexDigest] of fixityEntries) {
-            for (const cp of cps) {
-              const fixityDigest = fixityIndexDigest[cp];
-              if (fixityDigest) {
-                file[fixityAlgo] = fixityDigest;
-              }
-            }
-          }
+          indexVer[lp] = this._indexDigests(digest);
         }
       }
     }
@@ -270,6 +269,7 @@ class OcflObjectInventory {
   }
   set fixity(val: NonNullable<Inventory['fixity']>) {
     this.#data.fixity = val;
+    this._indexBuild();
   }
   /** The state of the current version */
   get state() {
@@ -500,23 +500,41 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * @returns true if the state is changed
    */
   add(logicalPath: string, digest: string, fixity?: { [x: string]: string }): boolean {
-    const contentPath = `${this.head}/${this.contentDirectory}/${logicalPath}`;
-    // add fixity info
-    if (fixity) {
-      for (const [digestName, digestValue] of Object.entries(fixity)) {
-        this.addFixity(contentPath, digestName, digestValue);
-      }
-    }
+    const existingPath = this.getContentPath(digest);
+    const digests = existingPath ? this.#fillFixity(existingPath, digest, fixity) : this.#addContent(logicalPath, digest, fixity);
     if (this.getDigest(logicalPath) === digest) {
       return false;
     }
-    // reinstated or duplicate content is already in the manifest
-    if (!this.manifest[digest]?.length) {
-      this.manifest[digest] = [contentPath];
-    }
     this.#unlist(logicalPath);
-    this.#list(logicalPath, digest, { [this.digestAlgorithm]: digest, ...fixity });
+    this.#list(logicalPath, digest, digests);
     return true;
+  }
+
+  #addContent(logicalPath: string, digest: string, fixity: Digests = {}): Digests {
+    const contentPath = `${this.head}/${this.contentDirectory}/${logicalPath}`;
+    this.manifest[digest] = [contentPath];
+    for (const [digestName, digestValue] of Object.entries(fixity)) {
+      this.addFixity(contentPath, digestName, digestValue);
+    }
+    return { [this.digestAlgorithm]: digest, ...fixity };
+  }
+
+  /** Record values for the algorithms a content path has none for, keeping any it already has */
+  #fillFixity(contentPath: string, digest: string, fixity: Digests = {}): Digests {
+    const recorded = this._indexGetFixity(contentPath);
+    const missing = Object.entries(fixity).filter(([digestName]) => !recorded[digestName]);
+    for (const [digestName, digestValue] of missing) {
+      this.addFixity(contentPath, digestName, digestValue);
+    }
+    const digests = this._indexDigests(digest);
+    if (missing.length > 0) {
+      for (const [version, { state }] of Object.entries(this.versions)) {
+        for (const logicalPath of state[digest] ?? []) {
+          this._indexAdd(logicalPath, version, digests);
+        }
+      }
+    }
+    return digests;
   }
 
   /**
@@ -536,6 +554,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     } else {
       digestBlock[digestValue] = [contentPath];
     }
+    this._indexAddFixity(contentPath, digestName, digestValue);
   }
 
   /**

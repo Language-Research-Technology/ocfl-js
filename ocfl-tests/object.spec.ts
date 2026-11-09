@@ -429,6 +429,76 @@ export default (ocfl: Ocfl) => {
       assert.strictEqual(file!.fixity!.md5, createHash('md5').update(content).digest('hex'));
     });
 
+    describe('fixity block on disk', () => {
+      const md5 = (content: string) => createHash('md5').update(content).digest('hex');
+
+      async function readInventory(object: OcflObject): Promise<Inventory> {
+        return JSON.parse(await fs.promises.readFile(path.join(object.root, 'inventory.json'), 'utf8'));
+      }
+
+      async function assertFixityPathsExist(object: OcflObject, inventory: Inventory) {
+        const manifestPaths = Object.values(inventory.manifest).flat();
+        for (const block of Object.values(inventory.fixity ?? {})) {
+          for (const contentPath of Object.values(block).flat()) {
+            assert.ok(manifestPaths.includes(contentPath), `${contentPath} is not in the manifest`);
+            await fs.promises.access(path.join(object.root, contentPath));
+          }
+        }
+      }
+
+      it('adds no content path when content is duplicated or rewritten unchanged', async () => {
+        const object = createObject('object-fixity-duplicate', false);
+        const source = path.join(tempdir, 'fixity-duplicate-source.txt');
+        await fs.promises.writeFile(source, 'same');
+        await object.update(async (t) => {
+          await t.write('a.txt', 'same');
+        });
+        await object.update(async (t) => {
+          await t.write('a.txt', 'same');
+          await t.write('b.txt', 'same');
+          await t.import(source, 'c.txt');
+          const writable = await t.createWritable('d.txt');
+          const writer = writable.getWriter();
+          await writer.write(new TextEncoder().encode('same'));
+          await writer.close();
+        });
+        const inventory = await readInventory(object);
+        assert.strictEqual(inventory.head, 'v2');
+        assert.deepStrictEqual(inventory.fixity!.md5, { [md5('same')]: ['v1/content/a.txt'] });
+        await assertFixityPathsExist(object, inventory);
+      });
+
+      it('attaches fixity to content first written without it, in an update that creates a version', async () => {
+        const root = path.join(tempdir, 'object-fixity-attach');
+        await ocfl.object({ id: 'object-fixity-attach', root }).update(async (t) => {
+          await t.write('a.txt', 'first');
+        });
+        const object = ocfl.object({ id: 'object-fixity-attach', root, fixityAlgorithms: ['md5'] });
+        await object.update(async (t) => {
+          await t.write('b.txt', 'first');
+        });
+        const inventory = await readInventory(object);
+        assert.strictEqual(inventory.head, 'v2');
+        assert.deepStrictEqual(inventory.fixity, { md5: { [md5('first')]: ['v1/content/a.txt'] } });
+        await assertFixityPathsExist(object, inventory);
+      });
+
+      it('creates no version for an update whose only effect is new fixity', async () => {
+        const root = path.join(tempdir, 'object-fixity-only');
+        const workspace = `${root}-tmp`;
+        await ocfl.object({ id: 'object-fixity-only', root, workspace }).update(async (t) => {
+          await t.write('a.txt', 'first');
+        });
+        const object = ocfl.object({ id: 'object-fixity-only', root, workspace, fixityAlgorithms: ['md5'] });
+        await object.update(async (t) => {
+          await t.write('a.txt', 'first');
+        });
+        const inventory = await readInventory(object);
+        assert.strictEqual(inventory.head, 'v1');
+        assert.strictEqual(inventory.fixity, undefined);
+      });
+    });
+
     after(async () => {
       // delete temp dir
       await fs.promises.rm(tempdir, { recursive: true, force: true });
