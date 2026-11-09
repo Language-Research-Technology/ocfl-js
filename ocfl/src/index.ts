@@ -10,14 +10,12 @@ import { type OcflStorage, OcflStorageImpl } from './storage.ts';
 import type { OcflStore } from './store.ts';
 import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig } from './types.ts';
 
-export { OcflConstants } from './constants.ts';
 export { OcflDigest } from './digest.ts';
 export type { OcflErrorCode } from './error.ts';
 export { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 export { OcflExtension, OcflStorageLayout } from './extension.ts';
 export type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direct-storage-layout.ts';
 export type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
-export type { StorageLayout } from './extensions/index.ts';
 export type { FileRef, FileStat, OcflObjectFile } from './file.ts';
 export type { InventoryFile, VersionNumber } from './inventory.ts';
 export { OcflObjectInventory } from './inventory.ts';
@@ -42,7 +40,7 @@ export function implementOcfl<SO extends object>(store: { getInstance(options?: 
     OCFL_VERSIONS: OcflConstants.OCFL_VERSIONS,
 
     /** Built-in storage layout classes */
-    StorageLayout: OcflStorageLayout.layout,
+    extensions,
 
     /**
      * Instantiate a storage layout from extension name or config

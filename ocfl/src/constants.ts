@@ -10,7 +10,6 @@ const OcflConstants = {
   INVENTORY_NAME: 'inventory.json',
   EXTENSIONS_DIR: 'extensions',
   EXTENSION_CONFIG: 'config.json',
-  DIGEST_ALGORITHM: 'sha512',
 };
 
 export { OcflConstants };

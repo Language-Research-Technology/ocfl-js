@@ -314,6 +314,10 @@ Each public member now corresponds to something the OCFL specification or the li
 | The `OcflObjectInventoryMut` type                                                                        | `OcflObjectInventory`                                                                                                                 |
 | `OcflObject.export()`                                                                                    | `object.files(version)` and `file.stream()`; see [Writing a version out](#writing-a-version-out)                                      |
 | `extensions.DigestAlgorithm`                                                                             | Nothing to replace: to add an algorithm from extension 0009, call `OcflDigest.registerHasherFactory()`                                |
+| `ocfl.StorageLayout`, and the `StorageLayout` export of `@ocfl/ocfl-fs`                                  | `extensions`, on the default API and as a named export of `@ocfl/ocfl-fs` or `@ocfl/ocfl`; see [Layout classes](#layout-classes)      |
+| The `StorageLayout` type                                                                                 | `typeof extensions`, or `extensions.PathDirectStorageLayout` and the other classes as types                                           |
+| `OcflStorageLayout.layout`                                                                               | `extensions`, or `OcflStorageLayout.class(name)` to find a registered custom layout; see [Layout classes](#layout-classes)            |
+| `OcflConstants`                                                                                          | `OCFL_VERSIONS`, on the default API and as a named export of `@ocfl/ocfl-fs`. The other values were internal                          |
 
 ### Deleting an object
 
@@ -399,6 +403,25 @@ async function writeVersion(object: OcflObject, targetDir: string, version: stri
   }
 }
 ```
+
+### Layout classes
+
+The built-in layout classes now have one name, `extensions`, and it's available from `@ocfl/ocfl-fs` without a dependency on `@ocfl/ocfl`:
+
+```diff
+- const layout = new ocfl.StorageLayout.PathDirectStorageLayout({ omitScheme: true });
++ const layout = new ocfl.extensions.PathDirectStorageLayout({ omitScheme: true });
+```
+
+`extensions` is also a named export, so a layout can be subclassed directly:
+
+```ts
+import { extensions } from '@ocfl/ocfl-fs';
+
+class MyLayout extends extensions.HashedNTupleStorageLayout {}
+```
+
+`extensions` holds only the built-in layouts. `StorageLayout` also listed any custom layout you had registered: to find one of those, call `OcflStorageLayout.class(name)`, or use `OcflStorageLayout.classes` to list them all. Choosing a layout by class name or registered name in the storage config works as before.
 
 ## Other behaviour changes
 

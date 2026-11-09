@@ -25,6 +25,47 @@ export default (ocfl: Ocfl) => {
       });
     });
   });
+  describe('layout classes', () => {
+    const LAYOUTS = {
+      PathDirectStorageLayout: '000N-path-direct-storage-layout',
+      FlatDirectStorageLayout: '0002-flat-direct-storage-layout',
+      HashAndIdNTupleStorageLayout: '0003-hash-and-id-n-tuple-storage-layout',
+      HashedNTupleStorageLayout: '0004-hashed-n-tuple-storage-layout',
+      FlatOmitPrefixStorageLayout: '0006-flat-omit-prefix-storage-layout',
+      NTupleOmitPrefixStorageLayout: '0007-n-tuple-omit-prefix-storage-layout',
+    };
+
+    it('exposes the built-in layouts as extensions', () => {
+      assert.deepStrictEqual(Object.keys(ocfl.extensions).sort(), Object.keys(LAYOUTS).sort());
+      for (const [className, registeredName] of Object.entries(LAYOUTS)) {
+        const layout = ocfl.extensions[className as keyof typeof ocfl.extensions];
+        assert.ok(layout.prototype instanceof OcflStorageLayout);
+        assert.strictEqual(layout.NAME, registeredName);
+      }
+    });
+
+    it('lists the built-in layouts in OcflStorageLayout.classes', () => {
+      const classes: unknown[] = OcflStorageLayout.classes;
+      for (const layout of Object.values(ocfl.extensions)) {
+        assert.ok(classes.includes(layout));
+      }
+    });
+
+    it('accepts a layout by class name or by registered name', () => {
+      for (const layout of ['FlatDirectStorageLayout', '0002-flat-direct-storage-layout']) {
+        assert.strictEqual(ocfl.storage({ root: '/data/storage-1', layout }).objectRoot('abc'), 'abc');
+      }
+    });
+
+    it('accepts an instance of a subclass of a built-in layout', () => {
+      class PrefixedLayout extends ocfl.extensions.FlatDirectStorageLayout {
+        map(id: string) {
+          return `prefix-${super.map(id)}`;
+        }
+      }
+      assert.strictEqual(ocfl.storage({ root: '/data/storage-1', layout: new PrefixedLayout() }).objectRoot('abc'), 'prefix-abc');
+    });
+  });
   describe('access existing storage', () => {
     const repo = ocfl.storage({ root: path.join(import.meta.dirname, 'test-data/storage') });
     const objects = [{ root: path.join(repo.root, 'object_1'), id: 'http://example.org/minimal_no_content' }];
@@ -282,7 +323,7 @@ export default (ocfl: Ocfl) => {
     });
 
     it('keeps the configured instance when it matches the layout the root declares', async () => {
-      class CustomisedHashedLayout extends ocfl.StorageLayout.HashedNTupleStorageLayout {
+      class CustomisedHashedLayout extends ocfl.extensions.HashedNTupleStorageLayout {
         map() {
           return 'customised';
         }
@@ -371,7 +412,7 @@ export default (ocfl: Ocfl) => {
     });
 
     it('ignores a parameter that only a configured subclass defines', async () => {
-      class SaltedHashedLayout extends ocfl.StorageLayout.HashedNTupleStorageLayout {
+      class SaltedHashedLayout extends ocfl.extensions.HashedNTupleStorageLayout {
         constructor() {
           super();
           (this.parameters as unknown as { salt: string }).salt = 'x';

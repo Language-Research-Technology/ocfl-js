@@ -1,6 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
 import { NotImplementedError } from './error.ts';
-import type { StorageLayout } from './extensions/index.ts';
 import type { OcflExtensionConfig } from './types.ts';
 
 /** Index by Registered extension name */
@@ -117,10 +116,6 @@ class OcflExtension<C extends object = object> {
 }
 
 class OcflStorageLayout<C extends object = object> extends OcflExtension<C> {
-  static get layout(): StorageLayout {
-    return storageLayout as unknown as StorageLayout;
-  }
-
   static class(name: string): typeof OcflStorageLayout | undefined {
     const c = OcflExtension.class(name);
     if (c && c.prototype instanceof OcflStorageLayout) {

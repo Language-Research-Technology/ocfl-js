@@ -91,6 +91,21 @@ describe('OcflExtension class', () => {
     });
   });
 
+  it('lists every registered layout class when two share a NAME', async () => {
+    // A private copy of the module, so these registrations can't reach other tests
+    const specifier = new URL('../src/extension.ts?shared-name', import.meta.url).href;
+    const isolated: typeof import('../src/extension.ts') = await import(specifier);
+    class BaseLayout extends isolated.OcflStorageLayout {
+      static get NAME() {
+        return '9999-shared-name-layout';
+      }
+    }
+    class SubLayout extends BaseLayout {}
+    BaseLayout.register();
+    SubLayout.register();
+    assert.deepStrictEqual(isolated.OcflStorageLayout.classes, [BaseLayout, SubLayout]);
+  });
+
   it('registers nothing for extension 0009, which only names digest algorithms', () => {
     assert.strictEqual(OcflExtension.class('0009-digest-algorithms'), undefined);
   });

@@ -66,7 +66,7 @@ storage = ocfl.createStorage({
 });
 
 // Instantiate the class directly
-let layout = new ocfl.StorageLayout.PathDirectStorageLayout({ omitScheme: true });
+let layout = new ocfl.extensions.PathDirectStorageLayout({ omitScheme: true });
 storage = ocfl.createStorage({ root: '/var/data/myocfl', layout });
 ```
 

@@ -57,7 +57,7 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
   });
 
   it('rejects creating a layout with an unsupported extension name', () => {
-    assert.throws(() => ocfl.StorageLayout.HashedNTupleStorageLayout.create({ extensionName: 'no-such-extension' }), {
+    assert.throws(() => ocfl.extensions.HashedNTupleStorageLayout.create({ extensionName: 'no-such-extension' }), {
       message: 'Extension "no-such-extension" is not supported.',
     });
   });

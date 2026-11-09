@@ -95,6 +95,13 @@ import { OcflObjectTransactionImpl } from '@ocfl/ocfl';
 import type { RemoveOptions } from '@ocfl/ocfl';
 // @ts-expect-error OcflObjectInventoryMut is not exported
 import type { OcflObjectInventoryMut } from '@ocfl/ocfl';
+// @ts-expect-error OcflConstants is not exported
+import { OcflConstants } from '@ocfl/ocfl';
+// @ts-expect-error the StorageLayout type is gone, use extensions
+import type { StorageLayout } from '@ocfl/ocfl';
+// @ts-expect-error the StorageLayout export is gone, use extensions
+import { StorageLayout as FsStorageLayout } from '@ocfl/ocfl-fs';
+import ocflFs from '@ocfl/ocfl-fs';
 
 declare const storage: OcflStorage;
 declare const object: OcflObject;
@@ -195,13 +202,17 @@ inventory.user!.name = 'x';
 object.export;
 // @ts-expect-error extensions.DigestAlgorithm is gone
 extensions.DigestAlgorithm;
+// @ts-expect-error OcflStorageLayout.layout is gone, use extensions
+layoutClass.layout;
+// @ts-expect-error StorageLayout is gone from the default API, use extensions
+ocflFs.StorageLayout;
 
 export { extension, inventory, inventoryClass, object, storage, transaction };
 EOF
 cat >"$consumer/consumer.ts" <<'EOF'
 import { join } from 'node:path';
 import { type CommonHasher, implementOcfl, OcflDigest, type OcflStorage, OcflStore } from '@ocfl/ocfl';
-import ocflFs, { createStorage, OcflError, type OcflErrorCode, OcflFsStore, type OcflFsStoreConfig, ValidationError } from '@ocfl/ocfl-fs';
+import ocflFs, { createStorage, extensions, OCFL_VERSIONS, OcflError, type OcflErrorCode, OcflFsStore, type OcflFsStoreConfig, ValidationError } from '@ocfl/ocfl-fs';
 
 const config: OcflFsStoreConfig = {};
 const store: OcflStore = OcflFsStore.getInstance(config);
@@ -225,9 +236,23 @@ OcflDigest.registerHasherFactory('consumer-digest', async (): Promise<CommonHash
   throw new Error('only registered, never used');
 });
 
+class PrefixedLayout extends extensions.FlatDirectStorageLayout {
+  map(id: string) {
+    return `prefix-${super.map(id)}`;
+  }
+}
+const layoutInstance: extensions.PathDirectStorageLayout = new ocflFs.extensions.PathDirectStorageLayout();
+const prefixedStorage = ocflFs.storage({ root: join(import.meta.dirname, 'prefixed'), layout: new PrefixedLayout() });
+
 if (
   !(store instanceof OcflStore) ||
   custom.OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
+  OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
+  !OCFL_VERSIONS.includes('1.1') ||
+  extensions !== ocflFs.extensions ||
+  custom.extensions !== extensions ||
+  !(layoutInstance instanceof extensions.PathDirectStorageLayout) ||
+  prefixedStorage.objectRoot('abc') !== 'prefix-abc' ||
   (await customObject.getFile('a.txt')?.text()) !== 'written through a custom backend' ||
   !OcflDigest.hasAlgorithm('consumer-digest') ||
   (await storage.has('missing')) ||
