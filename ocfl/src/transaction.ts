@@ -7,7 +7,7 @@ import { OcflError } from './error.ts';
 import type { OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
 import type { OcflStore, WriteFileData } from './store.ts';
-import { isNotFound, parallelize } from './utils.ts';
+import { isAlreadyExists, isNotFound, parallelize } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 
@@ -187,39 +187,65 @@ class OcflObjectTransaction {
  * Base class for any transaction implementation on different storage backend
  */
 class OcflObjectTransactionImpl extends OcflObjectTransaction {
-  _workspaceVersionPath: string;
+  _versionPath: string;
   _contentRoot: string;
   _object: OcflObject;
   _store: OcflStore;
   _inventory: OcflObjectInventoryMut;
-  _createdDir: string;
+  _workspace: string | undefined;
+  _rootExisted: boolean;
+  _createdNamaste: string | undefined;
+  _rootInventoryStaged = false;
+  _rootInventoryReplaced = false;
+  _previousRootInventory: Uint8Array | undefined;
   _queue: TrackedPromise<unknown>[] = [];
   _writers = new Set<WritableStreamDefaultWriter>();
   _committed = false;
 
-  constructor(ocflObject: OcflObject, ocflStore: OcflStore, inventory: OcflObjectInventoryMut, workspaceVersionPath: string, createdDir: string) {
+  constructor(
+    ocflObject: OcflObject,
+    ocflStore: OcflStore,
+    inventory: OcflObjectInventoryMut,
+    versionPath: string,
+    workspace: string | undefined,
+    rootExisted: boolean,
+    createdNamaste: string | undefined,
+  ) {
     super();
-    this._workspaceVersionPath = workspaceVersionPath;
-    this._contentRoot = path.join(workspaceVersionPath, inventory.contentDirectory);
+    this._versionPath = versionPath;
+    this._contentRoot = path.join(versionPath, inventory.contentDirectory);
     this._object = ocflObject;
     this._store = ocflStore;
     this._inventory = inventory;
-    this._createdDir = createdDir;
+    this._workspace = workspace;
+    this._rootExisted = rootExisted;
+    this._createdNamaste = createdNamaste;
   }
 
   /**
    * Create a new transaction instance.
    */
   static async create(ocflObject: OcflObject, ocflStore: OcflStore, inventory: OcflObjectInventoryMut, workspacePath: string) {
-    const workspaceVersionPath = path.join(workspacePath, inventory.head);
-    if (await ocflStore.exists(workspaceVersionPath)) {
-      throw new OcflError(
-        'UPDATE_IN_PROGRESS',
-        'Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt',
-      );
+    const rootExisted = await ocflStore.exists(ocflObject.root);
+    const inPlace = workspacePath === ocflObject.root;
+    const createdNamaste = inPlace ? await ocflObject._ensureNamaste() : undefined;
+    const versionPath = path.join(workspacePath, inventory.head);
+    const updateInProgress = new OcflError(
+      'UPDATE_IN_PROGRESS',
+      'Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt',
+    );
+    // A backend without real directories can't fail the exclusive mkdir below
+    if (await ocflStore.exists(versionPath)) {
+      throw updateInProgress;
     }
     await ocflStore.mkdir(workspacePath);
-    return new OcflObjectTransactionImpl(ocflObject, ocflStore, inventory, workspaceVersionPath, workspacePath);
+    try {
+      // Exclusive, so of any overlapping updates only one reserves the version
+      await ocflStore.mkdir(versionPath, { recursive: false });
+    } catch (error) {
+      throw isAlreadyExists(error) ? updateInProgress : error;
+    }
+    return new OcflObjectTransactionImpl(ocflObject, ocflStore, inventory, versionPath, inPlace ? undefined : workspacePath, rootExisted, createdNamaste);
   }
 
   _getRealPath(logicalPath: string) {
@@ -237,9 +263,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       // An unclosed writer's `closed` never settles, so abort it first
       await Promise.allSettled([...this._writers].map((w) => w.abort()));
       await Promise.allSettled(this._queue);
-      if (this._createdDir) {
-        await this._store.remove(this._createdDir);
-      }
+      await this._undo();
       this._committed = true;
     }
   }
@@ -257,10 +281,60 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       if (!options?.force && !this._inventory.isChanged) {
         return await this.rollback();
       }
-      await this._commit(options);
+      try {
+        await this._commit(options);
+      } catch (error) {
+        await this.rollback();
+        throw error;
+      }
       this._object._setInventory(this._inventory);
       this._committed = true;
+      await this._removeWorkspaceIfEmpty();
     }
+  }
+
+  /** Remove everything this transaction created, restoring the root inventory if it was replaced */
+  async _undo() {
+    const store = this._store;
+    const root = this._object.root;
+    const rootInv = this._rootInventoryPaths;
+    if (this._rootInventoryReplaced) {
+      if (this._previousRootInventory) {
+        await store.writeFile(rootInv.inventoryTmp, this._previousRootInventory);
+        await store.move(rootInv.inventoryTmp, rootInv.inventory);
+      } else {
+        await store.remove(rootInv.inventory);
+      }
+    }
+    if (this._rootInventoryStaged) {
+      await store.remove(rootInv.inventoryTmp);
+      await store.remove(rootInv.digestTmp);
+    }
+    await store.remove(this._versionPath);
+    if (this._createdNamaste) {
+      await store.remove(this._createdNamaste);
+    }
+    if (!this._rootExisted) {
+      await this._tidy(root);
+    }
+    await this._removeWorkspaceIfEmpty();
+  }
+
+  async _removeWorkspaceIfEmpty() {
+    if (this._workspace) {
+      await this._tidy(this._workspace);
+    }
+  }
+
+  /** A leftover empty directory is harmless, so failing to remove one must not mask the update's outcome */
+  async _tidy(dirPath: string) {
+    await this._store.removeIfEmpty(dirPath).catch(() => {});
+  }
+
+  get _rootInventoryPaths() {
+    const inventory = path.join(this._object.root, INVENTORY_NAME);
+    const digest = `${inventory}.${this._inventory.digestAlgorithm}`;
+    return { inventory, digest, inventoryTmp: `${inventory}.tmp`, digestTmp: `${digest}.tmp` };
   }
 
   async _commit(options: CommitOptions = {}) {
@@ -275,10 +349,9 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       inventory.user = options.user;
     }
 
-    const workspaceVersionPath = this._workspaceVersionPath;
     const objectVersionPath = path.join(this._object.root, inventory.head);
     /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json */
-    let invPath = path.join(workspaceVersionPath, INVENTORY_NAME);
+    let invPath = path.join(this._versionPath, INVENTORY_NAME);
     /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json.sha512 */
     let invDigestPath = `${invPath}.${digestAlgorithm}`;
 
@@ -289,25 +362,25 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     // write inventory.json to workspace
     await this._store.writeFile(invPath, inventoryContent);
     await this._store.writeFile(invDigestPath, digest);
-    if (workspaceVersionPath !== objectVersionPath) {
-      try {
-        await this._object._ensureNamaste();
-        await this._store.move(workspaceVersionPath, objectVersionPath);
-        await this._store.remove(this._createdDir);
-      } catch (error) {
-        await this.rollback();
-        throw error;
-      }
+    if (this._workspace) {
+      this._createdNamaste = await this._object._ensureNamaste();
+      await this._store.move(this._versionPath, objectVersionPath);
+      this._versionPath = objectVersionPath;
     }
     // replace root inventory
-    /* eg: /data/aa/bb/cc/object-1/inventory.json */
-    const rootInvPath = path.join(this._object.root, INVENTORY_NAME);
+    const rootInv = this._rootInventoryPaths;
     /* eg: /data/aa/bb/cc/object-1/v1/inventory.json */
     invPath = path.join(objectVersionPath, INVENTORY_NAME);
     invDigestPath = `${invPath}.${digestAlgorithm}`;
-    const rootInvDigestPath = `${rootInvPath}.${digestAlgorithm}`;
-    await this._store.copyFile(invPath, `${rootInvPath}.tmp`);
-    await Promise.all([this._store.move(`${rootInvPath}.tmp`, rootInvPath), this._store.copyFile(invDigestPath, rootInvDigestPath)]);
+    this._rootInventoryStaged = true;
+    await this._store.copyFile(invPath, rootInv.inventoryTmp);
+    await this._store.copyFile(invDigestPath, rootInv.digestTmp);
+    if (inventory.versionNumber.previous()) {
+      this._previousRootInventory = await this._store.readFile(rootInv.inventory);
+    }
+    await this._store.move(rootInv.inventoryTmp, rootInv.inventory);
+    this._rootInventoryReplaced = true;
+    await this._store.move(rootInv.digestTmp, rootInv.digest);
   }
 
   async createWritable(logicalPath: string, options?: unknown): Promise<WritableStream> {

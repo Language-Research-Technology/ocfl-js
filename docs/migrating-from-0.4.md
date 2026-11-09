@@ -196,6 +196,20 @@ async function moveObject(id: string) {
 }
 ```
 
+## Updates remove only what they created
+
+**Warning for earlier versions:** an object created with `ocfl.object({ root })` and no `workspace` could lose every version when an update ended without committing: an updater that threw, unfinished operations, a `rollback()`, or an update with no changes. With a `workspace`, a failed or successful update removed the whole directory, including anything else in it. Objects from `storage.object()` get their own workspace, so they kept their versions. Upgrade before running further updates on objects with no workspace, and check for a shared or pre-populated workspace. Objects already deleted can't be recovered.
+
+An update now removes only what it created:
+
+- A failed update removes the version directory it was building, so an existing object is left as it was. This includes a commit that fails partway.
+- A failed first version also removes the conformance declaration it wrote, and the object root if the update created it.
+- A workspace directory is removed only when it's left empty.
+
+A custom `OcflStore` inherits the new `removeIfEmpty()`, which uses `readdir()`. Override it if the backend can check and remove in one atomic step.
+
+Starting an update while another update of the same version is open now throws `UPDATE_IN_PROGRESS` straight away. Previously it was detected only once the first update had written a file.
+
 ## Other behaviour changes
 
 - Looking up a file in a version that doesn't exist returns `undefined` (or `0` from `count()`) instead of throwing.

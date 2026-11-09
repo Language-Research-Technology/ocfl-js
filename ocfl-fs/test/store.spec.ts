@@ -35,6 +35,36 @@ describe('OcflFsStore', () => {
     await fs.promises.rm(p1!, { recursive: true, force: true });
   });
 
+  describe('removeIfEmpty', () => {
+    let dir: string;
+    beforeEach(async () => {
+      dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-fs-remove-if-empty-'));
+    });
+    afterEach(async () => {
+      await fs.promises.rm(dir, { recursive: true, force: true });
+    });
+
+    it('removes an empty directory', async () => {
+      await store.removeIfEmpty(dir);
+      assert.equal(fs.existsSync(dir), false);
+    });
+
+    it('keeps a directory that has content', async () => {
+      await fs.promises.writeFile(path.join(dir, 'a.txt'), 'a');
+      await store.removeIfEmpty(dir);
+      assert.equal(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8'), 'a');
+    });
+
+    it('ignores a missing directory', async () => {
+      await assert.doesNotReject(store.removeIfEmpty(path.join(dir, 'missing')));
+    });
+
+    it('reports any other failure', async () => {
+      const denied = { ...fs, promises: { ...fs.promises, rmdir: async () => Promise.reject(Object.assign(new Error('denied'), { code: 'EACCES' })) } };
+      await assert.rejects(new OcflFsStore({ fs: denied as typeof fs }).removeIfEmpty(dir), { code: 'EACCES' });
+    });
+  });
+
   describe('move', () => {
     let dir: string;
     let source: string;
@@ -116,6 +146,22 @@ describe('OcflFsStore', () => {
 
       assert.deepEqual(await fs.promises.readdir(path.dirname(target)), []);
       assert.deepEqual((await fs.promises.readdir(source)).sort(), ['a.txt', 'b.txt']);
+    });
+
+    it('completes a cross-filesystem move when the source cannot be removed', async () => {
+      await writeFiles(source, { 'a.txt': 'hello' });
+      const base = crossDeviceFs();
+      const rm = async (target_: fs.PathLike, options?: fs.RmOptions) => {
+        if (String(target_) === source) {
+          throw Object.assign(new Error('rm failed'), { code: 'EBUSY' });
+        }
+        return fs.promises.rm(target_, options);
+      };
+      const store = new OcflFsStore({ fs: { ...base, promises: { ...base.promises, rm } } });
+
+      await store.move(source, target);
+
+      assert.equal(await fs.promises.readFile(path.join(target, 'a.txt'), 'utf8'), 'hello');
     });
 
     it('rejects a cross-filesystem move onto a non-empty directory instead of merging', async () => {

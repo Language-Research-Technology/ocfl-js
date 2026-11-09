@@ -8,6 +8,46 @@ class OcflTest2Store extends OcflStore {
   static instances = new Map();
 }
 
+describe('OcflStore default removeIfEmpty', () => {
+  function storeWith(readdir: () => Promise<string[]>) {
+    const removed: string[] = [];
+    class Store extends OcflStore {
+      override readdir = readdir;
+      override async remove(filePath: string) {
+        removed.push(filePath);
+      }
+    }
+    return { store: new Store(), removed };
+  }
+
+  it('removes an empty directory', async () => {
+    const { store, removed } = storeWith(async () => []);
+    await store.removeIfEmpty('/dir');
+    assert.deepStrictEqual(removed, ['/dir']);
+  });
+
+  it('keeps a directory that has content', async () => {
+    const { store, removed } = storeWith(async () => ['a.txt']);
+    await store.removeIfEmpty('/dir');
+    assert.deepStrictEqual(removed, []);
+  });
+
+  it('ignores a missing directory', async () => {
+    const { store, removed } = storeWith(async () => {
+      throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+    });
+    await store.removeIfEmpty('/dir');
+    assert.deepStrictEqual(removed, []);
+  });
+
+  it('reports any other failure', async () => {
+    const { store } = storeWith(async () => {
+      throw Object.assign(new Error('denied'), { code: 'EACCES' });
+    });
+    await assert.rejects(store.removeIfEmpty('/dir'), { code: 'EACCES' });
+  });
+});
+
 describe('Subclassing OcflStore class', () => {
   it('always get new instance if instances property is not included', () => {
     const s1 = OcflTest1Store.getInstance();
