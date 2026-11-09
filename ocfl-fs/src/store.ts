@@ -8,6 +8,10 @@ export interface OcflFsStoreConfig {
   fs?: typeof fs | undefined;
 }
 
+function hasErrorCode(error: unknown, ...codes: string[]) {
+  return error instanceof Error && 'code' in error && codes.includes(error.code as string);
+}
+
 /**
  * OCFL Object backed by local filesystem
  */
@@ -116,7 +120,7 @@ class OcflFsStore extends OcflStore {
       await rename(source, target);
       return;
     } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'EXDEV')) {
+      if (!hasErrorCode(error, 'EXDEV')) {
         throw error;
       }
     }
@@ -129,11 +133,23 @@ class OcflFsStore extends OcflStore {
     } finally {
       await rm(staging, { recursive: true, force: true });
     }
-    await rm(source, { recursive: true, force: true });
+    // The target is complete, so a leftover source must not fail the move
+    await rm(source, { recursive: true, force: true }).catch(() => {});
   }
 
   async remove(filePath: string) {
     return this.fs.promises.rm(filePath, { recursive: true, force: true });
+  }
+
+  async removeIfEmpty(dirPath: string) {
+    try {
+      await this.fs.promises.rmdir(dirPath);
+    } catch (error) {
+      // POSIX allows EEXIST in place of ENOTEMPTY
+      if (!hasErrorCode(error, 'ENOENT', 'ENOTEMPTY', 'EEXIST')) {
+        throw error;
+      }
+    }
   }
 }
 

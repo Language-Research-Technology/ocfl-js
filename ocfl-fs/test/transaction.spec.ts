@@ -23,7 +23,9 @@ describe('OcflTransactionImpl class', () => {
     _setInventory: (inv) => {
       newInv = inv;
     },
-    async _ensureNamaste() {},
+    async _ensureNamaste() {
+      return undefined;
+    },
   };
 
   beforeEach(async () => {
@@ -51,7 +53,7 @@ describe('OcflTransactionImpl class', () => {
 
   it('rollback', async () => {
     const trx = await createTransaction();
-    const wp = trx._workspaceVersionPath;
+    const wp = trx._versionPath;
     await trx.write('test.txt', 'test');
     assert.strictEqual(fs.readFileSync(`${wp}/content/test.txt`, 'utf-8'), 'test');
     await trx.rollback();
@@ -60,7 +62,7 @@ describe('OcflTransactionImpl class', () => {
 
   it('commit', async () => {
     const trx = await createTransaction();
-    const wp = trx._workspaceVersionPath;
+    const wp = trx._versionPath;
     await trx.write('test.txt', 'test');
     assert.strictEqual(fs.readFileSync(`${wp}/content/test.txt`, 'utf-8'), 'test');
     await trx.commit({ message: 'test commit', user: { name: 'tester', address: 'tester@example.com' } });
@@ -74,7 +76,7 @@ describe('OcflTransactionImpl class', () => {
 
   it('createWritable', async () => {
     const trx = await createTransaction();
-    const wp = trx._workspaceVersionPath;
+    const wp = trx._versionPath;
     const ws = await trx.createWritable('test.txt');
     const writer = ws.getWriter();
     await writer.write('test1');
@@ -86,7 +88,7 @@ describe('OcflTransactionImpl class', () => {
 
   it('write', async () => {
     const trx = await createTransaction();
-    const wp = trx._workspaceVersionPath;
+    const wp = trx._versionPath;
     // test writing text
     const text1 = 'Hello, World!';
     const text2 = 'Test content';
@@ -126,7 +128,7 @@ describe('OcflTransactionImpl class', () => {
 
   it('import', async () => {
     const trx = await createTransaction();
-    const wp = trx._workspaceVersionPath;
+    const wp = trx._versionPath;
     // import a file
     await trx.import('/source/metadata.json', 'metadata.json');
     assert.strictEqual(fs.readFileSync(`${wp}/content/metadata.json`, 'utf-8'), '{}');
@@ -162,7 +164,7 @@ describe('OcflTransactionImpl class', () => {
 
   it('copy', async () => {
     const trx = await createTransaction();
-    const wp = trx._workspaceVersionPath;
+    const wp = trx._versionPath;
     await trx.import('/source', '');
     assert.strictEqual(fs.readFileSync(`${wp}/content/metadata.json`, 'utf-8'), '{}');
     await trx.copy('data/a/a.txt', 'data/c/c.txt');
@@ -172,7 +174,7 @@ describe('OcflTransactionImpl class', () => {
 
   it('rename', async () => {
     const trx = await createTransaction();
-    const wp = trx._workspaceVersionPath;
+    const wp = trx._versionPath;
     await trx.import('/source', '');
     assert.strictEqual(fs.readFileSync(`${wp}/content/metadata.json`, 'utf-8'), '{}');
     const a = newInv!.getDigest('data/a/a.txt');
@@ -186,7 +188,7 @@ describe('OcflTransactionImpl class', () => {
 
   it('remove', async () => {
     let trx = await createTransaction();
-    const wp = trx._workspaceVersionPath;
+    const wp = trx._versionPath;
     await trx.import('/source', '');
     assert.strictEqual(fs.readFileSync(`${wp}/content/data/a/a.txt`, 'utf-8'), 'data a');
     await trx.remove('data/a/a.txt');

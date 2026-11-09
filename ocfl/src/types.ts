@@ -73,7 +73,7 @@ type OcflStorageLayout = import('./extension.ts').OcflStorageLayout;
 export type OcflStorageConfig = {
   /** Absolute path to the ocfl storage root. */
   root: string;
-  /** Absolute path to storage workspace directory. */
+  /** Absolute path to storage workspace directory. Each object works in its own subdirectory; use it for one storage root at a time. */
   workspace?: string | undefined;
   /**
    * A layout that identifies an arrangement of directories and OCFL objects under the storage root.
@@ -99,7 +99,7 @@ export type OcflStorageConfig = {
 export type OcflObjectConfig = {
   /** Absolute path to the ocfl object root. */
   root: string;
-  /** Absolute path to object workspace directory. */
+  /** Absolute path to object workspace directory. Use it for one object at a time. */
   workspace?: string | undefined;
   /** Identifier for the object.  Only be used in a newly created object. */
   id?: string | undefined;

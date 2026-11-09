@@ -5,7 +5,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { after, before, describe, it, mock } from 'node:test';
-import { type Inventory, ObjectNotFoundError, ObjectNotLoadedError, type OcflObject, type OcflObjectConfig, type OcflVersion } from '@ocfl/ocfl';
+import {
+  type Inventory,
+  ObjectNotFoundError,
+  ObjectNotLoadedError,
+  type OcflObject,
+  type OcflObjectConfig,
+  type OcflObjectTransaction,
+  type OcflVersion,
+} from '@ocfl/ocfl';
 import type { Ocfl } from './index.ts';
 
 export default (ocfl: Ocfl) => {
@@ -496,6 +504,294 @@ export default (ocfl: Ocfl) => {
         const inventory = await readInventory(object);
         assert.strictEqual(inventory.head, 'v1');
         assert.strictEqual(inventory.fixity, undefined);
+      });
+    });
+
+    describe('removes only what the update created', () => {
+      let scenario = 0;
+
+      function dirs(useWorkspace = false) {
+        const base = path.join(tempdir, `scoped-${++scenario}`);
+        return { root: path.join(base, 'object'), workspace: useWorkspace ? path.join(base, 'workspace') : undefined };
+      }
+
+      async function snapshot(dir: string) {
+        const entries = await fs.promises.readdir(dir, { recursive: true, withFileTypes: true });
+        const files = entries.filter((e) => e.isFile()).map((e) => path.join(e.parentPath, e.name));
+        return Object.fromEntries(await Promise.all(files.map(async (f) => [path.relative(dir, f), await fs.promises.readFile(f, 'utf8')])));
+      }
+
+      const unfinished = async (t: OcflObjectTransaction) => {
+        t.write('floating.txt', 'floating');
+      };
+      const writeB = (t: OcflObjectTransaction) => t.write('b.txt', 'b');
+      type Outcome = [string, (o: OcflObject) => Promise<unknown>];
+      const throwing: Outcome[1] = (o) =>
+        assert.rejects(
+          o.update(async (t) => {
+            await writeB(t);
+            throw new Error('updater failed');
+          }),
+          /updater failed/,
+        );
+      const endings: Outcome[] = [
+        ['a throwing updater', throwing],
+        ['unfinished operations', (o) => assert.rejects(o.update(unfinished), /Unfinished operations/)],
+        [
+          'a manual rollback',
+          async (o) => {
+            const t = (await o.update())!;
+            await t.write('b.txt', 'b');
+            await t.rollback();
+          },
+        ],
+      ];
+      const noOp: Outcome = ['a no-op update', (o) => o.update(async () => {})];
+
+      for (const [name, end] of [...endings, noOp]) {
+        it(`leaves an existing object intact after ${name} with no workspace`, async () => {
+          const { root } = dirs();
+          const o = ocfl.object({ id: 'scoped', root });
+          await o.update(async (t) => t.write('a.txt', 'a'));
+          const before = await snapshot(root);
+
+          await end(o);
+
+          assert.deepStrictEqual(await snapshot(root), before);
+          assert.strictEqual(o.headVersion?.toString(), 'v1');
+        });
+      }
+
+      // An update with no changes commits an empty first version, so it is not a rollback here.
+      for (const [name, end] of endings) {
+        it(`leaves no partial object after ${name} on a new object with no workspace`, async () => {
+          const { root } = dirs();
+          const o = ocfl.object({ id: 'scoped', root });
+
+          await end(o);
+
+          await assert.rejects(fs.promises.access(root), { code: 'ENOENT' });
+          await o.update(async (t) => t.write('a.txt', 'a'));
+          assert.strictEqual(await o.getFile('a.txt')!.asString(), 'a');
+        });
+
+        it(`keeps an object root that already existed after ${name} with no workspace`, async () => {
+          const { root } = dirs();
+          await fs.promises.mkdir(root, { recursive: true });
+          const o = ocfl.object({ id: 'scoped', root });
+
+          await end(o);
+
+          assert.deepStrictEqual(await fs.promises.readdir(root), []);
+          await o.update(async (t) => t.write('a.txt', 'a'));
+          assert.strictEqual(await o.getFile('a.txt')!.asString(), 'a');
+        });
+      }
+
+      const updateOutcomes: Outcome[] = [
+        ['a failed', throwing],
+        ['a successful', (o) => o.update(writeB)],
+      ];
+
+      for (const [name, update] of updateOutcomes) {
+        it(`keeps unrelated workspace content after ${name} update`, async () => {
+          const { root, workspace } = dirs(true);
+          await fs.promises.mkdir(workspace!, { recursive: true });
+          await fs.promises.writeFile(path.join(workspace!, 'unrelated.txt'), 'keep');
+          const o = ocfl.object({ id: 'scoped', root, workspace });
+
+          await update(o);
+
+          assert.deepStrictEqual(await fs.promises.readdir(workspace!), ['unrelated.txt']);
+          assert.strictEqual(await fs.promises.readFile(path.join(workspace!, 'unrelated.txt'), 'utf8'), 'keep');
+        });
+
+        it(`removes a workspace left empty by ${name} update`, async () => {
+          const { root, workspace } = dirs(true);
+          const o = ocfl.object({ id: 'scoped', root, workspace });
+
+          await update(o);
+
+          await assert.rejects(fs.promises.access(workspace!), { code: 'ENOENT' });
+        });
+
+        it(`handles an object root inside the workspace after ${name} update`, async () => {
+          const { workspace } = dirs(true);
+          const root = path.join(workspace!, 'object');
+          const o = ocfl.object({ id: 'scoped', root, workspace });
+          await o.update(async (t) => t.write('a.txt', 'a'));
+          const before = await snapshot(root);
+
+          await update(o);
+
+          const after = await snapshot(root);
+          assert.ok(Object.keys(before).every((f) => f in after));
+          assert.deepStrictEqual(await fs.promises.readdir(workspace!), ['object']);
+          assert.strictEqual(await o.getFile('a.txt')!.asString(), 'a');
+        });
+      }
+
+      it('does not disturb another object in progress in a shared workspace', async () => {
+        const base = dirs(true);
+        const other = path.join(path.dirname(base.root), 'other');
+        const a = ocfl.object({ id: 'a', root: base.root, workspace: base.workspace });
+        const b = ocfl.object({ id: 'b', root: other, workspace: base.workspace });
+        await a.update(async (t) => t.write('a.txt', 'a'));
+
+        const inProgress = (await a.update())!;
+        await inProgress.write('new.txt', 'new');
+        await b.update(async (t) => t.write('b.txt', 'b'));
+        await inProgress.commit();
+
+        assert.strictEqual(await a.getFile('new.txt')!.asString(), 'new');
+        assert.strictEqual(a.headVersion?.toString(), 'v2');
+      });
+
+      async function withFsFailure<T>(method: 'rename' | 'copyFile' | 'writeFile' | 'rmdir', failingPath: string, fn: () => Promise<T>) {
+        const fsp = fs.promises as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
+        const real = fsp[method]!;
+        const spy = mock.method(fsp, method, async (...args: unknown[]) => {
+          if (args.slice(0, 2).includes(failingPath)) {
+            throw Object.assign(new Error('injected failure'), { code: 'EIO' });
+          }
+          return real.apply(fs.promises, args);
+        });
+        try {
+          return await fn();
+        } finally {
+          spy.mock.restore();
+        }
+      }
+
+      const assertGone = (dir: string | undefined) => dir && assert.rejects(fs.promises.access(dir), { code: 'ENOENT' });
+
+      const commitSteps: {
+        step: string;
+        method: 'rename' | 'copyFile' | 'writeFile';
+        target: (root: string, workingDir: string, version: string) => string;
+        workspaceOnly?: boolean;
+      }[] = [
+        { step: 'writing the version inventory', method: 'writeFile', target: (_, dir, v) => path.join(dir, v, 'inventory.json') },
+        { step: 'moving the version into the object', method: 'rename', target: (root, _, v) => path.join(root, v), workspaceOnly: true },
+        { step: 'staging the root inventory', method: 'copyFile', target: (root) => path.join(root, 'inventory.json.tmp') },
+        { step: 'staging the root inventory sidecar', method: 'copyFile', target: (root) => path.join(root, 'inventory.json.sha512.tmp') },
+        { step: 'replacing the root inventory', method: 'rename', target: (root) => path.join(root, 'inventory.json') },
+        { step: 'replacing the root inventory sidecar', method: 'rename', target: (root) => path.join(root, 'inventory.json.sha512') },
+      ];
+
+      for (const useWorkspace of [true, false]) {
+        const label = `with${useWorkspace ? '' : 'out'} a workspace`;
+        for (const { step, method, target } of commitSteps.filter((s) => useWorkspace || !s.workspaceOnly)) {
+          it(`leaves an existing object intact when ${step} fails, ${label}`, async () => {
+            const { root, workspace } = dirs(useWorkspace);
+            const o = ocfl.object({ id: 'scoped', root, workspace });
+            await o.update(async (t) => t.write('a.txt', 'a'));
+            const before = await snapshot(root);
+
+            await withFsFailure(method, target(root, workspace ?? root, 'v2'), () => assert.rejects(o.update(writeB), /injected failure/));
+
+            assert.deepStrictEqual(await snapshot(root), before);
+            await assertGone(workspace);
+            assert.strictEqual(o.headVersion?.toString(), 'v1');
+            await o.update(writeB);
+            assert.strictEqual(await o.getFile('b.txt')!.asString(), 'b');
+          });
+
+          it(`leaves no partial object when ${step} fails on a new object, ${label}`, async () => {
+            const { root, workspace } = dirs(useWorkspace);
+            const o = ocfl.object({ id: 'scoped', root, workspace });
+
+            await withFsFailure(method, target(root, workspace ?? root, 'v1'), () => assert.rejects(o.update(writeB), /injected failure/));
+
+            await assert.rejects(fs.promises.access(root), { code: 'ENOENT' });
+            await assertGone(workspace);
+            await o.update(writeB);
+            assert.strictEqual(await o.getFile('b.txt')!.asString(), 'b');
+          });
+        }
+      }
+
+      it('restores the root inventory when the previous version has no inventory of its own', async () => {
+        const { root } = dirs();
+        const o = ocfl.object({ id: 'scoped', root });
+        await o.update(async (t) => t.write('a.txt', 'a'));
+        await fs.promises.rm(path.join(root, 'v1/inventory.json'));
+        const before = await snapshot(root);
+
+        await withFsFailure('rename', path.join(root, 'inventory.json.sha512'), () => assert.rejects(o.update(writeB), /injected failure/));
+
+        assert.deepStrictEqual(await snapshot(root), before);
+      });
+
+      it('keeps a file that only looks like its staged inventory when nothing was staged', async () => {
+        const { root } = dirs();
+        const o = ocfl.object({ id: 'scoped', root });
+        await o.update(async (t) => t.write('a.txt', 'a'));
+        await fs.promises.writeFile(path.join(root, 'inventory.json.tmp'), 'not ours');
+
+        await o.update(async () => {});
+
+        assert.strictEqual(await fs.promises.readFile(path.join(root, 'inventory.json.tmp'), 'utf8'), 'not ours');
+      });
+
+      it('reports the updater error when the empty workspace cannot be removed', async () => {
+        const { root, workspace } = dirs(true);
+        const o = ocfl.object({ id: 'scoped', root, workspace });
+
+        await withFsFailure('rmdir', workspace!, () => throwing(o));
+      });
+
+      it('removes a failed first version when the object root is inside the workspace', async () => {
+        const { workspace } = dirs(true);
+        const root = path.join(workspace!, 'object');
+        const o = ocfl.object({ id: 'scoped', root, workspace });
+
+        await throwing(o);
+
+        await assert.rejects(fs.promises.access(workspace!), { code: 'ENOENT' });
+        await o.update(writeB);
+        assert.strictEqual(await o.getFile('b.txt')!.asString(), 'b');
+      });
+
+      for (const useWorkspace of [true, false]) {
+        it(`refuses an overlapping update of the same object, with${useWorkspace ? '' : 'out'} a workspace`, async () => {
+          const { root, workspace } = dirs(useWorkspace);
+          const o = ocfl.object({ id: 'scoped', root, workspace });
+          await o.update(async (t) => t.write('a.txt', 'a'));
+
+          const first = (await o.update())!;
+          await assert.rejects(o.update(), { code: 'UPDATE_IN_PROGRESS' });
+          await first.write('b.txt', 'b');
+          await first.commit();
+
+          assert.strictEqual(await o.getFile('b.txt')!.asString(), 'b');
+        });
+      }
+
+      for (const useWorkspace of [true, false]) {
+        it(`lets only one concurrent update reserve a version, with${useWorkspace ? '' : 'out'} a workspace`, async () => {
+          const { root, workspace } = dirs(useWorkspace);
+          const o = ocfl.object({ id: 'scoped', root, workspace });
+          await o.update(async (t) => t.write('a.txt', 'a'));
+
+          const results = await Promise.allSettled([o.update(), o.update()]);
+
+          const rejected = results.filter((r) => r.status === 'rejected');
+          assert.deepStrictEqual(
+            rejected.map((r) => r.reason.code),
+            ['UPDATE_IN_PROGRESS'],
+          );
+        });
+      }
+
+      it('resolves when the committed update cannot remove its empty workspace', async () => {
+        const { root, workspace } = dirs(true);
+        const o = ocfl.object({ id: 'scoped', root, workspace });
+
+        await withFsFailure('rmdir', workspace!, () => o.update(writeB));
+
+        assert.strictEqual(await o.getFile('b.txt')!.asString(), 'b');
+        assert.strictEqual(o.headVersion?.toString(), 'v1');
       });
     });
 

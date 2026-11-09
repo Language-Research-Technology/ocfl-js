@@ -1,6 +1,6 @@
 import type { Dir, ReadStream, Stats, WriteStream } from 'node:fs';
 import path from 'node:path';
-import { joinTypedArray } from './utils.ts';
+import { isNotFound, joinTypedArray } from './utils.ts';
 
 const emptyOptions = {};
 
@@ -193,6 +193,25 @@ class OcflStore {
    */
   async remove(_filePath: string): Promise<void> {
     throw new Error('Not Implemented');
+  }
+
+  /**
+   * Remove a directory if it is empty, otherwise do nothing. A missing directory is not an error.
+   * The default checks then removes, so a backend that can do both atomically should override it.
+   */
+  async removeIfEmpty(dirPath: string): Promise<void> {
+    let entries: string[];
+    try {
+      entries = await this.readdir(dirPath);
+    } catch (error) {
+      if (isNotFound(error)) {
+        return;
+      }
+      throw error;
+    }
+    if (entries.length === 0) {
+      await this.remove(dirPath);
+    }
   }
 }
 

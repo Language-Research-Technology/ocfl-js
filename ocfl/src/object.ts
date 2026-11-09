@@ -138,14 +138,12 @@ class OcflObject {
    */
   async #createTransaction(inventory: OcflObjectInventoryMut): Promise<OcflObjectTransaction> {
     await this._validateObjectPath();
-    if (!this.workspace) {
-      await this._ensureNamaste();
-    }
     const workspacePath = this.workspace || this.root;
     return OcflObjectTransactionImpl.create(this, this.#store, inventory, workspacePath);
   }
 
-  async _ensureNamaste() {
+  /** @returns The path of the declaration file, if this call wrote one */
+  async _ensureNamaste(): Promise<string | undefined> {
     const prefix = NAMASTE_PREFIX_OBJECT;
     const nv = await findNamasteVersion(this.#store, prefix, this.root);
     if (nv === '') {
@@ -165,6 +163,7 @@ class OcflObject {
     //create the namaste file
     const filePath = path.join(this.root, NAMASTE_T + prefix + this.ocflVersion);
     await this.#store.writeFile(filePath, `${prefix + this.ocflVersion}\n`, 'utf8');
+    return filePath;
   }
 
   /**

@@ -8,6 +8,10 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
 }
 
+function isAlreadyExists(error: unknown) {
+  return isErrnoException(error) && error.code === 'EEXIST';
+}
+
 function isNotFound(error: unknown) {
   return isErrnoException(error) && error.code === 'ENOENT';
 }
@@ -95,4 +99,4 @@ function joinTypedArray(target: ArrayBuffer | TypedArray, source: ArrayBuffer | 
   return mergedArray;
 }
 
-export { findNamasteVersion, isDirEmpty, isNotFound, joinTypedArray, parallelize };
+export { findNamasteVersion, isAlreadyExists, isDirEmpty, isNotFound, joinTypedArray, parallelize };
