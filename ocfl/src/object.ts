@@ -13,6 +13,7 @@ import { findNamasteVersion, isDirEmpty, isNotFound, parallelize } from './utils
 import { createError } from './validation.ts';
 
 const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
+const INVENTORY_TYPE = /^https:\/\/ocfl\.io\/([^/]+)\/spec\/#inventory$/;
 
 export type UpdateMode = 'MERGE' | 'REPLACE';
 type LogicalPath = string;
@@ -36,7 +37,7 @@ function isMidCommitRead(err: unknown) {
  * A class representing an OCFL Object allowing to read and write the content of an OCFL Object in the underlying store.
  */
 class OcflObject {
-  #ocflVersion: OcflVersion;
+  #configuredOcflVersion: OcflVersion;
   #root: string;
   #workspace: string | undefined;
   #id: string | undefined;
@@ -66,7 +67,7 @@ class OcflObject {
       throw new Error('[OcflObject] config.root and config.workspace must be different.');
     }
     this.#root = path.resolve(config.root);
-    this.#ocflVersion = config.ocflVersion || (OCFL_VERSION as OcflVersion);
+    this.#configuredOcflVersion = config.ocflVersion || (OCFL_VERSION as OcflVersion);
     //this.contentVersion = null; // No content yet
     this.#id = config.id;
     this.#extensions = config.extensions;
@@ -122,9 +123,14 @@ class OcflObject {
     return this.#workspace;
   }
 
-  /** The raw OCFL version number the object adheres to , eg 1.0, 1.1) */
-  get ocflVersion() {
-    return this.#ocflVersion;
+  /**
+   * The OCFL version the object adheres to, eg 1.0, 1.1. For an existing object, only reliable once its root inventory
+   * has been read, by {@link load} or any method that reads it. Until then, and for an object that doesn't exist yet,
+   * this is the configured version or the library default.
+   */
+  get ocflVersion(): OcflVersion {
+    const declared = this.inventory && INVENTORY_TYPE.exec(this.inventory.type)?.[1];
+    return (declared as OcflVersion | undefined) ?? this.#configuredOcflVersion;
   }
 
   /**
@@ -146,9 +152,6 @@ class OcflObject {
       throw createError('E007', this.root);
     }
     if (nv) {
-      if (!this.ocflVersion) {
-        this.#ocflVersion = nv as OcflVersion;
-      }
       return;
     }
     // namaste not found, check if object root is not empty

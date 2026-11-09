@@ -4,10 +4,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import type { Inventory } from '@ocfl/ocfl';
+import type { Inventory, OcflVersion } from '@ocfl/ocfl';
 import ocflTests from '@ocfl/ocfl-tests';
 import ocfl, { ObjectNotFoundError, ObjectNotLoadedError } from '../src/index.ts';
 import { ocflError } from './ocfl-error.ts';
+
+async function writeInventory(inventoryPath: string, data: string) {
+  await fs.promises.writeFile(inventoryPath, data);
+  await fs.promises.writeFile(`${inventoryPath}.sha512`, `${createHash('sha512').update(data).digest('hex')} inventory.json\n`);
+}
 
 describe('OcflObject class using OcflFsStore', () => {
   // it("constructor", function() {
@@ -34,9 +39,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
     await ocfl.object({ id: name, root }).update(async (t) => t.write('a.txt', 'a'));
     const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8'));
     corrupt(inv);
-    const data = JSON.stringify(inv, null, 2);
-    await fs.promises.writeFile(path.join(root, 'inventory.json'), data);
-    await fs.promises.writeFile(path.join(root, 'inventory.json.sha512'), `${createHash('sha512').update(data).digest('hex')} inventory.json\n`);
+    await writeInventory(path.join(root, 'inventory.json'), JSON.stringify(inv, null, 2));
     return ocfl.object({ root });
   }
 
@@ -277,5 +280,93 @@ describe('OcflObject with a malformed or missing inventory', () => {
     );
     await o.update(async (t) => t.write('b.txt', 'b'));
     assert.strictEqual(await o.count(), 1);
+  });
+});
+
+describe('OcflObject.ocflVersion', () => {
+  let tempdir: string;
+  before(async () => {
+    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-fs-object-version-'));
+  });
+  after(async () => {
+    await fs.promises.rm(tempdir, { recursive: true, force: true });
+  });
+
+  async function existingObject(name: string, ocflVersion: OcflVersion) {
+    const root = path.join(tempdir, name);
+    await ocfl.object({ id: name, root, ocflVersion }).update(async (t) => t.write('a.txt', 'a'));
+    return root;
+  }
+
+  it('reports the version of a 1.0 object when none is configured', async () => {
+    const o = ocfl.object({ root: await existingObject('unconfigured', '1.0') });
+    await o.load();
+    assert.strictEqual(o.ocflVersion, '1.0');
+  });
+
+  it('reports the version of a 1.0 object in a 1.1 storage root', async () => {
+    const root = path.join(tempdir, 'mixed-root');
+    const created = ocfl.storage({ root, ocflVersion: '1.0', layout: 'HashedNTupleStorageLayout' });
+    await created.create();
+    await created.object('a').update(async (t) => t.write('a.txt', 'a'));
+    await fs.promises.rm(path.join(root, '0=ocfl_1.0'));
+    await fs.promises.writeFile(path.join(root, '0=ocfl_1.1'), 'ocfl_1.1\n');
+
+    const o = (await ocfl.storage({ root }).load()).object('a');
+    assert.strictEqual(o.ocflVersion, '1.1');
+    await o.load();
+    assert.strictEqual(o.ocflVersion, '1.0');
+  });
+
+  it('ignores a configured version that differs from the object', async () => {
+    const o = ocfl.object({ root: await existingObject('configured-earlier', '1.1'), ocflVersion: '1.0' });
+    await o.load();
+    assert.strictEqual(o.ocflVersion, '1.1');
+  });
+
+  it('is correct after refresh on an object that has not been loaded', async () => {
+    const o = ocfl.object({ root: await existingObject('refresh', '1.0') });
+    await o.refresh();
+    assert.strictEqual(o.ocflVersion, '1.0');
+  });
+
+  it('is correct after update on an object that has not been loaded', async () => {
+    const o = ocfl.object({ root: await existingObject('update', '1.0') });
+    await o.update(async (t) => t.write('b.txt', 'b'));
+    assert.strictEqual(o.ocflVersion, '1.0');
+  });
+
+  it('is not changed by reading an earlier version with an older inventory', async () => {
+    const root = await existingObject('earlier-inventory', '1.1');
+    const o = ocfl.object({ root });
+    await o.update(async (t) => t.write('b.txt', 'b'));
+    const earlier = path.join(root, 'v1', 'inventory.json');
+    const data = (await fs.promises.readFile(earlier, 'utf8')).replace('https://ocfl.io/1.1/spec/#inventory', 'https://ocfl.io/1.0/spec/#inventory');
+    await writeInventory(earlier, data);
+
+    const reader = ocfl.object({ root });
+    await reader.load();
+    assert.strictEqual(reader.ocflVersion, '1.1');
+    assert.strictEqual((await reader.getInventory('v1'))?.type, 'https://ocfl.io/1.0/spec/#inventory');
+    assert.strictEqual(reader.ocflVersion, '1.1');
+  });
+
+  it('returns the configured version or the default before loading', async () => {
+    const configured = await existingObject('before-load-configured', '1.1');
+    assert.strictEqual(ocfl.object({ root: configured, ocflVersion: '1.0' }).ocflVersion, '1.0');
+    const unconfigured = await existingObject('before-load-default', '1.0');
+    assert.strictEqual(ocfl.object({ root: unconfigured }).ocflVersion, '1.1');
+  });
+
+  it('leaves the version of an existing object unchanged on update', async () => {
+    const root = await existingObject('update-unchanged', '1.0');
+    const o = ocfl.object({ root, ocflVersion: '1.1' });
+    await o.update(async (t) => t.write('b.txt', 'b'));
+    assert.deepStrictEqual(
+      (await fs.promises.readdir(root)).filter((f) => f.startsWith('0=')),
+      ['0=ocfl_object_1.0'],
+    );
+    const { type } = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8')) as Inventory;
+    assert.strictEqual(type, 'https://ocfl.io/1.0/spec/#inventory');
   });
 });
