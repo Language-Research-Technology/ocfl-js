@@ -134,7 +134,7 @@ export default (ocfl: Ocfl) => {
     }
 
     async function withFsFailure<T>(
-      method: 'rename' | 'copyFile' | 'writeFile' | 'rmdir',
+      method: 'rename' | 'copyFile' | 'writeFile' | 'rmdir' | 'rm',
       failing: string | ((source: string, target: string) => boolean),
       fn: () => Promise<T>,
     ) {
@@ -197,6 +197,37 @@ export default (ocfl: Ocfl) => {
       }
       const inventory = await readInventory(o);
       assert.deepStrictEqual(Object.values(inventory.versions[inventory.head]!.state).flat().sort(), Object.keys(expected).sort());
+    }
+
+    async function assertNoEmptyDirectories(o: OcflObject, version: string) {
+      const dir = path.join(o.root, version);
+      const entries = await fs.promises.readdir(dir, { recursive: true, withFileTypes: true });
+      for (const entry of entries.filter((e) => e.isDirectory())) {
+        const inside = await fs.promises.readdir(path.join(entry.parentPath, entry.name));
+        assert.ok(inside.length > 0, `${path.join(entry.parentPath, entry.name)} is empty`);
+      }
+    }
+
+    /** The invariants the version must meet at commit */
+    async function assertValid(o: OcflObject, version: string, expected: Record<string, string>) {
+      const inventory = await assertManifestMatchesFiles(o, version);
+      await assertNoEmptyDirectories(o, version);
+      const usedDigests = new Set(Object.values(inventory.versions).flatMap((v) => Object.keys(v.state)));
+      const contentPaths = Object.values(inventory.manifest).flat();
+      assert.strictEqual(new Set(contentPaths).size, contentPaths.length, 'a content path appears under two digests');
+      for (const [digest, paths] of Object.entries(inventory.manifest)) {
+        assert.ok(usedDigests.has(digest), `${digest} is in the manifest but no version state uses it`);
+        for (const contentPath of paths) {
+          assert.strictEqual(sha512(await fs.promises.readFile(path.join(o.root, contentPath))), digest, contentPath);
+        }
+      }
+      for (const [algorithm, block] of Object.entries(inventory.fixity ?? {})) {
+        const fixityPaths = Object.values(block).flat();
+        assert.strictEqual(new Set(fixityPaths).size, fixityPaths.length, `a content path has two ${algorithm} values`);
+      }
+      await assertFixityPathsExist(o, inventory);
+      await assertReads(o, expected);
+      return inventory;
     }
 
     before(async () => {
@@ -1040,37 +1071,6 @@ export default (ocfl: Ocfl) => {
         ],
       ];
 
-      async function assertNoEmptyDirectories(o: OcflObject, version: string) {
-        const dir = path.join(o.root, version);
-        const entries = await fs.promises.readdir(dir, { recursive: true, withFileTypes: true });
-        for (const entry of entries.filter((e) => e.isDirectory())) {
-          const inside = await fs.promises.readdir(path.join(entry.parentPath, entry.name));
-          assert.ok(inside.length > 0, `${path.join(entry.parentPath, entry.name)} is empty`);
-        }
-      }
-
-      /** The invariants the version must meet at commit */
-      async function assertValid(o: OcflObject, version: string, expected: Record<string, string>) {
-        const inventory = await assertManifestMatchesFiles(o, version);
-        await assertNoEmptyDirectories(o, version);
-        const usedDigests = new Set(Object.values(inventory.versions).flatMap((v) => Object.keys(v.state)));
-        const contentPaths = Object.values(inventory.manifest).flat();
-        assert.strictEqual(new Set(contentPaths).size, contentPaths.length, 'a content path appears under two digests');
-        for (const [digest, paths] of Object.entries(inventory.manifest)) {
-          assert.ok(usedDigests.has(digest), `${digest} is in the manifest but no version state uses it`);
-          for (const contentPath of paths) {
-            assert.strictEqual(sha512(await fs.promises.readFile(path.join(o.root, contentPath))), digest, contentPath);
-          }
-        }
-        for (const [algorithm, block] of Object.entries(inventory.fixity ?? {})) {
-          const fixityPaths = Object.values(block).flat();
-          assert.strictEqual(new Set(fixityPaths).size, fixityPaths.length, `a content path has two ${algorithm} values`);
-        }
-        await assertFixityPathsExist(o, inventory);
-        await assertReads(o, expected);
-        return inventory;
-      }
-
       const scenarios = [
         'a=AAA, a=BBB',
         'a=AAA, a=BBB, a=AAA',
@@ -1197,6 +1197,275 @@ export default (ocfl: Ocfl) => {
           );
         });
         await assertValid(o, 'v1', { 'x/a': 'AAA', 'y/z/b': 'AAA' });
+      });
+    });
+
+    describe('renaming or removing a file within one version', () => {
+      let scenario = 0;
+
+      const newObject = () => createObject(`rename-remove-${++scenario}`, false);
+
+      it('moves a file renamed in the version that added it, with its manifest and fixity entries', async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          await t.write('a', 'AAA');
+          await t.rename('a', 'b');
+        });
+        const inventory = await assertValid(o, 'v1', { b: 'AAA' });
+        assert.deepStrictEqual(inventory.manifest, { [sha512('AAA')]: ['v1/content/b'] });
+        assert.deepStrictEqual(inventory.fixity!.md5, { [md5('AAA')]: ['v1/content/b'] });
+      });
+
+      it('removes the file, manifest entry and fixity entry of content nothing else uses', async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          await t.write('a', 'AAA');
+          await t.write('keep', 'KKK');
+          await t.remove('a');
+        });
+        const inventory = await assertValid(o, 'v1', { keep: 'KKK' });
+        assert.deepStrictEqual(inventory.manifest, { [sha512('KKK')]: ['v1/content/keep'] });
+        assert.deepStrictEqual(inventory.fixity!.md5, { [md5('KKK')]: ['v1/content/keep'] });
+      });
+
+      it('leaves no manifest entry, fixity entry or content directory when the only file is removed', async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          await t.write('a', 'AAA');
+          await t.remove('a');
+        });
+        const inventory = await assertValid(o, 'v1', {});
+        assert.deepStrictEqual(inventory.manifest, {});
+        assert.deepStrictEqual(inventory.fixity?.md5, undefined);
+        await assert.rejects(fs.promises.access(path.join(o.root, 'v1/content')), { code: 'ENOENT' });
+      });
+
+      type Step = (t: OcflObjectTransaction) => Promise<void>;
+      const scenarios: [string, Step[], Record<string, string>, string[]][] = [
+        ['rename a directory', [(t) => t.write('d/x', 'XXX'), (t) => t.rename('d', 'e')], { 'e/x': 'XXX' }, ['v1/content/e/x']],
+        ['rename to a target in a new directory', [(t) => t.write('a', 'AAA'), (t) => t.rename('a', 'x/y/b')], { 'x/y/b': 'AAA' }, ['v1/content/x/y/b']],
+        ['move()', [(t) => t.write('a', 'AAA'), (t) => t.move('a', 'b')], { b: 'AAA' }, ['v1/content/b']],
+        [
+          'rename a file that has a copy',
+          [(t) => t.write('a', 'AAA'), (t) => t.copy('a', 'b'), (t) => t.rename('a', 'c')],
+          { b: 'AAA', c: 'AAA' },
+          ['v1/content/c'],
+        ],
+        [
+          'rename a copy whose content is stored at another path',
+          [(t) => t.write('a', 'AAA'), (t) => t.copy('a', 'b'), (t) => t.rename('b', 'c')],
+          { a: 'AAA', c: 'AAA' },
+          ['v1/content/a'],
+        ],
+        [
+          'rename a directory holding two paths with the same content',
+          [(t) => t.write('d/x', 'AAA'), (t) => t.write('d/y', 'AAA'), (t) => t.rename('d', 'e')],
+          { 'e/x': 'AAA', 'e/y': 'AAA' },
+          ['v1/content/e/x'],
+        ],
+        ['rename a directory into itself', [(t) => t.write('d/x', 'XXX'), (t) => t.rename('d', 'd/sub')], { 'd/sub/x': 'XXX' }, ['v1/content/d/sub/x']],
+        [
+          'rename a file, then write new content to the old name',
+          [(t) => t.write('a', 'AAA'), (t) => t.rename('a', 'b'), (t) => t.write('a', 'ZZZ')],
+          { a: 'ZZZ', b: 'AAA' },
+          ['v1/content/a', 'v1/content/b'],
+        ],
+        [
+          'rename a file, then write the same content to the old name',
+          [(t) => t.write('a', 'AAA'), (t) => t.rename('a', 'b'), (t) => t.write('a', 'AAA')],
+          { a: 'AAA', b: 'AAA' },
+          ['v1/content/b'],
+        ],
+        ['rename a file and back again', [(t) => t.write('a', 'AAA'), (t) => t.rename('a', 'b'), (t) => t.rename('b', 'a')], { a: 'AAA' }, ['v1/content/a']],
+        [
+          'remove the file storing content another path shares',
+          [(t) => t.write('a', 'AAA'), (t) => t.write('b', 'AAA'), (t) => t.remove('a')],
+          { b: 'AAA' },
+          ['v1/content/b'],
+        ],
+        [
+          'remove a path whose content is stored at another path',
+          [(t) => t.write('a', 'AAA'), (t) => t.write('b', 'AAA'), (t) => t.remove('b')],
+          { a: 'AAA' },
+          ['v1/content/a'],
+        ],
+        ['remove a file that has a copy', [(t) => t.write('a', 'AAA'), (t) => t.copy('a', 'b'), (t) => t.remove('a')], { b: 'AAA' }, ['v1/content/b']],
+        [
+          'remove a file, then write identical content',
+          [(t) => t.write('a', 'AAA'), (t) => t.remove('a'), (t) => t.write('a', 'AAA')],
+          { a: 'AAA' },
+          ['v1/content/a'],
+        ],
+        ['remove a directory', [(t) => t.write('d/x', 'XXX'), (t) => t.write('d/y/z', 'ZZZ'), (t) => t.remove('d')], {}, []],
+        ['delete()', [(t) => t.write('a', 'AAA'), (t) => t.delete('a')], {}, []],
+        [
+          'remove a directory whose content is also used outside it',
+          [(t) => t.write('d/x', 'AAA'), (t) => t.write('d/y', 'AAA'), (t) => t.write('z', 'AAA'), (t) => t.remove('d')],
+          { z: 'AAA' },
+          ['v1/content/z'],
+        ],
+        [
+          'remove a file, then rename another onto its name',
+          [(t) => t.write('a', 'AAA'), (t) => t.write('b', 'BBB'), (t) => t.remove('b'), (t) => t.rename('a', 'b')],
+          { b: 'AAA' },
+          ['v1/content/b'],
+        ],
+      ];
+
+      for (const [name, steps, expected, files] of scenarios) {
+        it(`${name}: commits, stays valid and reads back`, async () => {
+          const o = newObject();
+          await o.update(async (t) => {
+            for (const step of steps) {
+              await step(t);
+            }
+          });
+          const inventory = await assertValid(o, 'v1', expected);
+          assert.deepStrictEqual(await contentFiles(o, 'v1'), files);
+          assert.deepStrictEqual(
+            Object.values(inventory.fixity?.md5 ?? {})
+              .flat()
+              .sort(),
+            files,
+          );
+        });
+      }
+
+      async function committed(files: Record<string, string>) {
+        const o = newObject();
+        await o.update(async (t) => {
+          for (const [logicalPath, content] of Object.entries(files)) {
+            await t.write(logicalPath, content);
+          }
+        });
+        return { o, inventory: await readInventory(o) };
+      }
+
+      it('renames a directory mixing committed and new files, leaving earlier versions unchanged', async () => {
+        const { o, inventory: v1 } = await committed({ 'd/old': 'OLD' });
+        await o.update(async (t) => {
+          await t.write('d/new', 'NEW');
+          await t.rename('d', 'e');
+        });
+        const inventory = await assertValid(o, 'v2', { 'e/old': 'OLD', 'e/new': 'NEW' });
+        assert.deepStrictEqual(await contentFiles(o, 'v2'), ['v2/content/e/new']);
+        assert.deepStrictEqual(inventory.manifest[sha512('OLD')], v1.manifest[sha512('OLD')]);
+        assert.deepStrictEqual(inventory.fixity!.md5![md5('OLD')], v1.fixity!.md5![md5('OLD')]);
+        assert.deepStrictEqual(inventory.versions.v1, v1.versions.v1);
+      });
+
+      it('removes a directory mixing committed and new files, leaving earlier versions unchanged', async () => {
+        const { o, inventory: v1 } = await committed({ 'd/old': 'OLD', keep: 'KKK' });
+        await o.update(async (t) => {
+          await t.write('d/new', 'NEW');
+          await t.remove('d');
+        });
+        const inventory = await assertValid(o, 'v2', { keep: 'KKK' });
+        assert.deepStrictEqual(await contentFiles(o, 'v2'), []);
+        assert.deepStrictEqual(inventory.manifest, v1.manifest);
+        assert.deepStrictEqual(inventory.versions.v1, v1.versions.v1);
+      });
+
+      it('renaming a committed file changes only the logical path', async () => {
+        const { o, inventory: v1 } = await committed({ a: 'AAA' });
+        await o.update(async (t) => {
+          await t.rename('a', 'b');
+        });
+        const inventory = await assertValid(o, 'v2', { b: 'AAA' });
+        assert.deepStrictEqual(inventory.manifest, v1.manifest);
+        assert.deepStrictEqual(inventory.fixity, v1.fixity);
+        assert.deepStrictEqual(await contentFiles(o, 'v2'), []);
+      });
+
+      it('moves a file renamed in a later version without touching committed content', async () => {
+        const { o, inventory: v1 } = await committed({ a: 'AAA' });
+        await o.update(async (t) => {
+          await t.write('b', 'BBB');
+          await t.rename('b', 'c');
+          await t.copy('a', 'b');
+        });
+        const inventory = await assertValid(o, 'v2', { a: 'AAA', b: 'AAA', c: 'BBB' });
+        assert.deepStrictEqual(inventory.manifest[sha512('AAA')], v1.manifest[sha512('AAA')]);
+        assert.deepStrictEqual(inventory.manifest[sha512('BBB')], ['v2/content/c']);
+      });
+
+      it('writing and removing a file in a later version creates no new version', async () => {
+        const { o } = await committed({ a: 'AAA' });
+        await o.update(async (t) => {
+          await t.write('b', 'BBB');
+          await t.remove('b');
+        });
+        assert.strictEqual((await readInventory(o)).head, 'v1');
+        await assert.rejects(fs.promises.access(path.join(o.root, 'v2')), { code: 'ENOENT' });
+      });
+
+      it('puts files back and keeps the source when renaming a directory fails partway', async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          await t.write('d/x', 'XXX');
+          await t.write('d/y', 'YYY');
+          await withFsFailure(
+            'rename',
+            (source, target) => source.endsWith('/content/d/y') && target.endsWith('/content/e/y'),
+            () => assert.rejects(t.rename('d', 'e'), /injected failure/),
+          );
+        });
+        await assertValid(o, 'v1', { 'd/x': 'XXX', 'd/y': 'YYY' });
+      });
+
+      it('refuses to commit after a removal fails, leaving no partial object', async () => {
+        const o = newObject();
+        await assert.rejects(
+          o.update(async (t) => {
+            await t.write('d/x', 'XXX');
+            await t.write('d/y', 'YYY');
+            await withFsFailure(
+              'rm',
+              (target) => target.endsWith('/content/d/y'),
+              () => assert.rejects(t.remove('d'), /injected failure/),
+            );
+          }),
+          /cannot be committed/,
+        );
+        await assert.rejects(fs.promises.access(path.join(o.root, 'inventory.json')), { code: 'ENOENT' });
+      });
+
+      it('reports the original failure and refuses to commit when a move cannot be undone', async () => {
+        const o = newObject();
+        await assert.rejects(
+          o.update(async (t) => {
+            await t.write('d/x', 'XXX');
+            await t.write('d/y', 'YYY');
+            await withFsFailure(
+              'rename',
+              (source, target) => (source.endsWith('/content/d/y') && target.endsWith('/content/e/y')) || source.endsWith('/content/e/x'),
+              () => assert.rejects(t.rename('d', 'e'), /injected failure/),
+            );
+          }),
+          /cannot be committed/,
+        );
+        await assert.rejects(fs.promises.access(path.join(o.root, 'inventory.json')), { code: 'ENOENT' });
+      });
+
+      it('moves and removes new files in the workspace before they reach the object', async () => {
+        const o = createObject(`rename-remove-${++scenario}`, true);
+        await o.update(async (t) => {
+          await t.write('a', 'AAA');
+          await t.rename('a', 'x/b');
+          await t.write('c', 'CCC');
+          await t.remove('c');
+        });
+        const inventory = await assertValid(o, 'v1', { 'x/b': 'AAA' });
+        assert.deepStrictEqual(inventory.manifest, { [sha512('AAA')]: ['v1/content/x/b'] });
+      });
+
+      it('rejects a missing rename source without moving anything', async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          await t.write('a', 'AAA');
+          await assert.rejects(t.rename('missing', 'b'), { code: 'FILE_NOT_FOUND' });
+        });
+        await assertValid(o, 'v1', { a: 'AAA' });
       });
     });
 
