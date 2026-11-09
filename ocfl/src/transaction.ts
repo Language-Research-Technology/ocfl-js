@@ -33,13 +33,6 @@ export interface CommitOptions {
         address?: string;
       }
     | undefined;
-  /** If true, force to commit. Use it after a purge. */
-  force?: boolean | undefined;
-}
-
-export interface RemoveOptions {
-  /** If true, completely remove the content from all versions */
-  purge?: boolean | undefined;
 }
 
 type TrackedPromise<T> = Promise<T> & { done?: boolean };
@@ -84,14 +77,6 @@ class OcflObjectTransaction {
    */
   async commit(_options?: CommitOptions): Promise<void> {
     throw new Error('Not Implemented');
-  }
-
-  /**
-   * Completely remove a file path and corresponding content from all versions of an OCFL Object.
-   * This is a special case that is not supported as part of regular OCFL versioning operations.
-   */
-  async purge(logicalPath: string): Promise<void> {
-    return await this.remove(logicalPath, { purge: true });
   }
 
   /**
@@ -154,7 +139,7 @@ class OcflObjectTransaction {
    * @abstract
    * @param logicalPath - A path relative to the object content directory
    */
-  async remove(_logicalPath: string, _options?: RemoveOptions): Promise<void> {
+  async remove(_logicalPath: string): Promise<void> {
     throw new Error('Not Implemented');
   }
 
@@ -277,7 +262,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
         throw this._commitBlocker;
       }
       // if there is no changes, abort commit
-      if (!options?.force && !this._inventory.isChanged) {
+      if (!this._inventory.isChanged) {
         return await this.rollback();
       }
       try {
@@ -597,20 +582,12 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     return this._transact(async () => this._inventory.reinstate(logicalPath, versionName));
   }
 
-  async remove(logicalPath: string, options?: RemoveOptions) {
+  async remove(logicalPath: string) {
     return this._transact(async () => {
       checkLogicalPath(logicalPath);
       const inventory = this._inventory;
       const plan = inventory._planDelete(logicalPath);
       await this._applyContentReleases(plan.releases);
-      if (options?.purge) {
-        // completely remove content from all versions
-        let ver = inventory.versionNumber.previous();
-        while (ver) {
-          inventory.delete(logicalPath, ver.toString());
-          ver = ver.previous();
-        }
-      }
       inventory._applyDelete(plan);
     });
   }

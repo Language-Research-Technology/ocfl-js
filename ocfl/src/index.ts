@@ -26,7 +26,7 @@ export { OcflObject } from './object.ts';
 export { OcflStorage } from './storage.ts';
 export type { BinaryOptions, EncodingOptions, ListedFile, ListOptions, WriteFileData } from './store.ts';
 export { OcflStore } from './store.ts';
-export type { CommitOptions, RemoveOptions } from './transaction.ts';
+export type { CommitOptions } from './transaction.ts';
 export { OcflObjectTransaction } from './transaction.ts';
 export type * from './types.ts';
 export { ValidationError } from './validation.ts';

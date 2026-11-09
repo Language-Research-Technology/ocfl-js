@@ -129,27 +129,6 @@ export default (ocfl: Ocfl) => {
       await trx.commit();
     });
 
-    it('purge', async () => {
-      let trx = await begin();
-      await trx.write('test.txt', 'test');
-      await trx.commit();
-      trx = await begin();
-      await trx.write('test.txt', 'test2');
-      await trx.commit();
-      assert(fs.existsSync(path.join(root, 'v1/content/test.txt')));
-      assert(fs.existsSync(path.join(root, 'v2/content/test.txt')));
-      trx = await begin();
-      assert(object.inventory!.getDigest('test.txt', 'v1'));
-      assert(object.inventory!.getDigest('test.txt', 'v2'));
-      await trx.purge('test.txt');
-      await trx.commit({ force: true });
-      assert(fs.existsSync(path.join(root, 'v1/content/test.txt')));
-      assert(fs.existsSync(path.join(root, 'v2/content/test.txt')));
-      assert(!object.inventory!.getDigest('test.txt', 'v1'));
-      assert(!object.inventory!.getDigest('test.txt', 'v2'));
-      assert(!object.inventory!.getDigest('test.txt', 'v3'));
-    });
-
     it('copy', async () => {
       const trx = await begin();
       await trx.import(source, '');

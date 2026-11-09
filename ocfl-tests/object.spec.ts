@@ -637,8 +637,15 @@ export default (ocfl: Ocfl) => {
         ],
       ];
       const noOp: Outcome = ['a no-op update', (o) => o.update(async () => {})];
+      const emptyCommit: Outcome = [
+        'a commit with no changes',
+        async (o) => {
+          const t = (await o.update())!;
+          await t.commit();
+        },
+      ];
 
-      for (const [name, end] of [...endings, noOp]) {
+      for (const [name, end] of [...endings, noOp, emptyCommit]) {
         it(`leaves an existing object intact after ${name} with no workspace`, async () => {
           const { root } = dirs();
           const o = ocfl.object({ id: 'scoped', root });

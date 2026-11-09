@@ -91,6 +91,8 @@ import { OcflDigest } from '@ocfl/ocfl';
 import { OcflStorageImpl } from '@ocfl/ocfl';
 // @ts-expect-error OcflObjectTransactionImpl is not exported
 import { OcflObjectTransactionImpl } from '@ocfl/ocfl';
+// @ts-expect-error RemoveOptions is gone, remove takes only a logical path
+import type { RemoveOptions } from '@ocfl/ocfl';
 
 declare const storage: OcflStorage;
 declare const object: OcflObject;
@@ -148,6 +150,12 @@ const objectConfig: OcflObjectConfig = { root: '/tmp/object', extensions: [] };
 object.digestAlgorithm = 'sha256';
 // @ts-expect-error OcflObject.contentDirectory is read-only, configure it when creating the object
 object.contentDirectory = 'data';
+// @ts-expect-error OcflObjectTransaction.purge is gone
+await transaction.purge('a.txt');
+// @ts-expect-error the purge remove option is gone
+await transaction.remove('a.txt', { purge: true });
+// @ts-expect-error CommitOptions.force is gone
+await transaction.commit({ force: true });
 
 export { extension, inventory, object, storage, transaction };
 EOF

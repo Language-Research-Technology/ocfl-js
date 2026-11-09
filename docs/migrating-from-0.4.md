@@ -302,6 +302,10 @@ Each public member now corresponds to something the OCFL specification or the li
 | `OcflObjectConfig.extensions`                                                                            | Nothing: the library never read it, so drop the option                                                                                |
 | The `OcflObject.digestAlgorithm` setter                                                                  | `digestAlgorithm` in the config of a new object                                                                                       |
 | Assigning to `OcflObject.contentDirectory`                                                               | `contentDirectory` in the config of a new object                                                                                      |
+| `OcflObjectTransaction.purge()`                                                                          | A new object without the file; see [Removing a file from all versions](#removing-a-file-from-all-versions)                            |
+| `remove(path, { purge: true })`                                                                          | A new object without the file; see [Removing a file from all versions](#removing-a-file-from-all-versions)                            |
+| `RemoveOptions`                                                                                          | Nothing: `remove()` takes only a logical path                                                                                         |
+| `CommitOptions.force`                                                                                    | Nothing: a commit with no changes rolls back                                                                                          |
 
 ### Deleting an object
 
@@ -328,6 +332,31 @@ It throws, and deletes nothing, when:
 ```
 
 When you look up a file with an object, put `version` in that object. The second argument of `getFile()` applies only to a logical path given as a string.
+
+### Removing a file from all versions
+
+`transaction.purge()` never destroyed anything. Inside `update(callback)` it did nothing, and with `commit({ force: true })` the bytes stayed on disk and in the manifest, leaving the object invalid. OCFL versions are immutable and the OCFL Implementation Notes say purging is not supported directly, so the library no longer offers it.
+
+To remove a file from an object's history, follow the route the Implementation Notes recommend: create a new object without the file, then delete the original.
+
+```ts
+const original = storage.object('original-id');
+const files = await original.files();
+
+await storage.object('new-id').update(async (transaction) => {
+  for (const file of files) {
+    if (file.logicalPath !== 'secret.txt') {
+      await transaction.write(file.logicalPath, await file.stream());
+    }
+  }
+});
+
+await storage.remove('original-id');
+```
+
+The new object needs its own identifier, because a layout maps each identifier to one path.
+
+This example copies only the head version, so the new object starts with a single version. To keep earlier versions, create one version in the new object for each version of the original, using `files(version)` and leaving out the file.
 
 ## Other behaviour changes
 
