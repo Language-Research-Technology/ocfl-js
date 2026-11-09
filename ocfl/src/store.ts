@@ -1,4 +1,4 @@
-import type { Dir, ReadStream, Stats, WriteStream } from 'node:fs';
+import type { Dir, Stats } from 'node:fs';
 import path from 'node:path';
 import { isNotFound, joinTypedArray } from './utils.ts';
 
@@ -62,22 +62,6 @@ class OcflStore {
     } catch {
       return false;
     }
-  }
-
-  /**
-   * Create a readable stream to get the content of a file
-   * @deprecated Use {@link OcflStore.createReadable} instead
-   */
-  async createReadStream(_filePath: string, _options?: unknown): Promise<ReadStream> {
-    throw new Error('Not Implemented');
-  }
-
-  /**
-   * Create a stream that writes data to `filePath`.
-   * @deprecated Use {@link OcflStore.createWritable} instead
-   */
-  async createWriteStream(_filePath: string, _options?: unknown): Promise<WriteStream> {
-    throw new Error('Not Implemented');
   }
 
   /**

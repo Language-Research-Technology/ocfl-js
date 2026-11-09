@@ -26,8 +26,8 @@ export default (ocfl: Ocfl) => {
     const inv = (await object.getInventory())!;
     assert.strictEqual(inv.manifest[digest]?.length, 1);
     assert.ok(inv.state[digest]!.includes(logicalPath));
-    assert.strictEqual(content.toString(), await object.getFile({ digest })!.asString());
-    assert.strictEqual(content.toString(), await object.getFile({ logicalPath })!.asString());
+    assert.strictEqual(content.toString(), await object.getFile({ digest })!.text());
+    assert.strictEqual(content.toString(), await object.getFile({ logicalPath })!.text());
   }
 
   before(() => {
@@ -100,28 +100,13 @@ export default (ocfl: Ocfl) => {
     });
     it('can read a file as string', async () => {
       const actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'), 'utf8');
-      const content = await object.getFile('foo/bar.xml')!.asString();
+      const content = await object.getFile('foo/bar.xml')!.text();
       assert.equal(content, actualContent);
     });
     it('can read a file as buffer', async () => {
       const actualContent = await fs.promises.readFile(path.join(object.root, 'v1/content/image.tiff'));
-      const content = (await object.getFile('image.tiff')!.asBuffer()) as Buffer;
-      assert.equal(content.compare(actualContent), 0);
-    });
-    it('can read a file as stream', async () => {
-      const actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'));
-      //fileContent['empty2.txt'] = await fs.promises.readFile(path.join(config.root, 'v1/content/empty.txt'));
-      // for (let f of await object.files()) {
-      //   let content = await object.getAsBuffer(f);
-      //   assert.equal(content.compare(fileContent[f.logicalPath]), 0);
-      // }
-      const stream = await object.getFile('foo/bar.xml')!.asStream();
-      const buffers = [];
-      for await (const data of stream) {
-        buffers.push(data);
-      }
-      const content = Buffer.concat(buffers);
-      assert.equal(content.compare(actualContent), 0);
+      const content = await object.getFile('image.tiff')!.buffer();
+      assert.equal(Buffer.compare(content, actualContent), 0);
     });
     it('can read a file as web stream', async () => {
       const actualContent = await fs.promises.readFile(path.join(object.root, 'v2/content/foo/bar.xml'));
@@ -373,26 +358,26 @@ export default (ocfl: Ocfl) => {
       });
       c = await fs.promises.readFile(path.join(o.root, 'v1/content/test'), 'utf8');
       assert.strictEqual(c, 'test');
-      assert.strictEqual(await o.getFile('test')!.asString(), 'test');
+      assert.strictEqual(await o.getFile('test')!.text(), 'test');
       await o.update(async (t) => {
         await t.write('test', 'testv2');
       });
       c = await fs.promises.readFile(path.join(o.root, 'v2/content/test'), 'utf8');
       assert.strictEqual(c, 'testv2');
-      assert.strictEqual(await o.getFile('test')!.asString(), 'testv2');
+      assert.strictEqual(await o.getFile('test')!.text(), 'testv2');
       await o.update(async (t) => {
         await t.write('test', 'test');
       });
       //console.log(o._inventory.latest.toString());
       //console.log(o._inventory.v3.toString());
       await assert.rejects(fs.promises.readFile(path.join(o.root, 'v3/content/test'), 'utf8'));
-      assert.strictEqual(await o.getFile('test')!.asString(), 'test');
+      assert.strictEqual(await o.getFile('test')!.text(), 'test');
       await o.update(async (t) => {
         await t.write('test', 'testv4');
       });
       c = await fs.promises.readFile(path.join(o.root, 'v4/content/test'), 'utf8');
       assert.strictEqual(c, 'testv4');
-      assert.strictEqual(await o.getFile('test')!.asString(), 'testv4');
+      assert.strictEqual(await o.getFile('test')!.text(), 'testv4');
     });
 
     it('can add a directory without using transaction directly', async () => {
@@ -572,7 +557,7 @@ export default (ocfl: Ocfl) => {
 
           await assert.rejects(fs.promises.access(root), { code: 'ENOENT' });
           await o.update(async (t) => t.write('a.txt', 'a'));
-          assert.strictEqual(await o.getFile('a.txt')!.asString(), 'a');
+          assert.strictEqual(await o.getFile('a.txt')!.text(), 'a');
         });
 
         it(`keeps an object root that already existed after ${name} with no workspace`, async () => {
@@ -584,7 +569,7 @@ export default (ocfl: Ocfl) => {
 
           assert.deepStrictEqual(await fs.promises.readdir(root), []);
           await o.update(async (t) => t.write('a.txt', 'a'));
-          assert.strictEqual(await o.getFile('a.txt')!.asString(), 'a');
+          assert.strictEqual(await o.getFile('a.txt')!.text(), 'a');
         });
       }
 
@@ -627,7 +612,7 @@ export default (ocfl: Ocfl) => {
           const after = await snapshot(root);
           assert.ok(Object.keys(before).every((f) => f in after));
           assert.deepStrictEqual(await fs.promises.readdir(workspace!), ['object']);
-          assert.strictEqual(await o.getFile('a.txt')!.asString(), 'a');
+          assert.strictEqual(await o.getFile('a.txt')!.text(), 'a');
         });
       }
 
@@ -643,7 +628,7 @@ export default (ocfl: Ocfl) => {
         await b.update(async (t) => t.write('b.txt', 'b'));
         await inProgress.commit();
 
-        assert.strictEqual(await a.getFile('new.txt')!.asString(), 'new');
+        assert.strictEqual(await a.getFile('new.txt')!.text(), 'new');
         assert.strictEqual(a.headVersion?.toString(), 'v2');
       });
 
@@ -694,7 +679,7 @@ export default (ocfl: Ocfl) => {
             await assertGone(workspace);
             assert.strictEqual(o.headVersion?.toString(), 'v1');
             await o.update(writeB);
-            assert.strictEqual(await o.getFile('b.txt')!.asString(), 'b');
+            assert.strictEqual(await o.getFile('b.txt')!.text(), 'b');
           });
 
           it(`leaves no partial object when ${step} fails on a new object, ${label}`, async () => {
@@ -706,7 +691,7 @@ export default (ocfl: Ocfl) => {
             await assert.rejects(fs.promises.access(root), { code: 'ENOENT' });
             await assertGone(workspace);
             await o.update(writeB);
-            assert.strictEqual(await o.getFile('b.txt')!.asString(), 'b');
+            assert.strictEqual(await o.getFile('b.txt')!.text(), 'b');
           });
         }
       }
@@ -750,7 +735,7 @@ export default (ocfl: Ocfl) => {
 
         await assert.rejects(fs.promises.access(workspace!), { code: 'ENOENT' });
         await o.update(writeB);
-        assert.strictEqual(await o.getFile('b.txt')!.asString(), 'b');
+        assert.strictEqual(await o.getFile('b.txt')!.text(), 'b');
       });
 
       for (const useWorkspace of [true, false]) {
@@ -764,7 +749,7 @@ export default (ocfl: Ocfl) => {
           await first.write('b.txt', 'b');
           await first.commit();
 
-          assert.strictEqual(await o.getFile('b.txt')!.asString(), 'b');
+          assert.strictEqual(await o.getFile('b.txt')!.text(), 'b');
         });
       }
 
@@ -790,7 +775,7 @@ export default (ocfl: Ocfl) => {
 
         await withFsFailure('rmdir', workspace!, () => o.update(writeB));
 
-        assert.strictEqual(await o.getFile('b.txt')!.asString(), 'b');
+        assert.strictEqual(await o.getFile('b.txt')!.text(), 'b');
         assert.strictEqual(o.headVersion?.toString(), 'v1');
       });
     });

@@ -33,15 +33,6 @@ class OcflFsStore extends OcflStore {
     return this.fs.promises.stat(filePath);
   }
 
-  async createReadStream(filePath: string, options?: Parameters<typeof fs.createReadStream>[1]) {
-    return this.fs.createReadStream(filePath, options);
-  }
-
-  async createWriteStream(filePath: string, options?: Parameters<typeof fs.createWriteStream>[1]) {
-    await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    return this.fs.createWriteStream(filePath, options);
-  }
-
   async createReadable(filePath: string, options?: Parameters<typeof fs.createReadStream>[1]) {
     return Readable.toWeb(this.fs.createReadStream(filePath, options)) as ReadableStream;
   }
