@@ -8,6 +8,7 @@ type OcflErrorCode =
   | 'ID_INCOMPATIBLE_WITH_LAYOUT'
   | 'INVALID_LOGICAL_PATH'
   | 'FILE_NOT_FOUND'
+  | 'FILE_EXISTS'
   | 'UNSUPPORTED_LAYOUT'
   | 'LAYOUT_MISMATCH'
   | ValidationErrorCode;

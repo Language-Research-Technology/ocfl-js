@@ -123,10 +123,12 @@ class OcflObjectTransaction {
 
   /**
    * Duplicate the logical path `source` as a different logical path `target`, both paths will then point
-   * to the same content path and bitstreams.
+   * to the same content path and bitstreams. `source` can be a file or a directory.
    * @abstract
    * @param source - The logical path to be copied
-   * @param target - The target logical path
+   * @param target - The target logical path. To replace an existing target, remove it first.
+   * @throws OcflError `FILE_NOT_FOUND` if `source` doesn't exist
+   * @throws OcflError `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
    */
   async copy(_source: string, _target: string): Promise<void> {
     throw new Error('Not Implemented');
@@ -135,7 +137,12 @@ class OcflObjectTransaction {
   /**
    * Changes the logical path of existing content. This is similar to move operation in file systems
    * Unless renaming files that are not yet commited, this operation will NOT rename the actual file name referenced by the manifest.
+   * `source` can be a file or a directory.
    * @abstract
+   * @param source - The logical path to be renamed
+   * @param target - The target logical path. To replace an existing target, remove it first.
+   * @throws OcflError `FILE_NOT_FOUND` if `source` doesn't exist
+   * @throws OcflError `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
    */
   async rename(_source: string, _target: string): Promise<void> {
     throw new Error('Not Implemented');
@@ -518,17 +525,18 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
 
   async rename(source: string, target: string) {
     return this._transact(async () => {
+      const realSource = this._getRealPath(source);
+      const realTarget = this._getRealPath(target);
+      const transfers = this._inventory._planTransfer(source, target);
       // if file already exists in the workspace, rename the actual file
       try {
-        const realSource = this._getRealPath(source);
-        const realTarget = this._getRealPath(target);
         await this._store.move(realSource, realTarget);
       } catch (error) {
         if (!isNotFound(error)) {
           throw error;
         }
       }
-      this._inventory.rename(source, target);
+      this._inventory._applyRename(transfers);
     });
   }
 
