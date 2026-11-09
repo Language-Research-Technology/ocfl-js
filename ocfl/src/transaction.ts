@@ -150,27 +150,12 @@ class OcflObjectTransaction {
   }
 
   /**
-   * Alias of {@link OcflObjectTransaction.rename}
-   */
-  async move(source: string, target: string): Promise<void> {
-    return this.rename(source, target);
-  }
-
-  /**
    * Remove a file or directory
    * @abstract
    * @param logicalPath - A path relative to the object content directory
    */
   async remove(_logicalPath: string, _options?: RemoveOptions): Promise<void> {
     throw new Error('Not Implemented');
-  }
-
-  /**
-   * Remove a file or directory. Alias of {@link OcflObjectTransaction.remove}
-   * @param logicalPath - A path relative to the object content directory
-   */
-  async delete(logicalPath: string, options?: RemoveOptions): Promise<void> {
-    return this.remove(logicalPath, options);
   }
 
   /**

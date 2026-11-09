@@ -1244,7 +1244,6 @@ export default (ocfl: Ocfl) => {
       const scenarios: [string, Step[], Record<string, string>, string[]][] = [
         ['rename a directory', [(t) => t.write('d/x', 'XXX'), (t) => t.rename('d', 'e')], { 'e/x': 'XXX' }, ['v1/content/e/x']],
         ['rename to a target in a new directory', [(t) => t.write('a', 'AAA'), (t) => t.rename('a', 'x/y/b')], { 'x/y/b': 'AAA' }, ['v1/content/x/y/b']],
-        ['move()', [(t) => t.write('a', 'AAA'), (t) => t.move('a', 'b')], { b: 'AAA' }, ['v1/content/b']],
         [
           'rename a file that has a copy',
           [(t) => t.write('a', 'AAA'), (t) => t.copy('a', 'b'), (t) => t.rename('a', 'c')],
@@ -1297,7 +1296,6 @@ export default (ocfl: Ocfl) => {
           ['v1/content/a'],
         ],
         ['remove a directory', [(t) => t.write('d/x', 'XXX'), (t) => t.write('d/y/z', 'ZZZ'), (t) => t.remove('d')], {}, []],
-        ['delete()', [(t) => t.write('a', 'AAA'), (t) => t.delete('a')], {}, []],
         [
           'remove a directory whose content is also used outside it',
           [(t) => t.write('d/x', 'AAA'), (t) => t.write('d/y', 'AAA'), (t) => t.write('z', 'AAA'), (t) => t.remove('d')],

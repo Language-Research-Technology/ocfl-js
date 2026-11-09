@@ -314,14 +314,6 @@ class OcflObject {
   }
 
   /**
-   * Alias for import
-   * @see {@link OcflObject.import}
-   */
-  async add(sourceDir: string | string[] | string[][], mode: UpdateMode = 'MERGE') {
-    await this.import(sourceDir, mode);
-  }
-
-  /**
    * Count the number of files contained in this object
    */
   async count(version?: string) {

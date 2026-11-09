@@ -85,14 +85,28 @@ cat >"$consumer/tsconfig.json" <<'EOF'
 EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'
-import type { OcflObject, OcflObjectInventory, OcflObjectTransaction, OcflStorage } from '@ocfl/ocfl';
+import type { OcflExtension, OcflObject, OcflObjectInventory, OcflObjectTransaction, OcflStorage } from '@ocfl/ocfl';
 
 declare const storage: OcflStorage;
 declare const object: OcflObject;
 declare const inventory: OcflObjectInventory;
 declare const transaction: OcflObjectTransaction;
+declare const extension: OcflExtension;
 
-export { inventory, object, storage, transaction };
+// @ts-expect-error OcflObject.add is gone, use import
+await object.add('/tmp/source');
+// @ts-expect-error OcflObjectTransaction.move is gone, use rename
+await transaction.move('a.txt', 'b.txt');
+// @ts-expect-error OcflObjectTransaction.delete is gone, use remove
+await transaction.delete('a.txt');
+// @ts-expect-error OcflStorage.objects is gone, iterate the storage
+storage.objects();
+// @ts-expect-error OcflStorage.objectRootAbs is gone, use storage.object(id).root
+storage.objectRootAbs('id');
+// @ts-expect-error OcflExtension.p is gone, use parameters
+extension.p;
+
+export { extension, inventory, object, storage, transaction };
 EOF
 cat >"$consumer/consumer.ts" <<'EOF'
 import { join } from 'node:path';

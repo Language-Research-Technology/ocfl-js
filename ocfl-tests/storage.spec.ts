@@ -38,12 +38,11 @@ export default (ocfl: Ocfl) => {
         ++i;
       }
     });
-    it('can list objects via objects() method', async () => {
+    it('lists every object when iterated', async () => {
       const objarr = [];
-      for await (const o of repo.objects()) {
+      for await (const o of repo) {
         objarr.push(o);
       }
-      //const objarr = Promise.all(iter);
       assert.strictEqual(objarr.length, 1);
       assert.strictEqual(objarr[0]!.root, objects[0]!.root);
     });

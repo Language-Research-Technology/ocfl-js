@@ -52,14 +52,6 @@ class OcflStorage {
   }
 
   /**
-   * Absolute path to the object root
-   * @param id - Identifier of the object
-   */
-  objectRootAbs(id: string) {
-    return path.join(this.root, this.objectRoot(id));
-  }
-
-  /**
    * Get an existing object in the Storage or create a new one.
    * @param opt - A unique identifier for the OCFL Object, should be a URI
    */
@@ -100,16 +92,6 @@ class OcflStorage {
 
   [Symbol.asyncIterator](): AsyncIterableIterator<OcflObject> {
     throw new NotImplementedError();
-  }
-
-  /**
-   * Return a new AsyncIterator that contains all the OCFL objects in this Storage.
-   */
-  objects(): AsyncIterableIterator<OcflObject> {
-    return this[Symbol.asyncIterator]();
-    // const objects = [];
-    // for await (const o of this) objects.push(o);
-    // return objects;
   }
 
   async delete(id: string) {

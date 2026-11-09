@@ -96,7 +96,7 @@ try {
 | `LAYOUT_MISMATCH`             | A configured layout's name or parameters differ from the layout the storage root declares                                    |
 | `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`                                                 |
 | `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain               |
-| `FILE_EXISTS`                 | `copy()`, `rename()` or `move()` names a target that exists; see [Other behaviour changes](#other-behaviour-changes)         |
+| `FILE_EXISTS`                 | `copy()` or `rename()` names a target that exists; see [Other behaviour changes](#other-behaviour-changes)                   |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                |
 
 Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`. That includes an unsupported layout named in your own config.
@@ -219,7 +219,7 @@ const storage = await ocfl.loadStorage({ root: '/var/data/myocfl' });
 const oldName = (id: string) => encodeURIComponent(id).toLowerCase().replace(/\./g, '%2e');
 
 async function moveObject(id: string) {
-  const newPath = storage.objectRootAbs(id);
+  const newPath = storage.object(id).root;
   const oldPath = path.join(path.dirname(newPath), oldName(id));
   if (oldPath !== newPath && existsSync(oldPath)) await rename(oldPath, newPath);
 }
@@ -268,7 +268,7 @@ Content from earlier versions is never changed.
 
 For content stored by the update in progress:
 
-- `rename()` and `move()` move the file to the new logical path's content path, and its manifest and fixity entries follow it. If the content is stored at another logical path's content path, no file moves.
+- `rename()` moves the file to the new logical path's content path, and its manifest and fixity entries follow it. If the content is stored at another logical path's content path, no file moves.
 - `remove()` follows the rules for [replacing a file](#replacing-a-file-within-one-update): content another logical path still uses moves to that path's content path, and content nothing uses is removed along with its manifest and fixity entries.
 - Directories are handled file by file, so one can mix committed and new files.
 
@@ -278,8 +278,14 @@ Renaming or removing a file from an earlier version still changes only the logic
 
 Each public member now corresponds to something the OCFL specification or the library's role as an OCFL client calls for, with one name per operation.
 
-| Removed | Use instead |
-| ------- | ----------- |
+| Removed                          | Use instead                           |
+| -------------------------------- | ------------------------------------- |
+| `OcflObject.add()`               | `import()`                            |
+| `OcflObjectTransaction.move()`   | `rename()`                            |
+| `OcflObjectTransaction.delete()` | `remove()`                            |
+| `OcflStorage.objects()`          | `for await (const object of storage)` |
+| `OcflStorage.objectRootAbs(id)`  | `storage.object(id).root`             |
+| `OcflExtension.p`                | `parameters`                          |
 
 ## Other behaviour changes
 
@@ -291,7 +297,7 @@ Each public member now corresponds to something the OCFL specification or the li
 - An update that leaves a stream from `createWritable()` open now rolls back and rejects with "Unfinished operations detected" instead of never settling.
 - When an `update()` callback throws after one of its operations failed, the update now rolls back fully and rethrows the callback's error. Previously it rethrew the operation's error and left the workspace behind, so the next update of that object failed with `UPDATE_IN_PROGRESS`.
 - `rename()` throws `FILE_NOT_FOUND` when the source doesn't exist, instead of doing nothing.
-- **Breaking:** `rename()`, `move()` and `copy()` throw `FILE_EXISTS` when the target exists, even with identical content or when the target is the source. A target exists if it's a file, if it's a directory with anything in it (directories are never merged), or if it's inside a file. When they throw, nothing has changed. `rename()` and `move()` used to replace the target, and `copy()` onto an existing target wrote an invalid object. To replace a target, remove it first in the same update, then copy or rename onto it.
+- **Breaking:** `rename()` and `copy()` throw `FILE_EXISTS` when the target exists, even with identical content or when the target is the source. A target exists if it's a file, if it's a directory with anything in it (directories are never merged), or if it's inside a file. When they throw, nothing has changed. `rename()` used to replace the target, and `copy()` onto an existing target wrote an invalid object. To replace a target, remove it first in the same update, then copy or rename onto it.
 - A logical path with a `..` segment, such as `a/../b`, is rejected instead of being normalised. A name that only starts with two dots, such as `..notes.txt`, is now accepted.
 - When a storage root's layout extension `config.json` has no `extensionName`, the layout named in `ocfl_layout.json` is used. Previously the storage loaded with no layout.
 - Once an existing object's root inventory has been read, by `load()`, `refresh()`, `update()` or any other method that reads it, `object.ocflVersion` is the version that object declares. It used to report the configured version or the library default, so a 1.0 object in a 1.1 storage root reported 1.1. A configured version only applies when an object is created, and one that differs from an existing object is ignored without an error.

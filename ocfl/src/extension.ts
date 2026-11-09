@@ -109,10 +109,6 @@ class OcflExtension<C extends object = object> {
     return params;
   }
 
-  get p() {
-    return this.parameters;
-  }
-
   /** Extension registered name */
   get name(): string {
     return (this.constructor as typeof OcflExtension).NAME;
