@@ -26,6 +26,20 @@ export function pinStore(store: OcflStore) {
   store.readFile('a', { encoding: someString });
 }
 
+export function pinForwarding(store: OcflStore, options: EncodingOptions | BinaryOptions, encoding?: BufferEncoding) {
+  store.readFile('a', encoding);
+  store.readFile('a', { encoding });
+
+  // @ts-expect-error may resolve to bytes
+  expectText(store.readFile('a', options));
+  // @ts-expect-error may resolve to a string
+  expectBytes(store.readFile('a', options));
+  // @ts-expect-error may resolve to bytes
+  expectText(store.readFile('a', encoding));
+  // @ts-expect-error may resolve to a string
+  expectBytes(store.readFile('a', encoding));
+}
+
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type Expect<T extends true> = T;
 

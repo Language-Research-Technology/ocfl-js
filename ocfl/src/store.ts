@@ -106,6 +106,7 @@ class OcflStore {
    */
   async readFile(filePath: string, options: EncodingOptions): Promise<string>;
   async readFile(filePath: string, options?: BinaryOptions): Promise<Uint8Array>;
+  async readFile(filePath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array>;
   async readFile(filePath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array> {
     const encoding = typeof options === 'string' ? options : options?.encoding;
     const chunks: Chunk[] = [];

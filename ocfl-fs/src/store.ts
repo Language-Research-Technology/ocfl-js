@@ -44,6 +44,7 @@ class OcflFsStore extends OcflStore {
 
   async readFile(filePath: string, options: EncodingOptions): Promise<string>;
   async readFile(filePath: string, options?: BinaryOptions): Promise<Uint8Array>;
+  async readFile(filePath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array>;
   async readFile(filePath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array> {
     return this.fs.promises.readFile(filePath, options);
   }

@@ -523,9 +523,9 @@ class OcflObject {
    */
   async readFile(relPath: string, options: EncodingOptions): Promise<string>;
   async readFile(relPath: string, options?: BinaryOptions): Promise<Uint8Array>;
+  async readFile(relPath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array>;
   async readFile(relPath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array> {
-    // Overloads can't take the union; the store still branches on the real value
-    return this.#store.readFile(path.join(this.root, relPath), options as BinaryOptions);
+    return this.#store.readFile(path.join(this.root, relPath), options);
   }
 
   /**
