@@ -86,6 +86,11 @@ EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'
 import type { OcflExtension, OcflObject, OcflObjectInventory, OcflObjectTransaction, OcflStorage } from '@ocfl/ocfl';
+import { OcflDigest } from '@ocfl/ocfl';
+// @ts-expect-error OcflStorageImpl is not exported
+import { OcflStorageImpl } from '@ocfl/ocfl';
+// @ts-expect-error OcflObjectTransactionImpl is not exported
+import { OcflObjectTransactionImpl } from '@ocfl/ocfl';
 
 declare const storage: OcflStorage;
 declare const object: OcflObject;
@@ -109,12 +114,20 @@ extension.p;
 storage.delete('id');
 // @ts-expect-error OcflStorage.purge is gone
 storage.purge('id');
+// @ts-expect-error OcflDigest.digest is gone
+OcflDigest.digest('sha256', 'a');
+// @ts-expect-error OcflDigest.digestSync is gone
+OcflDigest.digestSync('sha256', 'a');
+// @ts-expect-error OcflDigest.createStream is gone
+OcflDigest.createStream('sha256');
+// @ts-expect-error OcflDigest.CONTENT is gone
+OcflDigest.CONTENT;
 
 export { extension, inventory, object, storage, transaction };
 EOF
 cat >"$consumer/consumer.ts" <<'EOF'
 import { join } from 'node:path';
-import { implementOcfl, type OcflStorage, OcflStore } from '@ocfl/ocfl';
+import { type CommonHasher, implementOcfl, OcflDigest, type OcflStorage, OcflStore } from '@ocfl/ocfl';
 import ocflFs, { createStorage, OcflError, type OcflErrorCode, OcflFsStore, type OcflFsStoreConfig, ValidationError } from '@ocfl/ocfl-fs';
 
 const config: OcflFsStoreConfig = {};
@@ -131,9 +144,19 @@ for (const ocflVersion of ocflFs.OCFL_VERSIONS) {
   await ocflFs.storage({ root: join(import.meta.dirname, `spec-${ocflVersion}`), ocflVersion }).create({ ocflSpecText: true });
 }
 
+const customStorage = await custom.createStorage({ root: join(import.meta.dirname, 'custom-backend'), layout: 'HashedNTupleStorageLayout' });
+const customObject = customStorage.object('custom-object');
+await customObject.update(async (t) => t.write('a.txt', 'written through a custom backend'));
+
+OcflDigest.registerHasherFactory('consumer-digest', async (): Promise<CommonHasher> => {
+  throw new Error('only registered, never used');
+});
+
 if (
   !(store instanceof OcflStore) ||
   custom.OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
+  (await customObject.getFile('a.txt')?.text()) !== 'written through a custom backend' ||
+  !OcflDigest.hasAlgorithm('consumer-digest') ||
   (await storage.has('missing')) ||
   missingCode !== 'OBJECT_NOT_FOUND' ||
   !(ValidationError.prototype instanceof OcflError)

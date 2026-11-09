@@ -359,24 +359,17 @@ export default (ocfl: Ocfl) => {
     });
 
     it('initialises the digest algorithm of a configured layout', async () => {
-      const algorithm = 'test-configured-layout-digest';
+      const algorithm = 'blake2b-512';
       OcflDigest.registerHasherFactory(algorithm, async () => {
         const hasher: unknown = { digestSize: 1, init: () => hasher, update: () => hasher, digest: () => 'digested' };
         return hasher as never;
       });
-      class DigestLayout extends OcflStorageLayout<{ digestAlgorithm: string }> {
-        constructor() {
-          super(undefined, { digestAlgorithm: algorithm });
-        }
-        map(id: string) {
-          return OcflDigest.digestSync(algorithm, id);
-        }
-      }
+      const layout = ocfl.storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', digestAlgorithm: algorithm, tupleSize: 1, numberOfTuples: 1 });
       const root = await createRoot();
-      const storage = ocfl.storage({ root, layout: new DigestLayout() });
+      const storage = ocfl.storage({ root, layout });
       assert.throws(() => storage.objectRoot('abc'), /not initialized/);
       await storage.load();
-      assert.strictEqual(storage.objectRoot('abc'), 'digested');
+      assert.strictEqual(storage.objectRoot('abc'), path.join('d', 'digested'));
     });
 
     it('uses the layout and extension config of the root when no layout is configured', async () => {

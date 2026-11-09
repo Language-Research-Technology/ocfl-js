@@ -65,7 +65,6 @@ For example, `digestAlgorithm: 'SHA512'` and `update(fn, 'replace')` now throw. 
 
 - `blake2b-160`, `blake2b-256` and `blake2b-384` are no longer supported, because `node:crypto` doesn't provide them. `blake2b-512` is still supported.
 - `OcflDigest.FIXITY` has been removed.
-- `OcflDigest.CONTENT` is now a plain array, `['sha256', 'sha512']`, instead of an enumeration.
 
 ## Error classes and codes
 
@@ -279,16 +278,21 @@ Renaming or removing a file from an earlier version still changes only the logic
 
 Each public member now corresponds to something the OCFL specification or the library's role as an OCFL client calls for, with one name per operation.
 
-| Removed                          | Use instead                                                         |
-| -------------------------------- | ------------------------------------------------------------------- |
-| `OcflObject.add()`               | `import()`                                                          |
-| `OcflObjectTransaction.move()`   | `rename()`                                                          |
-| `OcflObjectTransaction.delete()` | `remove()`                                                          |
-| `OcflStorage.objects()`          | `for await (const object of storage)`                               |
-| `OcflStorage.objectRootAbs(id)`  | `storage.object(id).root`                                           |
-| `OcflExtension.p`                | `parameters`                                                        |
-| `OcflStorage.delete(id)`         | `storage.remove(id)`; see [Deleting an object](#deleting-an-object) |
-| `OcflStorage.purge(id)`          | `storage.remove(id)`; see [Deleting an object](#deleting-an-object) |
+| Removed                                                                                                  | Use instead                                                                                                                           |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `OcflObject.add()`                                                                                       | `import()`                                                                                                                            |
+| `OcflObjectTransaction.move()`                                                                           | `rename()`                                                                                                                            |
+| `OcflObjectTransaction.delete()`                                                                         | `remove()`                                                                                                                            |
+| `OcflStorage.objects()`                                                                                  | `for await (const object of storage)`                                                                                                 |
+| `OcflStorage.objectRootAbs(id)`                                                                          | `storage.object(id).root`                                                                                                             |
+| `OcflExtension.p`                                                                                        | `parameters`                                                                                                                          |
+| `OcflStorage.delete(id)`                                                                                 | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                                   |
+| `OcflStorage.purge(id)`                                                                                  | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                                   |
+| `OcflStorageImpl`                                                                                        | `OcflStorage`, from `storage()`, `createStorage()` or `loadStorage()`. A backend extends `OcflStore` and passes it to `implementOcfl` |
+| `OcflObjectTransactionImpl`                                                                              | `OcflObjectTransaction`, from `object.update()`                                                                                       |
+| `OcflDigest.digest()`, `digestSync()`, `createStream()`, `createStreamThrough()`, `getHexDigestLength()` | `createHash()` from `node:crypto`, or `crc32()` from `node:zlib`                                                                      |
+| `OcflDigest.initSync()`                                                                                  | Nothing: `storage.load()` and `create()` prepare the digest algorithm of a storage layout                                             |
+| `OcflDigest.CONTENT`                                                                                     | The values `'sha256'` and `'sha512'`                                                                                                  |
 
 ### Deleting an object
 

@@ -1,7 +1,7 @@
 /** Models a set of ocfl object modifying operations as a transaction that is as close as atomic as possible */
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
-import { OcflDigest } from './digest.ts';
+import { Hashing } from './digest.ts';
 import { OcflError } from './error.ts';
 import type { ContentRelease, OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
@@ -355,7 +355,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     let invDigestPath = `${invPath}.${digestAlgorithm}`;
 
     const inventoryContent = inventory.toString();
-    inventory._digest = await OcflDigest.digest(digestAlgorithm, inventoryContent);
+    inventory._digest = await Hashing.digest(digestAlgorithm, inventoryContent);
     const digest = `${inventory._digest} ${INVENTORY_NAME}`;
 
     // write inventory.json to workspace
@@ -490,7 +490,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       throw new Error('Transaction already commited');
     }
     const digestAlgo = this._inventory.digestAlgorithm;
-    const hs = await OcflDigest.createStream(this._digestAlgorithms);
+    const hs = await Hashing.createStream(this._digestAlgorithms);
     checkLogicalPath(logicalPath);
     const staging = this._stagingPath();
     const writer = (await this._store.createWritable(staging, options)).getWriter();
@@ -524,11 +524,11 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
           ArrayBuffer.isView(data) && !(data instanceof Uint8Array || data instanceof Uint16Array || data instanceof Uint32Array)
             ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
             : data;
-        const hashes = splitDigests(await OcflDigest.digest(digestAlgos, content as string | Uint8Array), digestAlgo);
+        const hashes = splitDigests(await Hashing.digest(digestAlgos, content as string | Uint8Array), digestAlgo);
         return () => this._addContent(logicalPath, hashes, staging, () => this._store.writeFile(staging, content, options));
       }
       if (data instanceof ReadableStream) {
-        const hs = await OcflDigest.createStreamThrough(digestAlgos);
+        const hs = await Hashing.createStreamThrough(digestAlgos);
         await this._removeStagedOnFailure(staging, () => this._store.writeFile(staging, data.pipeThrough(hs), options));
         const hashes = splitDigests(hs.digest(), digestAlgo);
         return () => this._addContent(logicalPath, hashes, staging);
@@ -542,7 +542,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
       throw new TypeError('Target logical path must not be empty if source is a file.');
     }
     const rs = await this._store.createReadable(source);
-    const hashes = splitDigests(await OcflDigest.digest(this._digestAlgorithms, rs), this._inventory.digestAlgorithm);
+    const hashes = splitDigests(await Hashing.digest(this._digestAlgorithms, rs), this._inventory.digestAlgorithm);
     const staging = this._stagingPath();
     return () => this._addContent(target, hashes, staging, () => this._store.copyFile(source, staging));
   }

@@ -55,15 +55,6 @@ export interface CommonHasher {
   digestSize: number;
 }
 
-export interface MultiHasher {
-  multi: true;
-  update: (data: IDataType) => MultiHasher;
-  digest: {
-    (outputType: 'binary'): { [key: string]: Uint8Array };
-    (outputType?: 'hex'): { [key: string]: string };
-  };
-}
-
 export type OcflVersion = '1.0' | '1.1';
 
 export type OcflExtensionConfig = { extensionName?: string; [key: string]: unknown };

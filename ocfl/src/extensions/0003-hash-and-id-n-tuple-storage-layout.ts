@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { OcflDigest } from '../digest.ts';
+import { Hashing } from '../digest.ts';
 import { OcflStorageLayout } from '../extension.ts';
 
 const MAX_ENCODED_ID_LENGTH = 100;
@@ -34,7 +34,7 @@ class HashAndIdNTupleStorageLayout extends OcflStorageLayout<typeof DefaultConfi
   constructor(config?: Partial<typeof DefaultConfig>) {
     super(config, DefaultConfig);
     const c = this.parameters;
-    const digestLength = OcflDigest.getHexDigestLength(c.digestAlgorithm);
+    const digestLength = Hashing.getHexDigestLength(c.digestAlgorithm);
     if (!digestLength) {
       throw new Error('Invalid digestAlgorithm');
     }
@@ -45,7 +45,7 @@ class HashAndIdNTupleStorageLayout extends OcflStorageLayout<typeof DefaultConfi
   }
 
   map(id: string): string {
-    const digest = OcflDigest.digestSync(this.parameters.digestAlgorithm, id);
+    const digest = Hashing.digestSync(this.parameters.digestAlgorithm, id);
     const segments = [];
     const s = this.parameters.tupleSize;
     const n = this.parameters.numberOfTuples;

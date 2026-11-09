@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
-import { type ContentAlgorithm, OcflDigest } from './digest.ts';
+import { type ContentAlgorithm, Hashing } from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 import type { OcflExtension } from './extension.ts';
 import type { FileRef } from './file.ts';
@@ -183,10 +183,7 @@ class OcflObject {
       return;
     }
     const data = JSON.parse(datastr) as Inventory;
-    const [digest, actualDigest] = await Promise.all([
-      this.#readSidecarDigest(invPath, data.digestAlgorithm),
-      OcflDigest.digest(data.digestAlgorithm, datastr),
-    ]);
+    const [digest, actualDigest] = await Promise.all([this.#readSidecarDigest(invPath, data.digestAlgorithm), Hashing.digest(data.digestAlgorithm, datastr)]);
     if (digest !== actualDigest) {
       throw createError('E060', path.join(this.root, invPath), `recorded=${digest} actual=${actualDigest}`);
     }
