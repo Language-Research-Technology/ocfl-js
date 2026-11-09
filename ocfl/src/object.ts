@@ -2,7 +2,6 @@ import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { type ContentAlgorithm, Hashing } from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
-import type { OcflExtension } from './extension.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
 import { type InventoryFile, OcflObjectInventory, type OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
@@ -42,7 +41,6 @@ class OcflObject {
   #workspace: string | undefined;
   #id: string | undefined;
   #digestAlgorithm: ContentAlgorithm;
-  #extensions: OcflExtension[] | undefined;
   #store: OcflStore;
   /**
    * A default list of digest algorithms to be calculated for each file in this object and added to the fixity block.
@@ -70,7 +68,6 @@ class OcflObject {
     this.#configuredOcflVersion = config.ocflVersion || (OCFL_VERSION as OcflVersion);
     //this.contentVersion = null; // No content yet
     this.#id = config.id;
-    this.#extensions = config.extensions;
     //this.fixityDigest = config.fixityDigest ?? this.digestAlgorithm;
     this.#digestAlgorithm = contentDigestAlgorithm(config.digestAlgorithm);
     this.#workspace = config.workspace ? path.resolve(config.workspace) : undefined;
@@ -407,7 +404,6 @@ class OcflObject {
       this._setInventory(inv);
     }
     this.#latestRead = true;
-    //await this.loadExtensions();
     if (inv && filesMetadata) {
       //load file metadata from underlying storage
       const metadata: OcflObjectInventory['metadata'] = {};

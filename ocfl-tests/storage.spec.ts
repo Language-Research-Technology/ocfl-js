@@ -339,6 +339,29 @@ export default (ocfl: Ocfl) => {
       assert.strictEqual(storage.objectRoot('abc'), 'ABC');
     });
 
+    it('creates and reopens a root using a registered custom layout', async () => {
+      class RegisteredUppercaseLayout extends OcflStorageLayout {
+        static get NAME() {
+          return '9999-registered-uppercase-layout';
+        }
+        map(id: string) {
+          return id.toUpperCase();
+        }
+      }
+      RegisteredUppercaseLayout.register();
+      const root = path.join(tempdir, `root-${rootCount++}`);
+      const created = await ocfl.createStorage({ root, layout: '9999-registered-uppercase-layout' });
+      await created.object('abc').update(async (t) => {
+        await t.write('a.txt', 'content');
+      });
+
+      const reopened = await ocfl.storage({ root }).load();
+      const object = reopened.object('abc');
+      assert.strictEqual(object.root, path.join(root, 'ABC'));
+      await object.load();
+      assert.strictEqual(await object.getFile('a.txt')?.text(), 'content');
+    });
+
     it('loads a root with the configured RegExp parameter that created it', async () => {
       const root = path.join(tempdir, `root-${rootCount++}`);
       const layout = { extensionName: '000N-path-direct-storage-layout', replace: [[/x/g, 'y']] };

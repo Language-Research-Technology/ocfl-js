@@ -13,26 +13,7 @@ const storageLayout: { [className: string]: typeof OcflStorageLayout } = {};
 type ExtensionConstructor<T> = new (config?: OcflExtensionConfig) => T;
 
 class OcflExtension<C extends object = object> {
-  static #object: { [name: string]: typeof OcflExtension } = {};
-  static #storage: { [name: string]: typeof OcflExtension } = {};
-
   parameters: C;
-
-  /**
-   * Get an object-level extension
-   * @param name - A registered extension name
-   */
-  static object(name: string) {
-    return OcflExtension.#object[name];
-  }
-
-  /**
-   * Get an storage-level extension
-   * @param name - A registered extension name
-   */
-  static storage(name: string) {
-    return OcflExtension.#storage[name];
-  }
 
   /** List all registered extension classes */
   static get classes(): (typeof OcflExtension)[] {
@@ -71,12 +52,6 @@ class OcflExtension<C extends object = object> {
     return createByName(OcflExtension, 'Extension', name, config) as T;
   }
 
-  static get forObject() {
-    return false;
-  }
-  static get forStorage() {
-    return false;
-  }
   static get NAME() {
     return '0000-example-extension';
   }
@@ -115,9 +90,6 @@ class OcflExtension<C extends object = object> {
   }
   get description(): string {
     return (this.constructor as typeof OcflExtension).DESCRIPTION;
-  }
-  get minOcflVersion() {
-    return '1.0';
   }
   get version() {
     return '1.0';
@@ -167,10 +139,6 @@ class OcflStorageLayout<C extends object = object> extends OcflExtension<C> {
   static register(extensionClass: typeof OcflStorageLayout = this) {
     OcflExtension.register(extensionClass);
     storageLayout[extensionClass.name] = extensionClass;
-  }
-
-  static get forStorage() {
-    return true;
   }
 
   /**

@@ -85,7 +85,7 @@ cat >"$consumer/tsconfig.json" <<'EOF'
 EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'
-import type { OcflExtension, OcflObject, OcflObjectInventory, OcflObjectTransaction, OcflStorage } from '@ocfl/ocfl';
+import type { OcflExtension, OcflObject, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl';
 import { OcflDigest } from '@ocfl/ocfl';
 // @ts-expect-error OcflStorageImpl is not exported
 import { OcflStorageImpl } from '@ocfl/ocfl';
@@ -97,6 +97,8 @@ declare const object: OcflObject;
 declare const inventory: OcflObjectInventory;
 declare const transaction: OcflObjectTransaction;
 declare const extension: OcflExtension;
+declare const extensionClass: typeof OcflExtension;
+declare const layoutClass: typeof OcflStorageLayout;
 
 // @ts-expect-error OcflObject.add is gone, use import
 await object.add('/tmp/source');
@@ -128,6 +130,20 @@ await object.fileByLogicalPath('a.txt');
 await object.fileByDigest('abc');
 // @ts-expect-error OcflObject.fileByContentPath is gone, use load then getFile
 await object.fileByContentPath('v1/content/a.txt');
+// @ts-expect-error OcflExtension.object is gone, use class
+extensionClass.object('name');
+// @ts-expect-error OcflExtension.storage is gone, use class
+extensionClass.storage('name');
+// @ts-expect-error OcflExtension.forObject is gone
+extensionClass.forObject;
+// @ts-expect-error OcflExtension.forStorage is gone
+extensionClass.forStorage;
+// @ts-expect-error OcflStorageLayout.forStorage is gone
+layoutClass.forStorage;
+// @ts-expect-error OcflExtension.minOcflVersion is gone
+extension.minOcflVersion;
+// @ts-expect-error OcflObjectConfig.extensions is gone
+const objectConfig: OcflObjectConfig = { root: '/tmp/object', extensions: [] };
 
 export { extension, inventory, object, storage, transaction };
 EOF

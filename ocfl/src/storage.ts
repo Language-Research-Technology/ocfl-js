@@ -271,7 +271,6 @@ class OcflStorageImpl extends OcflStorage {
     if (layoutDigestAlgorithm) {
       await Hashing.initSync(layoutDigestAlgorithm);
     }
-    //@todo: load storage level extensions
 
     return this;
   }
@@ -311,7 +310,6 @@ class OcflStorageImpl extends OcflStorage {
       );
     }
 
-    // todo: create other extensions
     if (specText) {
       await this.#store.writeFile(path.join(this.root, specText.file), specText.content);
     }

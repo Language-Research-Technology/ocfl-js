@@ -94,8 +94,6 @@ export type OcflObjectConfig = {
   workspace?: string | undefined;
   /** Identifier for the object.  Only be used in a newly created object. */
   id?: string | undefined;
-  /** Reference to existing extensions defined outside of the object, such as in the storage root. */
-  extensions?: import('./extension.ts').OcflExtension[] | undefined;
   /** Additional digest algorithms to be calculated for each file and added to the fixity block. */
   fixityAlgorithms?: string[] | undefined;
   /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */

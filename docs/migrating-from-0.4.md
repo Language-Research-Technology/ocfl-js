@@ -296,6 +296,10 @@ Each public member now corresponds to something the OCFL specification or the li
 | `OcflObject.fileByLogicalPath(path, version)`                                                            | `await object.load()`, then `object.getFile(path, version)`                                                                           |
 | `OcflObject.fileByDigest(digest, version)`                                                               | `await object.load()`, then `object.getFile({ digest, version })`                                                                     |
 | `OcflObject.fileByContentPath(path, version)`                                                            | `await object.load()`, then `object.getFile({ contentPath: path, version })`                                                          |
+| `OcflExtension.object()`, `OcflExtension.storage()`                                                      | `OcflExtension.class()`                                                                                                               |
+| `OcflExtension.forObject`, `OcflExtension.forStorage`, `OcflStorageLayout.forStorage`                    | `OcflStorageLayout.class(name)`, which finds only layouts                                                                             |
+| `OcflExtension.minOcflVersion`                                                                           | Nothing: the library never read it, so drop any override                                                                              |
+| `OcflObjectConfig.extensions`                                                                            | Nothing: the library never read it, so drop the option                                                                                |
 
 ### Deleting an object
 
