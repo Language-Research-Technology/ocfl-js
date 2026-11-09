@@ -339,13 +339,6 @@ class OcflObject {
   }
 
   /**
-   * Copy all content of this Object to a directory in local filesystem
-   */
-  async export(_targetDir: string, _version: string) {
-    throw new Error('Not Implemented');
-  }
-
-  /**
    * Iterate through the content files contained in the specified version.
    * Returns an Iterator that contains FileRef which consists of logical path, content path, and digest, in no particular order.
    * The iterator is implemented as a generator.

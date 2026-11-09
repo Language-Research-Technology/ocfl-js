@@ -86,7 +86,7 @@ EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'
 import type { OcflExtension, OcflObject, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl';
-import { OcflDigest } from '@ocfl/ocfl';
+import { extensions, OcflDigest } from '@ocfl/ocfl';
 // @ts-expect-error OcflStorageImpl is not exported
 import { OcflStorageImpl } from '@ocfl/ocfl';
 // @ts-expect-error OcflObjectTransactionImpl is not exported
@@ -191,6 +191,10 @@ inventory.fixity!.md5 = {};
 inventory.versionState('v1')!.d = [];
 // @ts-expect-error user is read-only
 inventory.user!.name = 'x';
+// @ts-expect-error OcflObject.export is gone
+object.export;
+// @ts-expect-error extensions.DigestAlgorithm is gone
+extensions.DigestAlgorithm;
 
 export { extension, inventory, inventoryClass, object, storage, transaction };
 EOF

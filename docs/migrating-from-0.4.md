@@ -312,6 +312,8 @@ Each public member now corresponds to something the OCFL specification or the li
 | The `inventory.created`, `message` and `user` setters                                                    | `transaction.commit({ message, user })`; `created` is set when a version is committed                                                 |
 | The `inventory.fixity` setter                                                                            | The `fixityAlgorithms` option of an object or storage                                                                                 |
 | The `OcflObjectInventoryMut` type                                                                        | `OcflObjectInventory`                                                                                                                 |
+| `OcflObject.export()`                                                                                    | `object.files(version)` and `file.stream()`; see [Writing a version out](#writing-a-version-out)                                      |
+| `extensions.DigestAlgorithm`                                                                             | Nothing to replace: to add an algorithm from extension 0009, call `OcflDigest.registerHasherFactory()`                                |
 
 ### Deleting an object
 
@@ -375,6 +377,27 @@ To find out what changed between two versions, use `diffState`. It returns the f
 ```ts
 const [added, removed] = inventory.diffState('v2', 'v1');
 const changed = Object.keys(added).length > 0 || Object.keys(removed).length > 0;
+```
+
+### Writing a version out
+
+`OcflObject.export()` only ever threw `Not Implemented`. To reconstruct a version's state in a directory, read its files with `files(version)` and write each one under its logical path:
+
+```ts
+import { createWriteStream } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
+import path from 'node:path';
+import { Writable } from 'node:stream';
+import type { OcflObject } from '@ocfl/ocfl';
+
+async function writeVersion(object: OcflObject, targetDir: string, version: string) {
+  for (const file of await object.files(version)) {
+    const target = path.join(targetDir, file.logicalPath!);
+    await mkdir(path.dirname(target), { recursive: true });
+    const readable = await file.stream();
+    await readable.pipeTo(Writable.toWeb(createWriteStream(target)));
+  }
+}
 ```
 
 ## Other behaviour changes

@@ -90,4 +90,8 @@ describe('OcflExtension class', () => {
       assert.strictEqual(layout.get('undeclared'), undefined);
     });
   });
+
+  it('registers nothing for extension 0009, which only names digest algorithms', () => {
+    assert.strictEqual(OcflExtension.class('0009-digest-algorithms'), undefined);
+  });
 });
