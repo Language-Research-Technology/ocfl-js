@@ -818,7 +818,7 @@ export default (ocfl: Ocfl) => {
         const reloaded = ocfl.object({ root: o.root });
         await reloaded.load();
         for (const [logicalPath, content] of Object.entries(expected)) {
-          assert.strictEqual(await reloaded.getFile(logicalPath)!.asString(), content, logicalPath);
+          assert.strictEqual(await reloaded.getFile(logicalPath)!.text(), content, logicalPath);
         }
         const inventory = await readInventory(o);
         assert.deepStrictEqual(Object.values(inventory.versions[inventory.head]!.state).flat().sort(), Object.keys(expected).sort());
