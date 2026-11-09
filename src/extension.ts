@@ -36,7 +36,7 @@ class OcflExtension<C extends object = object> {
     const name = extensionClass.NAME;
     extensionByName[name] = extensionClass;
     extensionByClassName[extensionClass.name] = extensionClass;
-    import('./core.ts').then((ocfl) => extensionClass.setup(ocfl));
+    import('./index.ts').then((ocfl) => extensionClass.setup(ocfl));
   }
 
   /**
@@ -57,7 +57,7 @@ class OcflExtension<C extends object = object> {
   static get DESCRIPTION() {
     return 'Example extension';
   }
-  static async setup(_ocfl: typeof import('./core.ts')): Promise<void> {}
+  static async setup(_ocfl: typeof import('./index.ts')): Promise<void> {}
 
   constructor(config?: OcflExtensionConfig, defaultConfig?: C) {
     this.parameters = typeof defaultConfig === 'object' ? Object.create(defaultConfig) : {};

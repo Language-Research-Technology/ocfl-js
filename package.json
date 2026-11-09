@@ -1,7 +1,7 @@
 {
-  "name": "ocfl",
-  "private": true,
-  "description": "Oxford Common File Layout (OCFL) JS client library",
+  "name": "@ocfl/ocfl-fs",
+  "version": "0.4.0",
+  "description": "Oxford Common File Layout (OCFL) JS client library for filesystem storage",
   "keywords": [
     "ocfl",
     "Oxford Common File Layout",
@@ -19,13 +19,27 @@
     "Peter Sefton (https://orcid.org/0000-0002-3545-944X)"
   ],
   "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "resources"
+  ],
   "scripts": {
+    "build": "tsc",
+    "prepack": "tsc",
     "lint:knip": "knip",
     "lint:biome": "biome check .",
     "lint:consumer": "scripts/check-consumer.sh",
     "format": "biome check --write .",
-    "lint:types": "pnpm -r run typecheck",
-    "test": "pnpm --filter @ocfl/ocfl-fs test",
+    "lint:types": "tsc --noEmit && tsc -p test",
+    "test": "node --test 'test/**/*.spec.ts'",
     "coverage": "c8 pnpm test",
     "check:version-states": "node scripts/check-version-states.mts"
   },
@@ -38,13 +52,27 @@
     "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^11.0.1",
+    "@types/node": "^22.20.5",
     "c8": "^12.0.0",
     "conventional-changelog-conventionalcommits": "^9.3.1",
     "knip": "^6.44.1",
     "lefthook": "^2.2.2",
-    "semantic-release": "^25.0.9"
+    "memfs": "^4.80.0",
+    "semantic-release": "^25.0.9",
+    "typescript": "^7.0.2"
   },
   "engines": {
-    "node": ">=22.18.0"
+    "node": ">=22.12.0"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": ">=22.18.0",
+      "onFail": "error"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

@@ -5,9 +5,6 @@ autoDedupe: true
 saveTypes: true
 engineStrict: true
 
-packages:
-  - ocfl-fs
-
 allowBuilds:
   # Installs the git hooks.
   lefthook: true

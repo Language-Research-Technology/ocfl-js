@@ -1,5 +1,5 @@
 {
-  "include": ["ocfl-fs/src/**"],
+  "include": ["src/**"],
   "checkCoverage": true,
   "lines": 89,
   "branches": 94,

@@ -2,14 +2,8 @@
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
   // Treat anything tagged @lintignore as intentional.
   "tags": ["-lintignore"],
-  "workspaces": {
-    ".": {
-      // Loaded by semantic-release from the `preset` option, and the plugins release.config.mjs drops on beta.
-      "ignoreDependencies": ["conventional-changelog-conventionalcommits", "@semantic-release/changelog", "@semantic-release/git"]
-    },
-    "ocfl-fs": {
-      // Typechecked only, by test/tsconfig.json.
-      "entry": ["test/*.ts"]
-    }
-  }
+  // Typechecked only, by test/tsconfig.json.
+  "entry": ["test/*.ts"],
+  // Loaded by semantic-release from the `preset` option, and the plugins release.config.mjs drops on beta.
+  "ignoreDependencies": ["conventional-changelog-conventionalcommits", "@semantic-release/changelog", "@semantic-release/git"]
 }

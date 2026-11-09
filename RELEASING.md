@@ -23,12 +23,12 @@ provenance, so there is no way to release around it. The environment only allows
 1. Go to **Actions → Publish Packages → Run workflow** and leave the branch as `main` (runs from
    anything other than `main` or `beta` are skipped).
 2. Leave **Dry run** ticked and run it. Check the logs for the version, the release notes and the
-   contents of each package's tarball.
+   contents of the package's tarball.
 3. Run it again with **Dry run** unticked.
 
 semantic-release tags the release, publishes `@ocfl/ocfl-fs` under `latest` with `pnpm publish`,
-creates a GitHub release and commits the updated `CHANGELOG.md` and the package's `package.json`
-back to `main`.
+creates a GitHub release and commits the updated `CHANGELOG.md` and the root `package.json` back
+to `main`.
 
 ## Prereleases
 

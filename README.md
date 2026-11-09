@@ -1,7 +1,7 @@
 # ocfl-js - An OCFL implementation in Node.js
 
-Node.js library for creating and manipulating Oxford Common File Layout(OCFL) storage and object.
-It is published as one package, `@ocfl/ocfl-fs`, which stores OCFL storage roots and objects on a filesystem.
+TypeScript library for creating and manipulating Oxford Common File Layout (OCFL) storage and objects in Node.js.
+It is published as one package, `@ocfl/ocfl-fs`, which stores OCFL storage roots and their objects on a locally attached filesystem.
 
 ## Installation
 
@@ -141,6 +141,49 @@ for await (let f of await object.files()) {
 }
 ```
 
+### Custom fs module
+
+The storage and object methods accept an optional fs parameter, which can be any module that implements Node.js fs module API. By default, it will use the built in fs module.
+
+For example, by passing it [memfs](https://www.npmjs.com/package/memfs) the OCFL storage will be created in memory using the memfs module:
+
+```js
+import ocfl from '@ocfl/ocfl-fs';
+import { fs } from 'memfs';
+const storage = ocfl.storage({ root: '/var/data/myocfl' }, { fs });
+```
+
+## Extensions
+
+This library by default includes all the community extensions defined in the [OCFL Community Extensions page](https://github.com/OCFL/extensions).
+
+To implement a local extension, first follow the description in that page, then extend `OcflExtension` (or `OcflStorageLayout` for a storage layout) and register it. For example, a storage layout:
+
+```ts
+import { OcflStorageLayout, storage } from '@ocfl/ocfl-fs';
+
+class UppercaseLayout extends OcflStorageLayout {
+  static get NAME() {
+    return '9999-uppercase-layout';
+  }
+  static get DESCRIPTION() {
+    return 'Maps an object id to an uppercase directory name';
+  }
+
+  map(id: string): string {
+    return id.toUpperCase();
+  }
+}
+
+UppercaseLayout.register();
+
+const s = storage({ root: '/var/data/ocfl', layout: '9999-uppercase-layout' });
+```
+
+## Implementing another backend
+
+A new data store backend can be implemented with a store class that extends `OcflStore`, passed to `implementOcfl`. Please see `OcflFsStore` in the source code as an example implementation.
+
 ## Development
 
 Clone the Git repo with submodules included:
@@ -149,7 +192,7 @@ Clone the Git repo with submodules included:
 git clone --recurse-submodules https://github.com/Language-Research-Technology/ocfl-js
 ```
 
-The package lives in `ocfl-fs/`, set up as a pnpm workspace. Install the dependencies:
+The package lives at the repository root. Development needs Node.js 22.18 or later. Install the dependencies:
 
 ```bash
 cd ocfl-js

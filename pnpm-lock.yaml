@@ -187,6 +187,9 @@ importers:
       '@semantic-release/git':
         specifier: ^11.0.1
         version: 11.0.1(semantic-release@25.0.9(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)
+      '@types/node':
+        specifier: ^22.20.5
+        version: 22.20.5
       c8:
         specifier: ^12.0.0
         version: 12.0.0
@@ -199,18 +202,12 @@ importers:
       lefthook:
         specifier: ^2.2.2
         version: 2.2.2
-      semantic-release:
-        specifier: ^25.0.9
-        version: 25.0.9(supports-color@7.2.0)(typescript@7.0.2)
-
-  ocfl-fs:
-    devDependencies:
-      '@types/node':
-        specifier: ^22.20.5
-        version: 22.20.5
       memfs:
         specifier: ^4.80.0
         version: 4.80.0
+      semantic-release:
+        specifier: ^25.0.9
+        version: 25.0.9(supports-color@7.2.0)(typescript@7.0.2)
       typescript:
         specifier: ^7.0.2
         version: 7.0.2

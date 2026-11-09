@@ -4,7 +4,11 @@ This release converts `@ocfl/ocfl-fs` to TypeScript, ships it as an ES module wi
 
 ## Import everything from `@ocfl/ocfl-fs`
 
-`@ocfl/ocfl-fs` is now the only package you need. `@ocfl/ocfl` is no longer needed, and every value and type it exported is now exported by `@ocfl/ocfl-fs`. If you import from `@ocfl/ocfl`, remove it from your dependencies and change the package name:
+`@ocfl/ocfl-fs` is now the only package you need, and every value and type `@ocfl/ocfl` exported is now exported by `@ocfl/ocfl-fs`.
+
+You must remove `@ocfl/ocfl` from your dependencies. `@ocfl/ocfl-fs` no longer depends on it, so keeping it installs a second, separate copy of the library, and nothing warns you. Classes from the two copies are different: `instanceof OcflError` is false for an error thrown by `@ocfl/ocfl-fs` if `OcflError` came from `@ocfl/ocfl`, and a layout registered on the `@ocfl/ocfl` classes can't be found by `@ocfl/ocfl-fs`.
+
+After removing it, change the package name in your imports:
 
 ```diff
 - import { OcflDigest, type OcflObject } from '@ocfl/ocfl';
@@ -91,7 +95,7 @@ try {
 }
 ```
 
-`instanceof OcflError` is reliable because `@ocfl/ocfl-fs` is a single package, so your app has one copy of it. Checking `error.code` also works if a second copy of `@ocfl/ocfl-fs` is ever installed.
+`instanceof OcflError` only works when your app has one copy of the library, so it depends on [removing `@ocfl/ocfl`](#import-everything-from-ocflocfl-fs). Checking `error.code` works across copies.
 
 | Code                          | Thrown when                                                                                                                  |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |

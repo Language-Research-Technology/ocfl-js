@@ -1,7 +1,3 @@
-/**
- * @module ocfl
- */
-
 import type { OcflStore } from './backend-store.ts';
 import { OcflConstants } from './constants.ts';
 import { createByName, OcflStorageLayout } from './extension.ts';

@@ -5,8 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import type { OcflError, OcflStorage, OcflStorageConfig, OcflVersion } from '../../src/index.ts';
-import { OcflDigest, OcflStorageLayout } from '../../src/index.ts';
+import { OcflDigest, type OcflError, type OcflStorage, type OcflStorageConfig, OcflStorageLayout, type OcflVersion } from '../../src/index.ts';
 import type { Ocfl } from './index.ts';
 
 export default (ocfl: Ocfl) => {

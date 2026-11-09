@@ -14,15 +14,16 @@ export default {
     [
       '@semantic-release/exec',
       {
-        prepareCmd: `pnpm --filter @ocfl/ocfl-fs version \${nextRelease.version} --no-git-checks`,
-        publishCmd: `pnpm --filter @ocfl/ocfl-fs publish --tag \${nextRelease.channel || 'latest'} --no-git-checks`,
+        // At a git root, pnpm version would otherwise commit and create the tag semantic-release owns
+        prepareCmd: `pnpm version \${nextRelease.version} --no-git-checks --no-git-tag-version`,
+        publishCmd: `pnpm publish --tag \${nextRelease.channel || 'latest'} --no-git-checks`,
       },
     ],
     '@semantic-release/github',
     !isPrerelease && [
       '@semantic-release/git',
       {
-        assets: ['CHANGELOG.md', 'ocfl-fs/package.json'],
+        assets: ['CHANGELOG.md', 'package.json'],
       },
     ],
   ].filter(Boolean),

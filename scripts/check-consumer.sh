@@ -11,10 +11,10 @@ fail() {
   exit 1
 }
 
-pnpm -C "$root/ocfl-fs" pack --pack-destination "$tmp/tarball" >/dev/null
-mkdir -p "$tmp/extract"
-tar -xzf "$tmp/tarball"/*.tgz -C "$tmp/extract"
-dir=$tmp/extract/package
+pnpm -C "$root" pack --pack-destination "$tmp" >/dev/null
+tgz=$(echo "$tmp"/*.tgz)
+tar -xzf "$tgz" -C "$tmp"
+dir=$tmp/package
 
 [[ -d $dir/dist ]] || fail "tarball has no dist"
 srcs=$(cd "$dir" && find src -name '*.ts' ! -name '*.d.ts') || fail "tarball has no src"
@@ -27,8 +27,8 @@ while IFS= read -r src; do
   done
 done <<<"$srcs"
 
-for spec in ocfl_1.0.txt ocfl_1.1.md; do
-  [[ -f $dir/resources/$spec ]] || fail "tarball is missing the specification text $spec"
+for spec in "$root"/resources/*; do
+  [[ -f $dir/resources/${spec##*/} ]] || fail "tarball is missing the specification text ${spec##*/}"
 done
 
 node -e '
@@ -43,8 +43,7 @@ node -e '
   }
 ' "$dir"
 
-tgz=$(echo "$tmp/tarball"/*.tgz)
-dev_dep() { node -p 'require(process.argv[1]).devDependencies[process.argv[2]]' "$root/ocfl-fs/package.json" "$1"; }
+dev_dep() { node -p 'require(process.argv[1]).devDependencies[process.argv[2]]' "$root/package.json" "$1"; }
 
 consumer=$tmp/consumer
 mkdir -p "$consumer"
@@ -205,6 +204,7 @@ export { extension, inventory, inventoryClass, object, storage, transaction };
 EOF
 cat >"$consumer/consumer.ts" <<'EOF'
 import { join } from 'node:path';
+// Named so that each public export must resolve and typecheck
 import ocflFs, {
   type BinaryOptions,
   type CommitOptions,
@@ -305,7 +305,7 @@ pnpm -C "$consumer" install --prefer-offline --silent
 for dir in "$consumer"/spec-*; do
   version=${dir##*/spec-}
   written=("$dir/ocfl_$version".*)
-  cmp -s "$root/ocfl-fs/resources/${written[0]##*/}" "${written[0]}" || fail "the installed package wrote the wrong spec text for $version"
+  cmp -s "$root/resources/${written[0]##*/}" "${written[0]}" || fail "the installed package wrote the wrong spec text for $version"
 done
 pnpm -C "$consumer" exec tsc || fail "consumer.ts doesn't typecheck against the packed types"
 echo "lint:consumer: packed @ocfl/ocfl-fs installs, imports and typechecks"
