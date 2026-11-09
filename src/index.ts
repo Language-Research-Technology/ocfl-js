@@ -1,11 +1,76 @@
-import { implementOcfl } from './core.ts';
-import { OcflFsStore, type OcflFsStoreConfig } from './store.ts';
+import { OcflConstants } from './constants.ts';
+import { createByName, OcflStorageLayout } from './extension.ts';
+import * as extensions from './extensions/index.ts';
+import { OcflObject } from './object.ts';
+import { type OcflStorage, OcflStorageImpl } from './storage.ts';
+import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig } from './types.ts';
 
-export * from './core.ts';
-export type { OcflFsStoreConfig } from './store.ts';
-export { OcflFsStore } from './store.ts';
+export { OcflDigest } from './digest.ts';
+export type { OcflErrorCode } from './error.ts';
+export { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
+export { OcflExtension, OcflStorageLayout } from './extension.ts';
+export type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direct-storage-layout.ts';
+export type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
+export type { FileRef, FileStat, OcflObjectFile } from './file.ts';
+export type { InventoryFile, VersionNumber } from './inventory.ts';
+export { OcflObjectInventory } from './inventory.ts';
+export type { UpdateMode } from './object.ts';
+export { OcflObject } from './object.ts';
+export { OcflStorage } from './storage.ts';
+export type { CommitOptions } from './transaction.ts';
+export { OcflObjectTransaction } from './transaction.ts';
+export type * from './types.ts';
+export { ValidationError } from './validation.ts';
+export { extensions };
 
-const ocfl = implementOcfl<OcflFsStoreConfig>(OcflFsStore);
+export const OCFL_VERSIONS = OcflConstants.OCFL_VERSIONS;
 
-export const { OCFL_VERSIONS, createStorage, loadStorage, object, storage, storageLayout } = ocfl;
-export default ocfl;
+/**
+ * Instantiate a storage layout from extension name or config
+ * @param config - Layout name or config
+ */
+export function storageLayout(config: string | OcflExtensionConfig): OcflStorageLayout {
+  let name: string | undefined;
+  let c: OcflExtensionConfig | undefined;
+  if (typeof config === 'string') {
+    name = config;
+  } else {
+    name = config.extensionName;
+    c = config;
+  }
+  return createByName<OcflStorageLayout>(OcflStorageLayout, 'Layout', name, c);
+}
+
+/**
+ * Instantiate an OCFL Object
+ */
+export function object(config: OcflObjectConfig): OcflObject {
+  return new OcflObject(config);
+}
+
+/**
+ * Instantiate an OCFL Storage root
+ */
+export function storage(config: OcflStorageConfig): OcflStorage {
+  return new OcflStorageImpl(config);
+}
+
+/**
+ * Create a new OCFL Storage
+ */
+export async function createStorage(config: OcflStorageConfig): Promise<OcflStorage> {
+  return new OcflStorageImpl(config).create();
+}
+
+/**
+ * Load an existing OCFL Storage
+ */
+export async function loadStorage(config: OcflStorageConfig): Promise<OcflStorage> {
+  return new OcflStorageImpl(config).load();
+}
+
+for (const ext of Object.values(extensions)) {
+  ext.register();
+}
+
+export default { OCFL_VERSIONS, createStorage, extensions, loadStorage, object, storage, storageLayout };

@@ -58,6 +58,11 @@ export interface CommonHasher {
   digestSize: number;
 }
 
+export type EncodingOptions = BufferEncoding | { encoding: BufferEncoding; [key: string]: unknown };
+export type BinaryOptions = { encoding?: null | undefined; [key: string]: unknown };
+
+export type WriteFileData = string | Uint8Array | DataView | ArrayBuffer | ReadableStream;
+
 export type OcflVersion = '1.0' | '1.1';
 
 export type OcflExtensionConfig = { extensionName?: string; [key: string]: unknown };

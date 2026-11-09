@@ -6,22 +6,11 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import ocfl, { type Inventory, ObjectNotFoundError, ObjectNotLoadedError, type OcflVersion } from '../src/index.ts';
 import { ocflError } from './ocfl-error.ts';
-import ocflTests from './shared/index.ts';
 
 async function writeInventory(inventoryPath: string, data: string) {
   await fs.promises.writeFile(inventoryPath, data);
   await fs.promises.writeFile(`${inventoryPath}.sha512`, `${createHash('sha512').update(data).digest('hex')} inventory.json\n`);
 }
-
-describe('OcflObject class using OcflFsStore', () => {
-  // it("constructor", function() {
-  //   console.log(this.ocfl);
-  //   assert.strictEqual(DIGEST.size(), 2);
-  //   assert.strictEqual(DIGEST_FIXITY.size(), 5);
-  // });
-
-  ocflTests.object(ocfl);
-});
 
 describe('OcflObject with a malformed or missing inventory', () => {
   let tempdir: string;
