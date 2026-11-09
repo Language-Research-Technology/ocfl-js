@@ -59,7 +59,8 @@ class OcflFsStore extends OcflStore {
 
   async writeFile(filePath: string, data: WriteFileData, options?: object | string) {
     await this.fs.promises.mkdir(path.dirname(filePath), { recursive: true });
-    const content = data instanceof ReadableStream ? Readable.fromWeb(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data;
+    // Readable.from, not fromWeb: fromWeb reads eagerly, so a source failure before writeFile attaches would be uncaught
+    const content = data instanceof ReadableStream ? Readable.from(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data;
     await this.fs.promises.writeFile(filePath, content, options as Parameters<typeof fs.promises.writeFile>[2]);
   }
 

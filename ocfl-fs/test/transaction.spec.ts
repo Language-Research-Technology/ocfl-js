@@ -115,6 +115,15 @@ describe('OcflTransactionImpl class', () => {
     await trx.commit();
   });
 
+  it('write stores only the bytes a partial view covers', async () => {
+    const trx = await createTransaction();
+    const wp = trx._versionPath;
+    const bytes = new TextEncoder().encode('HELLOworld');
+    await trx.write('view.bin', new DataView(bytes.buffer, 5, 5));
+    assert.strictEqual(fs.readFileSync(`${wp}/content/view.bin`, 'utf-8'), 'world');
+    await trx.commit();
+  });
+
   it('write with fixity', async () => {
     object.fixityAlgorithms = ['size', 'crc32'];
     const trx = await createTransaction();
