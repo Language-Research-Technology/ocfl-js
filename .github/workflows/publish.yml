@@ -86,8 +86,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build packages
-        run: pnpm --filter @ocfl/ocfl --filter @ocfl/ocfl-fs build
+      - name: Build package
+        run: pnpm --filter @ocfl/ocfl-fs build
 
       - name: Verify the integrity of provenance attestations and registry signatures for installed dependencies
         run: npm audit signatures
@@ -101,9 +101,9 @@ jobs:
           pnpm exec semantic-release --dry-run
           echo ""
           echo "## Package Contents Preview"
-          echo "The following files would be included in each npm package:"
+          echo "The following files would be included in the npm package:"
           echo ""
-          pnpm --filter @ocfl/ocfl --filter @ocfl/ocfl-fs pack --dry-run
+          pnpm --filter @ocfl/ocfl-fs pack --dry-run
 
       - name: Semantic Release
         if: ${{ !inputs.dry_run }}

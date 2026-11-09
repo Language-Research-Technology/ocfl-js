@@ -203,20 +203,8 @@ importers:
         specifier: ^25.0.9
         version: 25.0.9(supports-color@7.2.0)(typescript@7.0.2)
 
-  ocfl:
-    devDependencies:
-      '@types/node':
-        specifier: ^22.20.5
-        version: 22.20.5
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-
   ocfl-fs:
     devDependencies:
-      '@ocfl/ocfl':
-        specifier: workspace:^
-        version: link:../ocfl
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5

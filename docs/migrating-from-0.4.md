@@ -1,10 +1,10 @@
 # Migrating from 0.4
 
-This release converts `@ocfl/ocfl` and `@ocfl/ocfl-fs` to TypeScript, ships them as ES modules with type declarations, and tightens how they handle invalid input. Most code that uses `@ocfl/ocfl-fs` through its default export keeps working once Node.js is upgraded. The sections below cover what may need changing.
+This release converts `@ocfl/ocfl-fs` to TypeScript, ships it as an ES module with type declarations, and tightens how it handles invalid input. Most code that uses `@ocfl/ocfl-fs` through its default export keeps working once Node.js is upgraded. The sections below cover what may need changing.
 
 ## Import everything from `@ocfl/ocfl-fs`
 
-Every value and type exported by `@ocfl/ocfl` can now be imported from `@ocfl/ocfl-fs`. If you import from `@ocfl/ocfl`, change the package name:
+`@ocfl/ocfl-fs` is now the only package you need. `@ocfl/ocfl` is no longer needed, and every value and type it exported is now exported by `@ocfl/ocfl-fs`. If you import from `@ocfl/ocfl`, remove it from your dependencies and change the package name:
 
 ```diff
 - import { OcflDigest, type OcflObject } from '@ocfl/ocfl';
@@ -13,20 +13,20 @@ Every value and type exported by `@ocfl/ocfl` can now be imported from `@ocfl/oc
 
 ## Node.js 22.12 or later
 
-Both packages now require Node.js 22.12 or later (previously 18). Digests are computed with `node:crypto` and `node:zlib`, and `zlib.crc32` was added in Node.js 22.2.
+`@ocfl/ocfl-fs` now requires Node.js 22.12 or later (previously 18). Digests are computed with `node:crypto` and `node:zlib`, and `zlib.crc32` was added in Node.js 22.2.
 
 ## ES modules
 
-Both packages are ESM-only and publish compiled code from `dist/`.
+The package is ESM-only and publishes compiled code from `dist/`.
 
-- **CommonJS** callers can still `require()` the packages, because Node.js 22.12 supports `require()` of ES modules:
+- **CommonJS** callers can still `require()` the package, because Node.js 22.12 supports `require()` of ES modules:
 
   ```js
   const ocfl = require('@ocfl/ocfl-fs');
   const storage = ocfl.storage({ root: '/var/data/myocfl' });
   ```
 
-- **`@ocfl/ocfl` has no default export.** Use named imports or a namespace import:
+- **If you used the default export of `@ocfl/ocfl`,** use named imports or a namespace import instead:
 
   ```diff
   - import ocfl from '@ocfl/ocfl';
@@ -41,7 +41,7 @@ Both packages are ESM-only and publish compiled code from `dist/`.
 
 ## TypeScript
 
-The packages now declare their own types, so delete any hand-written module declarations for `@ocfl/ocfl` or `@ocfl/ocfl-fs`.
+The package now declares its own types, so delete any hand-written module declarations for `@ocfl/ocfl` or `@ocfl/ocfl-fs`.
 
 The declarations show where a value can be missing, so code that assumed otherwise may no longer compile. The most common cases:
 
@@ -77,7 +77,7 @@ For example, `digestAlgorithm: 'SHA512'` and `update(fn, 'replace')` now throw. 
 
 ## Error classes and codes
 
-Errors a client is expected to handle are now an `OcflError` with a string `code`. Check `error.code` rather than matching on the message: messages aren't part of the API and may change. `OcflError`, its subclasses `ValidationError`, `ObjectNotFoundError` and `ObjectNotLoadedError`, and the `OcflErrorCode` union are exported from both `@ocfl/ocfl` and `@ocfl/ocfl-fs`:
+Errors a client is expected to handle are now an `OcflError` with a string `code`. Check `error.code` rather than matching on the message: messages aren't part of the API and may change. `OcflError`, its subclasses `ValidationError`, `ObjectNotFoundError` and `ObjectNotLoadedError`, and the `OcflErrorCode` union are exported from `@ocfl/ocfl-fs`:
 
 ```ts
 import type { OcflError } from '@ocfl/ocfl-fs';
@@ -91,7 +91,7 @@ try {
 }
 ```
 
-`instanceof OcflError` works because `@ocfl/ocfl` is a peer dependency, so your app and `@ocfl/ocfl-fs` share one copy. Checking `error.code` works even if a second copy is installed, for example when your own `@ocfl/ocfl` dependency is outside the peer range.
+`instanceof OcflError` is reliable because `@ocfl/ocfl-fs` is a single package, so your app has one copy of it. Checking `error.code` also works if a second copy of `@ocfl/ocfl-fs` is ever installed.
 
 | Code                          | Thrown when                                                                                                                  |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
@@ -187,7 +187,7 @@ A custom `OcflStore` should drop any overrides of the removed methods and implem
 
 `getFile(..., true)` (lazy) still returns a file instance without a loaded inventory. `count()`, `files()`, and reading the content of a lazy file looked up by logical path or digest, also throw `ObjectNotFoundError` when the object doesn't exist.
 
-Both are `OcflError`s, with codes `OBJECT_NOT_FOUND` and `OBJECT_NOT_LOADED`, and are exported from `@ocfl/ocfl` and `@ocfl/ocfl-fs`:
+Both are `OcflError`s, with codes `OBJECT_NOT_FOUND` and `OBJECT_NOT_LOADED`, and are exported from `@ocfl/ocfl-fs`:
 
 ```ts
 import { ObjectNotFoundError } from '@ocfl/ocfl-fs';
@@ -323,7 +323,7 @@ Each public member now corresponds to something the OCFL specification or the li
 | The `OcflObjectInventoryMut` type                                                                        | `OcflObjectInventory`                                                                                                                 |
 | `OcflObject.export()`                                                                                    | `object.files(version)` and `file.stream()`; see [Writing a version out](#writing-a-version-out)                                      |
 | `extensions.DigestAlgorithm`                                                                             | Nothing to replace: to add an algorithm from extension 0009, call `OcflDigest.registerHasherFactory()`                                |
-| `ocfl.StorageLayout`, and the `StorageLayout` export of `@ocfl/ocfl-fs`                                  | `extensions`, on the default API and as a named export of `@ocfl/ocfl-fs` or `@ocfl/ocfl`; see [Layout classes](#layout-classes)      |
+| `ocfl.StorageLayout`, and the `StorageLayout` export of `@ocfl/ocfl-fs`                                  | `extensions`, on the default API and as a named export of `@ocfl/ocfl-fs`; see [Layout classes](#layout-classes)                      |
 | The `StorageLayout` type                                                                                 | `typeof extensions`, or `extensions.PathDirectStorageLayout` and the other classes as types                                           |
 | `OcflStorageLayout.layout`                                                                               | `extensions`, or `OcflStorageLayout.class(name)` to find a registered custom layout; see [Layout classes](#layout-classes)            |
 | `OcflConstants`                                                                                          | `OCFL_VERSIONS`, on the default API and as a named export of `@ocfl/ocfl-fs`. The other values were internal                          |
@@ -416,7 +416,7 @@ async function writeVersion(object: OcflObject, targetDir: string, version: stri
 
 ### Layout classes
 
-The built-in layout classes now have one name, `extensions`, and it's available from `@ocfl/ocfl-fs` without a dependency on `@ocfl/ocfl`:
+The built-in layout classes now have one name, `extensions`, and it's available from `@ocfl/ocfl-fs`:
 
 ```diff
 - const layout = new ocfl.StorageLayout.PathDirectStorageLayout({ omitScheme: true });

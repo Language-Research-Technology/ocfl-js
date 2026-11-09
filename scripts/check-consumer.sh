@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the packed tarballs into a throwaway project, then import and typecheck them as a consumer would
+# Install the packed tarball into a throwaway project, then import and typecheck it as a consumer would
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -11,45 +11,40 @@ fail() {
   exit 1
 }
 
-# ocfl-fs builds against ocfl's dist, so ocfl packs first
-for pkg in ocfl ocfl-fs; do
-  pnpm -C "$root/$pkg" pack --pack-destination "$tmp/tarballs/$pkg" >/dev/null
-  mkdir -p "$tmp/extract/$pkg"
-  tar -xzf "$tmp/tarballs/$pkg"/*.tgz -C "$tmp/extract/$pkg"
-  dir=$tmp/extract/$pkg/package
+pnpm -C "$root/ocfl-fs" pack --pack-destination "$tmp/tarball" >/dev/null
+mkdir -p "$tmp/extract"
+tar -xzf "$tmp/tarball"/*.tgz -C "$tmp/extract"
+dir=$tmp/extract/package
 
-  [[ -d $dir/dist ]] || fail "@ocfl/$pkg tarball has no dist"
-  srcs=$(cd "$dir" && find src -name '*.ts' ! -name '*.d.ts') || fail "@ocfl/$pkg tarball has no src"
-  [[ -n $srcs ]] || fail "@ocfl/$pkg tarball has no src/*.ts"
-  while IFS= read -r src; do
-    base=${src#src/}
-    base=${base%.ts}
-    for out in "dist/$base.js" "dist/$base.d.ts"; do
-      [[ -f $dir/$out ]] || fail "@ocfl/$pkg tarball is missing $out"
-    done
-  done <<<"$srcs"
+[[ -d $dir/dist ]] || fail "tarball has no dist"
+srcs=$(cd "$dir" && find src -name '*.ts' ! -name '*.d.ts') || fail "tarball has no src"
+[[ -n $srcs ]] || fail "tarball has no src/*.ts"
+while IFS= read -r src; do
+  base=${src#src/}
+  base=${base%.ts}
+  for out in "dist/$base.js" "dist/$base.d.ts"; do
+    [[ -f $dir/$out ]] || fail "tarball is missing $out"
+  done
+done <<<"$srcs"
 
-  node -e '
-    const [dir, pkg] = process.argv.slice(1);
-    const { existsSync, readFileSync } = require("node:fs");
-    const manifest = JSON.parse(readFileSync(`${dir}/package.json`, "utf8"));
-    const targets = (e) => (typeof e === "string" ? [e] : Object.values(e ?? {}).flatMap(targets));
-    const missing = targets(manifest.exports).filter((t) => !existsSync(`${dir}/${t}`));
-    if (missing.length) {
-      console.error(`lint:consumer: @ocfl/${pkg} exports files missing from its tarball: ${missing.join(", ")}`);
-      process.exit(1);
-    }
-  ' "$dir" "$pkg"
+for spec in ocfl_1.0.txt ocfl_1.1.md; do
+  [[ -f $dir/resources/$spec ]] || fail "tarball is missing the specification text $spec"
 done
 
-grep -q 'workspace:' "$tmp/extract/ocfl-fs/package/package.json" && fail "packed @ocfl/ocfl-fs manifest still contains workspace:"
-want="^$(node -p 'require(process.argv[1]).version' "$root/ocfl/package.json")"
-got=$(node -p 'const m = require(process.argv[1]); m.dependencies?.["@ocfl/ocfl"] ? "dependency" : m.peerDependencies?.["@ocfl/ocfl"]' "$tmp/extract/ocfl-fs/package/package.json")
-[[ $got == "$want" ]] || fail "packed @ocfl/ocfl-fs has @ocfl/ocfl as $got, expected a $want peer dependency"
+node -e '
+  const dir = process.argv[1];
+  const { existsSync, readFileSync } = require("node:fs");
+  const manifest = JSON.parse(readFileSync(`${dir}/package.json`, "utf8"));
+  const targets = (e) => (typeof e === "string" ? [e] : Object.values(e ?? {}).flatMap(targets));
+  const missing = targets(manifest.exports).filter((t) => !existsSync(`${dir}/${t}`));
+  if (missing.length) {
+    console.error(`lint:consumer: exports files missing from the tarball: ${missing.join(", ")}`);
+    process.exit(1);
+  }
+' "$dir"
 
-ocfl_tgz=$(echo "$tmp/tarballs/ocfl"/*.tgz)
-fs_tgz=$(echo "$tmp/tarballs/ocfl-fs"/*.tgz)
-dev_dep() { node -p 'require(process.argv[1]).devDependencies[process.argv[2]]' "$root/ocfl/package.json" "$1"; }
+tgz=$(echo "$tmp/tarball"/*.tgz)
+dev_dep() { node -p 'require(process.argv[1]).devDependencies[process.argv[2]]' "$root/ocfl-fs/package.json" "$1"; }
 
 consumer=$tmp/consumer
 mkdir -p "$consumer"
@@ -59,8 +54,7 @@ cat >"$consumer/package.json" <<EOF
   "private": true,
   "type": "module",
   "dependencies": {
-    "@ocfl/ocfl": "file:$ocfl_tgz",
-    "@ocfl/ocfl-fs": "file:$fs_tgz"
+    "@ocfl/ocfl-fs": "file:$tgz"
   },
   "devDependencies": {
     "@types/node": "$(dev_dep @types/node)",
@@ -85,20 +79,20 @@ cat >"$consumer/tsconfig.json" <<'EOF'
 EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'
-import type { OcflExtension, OcflObject, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl';
-import { extensions, OcflDigest } from '@ocfl/ocfl';
+import type { OcflExtension, OcflObject, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl-fs';
+import { extensions, OcflDigest } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflStorageImpl is not exported
-import { OcflStorageImpl } from '@ocfl/ocfl';
+import { OcflStorageImpl } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflObjectTransactionImpl is not exported
-import { OcflObjectTransactionImpl } from '@ocfl/ocfl';
+import { OcflObjectTransactionImpl } from '@ocfl/ocfl-fs';
 // @ts-expect-error RemoveOptions is gone, remove takes only a logical path
-import type { RemoveOptions } from '@ocfl/ocfl';
+import type { RemoveOptions } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflObjectInventoryMut is not exported
-import type { OcflObjectInventoryMut } from '@ocfl/ocfl';
+import type { OcflObjectInventoryMut } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflConstants is not exported
-import { OcflConstants } from '@ocfl/ocfl';
+import { OcflConstants } from '@ocfl/ocfl-fs';
 // @ts-expect-error the StorageLayout type is gone, use extensions
-import type { StorageLayout } from '@ocfl/ocfl';
+import type { StorageLayout } from '@ocfl/ocfl-fs';
 // @ts-expect-error the StorageLayout export is gone, use extensions
 import { StorageLayout as FsStorageLayout } from '@ocfl/ocfl-fs';
 import ocflFs from '@ocfl/ocfl-fs';
@@ -307,11 +301,11 @@ if (
 EOF
 
 pnpm -C "$consumer" install --prefer-offline --silent
-(cd "$consumer" && node consumer.ts) || fail "importing the packed packages failed"
+(cd "$consumer" && node consumer.ts) || fail "importing the packed package failed"
 for dir in "$consumer"/spec-*; do
   version=${dir##*/spec-}
   written=("$dir/ocfl_$version".*)
-  cmp -s "$root/ocfl/resources/${written[0]##*/}" "${written[0]}" || fail "the packed package wrote the wrong spec text for $version"
+  cmp -s "$root/ocfl-fs/resources/${written[0]##*/}" "${written[0]}" || fail "the installed package wrote the wrong spec text for $version"
 done
 pnpm -C "$consumer" exec tsc || fail "consumer.ts doesn't typecheck against the packed types"
-echo "lint:consumer: packed @ocfl/ocfl and @ocfl/ocfl-fs install, import and typecheck"
+echo "lint:consumer: packed @ocfl/ocfl-fs installs, imports and typechecks"

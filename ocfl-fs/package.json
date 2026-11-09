@@ -29,30 +29,25 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "resources"
   ],
   "scripts": {
-    "pretest": "pnpm --filter @ocfl/ocfl build",
     "test": "node --test 'test/**/*.spec.ts'",
     "build": "tsc",
-    "pretypecheck": "pnpm --filter @ocfl/ocfl build",
     "typecheck": "tsc --noEmit && tsc -p test",
     "prepack": "tsc"
   },
   "devDependencies": {
-    "@ocfl/ocfl": "workspace:^",
     "@types/node": "^22.20.5",
     "memfs": "^4.80.0",
     "typescript": "^7.0.2"
   },
-  "peerDependencies": {
-    "@ocfl/ocfl": "workspace:^"
+  "engines": {
+    "node": ">=22.12.0"
   },
   "publishConfig": {
     "access": "public",
     "provenance": true
-  },
-  "engines": {
-    "node": ">=22.12.0"
   }
 }

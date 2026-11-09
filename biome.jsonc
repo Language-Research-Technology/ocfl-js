@@ -9,7 +9,7 @@
       // OCFL fixtures: the upstream fixtures submodule plus inventories whose .sha512 sidecars depend on exact bytes
       "!!ocfl-fs/test/shared/test-data",
       // OCFL spec text, vendored verbatim
-      "!!ocfl/resources"
+      "!!ocfl-fs/resources"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "lineWidth": 160 },

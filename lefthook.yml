@@ -7,15 +7,11 @@ pre-commit:
     - name: knip
       run: pnpm run lint:knip
 
-    # Sequential: both build ocfl/dist
-    - name: build
-      group:
-        jobs:
-          - name: types
-            run: pnpm run lint:types
+    - name: types
+      run: pnpm run lint:types
 
-          - name: consumer
-            run: pnpm run lint:consumer
+    - name: consumer
+      run: pnpm run lint:consumer
 
 commit-msg:
   jobs:

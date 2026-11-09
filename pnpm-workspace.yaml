@@ -6,7 +6,6 @@ saveTypes: true
 engineStrict: true
 
 packages:
-  - ocfl
   - ocfl-fs
 
 allowBuilds:

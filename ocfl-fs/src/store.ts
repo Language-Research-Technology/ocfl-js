@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import { type BinaryOptions, type EncodingOptions, type ListedFile, type ListOptions, OcflStore, type WriteFileData } from '@ocfl/ocfl';
+import { type BinaryOptions, type EncodingOptions, type ListedFile, type ListOptions, OcflStore, type WriteFileData } from './backend-store.ts';
 
 export interface OcflFsStoreConfig {
   /** Custom fs module to use for any file operation */

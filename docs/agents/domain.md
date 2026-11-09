@@ -17,7 +17,6 @@ Single-context: one glossary and ADR set covering every workspace package.
 /
 ├── GLOSSARY.md
 ├── docs/adr/
-├── ocfl/
 └── ocfl-fs/
 ```
 

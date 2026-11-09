@@ -1,22 +1,17 @@
 # ocfl-js - An OCFL implementation in Node.js
 
 Node.js library for creating and manipulating Oxford Common File Layout(OCFL) storage and object.
-The library consists of common components and implementations for different storage backends.
+It is published as one package, `@ocfl/ocfl-fs`, which stores OCFL storage roots and objects on a filesystem.
 
 ## Installation
 
 Install the library:
 
 ```bash
-# For filesystem backend
 pnpm add @ocfl/ocfl-fs
 ```
 
-`@ocfl/ocfl` is a peer dependency of `@ocfl/ocfl-fs`, so your app shares one copy of it. pnpm and npm
-install it automatically; with Yarn, add it yourself. List it in your own dependencies too if you
-import from it directly.
-
-The packages are ES modules with bundled TypeScript types and require Node.js 22.12 or later.
+The package is an ES module with bundled TypeScript types and requires Node.js 22.12 or later.
 
 Upgrading from 0.4? See [Migrating from 0.4](docs/migrating-from-0.4.md).
 
@@ -24,10 +19,9 @@ Upgrading from 0.4? See [Migrating from 0.4](docs/migrating-from-0.4.md).
 
 ### Storage
 
-Import the corresponding module of the chosen backend and then create a new Storage instance with the right config. For more details, please refer to the documentation of the specific backend implementation. For example:
+Import the module and then create a new Storage instance with the right config. For example:
 
 ```js
-// Use filesystem backend
 import ocfl from '@ocfl/ocfl-fs';
 const storage = ocfl.storage({ root: '/var/data/myocfl' });
 ```
@@ -155,8 +149,7 @@ Clone the Git repo with submodules included:
 git clone --recurse-submodules https://github.com/Language-Research-Technology/ocfl-js
 ```
 
-The project is structured as a monorepo with multiple packages set up as pnpm workspaces.
-Install the dependencies for all workspaces:
+The package lives in `ocfl-fs/`, set up as a pnpm workspace. Install the dependencies:
 
 ```bash
 cd ocfl-js

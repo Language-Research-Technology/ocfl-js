@@ -176,7 +176,7 @@ export default (ocfl: Ocfl) => {
     });
   });
   describe('OCFL spec text', () => {
-    const resources = path.join(import.meta.dirname, '../../../ocfl/resources');
+    const resources = path.join(import.meta.dirname, '../../resources');
     const specFiles = async (root: string) => (await fs.promises.readdir(root)).filter((f) => /^ocfl_\d/.test(f));
     let tempdir: string;
     before(async () => {

@@ -1,7 +1,5 @@
 const isPrerelease = process.env.GITHUB_REF === 'refs/heads/beta';
 
-const filters = ['@ocfl/ocfl', '@ocfl/ocfl-fs'].map((name) => `--filter ${name}`).join(' ');
-
 /**
  * @type {import('semantic-release').GlobalConfig}
  */
@@ -14,18 +12,17 @@ export default {
     // Prereleases don't commit back, so CI can keep beta fast-forwarded to main
     !isPrerelease && '@semantic-release/changelog',
     [
-      // `pnpm publish` rather than @semantic-release/npm, which can't rewrite `workspace:` ranges
       '@semantic-release/exec',
       {
-        prepareCmd: `pnpm ${filters} version \${nextRelease.version} --no-git-checks`,
-        publishCmd: `pnpm ${filters} publish --tag \${nextRelease.channel || 'latest'} --no-git-checks`,
+        prepareCmd: `pnpm --filter @ocfl/ocfl-fs version \${nextRelease.version} --no-git-checks`,
+        publishCmd: `pnpm --filter @ocfl/ocfl-fs publish --tag \${nextRelease.channel || 'latest'} --no-git-checks`,
       },
     ],
     '@semantic-release/github',
     !isPrerelease && [
       '@semantic-release/git',
       {
-        assets: ['CHANGELOG.md', 'ocfl/package.json', 'ocfl-fs/package.json'],
+        assets: ['CHANGELOG.md', 'ocfl-fs/package.json'],
       },
     ],
   ].filter(Boolean),
