@@ -424,6 +424,63 @@ describe('OcflObjectInventory class', () => {
     });
   });
 
+  describe('replacing a logical path within the version being built', () => {
+    it('moves shared content to the other logical path, with its fixity', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1', { md5: 'm1' });
+      inv.add('b', 'd1', { md5: 'm1' });
+      inv.add('a', 'd2', { md5: 'm2' });
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/b'], d2: ['v1/content/a'] });
+      assert.deepStrictEqual(inv.fixity, { md5: { m1: ['v1/content/b'], m2: ['v1/content/a'] } });
+      assert.strictEqual(inv.getFile('b')?.contentPath, 'v1/content/b');
+      assert.deepStrictEqual(inv.getFixity('b'), { md5: 'm1' });
+      assertHeadStateValid(inv);
+    });
+
+    it('forgets content nothing uses once its logical path takes content stored elsewhere', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1', { md5: 'm1' });
+      inv.add('b', 'd2', { md5: 'm2' });
+      assert.strictEqual(inv.add('a', 'd2', { md5: 'm2' }), true);
+      assert.deepStrictEqual(inv.manifest, { d2: ['v1/content/b'] });
+      assert.deepStrictEqual(inv.fixity, { md5: { m2: ['v1/content/b'] } });
+      assertHeadStateValid(inv);
+    });
+
+    it('moves content shared through copy()', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1', { md5: 'm1' });
+      inv.copy('a', 'b');
+      inv.add('a', 'd2', { md5: 'm2' });
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/b'], d2: ['v1/content/a'] });
+      assert.deepStrictEqual(inv.fixity, { md5: { m1: ['v1/content/b'], m2: ['v1/content/a'] } });
+      assertHeadStateValid(inv);
+    });
+
+    it('leaves shared content where it is when the replaced path did not hold it', () => {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1');
+      inv.add('b', 'd1');
+      inv.add('b', 'd2');
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d2: ['v1/content/b'] });
+      assertHeadStateValid(inv);
+    });
+
+    it('never changes content, manifest entries or fixity from an earlier version', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv.add('a', 'd1', { md5: 'm1' });
+      inv.add('b', 'd1', { md5: 'm1' });
+      inv = OcflObjectInventory.newVersion(inv);
+      inv.add('a', 'd2', { md5: 'm2' });
+      inv.add('a', 'd3', { md5: 'm3' });
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d3: ['v2/content/a'] });
+      assert.deepStrictEqual(inv.fixity, { md5: { m1: ['v1/content/a'], m3: ['v2/content/a'] } });
+      assert.deepStrictEqual(inv.state, { d1: ['b'], d3: ['a'] });
+      assert.deepStrictEqual(inv.versionState('v1'), { d1: ['a', 'b'] });
+      assertHeadStateValid(inv);
+    });
+  });
+
   describe('fixity only lists content paths in the manifest', () => {
     it('drops the digest and fixity of content replaced at its own content path', () => {
       const inv = OcflObjectInventory.newVersion(data);

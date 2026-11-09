@@ -248,6 +248,18 @@ Operations called concurrently in one update, such as with `Promise.all`, now gi
 - A failed operation rejects its own promise and leaves nothing behind. Later operations carry on, so a later write of the same content stores it.
 - Every operation has to be awaited. `copy()` and `reinstate()` calls left unawaited used to take effect, but now count as unfinished operations and roll back the update.
 
+## Replacing a file within one update
+
+**Warning for earlier versions:** replacing a file more than once in one update, or writing identical content to it again as a stream, may have damaged existing objects. A logical path could read another file's content, or fail to read at all, and content shared with another logical path could be lost. The manifest and fixity block could also keep entries for content that was replaced. To check an existing object, compare each file's content with its digest in the manifest, for example with a dedicated OCFL validator. This library doesn't detect or repair affected objects.
+
+When a logical path is replaced within the update that added its content:
+
+- Content no other logical path uses is removed, along with its manifest and fixity entries.
+- Content another logical path still uses moves to that path's content path, and its manifest and fixity entries follow it.
+- Writing content identical to what's stored leaves the stored file in place.
+
+Content from earlier versions is never changed.
+
 ## Other behaviour changes
 
 - Looking up a file in a version that doesn't exist returns `undefined` (or `0` from `count()`) instead of throwing.

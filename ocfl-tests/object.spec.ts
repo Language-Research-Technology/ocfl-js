@@ -133,11 +133,16 @@ export default (ocfl: Ocfl) => {
       return ocfl.object(config);
     }
 
-    async function withFsFailure<T>(method: 'rename' | 'copyFile' | 'writeFile' | 'rmdir', failingPath: string, fn: () => Promise<T>) {
+    async function withFsFailure<T>(
+      method: 'rename' | 'copyFile' | 'writeFile' | 'rmdir',
+      failing: string | ((source: string, target: string) => boolean),
+      fn: () => Promise<T>,
+    ) {
+      const fails = typeof failing === 'string' ? (source: string, target: string) => source === failing || target === failing : failing;
       const fsp = fs.promises as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
       const real = fsp[method]!;
       const spy = mock.method(fsp, method, async (...args: unknown[]) => {
-        if (args.slice(0, 2).includes(failingPath)) {
+        if (fails(args[0] as string, args[1] as string)) {
           throw Object.assign(new Error('injected failure'), { code: 'EIO' });
         }
         return real.apply(fs.promises, args);
@@ -152,6 +157,48 @@ export default (ocfl: Ocfl) => {
     async function readInventory(object: OcflObject): Promise<Inventory> {
       return JSON.parse(await fs.promises.readFile(path.join(object.root, 'inventory.json'), 'utf8'));
     }
+
+    const md5 = (content: string) => createHash('md5').update(content).digest('hex');
+    const sha512 = (content: string | Uint8Array) => createHash('sha512').update(content).digest('hex');
+    const encode = (text: string) => new TextEncoder().encode(text);
+    const streamOf = (content: string) =>
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(encode(content));
+          controller.close();
+        },
+      });
+
+    async function contentFiles(o: OcflObject, version: string) {
+      const dir = path.join(o.root, version);
+      const entries = await fs.promises.readdir(dir, { recursive: true, withFileTypes: true });
+      return entries
+        .filter((e) => e.isFile() && !/^inventory\.json/.test(e.name))
+        .map((e) => path.relative(o.root, path.join(e.parentPath, e.name)))
+        .sort();
+    }
+
+    /** Every file in `version` is in the manifest, and every manifest path is on disk */
+    async function assertManifestMatchesFiles(o: OcflObject, version = 'v1') {
+      const inventory = await readInventory(o);
+      const manifested = Object.values(inventory.manifest)
+        .flat()
+        .filter((p) => p.startsWith(`${version}/`))
+        .sort();
+      assert.deepStrictEqual(await contentFiles(o, version), manifested);
+      return inventory;
+    }
+
+    async function assertReads(o: OcflObject, expected: Record<string, string>) {
+      const reloaded = ocfl.object({ root: o.root });
+      await reloaded.load();
+      for (const [logicalPath, content] of Object.entries(expected)) {
+        assert.strictEqual(await reloaded.getFile(logicalPath)!.text(), content, logicalPath);
+      }
+      const inventory = await readInventory(o);
+      assert.deepStrictEqual(Object.values(inventory.versions[inventory.head]!.state).flat().sort(), Object.keys(expected).sort());
+    }
+
     before(async () => {
       tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-object-'));
       objectx = createObject('object-x', true);
@@ -441,19 +488,17 @@ export default (ocfl: Ocfl) => {
       assert.strictEqual(file!.fixity!.md5, createHash('md5').update(content).digest('hex'));
     });
 
-    describe('fixity block on disk', () => {
-      const md5 = (content: string) => createHash('md5').update(content).digest('hex');
-
-      async function assertFixityPathsExist(object: OcflObject, inventory: Inventory) {
-        const manifestPaths = Object.values(inventory.manifest).flat();
-        for (const block of Object.values(inventory.fixity ?? {})) {
-          for (const contentPath of Object.values(block).flat()) {
-            assert.ok(manifestPaths.includes(contentPath), `${contentPath} is not in the manifest`);
-            await fs.promises.access(path.join(object.root, contentPath));
-          }
+    async function assertFixityPathsExist(object: OcflObject, inventory: Inventory) {
+      const manifestPaths = Object.values(inventory.manifest).flat();
+      for (const block of Object.values(inventory.fixity ?? {})) {
+        for (const contentPath of Object.values(block).flat()) {
+          assert.ok(manifestPaths.includes(contentPath), `${contentPath} is not in the manifest`);
+          await fs.promises.access(path.join(object.root, contentPath));
         }
       }
+    }
 
+    describe('fixity block on disk', () => {
       it('adds no content path when content is duplicated or rewritten unchanged', async () => {
         const object = createObject('object-fixity-duplicate', false);
         const source = path.join(tempdir, 'fixity-duplicate-source.txt');
@@ -783,46 +828,7 @@ export default (ocfl: Ocfl) => {
       const ROUNDS = 20;
       let scenario = 0;
 
-      const encode = (text: string) => new TextEncoder().encode(text);
-      const streamOf = (content: string) =>
-        new ReadableStream({
-          start(controller) {
-            controller.enqueue(encode(content));
-            controller.close();
-          },
-        });
-
       const newObject = () => createObject(`concurrent-${++scenario}`, false);
-
-      async function contentFiles(o: OcflObject, version: string) {
-        const dir = path.join(o.root, version);
-        const entries = await fs.promises.readdir(dir, { recursive: true, withFileTypes: true });
-        return entries
-          .filter((e) => e.isFile() && !/^inventory\.json/.test(e.name))
-          .map((e) => path.relative(o.root, path.join(e.parentPath, e.name)))
-          .sort();
-      }
-
-      /** Every file in `version` is in the manifest, and every manifest path is on disk */
-      async function assertManifestMatchesFiles(o: OcflObject, version = 'v1') {
-        const inventory = await readInventory(o);
-        const manifested = Object.values(inventory.manifest)
-          .flat()
-          .filter((p) => p.startsWith(`${version}/`))
-          .sort();
-        assert.deepStrictEqual(await contentFiles(o, version), manifested);
-        return inventory;
-      }
-
-      async function assertReads(o: OcflObject, expected: Record<string, string>) {
-        const reloaded = ocfl.object({ root: o.root });
-        await reloaded.load();
-        for (const [logicalPath, content] of Object.entries(expected)) {
-          assert.strictEqual(await reloaded.getFile(logicalPath)!.text(), content, logicalPath);
-        }
-        const inventory = await readInventory(o);
-        assert.deepStrictEqual(Object.values(inventory.versions[inventory.head]!.state).flat().sort(), Object.keys(expected).sort());
-      }
 
       for (let round = 0; round < ROUNDS; round++) {
         describe(`round ${round}`, () => {
@@ -1003,6 +1009,194 @@ export default (ocfl: Ocfl) => {
 
         await assertManifestMatchesFiles(o);
         await assertReads(o, { ok: 'ok' });
+      });
+    });
+
+    describe('replacing a file within one version', () => {
+      let scenario = 0;
+
+      const newObject = () => createObject(`replace-${++scenario}`, false);
+
+      type Write = (t: OcflObjectTransaction, logicalPath: string, content: string) => Promise<void>;
+      const writes: [string, Write][] = [
+        ['a string', (t, p, c) => t.write(p, c)],
+        ['a buffer', (t, p, c) => t.write(p, encode(c))],
+        ['a stream', (t, p, c) => t.write(p, streamOf(c))],
+        [
+          'createWritable',
+          async (t, p, c) => {
+            const writer = (await t.createWritable(p)).getWriter();
+            await writer.write(encode(c));
+            await writer.close();
+          },
+        ],
+        [
+          'import',
+          async (t, p, c) => {
+            const source = path.join(tempdir, `replace-source-${++scenario}`);
+            await fs.promises.writeFile(source, c);
+            await t.import(source, p);
+          },
+        ],
+      ];
+
+      async function assertNoEmptyDirectories(o: OcflObject, version: string) {
+        const dir = path.join(o.root, version);
+        const entries = await fs.promises.readdir(dir, { recursive: true, withFileTypes: true });
+        for (const entry of entries.filter((e) => e.isDirectory())) {
+          const inside = await fs.promises.readdir(path.join(entry.parentPath, entry.name));
+          assert.ok(inside.length > 0, `${path.join(entry.parentPath, entry.name)} is empty`);
+        }
+      }
+
+      /** The invariants the version must meet at commit */
+      async function assertValid(o: OcflObject, version: string, expected: Record<string, string>) {
+        const inventory = await assertManifestMatchesFiles(o, version);
+        await assertNoEmptyDirectories(o, version);
+        const usedDigests = new Set(Object.values(inventory.versions).flatMap((v) => Object.keys(v.state)));
+        const contentPaths = Object.values(inventory.manifest).flat();
+        assert.strictEqual(new Set(contentPaths).size, contentPaths.length, 'a content path appears under two digests');
+        for (const [digest, paths] of Object.entries(inventory.manifest)) {
+          assert.ok(usedDigests.has(digest), `${digest} is in the manifest but no version state uses it`);
+          for (const contentPath of paths) {
+            assert.strictEqual(sha512(await fs.promises.readFile(path.join(o.root, contentPath))), digest, contentPath);
+          }
+        }
+        for (const [algorithm, block] of Object.entries(inventory.fixity ?? {})) {
+          const fixityPaths = Object.values(block).flat();
+          assert.strictEqual(new Set(fixityPaths).size, fixityPaths.length, `a content path has two ${algorithm} values`);
+        }
+        await assertFixityPathsExist(o, inventory);
+        await assertReads(o, expected);
+        return inventory;
+      }
+
+      const scenarios = [
+        'a=AAA, a=BBB',
+        'a=AAA, a=BBB, a=AAA',
+        'a=AAA, a=BBB, c=AAA',
+        'a=AAA, b=AAA, a=BBB',
+        'a=AAA, a=AAA',
+        'a=AAA, b=AAA, a=AAA',
+        'a=AAA, b=BBB, a=BBB',
+        'a=AAA, b=AAA, c=BBB, a=BBB',
+        'a=AAA, c=AAA, b=BBB, a=BBB, c=CCC',
+        'x/y/a=AAA, b=BBB, x/y/a=BBB',
+        'x/a=AAA, b=AAA, c=BBB, x/a=BBB',
+        'x/a=AAA, y/z/b=AAA, x/a=BBB',
+      ];
+
+      for (const [kind, write] of writes) {
+        describe(`with ${kind}`, () => {
+          for (const name of scenarios) {
+            const steps = name.split(', ').map((step) => step.split('=') as [string, string]);
+            const expected = Object.fromEntries(steps);
+            it(`${name} commits and reads back`, async () => {
+              const o = newObject();
+              await o.update(async (t) => {
+                for (const [logicalPath, content] of steps) {
+                  await write(t, logicalPath, content);
+                }
+              });
+              await assertValid(o, 'v1', expected);
+            });
+          }
+        });
+      }
+
+      it('leaves only the new content in the manifest and one md5 value for the content path', async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          await t.write('a', 'AAA');
+          await t.write('a', 'BBB');
+        });
+        const inventory = await readInventory(o);
+        assert.deepStrictEqual(inventory.manifest, { [sha512('BBB')]: ['v1/content/a'] });
+        assert.deepStrictEqual(inventory.fixity!.md5, { [md5('BBB')]: ['v1/content/a'] });
+      });
+
+      for (const [how, share] of [
+        ['write', (t: OcflObjectTransaction) => t.write('b', 'AAA')],
+        ['copy', (t: OcflObjectTransaction) => t.copy('a', 'b')],
+      ] as const) {
+        it(`stores shared content at the path of a logical path made with ${how}, with the manifest and fixity`, async () => {
+          const o = newObject();
+          await o.update(async (t) => {
+            await t.write('a', 'AAA');
+            await share(t);
+            await t.write('a', 'BBB');
+          });
+          const inventory = await assertValid(o, 'v1', { a: 'BBB', b: 'AAA' });
+          assert.deepStrictEqual(inventory.manifest, { [sha512('AAA')]: ['v1/content/b'], [sha512('BBB')]: ['v1/content/a'] });
+          assert.deepStrictEqual(inventory.fixity!.md5, { [md5('AAA')]: ['v1/content/b'], [md5('BBB')]: ['v1/content/a'] });
+        });
+      }
+
+      it('leaves earlier versions unchanged when the same replacements happen in v2', async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          await t.write('a', 'AAA');
+          await t.write('b', 'AAA');
+        });
+        const v1 = await readInventory(o);
+        const v1File = await fs.promises.readFile(path.join(o.root, 'v1/content/a'));
+        await o.update(async (t) => {
+          await t.write('a', 'BBB');
+          await t.write('c', 'BBB');
+          await t.write('a', 'CCC');
+          await t.write('b', 'DDD');
+          await t.write('b', 'AAA');
+        });
+        const inventory = await assertValid(o, 'v2', { a: 'CCC', b: 'AAA', c: 'BBB' });
+        assert.deepStrictEqual(inventory.manifest[sha512('AAA')], v1.manifest[sha512('AAA')]);
+        assert.deepStrictEqual(inventory.fixity!.md5![md5('AAA')], v1.fixity!.md5![md5('AAA')]);
+        assert.deepStrictEqual(inventory.versions.v1, v1.versions.v1);
+        assert.deepStrictEqual(await fs.promises.readFile(path.join(o.root, 'v1/content/a')), v1File);
+      });
+
+      it('leaves no content directory when replacements in v2 store nothing new', async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          await t.write('a', 'AAA');
+          await t.write('b', 'BBB');
+        });
+        await o.update(async (t) => {
+          await t.write('a', 'CCC');
+          await t.write('a', 'BBB');
+        });
+        await assertValid(o, 'v2', { a: 'BBB', b: 'BBB' });
+        await assert.rejects(fs.promises.access(path.join(o.root, 'v2/content')), { code: 'ENOENT' });
+      });
+
+      it('keeps shared content where it was if the new content cannot be put in place', async () => {
+        const o = newObject();
+        const own = path.join(o.root, 'v1/content/a');
+        await o.update(async (t) => {
+          await t.write('a', 'AAA');
+          await t.write('b', 'AAA');
+          await withFsFailure(
+            'rename',
+            (source, target) => target === own && source.includes('.staged-'),
+            () => assert.rejects(t.write('a', 'BBB'), /injected failure/),
+          );
+        });
+        const inventory = await assertValid(o, 'v1', { a: 'AAA', b: 'AAA' });
+        assert.deepStrictEqual(inventory.manifest, { [sha512('AAA')]: ['v1/content/a'] });
+      });
+
+      it('leaves no directory behind from moving shared content when the new content cannot be put in place', async () => {
+        const o = newObject();
+        const own = path.join(o.root, 'v1/content/x/a');
+        await o.update(async (t) => {
+          await t.write('x/a', 'AAA');
+          await t.write('y/z/b', 'AAA');
+          await withFsFailure(
+            'rename',
+            (source, target) => target === own && source.includes('.staged-'),
+            () => assert.rejects(t.write('x/a', 'BBB'), /injected failure/),
+          );
+        });
+        await assertValid(o, 'v1', { 'x/a': 'AAA', 'y/z/b': 'AAA' });
       });
     });
 
