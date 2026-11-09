@@ -6,7 +6,7 @@ import type { OcflExtension } from './extension.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
 import { type InventoryFile, OcflObjectInventory, type OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
-import type { OcflStore } from './store.ts';
+import type { BinaryOptions, EncodingOptions, OcflStore } from './store.ts';
 import { type OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
 import type { Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
 import { findNamasteVersion, isDirEmpty, isNotFound, parallelize } from './utils.ts';
@@ -521,9 +521,10 @@ class OcflObject {
    * @param relPath - The file path relative to the object root.
    * @param options - Options to be passed to the underlying method
    */
-  async readFile(relPath: string, options: BufferEncoding | { encoding: BufferEncoding }): Promise<string>;
-  async readFile(relPath: string, options?: unknown): Promise<Uint8Array>;
-  async readFile(relPath: string, options?: unknown): Promise<string | Uint8Array> {
+  async readFile(relPath: string, options: EncodingOptions): Promise<string>;
+  async readFile(relPath: string, options?: BinaryOptions): Promise<Uint8Array>;
+  async readFile(relPath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array>;
+  async readFile(relPath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array> {
     return this.#store.readFile(path.join(this.root, relPath), options);
   }
 

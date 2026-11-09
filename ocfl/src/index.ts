@@ -24,7 +24,7 @@ export { OcflObjectInventory } from './inventory.ts';
 export type { UpdateMode } from './object.ts';
 export { OcflObject } from './object.ts';
 export { OcflStorage, OcflStorageImpl } from './storage.ts';
-export type { ListedFile, ListOptions, WriteFileData } from './store.ts';
+export type { BinaryOptions, EncodingOptions, ListedFile, ListOptions, WriteFileData } from './store.ts';
 export { OcflStore } from './store.ts';
 export type { CommitOptions, RemoveOptions } from './transaction.ts';
 export { OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';

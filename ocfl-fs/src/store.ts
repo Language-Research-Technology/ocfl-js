@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import { type ListedFile, type ListOptions, OcflStore, type WriteFileData } from '@ocfl/ocfl';
+import { type BinaryOptions, type EncodingOptions, type ListedFile, type ListOptions, OcflStore, type WriteFileData } from '@ocfl/ocfl';
 
 export interface OcflFsStoreConfig {
   /** Custom fs module to use for any file operation */
@@ -42,10 +42,11 @@ class OcflFsStore extends OcflStore {
     return Writable.toWeb(this.fs.createWriteStream(filePath, options));
   }
 
-  async readFile(filePath: string, options: BufferEncoding | { encoding: BufferEncoding }): Promise<string>;
-  async readFile(filePath: string, options?: unknown): Promise<Uint8Array>;
-  async readFile(filePath: string, options?: unknown): Promise<string | Uint8Array> {
-    return this.fs.promises.readFile(filePath, options as Parameters<typeof fs.promises.readFile>[1]);
+  async readFile(filePath: string, options: EncodingOptions): Promise<string>;
+  async readFile(filePath: string, options?: BinaryOptions): Promise<Uint8Array>;
+  async readFile(filePath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array>;
+  async readFile(filePath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array> {
+    return this.fs.promises.readFile(filePath, options);
   }
 
   async writeFile(filePath: string, data: WriteFileData, options?: object | string) {
