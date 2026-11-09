@@ -1,4 +1,4 @@
-import type { BinaryOptions, EncodingOptions, OcflObject, OcflObjectFile, OcflStore } from '@ocfl/ocfl';
+import type { BinaryOptions, EncodingOptions, OcflObject, OcflObjectFile, OcflStore } from '../src/index.ts';
 import type { OcflFsStore } from '../src/store.ts';
 
 declare function expectText(result: Promise<string>): void;

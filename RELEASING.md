@@ -1,10 +1,8 @@
 # Releasing
 
-`@ocfl/ocfl` and `@ocfl/ocfl-fs` are published to npm by
-[semantic-release](https://semantic-release.gitbook.io/) from the
-[Publish Packages](.github/workflows/publish.yml) workflow. Both packages are always released
-together at the same version, tagged `v<version>`. `@ocfl/ocfl-tests` is private and never
-published.
+`@ocfl/ocfl-fs` is published to npm by [semantic-release](https://semantic-release.gitbook.io/)
+from the [Publish Packages](.github/workflows/publish.yml) workflow. Each release is tagged
+`v<version>`.
 
 The version is derived from the [Conventional Commits](https://www.conventionalcommits.org/) since
 the last release, so commit messages matter: `fix:` is a patch, `feat:` a minor, and `!` or a
@@ -25,20 +23,19 @@ provenance, so there is no way to release around it. The environment only allows
 1. Go to **Actions → Publish Packages → Run workflow** and leave the branch as `main` (runs from
    anything other than `main` or `beta` are skipped).
 2. Leave **Dry run** ticked and run it. Check the logs for the version, the release notes and the
-   contents of each package's tarball.
+   contents of the package's tarball.
 3. Run it again with **Dry run** unticked.
 
-semantic-release tags the release, publishes `@ocfl/ocfl` and then `@ocfl/ocfl-fs` under `latest`
-with `pnpm publish` (which replaces `@ocfl/ocfl-fs`'s `workspace:^` peer dependency with a `^` range
-on the released version), creates a GitHub release and commits the updated `CHANGELOG.md` and both
-packages' `package.json` back to `main`.
+semantic-release tags the release, publishes `@ocfl/ocfl-fs` under `latest` with `pnpm publish`,
+creates a GitHub release and commits the updated `CHANGELOG.md` and the root `package.json` back
+to `main`.
 
 ## Prereleases
 
-Every push to `main` that passes the tests publishes a prerelease of both packages under the `beta`
+Every push to `main` that passes the tests publishes a prerelease of `@ocfl/ocfl-fs` under the `beta`
 dist-tag, as long as it contains a releasable commit (`fix:`, `feat:` or a breaking change) since
-the last release. Consumers install it with `pnpm add @ocfl/ocfl-fs@beta` (or `@ocfl/ocfl@beta`);
-`latest` is untouched.
+the last release. Consumers install it with `pnpm add @ocfl/ocfl-fs@beta`; `latest` is
+untouched.
 
 CI fast-forwards the `beta` branch to the tested commit, then dispatches Publish Packages on `beta`,
 which runs the tests again and publishes. It has to run on `beta` itself: semantic-release only cuts

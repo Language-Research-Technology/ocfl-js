@@ -1,6 +1,5 @@
 {
-  "include": ["ocfl/src/**", "ocfl/dist/**", "ocfl-fs/src/**"],
-  "excludeAfterRemap": true,
+  "include": ["src/**"],
   "checkCoverage": true,
   "lines": 89,
   "branches": 94,

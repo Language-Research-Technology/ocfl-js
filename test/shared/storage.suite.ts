@@ -5,8 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import type { OcflError, OcflStorage, OcflStorageConfig, OcflVersion } from '@ocfl/ocfl';
-import { OcflDigest, OcflStorageLayout } from '@ocfl/ocfl';
+import { OcflDigest, type OcflError, type OcflStorage, type OcflStorageConfig, OcflStorageLayout, type OcflVersion } from '../../src/index.ts';
 import type { Ocfl } from './index.ts';
 
 export default (ocfl: Ocfl) => {
@@ -176,7 +175,7 @@ export default (ocfl: Ocfl) => {
     });
   });
   describe('OCFL spec text', () => {
-    const resources = path.join(import.meta.dirname, '../ocfl/resources');
+    const resources = path.join(import.meta.dirname, '../../resources');
     const specFiles = async (root: string) => (await fs.promises.readdir(root)).filter((f) => /^ocfl_\d/.test(f));
     let tempdir: string;
     before(async () => {

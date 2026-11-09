@@ -7,9 +7,9 @@
       // Written by pnpm
       "!pnpm-lock.yaml",
       // OCFL fixtures: the upstream fixtures submodule plus inventories whose .sha512 sidecars depend on exact bytes
-      "!!ocfl-tests/test-data",
+      "!!test/shared/test-data",
       // OCFL spec text, vendored verbatim
-      "!!ocfl/resources"
+      "!!resources"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "lineWidth": 160 },
@@ -24,7 +24,7 @@
   },
   "overrides": [
     // Tests index into fixtures whose keys they know exist
-    { "includes": ["**/*.spec.ts"], "linter": { "rules": { "style": { "noNonNullAssertion": "off" } } } }
+    { "includes": ["**/*.spec.ts", "**/*.suite.ts"], "linter": { "rules": { "style": { "noNonNullAssertion": "off" } } } }
   ],
   "javascript": { "formatter": { "quoteStyle": "single" } },
   "assist": {

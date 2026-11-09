@@ -13,7 +13,7 @@ import {
   type OcflObjectConfig,
   type OcflObjectTransaction,
   type OcflVersion,
-} from '@ocfl/ocfl';
+} from '../../src/index.ts';
 import type { Ocfl } from './index.ts';
 
 export default (ocfl: Ocfl) => {

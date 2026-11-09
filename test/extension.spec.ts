@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { OcflExtension, type OcflExtensionConfig, OcflStorageLayout } from '../src/index.ts';
+import { createStorage, OcflExtension, type OcflExtensionConfig, OcflStorageLayout } from '../src/index.ts';
 
 describe('OcflExtension class', () => {
   it('can register new extension', () => {
@@ -27,6 +27,20 @@ describe('OcflExtension class', () => {
     }
     SetupExt.register();
     assert.strictEqual(await promise, OcflExtension);
+  });
+
+  it('gives setup the members only the public entry point has', async () => {
+    const { promise, resolve } = Promise.withResolvers<unknown>();
+    class EntryPointExt extends OcflExtension {
+      static get NAME() {
+        return '9999-entry-point-extension';
+      }
+      static async setup(ocfl: typeof import('../src/index.ts')) {
+        resolve(ocfl.createStorage);
+      }
+    }
+    EntryPointExt.register();
+    assert.strictEqual(await promise, createStorage);
   });
 
   describe('a custom layout', () => {

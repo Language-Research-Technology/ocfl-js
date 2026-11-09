@@ -11,15 +11,17 @@ If any of these files don't exist, **proceed silently**. Don't flag their absenc
 
 ## File structure
 
-Single-context: one glossary and ADR set covering every workspace package.
+Single-context: one glossary and ADR set covering the single package at the repository root.
 
 ```
 /
 ├── GLOSSARY.md
 ├── docs/adr/
-├── ocfl/
-├── ocfl-fs/
-└── ocfl-tests/
+├── resources/
+├── scripts/
+├── src/
+├── test/
+└── test-data/
 ```
 
 ## Use the glossary's vocabulary

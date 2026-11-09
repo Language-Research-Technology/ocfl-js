@@ -1,11 +1,11 @@
 import path from 'node:path';
+import type { BinaryOptions, EncodingOptions, OcflStore } from './backend-store.ts';
 import { OcflConstants } from './constants.ts';
 import { type ContentAlgorithm, Hashing } from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
 import { type InventoryFile, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
-import type { BinaryOptions, EncodingOptions, OcflStore } from './store.ts';
 import { type OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
 import type { Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
 import { findNamasteVersion, isDirEmpty, isNotFound, parallelize } from './utils.ts';

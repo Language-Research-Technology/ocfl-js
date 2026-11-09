@@ -1,11 +1,11 @@
 /** Models a set of ocfl object modifying operations as a transaction that is as close as atomic as possible */
 import path from 'node:path';
+import type { OcflStore, WriteFileData } from './backend-store.ts';
 import { OcflConstants } from './constants.ts';
 import { Hashing } from './digest.ts';
 import { OcflError } from './error.ts';
 import { type ContentRelease, OcflObjectInventory, type OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
-import type { OcflStore, WriteFileData } from './store.ts';
 import { isAlreadyExists, parallelize } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;

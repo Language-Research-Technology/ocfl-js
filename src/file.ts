@@ -1,6 +1,6 @@
+import type { BinaryOptions } from './backend-store.ts';
 import { OcflError } from './error.ts';
 import type { OcflObject } from './object.ts';
-import type { BinaryOptions } from './store.ts';
 
 export interface FileRef {
   /** Actual path to the file location relative to the ocfl object root. */

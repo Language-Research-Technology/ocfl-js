@@ -1,5 +1,5 @@
+import type { OcflStore } from './backend-store.ts';
 import { OcflConstants } from './constants.ts';
-import type { OcflStore } from './store.ts';
 import type { OcflVersion } from './types.ts';
 
 const { OCFL_VERSIONS, NAMASTE_T } = OcflConstants;

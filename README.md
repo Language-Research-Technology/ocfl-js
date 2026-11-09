@@ -1,22 +1,17 @@
 # ocfl-js - An OCFL implementation in Node.js
 
-Node.js library for creating and manipulating Oxford Common File Layout(OCFL) storage and object.
-The library consists of common components and implementations for different storage backends.
+TypeScript library for creating and manipulating Oxford Common File Layout (OCFL) storage and objects in Node.js.
+It is published as one package, `@ocfl/ocfl-fs`, which stores OCFL storage roots and their objects on a locally attached filesystem.
 
 ## Installation
 
 Install the library:
 
 ```bash
-# For filesystem backend
 pnpm add @ocfl/ocfl-fs
 ```
 
-`@ocfl/ocfl` is a peer dependency of `@ocfl/ocfl-fs`, so your app shares one copy of it. pnpm and npm
-install it automatically; with Yarn, add it yourself. List it in your own dependencies too if you
-import from it directly.
-
-The packages are ES modules with bundled TypeScript types and require Node.js 22.12 or later.
+The package is an ES module with bundled TypeScript types and requires Node.js 22.12 or later.
 
 Upgrading from 0.4? See [Migrating from 0.4](docs/migrating-from-0.4.md).
 
@@ -24,10 +19,9 @@ Upgrading from 0.4? See [Migrating from 0.4](docs/migrating-from-0.4.md).
 
 ### Storage
 
-Import the corresponding module of the chosen backend and then create a new Storage instance with the right config. For more details, please refer to the documentation of the specific backend implementation. For example:
+Import the module and then create a new Storage instance with the right config. For example:
 
 ```js
-// Use filesystem backend
 import ocfl from '@ocfl/ocfl-fs';
 const storage = ocfl.storage({ root: '/var/data/myocfl' });
 ```
@@ -147,6 +141,49 @@ for await (let f of await object.files()) {
 }
 ```
 
+### Custom fs module
+
+The storage and object methods accept an optional fs parameter, which can be any module that implements Node.js fs module API. By default, it will use the built in fs module.
+
+For example, by passing it [memfs](https://www.npmjs.com/package/memfs) the OCFL storage will be created in memory using the memfs module:
+
+```js
+import ocfl from '@ocfl/ocfl-fs';
+import { fs } from 'memfs';
+const storage = ocfl.storage({ root: '/var/data/myocfl' }, { fs });
+```
+
+## Extensions
+
+This library by default includes all the community extensions defined in the [OCFL Community Extensions page](https://github.com/OCFL/extensions).
+
+To implement a local extension, first follow the description in that page, then extend `OcflExtension` (or `OcflStorageLayout` for a storage layout) and register it. For example, a storage layout:
+
+```ts
+import { OcflStorageLayout, storage } from '@ocfl/ocfl-fs';
+
+class UppercaseLayout extends OcflStorageLayout {
+  static get NAME() {
+    return '9999-uppercase-layout';
+  }
+  static get DESCRIPTION() {
+    return 'Maps an object id to an uppercase directory name';
+  }
+
+  map(id: string): string {
+    return id.toUpperCase();
+  }
+}
+
+UppercaseLayout.register();
+
+const s = storage({ root: '/var/data/ocfl', layout: '9999-uppercase-layout' });
+```
+
+## Implementing another backend
+
+A new data store backend can be implemented with a store class that extends `OcflStore`, passed to `implementOcfl`. Please see `OcflFsStore` in the source code as an example implementation.
+
 ## Development
 
 Clone the Git repo with submodules included:
@@ -155,8 +192,7 @@ Clone the Git repo with submodules included:
 git clone --recurse-submodules https://github.com/Language-Research-Technology/ocfl-js
 ```
 
-The project is structured as a monorepo with multiple packages set up as pnpm workspaces.
-Install the dependencies for all workspaces:
+The package lives at the repository root. Development needs Node.js 22.18 or later. Install the dependencies:
 
 ```bash
 cd ocfl-js

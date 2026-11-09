@@ -16,7 +16,7 @@ import { Hashing } from './digest.ts';
 
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 
-import type { OcflStore } from './store.ts';
+import type { OcflStore } from './backend-store.ts';
 import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
 
 const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1.1': 'ocfl_1.1.md' };
