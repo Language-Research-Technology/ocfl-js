@@ -217,9 +217,6 @@ importers:
       '@ocfl/ocfl':
         specifier: workspace:^
         version: link:../ocfl
-      '@ocfl/ocfl-tests':
-        specifier: workspace:*
-        version: link:../ocfl-tests
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
@@ -229,12 +226,6 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
-
-  ocfl-tests:
-    devDependencies:
-      '@ocfl/ocfl':
-        specifier: workspace:*
-        version: link:../ocfl
 
 packages:
 

@@ -41,7 +41,6 @@
   },
   "devDependencies": {
     "@ocfl/ocfl": "workspace:^",
-    "@ocfl/ocfl-tests": "workspace:*",
     "@types/node": "^22.20.5",
     "memfs": "^4.80.0",
     "typescript": "^7.0.2"

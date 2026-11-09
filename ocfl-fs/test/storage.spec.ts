@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import ocflTests from '@ocfl/ocfl-tests';
 import ocfl from '../src/index.ts';
 import { ocflError } from './ocfl-error.ts';
+import ocflTests from './shared/index.ts';
 
 describe('OcflStorage class using OcflFsStore', () => {
   ocflTests.storage(ocfl);

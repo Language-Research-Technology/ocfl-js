@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
-import type { OcflObject, OcflObjectTransaction } from '@ocfl/ocfl';
+import type { OcflObject, OcflObjectTransaction } from '../../src/index.ts';
 import type { Ocfl } from './index.ts';
 
 const sha512 = (text: string) => createHash('sha512').update(text).digest('hex');

@@ -5,9 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import type { Inventory, OcflVersion } from '@ocfl/ocfl';
-import ocflTests from '@ocfl/ocfl-tests';
 import ocfl, { ObjectNotFoundError, ObjectNotLoadedError } from '../src/index.ts';
 import { ocflError } from './ocfl-error.ts';
+import ocflTests from './shared/index.ts';
 
 async function writeInventory(inventoryPath: string, data: string) {
   await fs.promises.writeFile(inventoryPath, data);

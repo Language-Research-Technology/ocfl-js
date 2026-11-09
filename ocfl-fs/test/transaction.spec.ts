@@ -1,8 +1,8 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import ocflTests from '@ocfl/ocfl-tests';
 import { createFsFromVolume, Volume } from 'memfs';
 import ocfl from '../src/index.ts';
+import ocflTests from './shared/index.ts';
 
 describe('OcflObjectTransaction using OcflFsStore', () => {
   ocflTests.transaction(ocfl);

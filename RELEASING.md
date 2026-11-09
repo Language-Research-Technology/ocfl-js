@@ -3,8 +3,7 @@
 `@ocfl/ocfl` and `@ocfl/ocfl-fs` are published to npm by
 [semantic-release](https://semantic-release.gitbook.io/) from the
 [Publish Packages](.github/workflows/publish.yml) workflow. Both packages are always released
-together at the same version, tagged `v<version>`. `@ocfl/ocfl-tests` is private and never
-published.
+together at the same version, tagged `v<version>`.
 
 The version is derived from the [Conventional Commits](https://www.conventionalcommits.org/) since
 the last release, so commit messages matter: `fix:` is a patch, `feat:` a minor, and `!` or a

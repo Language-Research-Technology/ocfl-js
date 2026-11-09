@@ -8,7 +8,6 @@ engineStrict: true
 packages:
   - ocfl
   - ocfl-fs
-  - ocfl-tests
 
 allowBuilds:
   # Installs the git hooks.
