@@ -105,6 +105,10 @@ storage.objects();
 storage.objectRootAbs('id');
 // @ts-expect-error OcflExtension.p is gone, use parameters
 extension.p;
+// @ts-expect-error OcflStorage.delete is gone
+storage.delete('id');
+// @ts-expect-error OcflStorage.purge is gone
+storage.purge('id');
 
 export { extension, inventory, object, storage, transaction };
 EOF

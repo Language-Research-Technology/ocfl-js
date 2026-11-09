@@ -70,7 +70,8 @@ async function findNamasteVersion(store: OcflStore, prefix: string, rootPath: st
       return '';
     }
   } catch (error) {
-    if (!(error instanceof AggregateError) || error.errors.some((e) => !isNotFound(e))) {
+    // ENOTDIR: the root is a file, which can't hold a declaration
+    if (!(error instanceof AggregateError) || error.errors.some((e) => !isNotFound(e) && !(isErrnoException(e) && e.code === 'ENOTDIR'))) {
       throw error;
     }
   }

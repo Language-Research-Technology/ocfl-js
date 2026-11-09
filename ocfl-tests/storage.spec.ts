@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import type { OcflError, OcflStorage, OcflVersion } from '@ocfl/ocfl';
+import type { OcflError, OcflStorage, OcflStorageConfig, OcflVersion } from '@ocfl/ocfl';
 import { OcflDigest, OcflStorageLayout } from '@ocfl/ocfl';
 import type { Ocfl } from './index.ts';
 
@@ -383,6 +383,154 @@ export default (ocfl: Ocfl) => {
       const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: HASHED, tupleSize: 2 } });
       const storage = await ocfl.storage({ root }).load();
       assert.strictEqual(storage.objectRoot('abc'), path.join('ba', '78', '16', ABC_SHA256));
+    });
+  });
+  describe('removing an object', () => {
+    const PATH_DIRECT = { extensionName: '000N-path-direct-storage-layout' };
+    const ID = 'http://example.org/object';
+    let tempdir: string;
+    let rootCount = 0;
+    before(async () => {
+      tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-storage-remove-'));
+    });
+    after(async () => {
+      await fs.promises.rm(tempdir, { recursive: true, force: true });
+    });
+    const createRoot = (layout?: OcflStorageConfig['layout']) => ocfl.storage({ root: path.join(tempdir, `root-${rootCount++}`), layout }).create();
+    const createObject = async (storage: OcflStorage, id: string) => {
+      const o = storage.object(id);
+      await o.update(async (t) => {
+        await t.write('test.txt', 'test');
+      });
+      return o;
+    };
+
+    it('deletes the object and the parent directories it leaves empty, keeping the storage root', async () => {
+      const storage = await createRoot();
+      const o = await createObject(storage, ID);
+      const [topLevelDir] = path.relative(storage.root, o.root).split(path.sep);
+      await storage.remove(ID);
+      assert.strictEqual(await storage.has(ID), false);
+      assert.strictEqual(fs.existsSync(path.join(storage.root, topLevelDir!)), false);
+      assert.strictEqual(fs.existsSync(path.join(storage.root, '0=ocfl_1.1')), true);
+      await storage.load();
+    });
+
+    it('keeps sibling objects and the parent directories they share in a multi-level layout', async () => {
+      const storage = await createRoot(PATH_DIRECT);
+      const removed = await createObject(storage, 'collection/nested/removed');
+      const sibling = await createObject(storage, 'collection/sibling');
+      await storage.remove('collection/nested/removed');
+      assert.strictEqual(fs.existsSync(removed.root), false);
+      assert.strictEqual(fs.existsSync(path.join(storage.root, 'collection', 'nested')), false);
+      const reloaded = storage.object('collection/sibling');
+      await reloaded.load();
+      assert.strictEqual(reloaded.root, sibling.root);
+      assert.strictEqual(await reloaded.getFile('test.txt')?.text(), 'test');
+    });
+
+    it('succeeds when a parent directory left empty cannot be removed', { skip: process.getuid?.() === 0 }, async () => {
+      const storage = await createRoot(PATH_DIRECT);
+      const o = await createObject(storage, 'collection/nested/removed');
+      const leftover = path.dirname(o.root);
+      const readOnly = path.dirname(leftover);
+      await fs.promises.chmod(readOnly, 0o555);
+      try {
+        await storage.remove('collection/nested/removed');
+      } finally {
+        await fs.promises.chmod(readOnly, 0o755);
+      }
+      assert.strictEqual(fs.existsSync(o.root), false);
+      assert.strictEqual(fs.existsSync(leftover), true);
+    });
+
+    it('throws ObjectNotFoundError for an object that does not exist', async () => {
+      const storage = await createRoot();
+      await assert.rejects(storage.remove(ID), { name: 'ObjectNotFoundError', code: 'OBJECT_NOT_FOUND' });
+    });
+
+    it('throws ObjectNotFoundError for an empty directory at the object root', async () => {
+      const storage = await createRoot('FlatDirectStorageLayout');
+      await fs.promises.mkdir(path.join(storage.root, 'empty'));
+      await assert.rejects(storage.remove('empty'), { name: 'ObjectNotFoundError', code: 'OBJECT_NOT_FOUND' });
+    });
+
+    it('deletes nothing when the directory has no OCFL object declaration', async () => {
+      const storage = await createRoot('FlatDirectStorageLayout');
+      const stray = path.join(storage.root, 'not-an-object', 'stray.txt');
+      await fs.promises.mkdir(path.dirname(stray));
+      await fs.promises.writeFile(stray, 'keep me');
+      await assert.rejects(storage.remove('not-an-object'), { name: 'OcflError', code: 'NOT_AN_OBJECT' });
+      assert.strictEqual(await fs.promises.readFile(stray, 'utf8'), 'keep me');
+    });
+
+    it('deletes nothing when the object root is a file', async () => {
+      const storage = await createRoot('FlatDirectStorageLayout');
+      const stray = path.join(storage.root, 'stray.txt');
+      await fs.promises.writeFile(stray, 'keep me');
+      await assert.rejects(storage.remove('stray.txt'), { name: 'OcflError', code: 'NOT_AN_OBJECT' });
+      assert.strictEqual(await fs.promises.readFile(stray, 'utf8'), 'keep me');
+    });
+
+    it('deletes nothing when the object declaration has the wrong contents', async () => {
+      const storage = await createRoot('FlatDirectStorageLayout');
+      const declaration = path.join(storage.root, 'bad-declaration', '0=ocfl_object_1.1');
+      await fs.promises.mkdir(path.dirname(declaration));
+      await fs.promises.writeFile(declaration, 'wrong\n');
+      await assert.rejects(storage.remove('bad-declaration'), { code: 'E007' });
+      assert.strictEqual(fs.existsSync(declaration), true);
+    });
+
+    for (const [where, id, declared] of [
+      ['the storage root itself', '.', '.'],
+      ['a directory above the storage root', '..', '..'],
+    ] as const) {
+      it(`deletes nothing when the layout maps the id to ${where}`, async () => {
+        const parent = path.join(tempdir, `root-${rootCount++}`);
+        const storage = await ocfl.storage({ root: path.join(parent, 'storage'), layout: 'FlatDirectStorageLayout' }).create();
+        await fs.promises.writeFile(path.join(storage.root, declared, '0=ocfl_object_1.1'), 'ocfl_object_1.1\n');
+        await assert.rejects(storage.remove(id), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
+        assert.strictEqual(fs.existsSync(path.join(storage.root, '0=ocfl_1.1')), true);
+      });
+    }
+
+    it('deletes nothing when the id normalises to a different object', async () => {
+      const storage = await createRoot(PATH_DIRECT);
+      const other = await createObject(storage, 'other');
+      await assert.rejects(storage.remove('mistake/../other'), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
+      assert.strictEqual(fs.existsSync(path.join(other.root, 'inventory.json')), true);
+    });
+
+    it('deletes nothing when the object has no inventory to confirm its id', async () => {
+      const storage = await createRoot('FlatDirectStorageLayout');
+      const declaration = path.join(storage.root, 'no-inventory', '0=ocfl_object_1.1');
+      await fs.promises.mkdir(path.dirname(declaration));
+      await fs.promises.writeFile(declaration, 'ocfl_object_1.1\n');
+      await assert.rejects(storage.remove('no-inventory'), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
+      assert.strictEqual(fs.existsSync(declaration), true);
+    });
+
+    it('deletes nothing when the object is nested inside another object', async () => {
+      const layout = { ...PATH_DIRECT, suffix: '' };
+      const storage = await createRoot(layout);
+      await createObject(storage, 'outer');
+      const donor = await createRoot(layout);
+      const nested = await createObject(donor, 'outer/inner');
+      const target = path.join(storage.root, 'outer', 'inner');
+      await fs.promises.cp(nested.root, target, { recursive: true });
+      await assert.rejects(storage.remove('outer/inner'), { code: 'E082' });
+      assert.strictEqual(fs.existsSync(path.join(target, 'inventory.json')), true);
+    });
+
+    it('deletes nothing in the storage root extensions directory', async () => {
+      const layout = { ...PATH_DIRECT, suffix: '' };
+      const storage = await createRoot(layout);
+      const donor = await createRoot(layout);
+      const object = await createObject(donor, 'extensions/an-extension');
+      const target = path.join(storage.root, 'extensions', 'an-extension');
+      await fs.promises.cp(object.root, target, { recursive: true });
+      await assert.rejects(storage.remove('extensions/an-extension'), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
+      assert.strictEqual(fs.existsSync(path.join(target, 'inventory.json')), true);
     });
   });
   describe('spec violations', () => {

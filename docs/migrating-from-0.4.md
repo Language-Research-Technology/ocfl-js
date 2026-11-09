@@ -97,6 +97,7 @@ try {
 | `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`                                                 |
 | `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain               |
 | `FILE_EXISTS`                 | `copy()` or `rename()` names a target that exists; see [Other behaviour changes](#other-behaviour-changes)                   |
+| `NOT_AN_OBJECT`               | `storage.remove()` finds something with no OCFL object declaration at the object's path, and deletes nothing                 |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                |
 
 Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`. That includes an unsupported layout named in your own config.
@@ -278,14 +279,30 @@ Renaming or removing a file from an earlier version still changes only the logic
 
 Each public member now corresponds to something the OCFL specification or the library's role as an OCFL client calls for, with one name per operation.
 
-| Removed                          | Use instead                           |
-| -------------------------------- | ------------------------------------- |
-| `OcflObject.add()`               | `import()`                            |
-| `OcflObjectTransaction.move()`   | `rename()`                            |
-| `OcflObjectTransaction.delete()` | `remove()`                            |
-| `OcflStorage.objects()`          | `for await (const object of storage)` |
-| `OcflStorage.objectRootAbs(id)`  | `storage.object(id).root`             |
-| `OcflExtension.p`                | `parameters`                          |
+| Removed                          | Use instead                                                         |
+| -------------------------------- | ------------------------------------------------------------------- |
+| `OcflObject.add()`               | `import()`                                                          |
+| `OcflObjectTransaction.move()`   | `rename()`                                                          |
+| `OcflObjectTransaction.delete()` | `remove()`                                                          |
+| `OcflStorage.objects()`          | `for await (const object of storage)`                               |
+| `OcflStorage.objectRootAbs(id)`  | `storage.object(id).root`                                           |
+| `OcflExtension.p`                | `parameters`                                                        |
+| `OcflStorage.delete(id)`         | `storage.remove(id)`; see [Deleting an object](#deleting-an-object) |
+| `OcflStorage.purge(id)`          | `storage.remove(id)`; see [Deleting an object](#deleting-an-object) |
+
+### Deleting an object
+
+`OcflStorage.remove`, `delete` and `purge` only ever threw. `storage.remove(id)` now deletes an object on any backend, without you needing to know the storage layout. It removes the object root and any parent directories left empty, up to but not including the storage root, so the storage root stays valid. It isn't guarded against a concurrent update of the same object.
+
+It throws, and deletes nothing, when:
+
+- the object doesn't exist (`ObjectNotFoundError`)
+- the path holds something with no OCFL object declaration (`NOT_AN_OBJECT`)
+- the object's declaration has the wrong contents (`E007`)
+- the layout maps the id to the storage root, outside it, or into its `extensions` directory (`ID_INCOMPATIBLE_WITH_LAYOUT`)
+- the object's inventory has a different id, or there is no inventory to confirm it, for example because an id such as `a/../b` resolves to another object's path (`ID_INCOMPATIBLE_WITH_LAYOUT`)
+- the object's inventory can't be read or is invalid (the `ValidationError` for that problem)
+- the object is nested inside another object (`E082`)
 
 ## Other behaviour changes
 
