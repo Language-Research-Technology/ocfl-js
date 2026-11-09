@@ -330,8 +330,7 @@ class OcflObject {
   }
 
   /**
-   * Check if the object root path points to an existing file or non-empty directory
-   * in the underlying backend store.
+   * Check if the object root path points to an existing file or non-empty directory.
    * The existing directory may or may not be a valid OCFL Object.
    */
   async exists(): Promise<boolean> {

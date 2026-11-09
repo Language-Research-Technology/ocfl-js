@@ -2,8 +2,6 @@ import type { Dir, Stats } from 'node:fs';
 import path from 'node:path';
 import { isNotFound } from './utils.ts';
 
-const emptyOptions = {};
-
 export type EncodingOptions = BufferEncoding | { encoding: BufferEncoding; [key: string]: unknown };
 export type BinaryOptions = { encoding?: null | undefined; [key: string]: unknown };
 
@@ -46,25 +44,6 @@ function joinBytes(parts: Uint8Array[]) {
  * such as local file system and cloud storage
  */
 class OcflStore {
-  static instances: Map<object, OcflStore>;
-
-  static getInstance<T extends OcflStore>(this: new (options?: object) => T, options: object = emptyOptions): T {
-    // biome-ignore lint/complexity/noThisInStatic: reads the subclass's own instances map
-    const instances = (this as unknown as typeof OcflStore).instances as Map<object, T> | undefined;
-    if (!instances) {
-      return new this(options);
-    }
-    let store = instances.get(options);
-    if (!store) {
-      store = new this(options);
-      instances.set(options, store);
-    }
-    return store;
-  }
-
-  // biome-ignore lint/complexity/noUselessConstructor: documents the constructor signature subclasses receive from getInstance()
-  constructor(_options?: object) {}
-
   /**
    * Get file information.
    */

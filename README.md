@@ -141,18 +141,6 @@ for await (let f of await object.files()) {
 }
 ```
 
-### Custom fs module
-
-The storage and object methods accept an optional fs parameter, which can be any module that implements Node.js fs module API. By default, it will use the built in fs module.
-
-For example, by passing it [memfs](https://www.npmjs.com/package/memfs) the OCFL storage will be created in memory using the memfs module:
-
-```js
-import ocfl from '@ocfl/ocfl-fs';
-import { fs } from 'memfs';
-const storage = ocfl.storage({ root: '/var/data/myocfl' }, { fs });
-```
-
 ## Extensions
 
 This library by default includes all the community extensions defined in the [OCFL Community Extensions page](https://github.com/OCFL/extensions).
@@ -179,10 +167,6 @@ UppercaseLayout.register();
 
 const s = storage({ root: '/var/data/ocfl', layout: '9999-uppercase-layout' });
 ```
-
-## Implementing another backend
-
-A new data store backend can be implemented with a store class that extends `OcflStore`, passed to `implementOcfl`. Please see `OcflFsStore` in the source code as an example implementation.
 
 ## Development
 

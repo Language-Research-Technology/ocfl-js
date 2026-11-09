@@ -94,6 +94,18 @@ import { OcflConstants } from '@ocfl/ocfl-fs';
 import type { StorageLayout } from '@ocfl/ocfl-fs';
 // @ts-expect-error the StorageLayout export is gone, use extensions
 import { StorageLayout as FsStorageLayout } from '@ocfl/ocfl-fs';
+// @ts-expect-error OcflStore is gone, the library always uses node:fs
+import { OcflStore } from '@ocfl/ocfl-fs';
+// @ts-expect-error implementOcfl is gone, use storage, object, createStorage or loadStorage
+import { implementOcfl } from '@ocfl/ocfl-fs';
+// @ts-expect-error OcflFsStore is gone, the library always uses node:fs
+import { OcflFsStore } from '@ocfl/ocfl-fs';
+// @ts-expect-error OcflFsStoreConfig is gone along with the second argument
+import type { OcflFsStoreConfig } from '@ocfl/ocfl-fs';
+// @ts-expect-error ListedFile is gone along with OcflStore
+import type { ListedFile } from '@ocfl/ocfl-fs';
+// @ts-expect-error ListOptions is gone along with OcflStore
+import type { ListOptions } from '@ocfl/ocfl-fs';
 import ocflFs from '@ocfl/ocfl-fs';
 
 declare const storage: OcflStorage;
@@ -199,6 +211,14 @@ extensions.DigestAlgorithm;
 layoutClass.layout;
 // @ts-expect-error StorageLayout is gone from the default API, use extensions
 ocflFs.StorageLayout;
+// @ts-expect-error storage takes one argument
+ocflFs.storage({ root: '/tmp/storage' }, {});
+// @ts-expect-error object takes one argument
+ocflFs.object({ root: '/tmp/object' }, {});
+// @ts-expect-error createStorage takes one argument
+await ocflFs.createStorage({ root: '/tmp/storage' }, {});
+// @ts-expect-error loadStorage takes one argument
+await ocflFs.loadStorage({ root: '/tmp/storage' }, {});
 
 export { extension, inventory, inventoryClass, object, storage, transaction };
 EOF
@@ -217,13 +237,12 @@ import ocflFs, {
   type FileStat,
   type HashedNTupleStorageLayoutConfig,
   type IDataType,
-  implementOcfl,
   type Inventory,
   type InventoryDigests,
   type InventoryFile,
   type InventoryVersion,
-  type ListedFile,
-  type ListOptions,
+  loadStorage,
+  object,
   OCFL_VERSIONS,
   ObjectNotFoundError,
   ObjectNotLoadedError,
@@ -232,8 +251,6 @@ import ocflFs, {
   type OcflErrorCode,
   OcflExtension,
   type OcflExtensionConfig,
-  OcflFsStore,
-  type OcflFsStoreConfig,
   OcflObject,
   type OcflObjectConfig,
   type OcflObjectFile,
@@ -242,18 +259,16 @@ import ocflFs, {
   OcflStorage,
   type OcflStorageConfig,
   OcflStorageLayout,
-  OcflStore,
   type OcflVersion,
   type PathDirectStorageLayoutConfig,
+  storage as openStorage,
+  storageLayout,
   type UpdateMode,
   ValidationError,
   type VersionNumber,
   type WriteFileData,
 } from '@ocfl/ocfl-fs';
 
-const config: OcflFsStoreConfig = {};
-const store: OcflStore = OcflFsStore.getInstance(config);
-const custom = implementOcfl<OcflFsStoreConfig>(OcflFsStore);
 const storage: OcflStorage = await createStorage({ root: join(import.meta.dirname, 'storage'), layout: 'HashedNTupleStorageLayout' });
 
 // @ts-expect-error OcflErrorCode is a closed union
@@ -265,9 +280,8 @@ for (const ocflVersion of ocflFs.OCFL_VERSIONS) {
   await ocflFs.storage({ root: join(import.meta.dirname, `spec-${ocflVersion}`), ocflVersion }).create({ ocflSpecText: true });
 }
 
-const customStorage = await custom.createStorage({ root: join(import.meta.dirname, 'custom-backend'), layout: 'HashedNTupleStorageLayout' });
-const customObject = customStorage.object('custom-object');
-await customObject.update(async (t) => t.write('a.txt', 'written through a custom backend'));
+const written = object({ root: join(import.meta.dirname, 'object'), id: 'written-object' });
+await written.update(async (t) => t.write('a.txt', 'written to the filesystem'));
 
 OcflDigest.registerHasherFactory('consumer-digest', async (): Promise<CommonHasher> => {
   throw new Error('only registered, never used');
@@ -282,15 +296,17 @@ const layoutInstance: extensions.PathDirectStorageLayout = new ocflFs.extensions
 const prefixedStorage = ocflFs.storage({ root: join(import.meta.dirname, 'prefixed'), layout: new PrefixedLayout() });
 
 if (
-  !(store instanceof OcflStore) ||
-  custom.OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
+  createStorage !== ocflFs.createStorage ||
+  loadStorage !== ocflFs.loadStorage ||
+  object !== ocflFs.object ||
+  openStorage !== ocflFs.storage ||
+  storageLayout !== ocflFs.storageLayout ||
   OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
   !OCFL_VERSIONS.includes('1.1') ||
   extensions !== ocflFs.extensions ||
-  custom.extensions !== extensions ||
   !(layoutInstance instanceof extensions.PathDirectStorageLayout) ||
   prefixedStorage.objectRoot('abc') !== 'prefix-abc' ||
-  (await customObject.getFile('a.txt')?.text()) !== 'written through a custom backend' ||
+  (await written.getFile('a.txt')?.text()) !== 'written to the filesystem' ||
   !OcflDigest.hasAlgorithm('consumer-digest') ||
   (await storage.has('missing')) ||
   missingCode !== 'OBJECT_NOT_FOUND' ||

@@ -67,7 +67,7 @@ class OcflStorage {
   }
 
   /**
-   * Create the storage root in the underlying storage backend
+   * Create the storage root on the filesystem
    * @param options - Additional options for creating storage root
    * @param options.ocflSpecText - Write a human-readable copy of the OCFL spec for this root's version into the root
    */
@@ -83,7 +83,7 @@ class OcflStorage {
   }
 
   /**
-   * Check if the storage root path points to an existing file or non-empty directory in the underlying backend store.
+   * Check if the storage root path points to an existing file or non-empty directory.
    * The existing directory may or may not be a valid OCFL Storage.
    */
   async exists(): Promise<boolean> {
