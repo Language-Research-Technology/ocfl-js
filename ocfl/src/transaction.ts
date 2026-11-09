@@ -1,6 +1,5 @@
 /** Models a set of ocfl object modifying operations as a transaction that is as close as atomic as possible */
 import path from 'node:path';
-import type { Writable } from 'node:stream';
 import { OcflConstants } from './constants.ts';
 import { OcflDigest } from './digest.ts';
 import { OcflError } from './error.ts';
@@ -171,15 +170,6 @@ class OcflObjectTransaction {
    * @abstract
    */
   async reinstate(_logicalPath: string, _versionName: string): Promise<number> {
-    throw new Error('Not Implemented');
-  }
-
-  /**
-   * Create a NodeJS writable stream
-   * @abstract
-   * @deprecated Use {@link OcflObjectTransaction.createWritable} instead
-   */
-  async createWriteStream(_logicalPath: string, _options?: unknown): Promise<Writable> {
     throw new Error('Not Implemented');
   }
 

@@ -135,6 +135,32 @@ These stub methods have been removed:
 
 To check an object or storage root against the spec, use a dedicated OCFL validator.
 
+## Deprecated methods removed
+
+| Removed                                     | Use instead        |
+| ------------------------------------------- | ------------------ |
+| `OcflObjectFile.asBuffer()`                 | `buffer()`         |
+| `OcflObjectFile.asString()`                 | `text()`           |
+| `OcflObjectFile.asStream()`                 | `stream()`         |
+| `OcflObjectTransaction.createWriteStream()` | `createWritable()` |
+| `OcflStore.createReadStream()`              | `createReadable()` |
+| `OcflStore.createWriteStream()`             | `createWritable()` |
+
+The `OcflObjectFile` replacements behave the same as the methods they replace. `OcflObjectTransaction.createWriteStream()` only ever threw `Not Implemented`.
+
+The `OcflStore` methods, including the `OcflFsStore` overrides, returned Node.js streams, but `createReadable()` and `createWritable()` return web streams. Code that needs a Node.js stream can convert them:
+
+```ts
+import { Readable, Writable } from 'node:stream';
+
+const readable = Readable.fromWeb(await store.createReadable(filePath));
+const writable = Writable.fromWeb(await store.createWritable(filePath));
+```
+
+The converted readable emits `Buffer`s even if `createReadable()` was given an encoding. To get strings, pass the encoding to `fromWeb`: `Readable.fromWeb(stream, { encoding: 'utf8' })`.
+
+A custom `OcflStore` should drop any overrides of the removed methods and implement `createReadable()` and `createWritable()`. `createWritable()` has to create any missing parent directories, because the transaction doesn't.
+
 ## Errors for missing objects
 
 `getFile()` and the `fileBy*()` methods used to return `undefined` whether the object wasn't loaded, didn't exist, or didn't contain the file. Only the last case still returns `undefined`:
