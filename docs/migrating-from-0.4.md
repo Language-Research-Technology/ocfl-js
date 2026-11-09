@@ -2,6 +2,15 @@
 
 This release converts `@ocfl/ocfl` and `@ocfl/ocfl-fs` to TypeScript, ships them as ES modules with type declarations, and tightens how they handle invalid input. Most code that uses `@ocfl/ocfl-fs` through its default export keeps working once Node.js is upgraded. The sections below cover what may need changing.
 
+## Import everything from `@ocfl/ocfl-fs`
+
+Every value and type exported by `@ocfl/ocfl` can now be imported from `@ocfl/ocfl-fs`. If you import from `@ocfl/ocfl`, change the package name:
+
+```diff
+- import { OcflDigest, type OcflObject } from '@ocfl/ocfl';
++ import { OcflDigest, type OcflObject } from '@ocfl/ocfl-fs';
+```
+
 ## Node.js 22.12 or later
 
 Both packages now require Node.js 22.12 or later (previously 18). Digests are computed with `node:crypto` and `node:zlib`, and `zlib.crc32` was added in Node.js 22.2.
@@ -21,9 +30,9 @@ Both packages are ESM-only and publish compiled code from `dist/`.
 
   ```diff
   - import ocfl from '@ocfl/ocfl';
-  + import { OcflStorageLayout, implementOcfl } from '@ocfl/ocfl';
+  + import { OcflStorageLayout, implementOcfl } from '@ocfl/ocfl-fs';
   + // or
-  + import * as ocfl from '@ocfl/ocfl';
+  + import * as ocfl from '@ocfl/ocfl-fs';
   ```
 
   `@ocfl/ocfl-fs` keeps its default export (`import ocfl from '@ocfl/ocfl-fs'`).
@@ -393,7 +402,7 @@ import { createWriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { Writable } from 'node:stream';
-import type { OcflObject } from '@ocfl/ocfl';
+import type { OcflObject } from '@ocfl/ocfl-fs';
 
 async function writeVersion(object: OcflObject, targetDir: string, version: string) {
   for (const file of await object.files(version)) {

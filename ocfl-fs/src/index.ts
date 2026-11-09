@@ -1,8 +1,7 @@
 import { implementOcfl } from '@ocfl/ocfl';
 import { OcflFsStore, type OcflFsStoreConfig } from './store.ts';
 
-export type { OcflErrorCode } from '@ocfl/ocfl';
-export { extensions, ObjectNotFoundError, ObjectNotLoadedError, OcflError, ValidationError } from '@ocfl/ocfl';
+export * from '@ocfl/ocfl';
 export type { OcflFsStoreConfig } from './store.ts';
 export { OcflFsStore } from './store.ts';
 

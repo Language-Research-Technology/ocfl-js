@@ -211,8 +211,51 @@ export { extension, inventory, inventoryClass, object, storage, transaction };
 EOF
 cat >"$consumer/consumer.ts" <<'EOF'
 import { join } from 'node:path';
-import { type CommonHasher, implementOcfl, OcflDigest, type OcflStorage, OcflStore } from '@ocfl/ocfl';
-import ocflFs, { createStorage, extensions, OCFL_VERSIONS, OcflError, type OcflErrorCode, OcflFsStore, type OcflFsStoreConfig, ValidationError } from '@ocfl/ocfl-fs';
+import ocflFs, {
+  type BinaryOptions,
+  type CommitOptions,
+  type CommonHasher,
+  createStorage,
+  type DeepReadonly,
+  type EncodingOptions,
+  extensions,
+  type FileRef,
+  type FileStat,
+  type HashedNTupleStorageLayoutConfig,
+  type IDataType,
+  implementOcfl,
+  type Inventory,
+  type InventoryDigests,
+  type InventoryFile,
+  type InventoryVersion,
+  type ListedFile,
+  type ListOptions,
+  OCFL_VERSIONS,
+  ObjectNotFoundError,
+  ObjectNotLoadedError,
+  OcflDigest,
+  OcflError,
+  type OcflErrorCode,
+  OcflExtension,
+  type OcflExtensionConfig,
+  OcflFsStore,
+  type OcflFsStoreConfig,
+  OcflObject,
+  type OcflObjectConfig,
+  type OcflObjectFile,
+  OcflObjectInventory,
+  OcflObjectTransaction,
+  OcflStorage,
+  type OcflStorageConfig,
+  OcflStorageLayout,
+  OcflStore,
+  type OcflVersion,
+  type PathDirectStorageLayoutConfig,
+  type UpdateMode,
+  ValidationError,
+  type VersionNumber,
+  type WriteFileData,
+} from '@ocfl/ocfl-fs';
 
 const config: OcflFsStoreConfig = {};
 const store: OcflStore = OcflFsStore.getInstance(config);
