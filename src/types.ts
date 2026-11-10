@@ -75,6 +75,7 @@ export type OcflStorageConfig = {
    * A layout that identifies an arrangement of directories and OCFL objects under the storage root,
    * as an official extension name or `{ extensionName, ...params }`. Anything else throws `UNSUPPORTED_LAYOUT`.
    * Loading a root that declares a supported layout with a different name or parameters throws `LAYOUT_MISMATCH`,
+   * loading one that declares a layout this library doesn't implement throws `UNSUPPORTED_LAYOUT`,
    * and loading one whose `ocfl_layout.json` has no readable `extension` throws `E070`.
    */
   layout?: OcflLayoutName | OcflLayoutConfig | undefined;

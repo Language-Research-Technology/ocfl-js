@@ -29,8 +29,6 @@ describe('layout classes', () => {
     FlatDirectStorageLayout: '0002-flat-direct-storage-layout',
     HashAndIdNTupleStorageLayout: '0003-hash-and-id-n-tuple-storage-layout',
     HashedNTupleStorageLayout: '0004-hashed-n-tuple-storage-layout',
-    FlatOmitPrefixStorageLayout: '0006-flat-omit-prefix-storage-layout',
-    NTupleOmitPrefixStorageLayout: '0007-n-tuple-omit-prefix-storage-layout',
   };
 
   it('exposes the built-in layouts as extensions', () => {
@@ -275,12 +273,30 @@ describe('configured layout of a loaded storage root', () => {
     assert.throws(() => storage.objectRoot('abc'), /No layout defined/);
   });
 
-  it('reads a root naming an unsupported extension with a configured layout', async () => {
-    const root = await createRoot({ layoutFile: declaring('9999-unimplemented-layout') });
-    const storage = await ocfl.storage({ root, layout: '0002-flat-direct-storage-layout' }).load();
-    assert.strictEqual(storage.objectRoot('abc'), 'abc');
-    assert.strictEqual(storage.object('abc').root, path.join(root, 'abc'));
-  });
+  for (const extension of ['0006-flat-omit-prefix-storage-layout', '0007-n-tuple-omit-prefix-storage-layout', '9999-unimplemented-layout']) {
+    it(`rejects a root declaring ${extension} with no layout configured`, async () => {
+      const root = await createRoot({ layoutFile: declaring(extension) });
+      await assert.rejects(ocfl.storage({ root }).load(), { code: 'UNSUPPORTED_LAYOUT', message: new RegExp(extension) });
+    });
+
+    it(`rejects a root declaring ${extension} with a layout configured`, async () => {
+      const root = await createRoot({ layoutFile: declaring(extension) });
+      await assert.rejects(ocfl.loadStorage({ root, layout: '0002-flat-direct-storage-layout' }), {
+        code: 'UNSUPPORTED_LAYOUT',
+        message: new RegExp(extension),
+      });
+    });
+
+    it(`rejects a root declaring ${extension} whose extension config names a built-in layout`, async () => {
+      const root = await createRoot({ layoutFile: declaring(extension) });
+      await fs.promises.mkdir(path.join(root, 'extensions', extension), { recursive: true });
+      await fs.promises.writeFile(
+        path.join(root, 'extensions', extension, 'config.json'),
+        JSON.stringify({ extensionName: '0002-flat-direct-storage-layout' }),
+      );
+      await assert.rejects(ocfl.storage({ root }).load(), { code: 'UNSUPPORTED_LAYOUT', message: new RegExp(extension) });
+    });
+  }
 
   it('rejects a configured layout that differs from the supported layout the root declares, naming both', async () => {
     const root = await createRoot({ layoutFile: declaring(HASHED) });
@@ -337,12 +353,6 @@ describe('configured layout of a loaded storage root', () => {
 
     const otherName = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: '0002-flat-direct-storage-layout' } });
     await ocfl.storage({ root: otherName, layout: HASHED }).load();
-  });
-
-  it('reads a root naming a registered layout that has no map() with a configured layout', async () => {
-    const root = await createRoot({ layoutFile: declaring('0006-flat-omit-prefix-storage-layout') });
-    const storage = await ocfl.storage({ root, layout: '0002-flat-direct-storage-layout' }).load();
-    assert.strictEqual(storage.objectRoot('abc'), 'abc');
   });
 
   it('creates and reopens a root using a registered custom layout', async () => {

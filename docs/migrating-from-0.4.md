@@ -98,20 +98,20 @@ try {
 
 `instanceof OcflError` only works when your app has one copy of the library, so it depends on [removing `@ocfl/ocfl`](#import-everything-from-ocflocfl-fs). Checking `error.code` works across copies.
 
-| Code                          | Thrown when                                                                                                                  |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `OBJECT_NOT_FOUND`            | The object doesn't exist; thrown as an `ObjectNotFoundError` (see [Errors for missing objects](#errors-for-missing-objects)) |
-| `OBJECT_NOT_LOADED`           | `getFile()` is called before the inventory has been read; thrown as an `ObjectNotLoadedError`                                |
-| `UPDATE_IN_PROGRESS`          | An update finds uncommitted changes, because another process is updating the object or an earlier update failed              |
-| `DIRECTORY_NOT_EMPTY`         | An object or storage root is created in a non-empty directory                                                                |
-| `ID_INCOMPATIBLE_WITH_LAYOUT` | The storage layout can't map the object id                                                                                   |
-| `UNSUPPORTED_LAYOUT`          | `layout` isn't a supported name or config, or a root's `ocfl_layout.json` names an unsupported layout with none configured   |
-| `LAYOUT_MISMATCH`             | A configured layout's name or parameters differ from the layout the storage root declares                                    |
-| `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`                                                 |
-| `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain               |
-| `FILE_EXISTS`                 | `copy()` or `rename()` names a target that exists; see [Other behaviour changes](#other-behaviour-changes)                   |
-| `NOT_AN_OBJECT`               | `storage.remove()` finds something with no OCFL object declaration at the object's path, and deletes nothing                 |
-| `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                |
+| Code                          | Thrown when                                                                                                                   |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `OBJECT_NOT_FOUND`            | The object doesn't exist; thrown as an `ObjectNotFoundError` (see [Errors for missing objects](#errors-for-missing-objects))  |
+| `OBJECT_NOT_LOADED`           | `getFile()` is called before the inventory has been read; thrown as an `ObjectNotLoadedError`                                 |
+| `UPDATE_IN_PROGRESS`          | An update finds uncommitted changes, because another process is updating the object or an earlier update failed               |
+| `DIRECTORY_NOT_EMPTY`         | An object or storage root is created in a non-empty directory                                                                 |
+| `ID_INCOMPATIBLE_WITH_LAYOUT` | The storage layout can't map the object id                                                                                    |
+| `UNSUPPORTED_LAYOUT`          | `layout` isn't a supported name or config, or a root's `ocfl_layout.json` names an unsupported layout, even with `layout` set |
+| `LAYOUT_MISMATCH`             | A configured layout's name or parameters differ from the layout the storage root declares                                     |
+| `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`                                                  |
+| `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain                |
+| `FILE_EXISTS`                 | `copy()` or `rename()` names a target that exists; see [Other behaviour changes](#other-behaviour-changes)                    |
+| `NOT_AN_OBJECT`               | `storage.remove()` finds something with no OCFL object declaration at the object's path, and deletes nothing                  |
+| `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                 |
 
 Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`.
 
@@ -480,6 +480,12 @@ If you passed a layout object, pass its name and parameters instead. Those were 
 
 The names are typed as `OcflLayoutName`, so a value typed `string` no longer compiles: type it as `OcflLayoutName`, or a config object as `OcflLayoutConfig`.
 
+### Layouts 0006 and 0007
+
+`FlatOmitPrefixStorageLayout` (`0006-flat-omit-prefix-storage-layout`) and `NTupleOmitPrefixStorageLayout` (`0007-n-tuple-omit-prefix-storage-layout`) have been removed. They could never map an identifier to a path. Choosing either throws `UNSUPPORTED_LAYOUT`.
+
+Loading a storage root that declares either of them, or any other layout this library doesn't implement, also throws `UNSUPPORTED_LAYOUT`, even with a layout configured. A configured layout used to be accepted on these roots, so identifiers could resolve to the wrong objects. There's no replacement: to use such a root, contribute the layout to this library.
+
 ### Public classes are types
 
 `OcflObject`, `OcflStorage`, `OcflObjectTransaction`, `OcflObjectInventory` and `OcflObjectFile` are now exported as types only. You can still name them in annotations, using `import type` or `type` in an import, but you can't construct or subclass them. They no longer exist at runtime, so `instanceof OcflStorage` and `class MyStorage extends OcflStorage` stop working. `new OcflStorage()` used to compile and give an object whose methods only threw.
@@ -507,4 +513,4 @@ The names are typed as `OcflLayoutName`, so a value typed `string` no longer com
 - When a storage root's layout extension `config.json` has no `extensionName`, the layout named in `ocfl_layout.json` is used. Previously the storage loaded with no layout.
 - Once an existing object's root inventory has been read, by `load()`, `refresh()`, `update()` or any other method that reads it, `object.ocflVersion` is the version that object declares. It used to report the configured version or the library default, so a 1.0 object in a 1.1 storage root reported 1.1. A configured version only applies when an object is created, and one that differs from an existing object is ignored without an error.
 - Once an existing object's root inventory has been read, `object.digestAlgorithm` and `object.contentDirectory` are the values in that inventory. They used to report the configured values or the library defaults, so a `sha256` object with content directory `data`, loaded with default config, reported `sha512` and `content`. Until the inventory has been read, and for an object that doesn't exist yet, they still report the configured value or default. As with `ocflVersion`, the configured values only apply when an object is created.
-- `load()` keeps a layout passed in the storage config, instead of always replacing it with the root's. The configured layout is used when the root has no `ocfl_layout.json` or names a layout this library doesn't implement. If the root names a supported layout with a different name or parameters, `load()` throws `LAYOUT_MISMATCH`. If the file exists but has no readable `extension`, the configured layout can't be checked, so `load()` throws `E070`.
+- `load()` keeps a layout passed in the storage config, instead of always replacing it with the root's. The configured layout is used when the root has no `ocfl_layout.json`. If the root names a layout this library doesn't implement, `load()` throws `UNSUPPORTED_LAYOUT`, because a configured layout could map identifiers to the wrong paths. If the root names a supported layout with a different name or parameters, `load()` throws `LAYOUT_MISMATCH`. If the file exists but has no readable `extension`, the configured layout can't be checked, so `load()` throws `E070`.

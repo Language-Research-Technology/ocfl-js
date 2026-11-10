@@ -24,6 +24,14 @@ async function readSpecText(ocflVersion: OcflVersion) {
   return { file, content: await fs.promises.readFile(new URL(`../resources/${file}`, import.meta.url)) };
 }
 
+function supportedLayoutClass(name: string) {
+  const layoutClass = OcflStorageLayout.class(name);
+  if (!layoutClass) {
+    throw new OcflError('UNSUPPORTED_LAYOUT', `Layout "${name}" is not supported.`);
+  }
+  return layoutClass;
+}
+
 /**
  * An abstraction to represent the OCFL Storage Root, which is
  * a base directory used to store OCFL Objects, identified by a [NAMASTE] file “0=ocfl_1.1”.
@@ -60,18 +68,11 @@ class OcflStorage {
 
   #resolveLayout(declaredName: string | undefined, rootLayoutConfig: OcflExtensionConfig | undefined) {
     const configured = this.#configuredLayout;
-    const rootLayoutName = configured ? declaredName : (rootLayoutConfig?.extensionName ?? declaredName);
-    if (!rootLayoutName) {
+    if (!declaredName) {
       return configured;
     }
-    const rootLayoutClass = OcflStorageLayout.class(rootLayoutName);
-    // Some registered layouts are stubs that don't implement map()
-    if (configured && (!rootLayoutClass || rootLayoutClass.prototype.map === OcflStorageLayout.prototype.map)) {
-      return configured;
-    }
-    if (!rootLayoutClass) {
-      throw new OcflError('UNSUPPORTED_LAYOUT', `Layout "${rootLayoutName}" is not supported.`);
-    }
+    supportedLayoutClass(declaredName);
+    const rootLayoutClass = supportedLayoutClass(configured ? declaredName : (rootLayoutConfig?.extensionName ?? declaredName));
     if (configured && configured.name !== rootLayoutClass.NAME) {
       throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's layout "${rootLayoutClass.NAME}".`);
     }

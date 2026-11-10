@@ -72,10 +72,24 @@ describe('choosing a built-in layout', () => {
 });
 
 describe('choosing a layout that is not supported', () => {
+  it('rejects creating a storage root with a layout that has no implementation', async () => {
+    await assert.rejects(
+      ocfl.createStorage({ root: '/tmp/ocfl-unused', layout: '0006-flat-omit-prefix-storage-layout' as never }),
+      ocflError('UNSUPPORTED_LAYOUT'),
+    );
+  });
+
   for (const [entryPoint, choose] of invalidLayoutEntryPoints) {
     it(`rejects an unknown name through ${entryPoint}`, () => {
       assert.throws(() => choose('no-such-layout' as never), ocflError('UNSUPPORTED_LAYOUT'));
     });
+
+    for (const name of ['0006-flat-omit-prefix-storage-layout', '0007-n-tuple-omit-prefix-storage-layout']) {
+      it(`rejects ${name} through ${entryPoint}`, () => {
+        assert.throws(() => choose(name as never), ocflError('UNSUPPORTED_LAYOUT'));
+        assert.throws(() => choose({ extensionName: name } as never), ocflError('UNSUPPORTED_LAYOUT'));
+      });
+    }
 
     it(`rejects a class name through ${entryPoint}`, () => {
       assert.throws(() => choose('FlatDirectStorageLayout' as never), ocflError('UNSUPPORTED_LAYOUT'));
