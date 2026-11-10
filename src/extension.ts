@@ -59,12 +59,9 @@ abstract class BuiltInLayout<C extends object = object> {
   abstract map(id: string): string;
 }
 
-/** Parameter values as config.json stores them, which can't represent a RegExp */
-const asStored = (value: unknown) => JSON.parse(JSON.stringify({ value }));
-
-/** Names of the parameters in `expected` whose values, as config.json stores them, differ in `actual` */
+/** Names of the parameters in `expected` whose values differ in `actual` */
 function differingParameters(actual: OcflExtensionConfig, expected: OcflExtensionConfig): string[] {
-  return Object.keys(expected).filter((name) => !isDeepStrictEqual(asStored(actual[name]), asStored(expected[name])));
+  return Object.keys(expected).filter((name) => !isDeepStrictEqual(actual[name], expected[name]));
 }
 
-export { BuiltInLayout, differingParameters, mergeParameters, type OcflExtensionConfig };
+export { BuiltInLayout, differingParameters, type OcflExtensionConfig };
