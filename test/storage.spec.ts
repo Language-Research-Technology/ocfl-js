@@ -2,8 +2,9 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, before, describe, it } from 'node:test';
+import { after, before, describe, it, mock } from 'node:test';
 import ocfl from '../src/index.ts';
+import { fsError, stillOpen, trackOpendir, withFsFailure } from './fs-failures.ts';
 import { ocflError } from './ocfl-error.ts';
 
 describe('OcflStorage with an unsupported layout or object reference', () => {
@@ -64,5 +65,91 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
     await fs.promises.mkdir(root);
     await fs.promises.writeFile(path.join(root, 'stray.txt'), 'x');
     await assert.rejects(ocfl.createStorage({ root, layout: '0004-hashed-n-tuple-storage-layout' }), ocflError('DIRECTORY_NOT_EMPTY'));
+  });
+});
+
+describe('iterating a storage root', () => {
+  let tempdir: string;
+  let root: string;
+  before(async () => {
+    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-fs-storage-iteration-'));
+    root = path.join(tempdir, 'root');
+    const storage = await ocfl.createStorage({ root, layout: '0004-hashed-n-tuple-storage-layout' });
+    for (const id of ['a', 'b', 'c']) {
+      await storage.object(`http://example.org/${id}`).update(async (t) => {
+        await t.write('a.txt', id);
+      });
+    }
+  });
+  after(async () => {
+    await fs.promises.rm(tempdir, { recursive: true, force: true });
+  });
+
+  it('closes every directory it opened when the loop breaks early', async () => {
+    const storage = await ocfl.storage({ root }).load();
+    const opened = await trackOpendir(async () => {
+      for await (const _o of storage) {
+        break;
+      }
+    });
+    assert.ok(opened.length > 1);
+    assert.deepStrictEqual(await stillOpen(opened), []);
+  });
+
+  it('closes every directory it opened when the loop body throws', async () => {
+    const storage = await ocfl.storage({ root }).load();
+    const opened = await trackOpendir(() =>
+      assert.rejects(async () => {
+        for await (const _o of storage) {
+          throw new Error('stop');
+        }
+      }, /stop/),
+    );
+    assert.ok(opened.length > 1);
+    assert.deepStrictEqual(await stillOpen(opened), []);
+  });
+
+  it('closes every directory it opened and rethrows when a directory cannot be opened', async () => {
+    const storage = await ocfl.storage({ root }).load();
+    const secondLevel = (dirPath: string) => path.relative(root, dirPath).split(path.sep).length === 2;
+    const opened = await trackOpendir(() =>
+      withFsFailure('opendir', secondLevel, () =>
+        assert.rejects(
+          async () => {
+            for await (const _o of storage) {
+            }
+          },
+          { code: 'EIO' },
+        ),
+      ),
+    );
+    assert.ok(opened.length > 1);
+    assert.deepStrictEqual(await stillOpen(opened), []);
+  });
+});
+
+describe('checking whether a storage root exists', () => {
+  let tempdir: string;
+  before(async () => {
+    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-fs-storage-exists-'));
+  });
+  after(async () => {
+    await fs.promises.rm(tempdir, { recursive: true, force: true });
+  });
+
+  it('closes the directory it opened when reading it fails', async () => {
+    const storage = ocfl.storage({ root: tempdir, layout: '0004-hashed-n-tuple-storage-layout' });
+    const opened = await trackOpendir(async () => {
+      const read = mock.method(fs.Dir.prototype, 'read', async () => {
+        throw fsError('EIO');
+      });
+      try {
+        await storage.exists();
+      } finally {
+        read.mock.restore();
+      }
+    });
+    assert.strictEqual(opened.length, 1);
+    assert.deepStrictEqual(await stillOpen(opened), []);
   });
 });

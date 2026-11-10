@@ -269,53 +269,30 @@ class OcflStorage {
    * Allow async iteration over all OCFL objects in this storage.
    */
   [Symbol.asyncIterator](): AsyncIterableIterator<OcflObject> {
-    const workspace = this.#workspace;
-    const config = this.#objectConfig;
-    const root = this.root;
-    const stack = [fs.promises.opendir(this.root)];
-    return {
-      [Symbol.asyncIterator]() {
-        return this;
-      },
-      async next(): Promise<IteratorResult<OcflObject>> {
-        for (let dirp = stack.pop(); dirp; dirp = stack.pop()) {
-          const dir = await dirp;
-          const dirent = await dir.read();
-          if (!dirent) {
-            await dir.close();
-            continue;
-          }
-          stack.push(dirp);
-          if (!dirent.isDirectory()) {
-            continue;
-          }
-          const basePath = path.join(dir.path, dirent.name);
-          let nv: OcflVersion | '' | undefined;
-          try {
-            nv = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, basePath);
-          } catch (_err) {}
-          if (nv) {
-            //ocfl object exists
-            // inventory exists
-            const object = new OcflObject({
-              root: basePath,
-              workspace: workspace ? path.join(workspace, path.relative(root, basePath)) : undefined,
-              ocflVersion: nv,
-              ...config,
-            });
-            //await object.load();
-            return { done: false, value: object };
-          } else {
-            //ocfl object does not exist, process subdir
-            stack.push(fs.promises.opendir(basePath));
-          }
-        }
-        return { done: true, value: null };
-      },
-      // return() {
-      //   return { done: true };
-      // }
-    };
+    return this.#objectsUnder(this.root);
+  }
+
+  async *#objectsUnder(dirPath: string): AsyncGenerator<OcflObject> {
+    for await (const dirent of await fs.promises.opendir(dirPath)) {
+      if (!dirent.isDirectory()) {
+        continue;
+      }
+      const basePath = path.join(dirPath, dirent.name);
+      let nv: OcflVersion | '' | undefined;
+      try {
+        nv = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, basePath);
+      } catch (_err) {}
+      if (nv) {
+        yield new OcflObject({
+          root: basePath,
+          workspace: this.#workspace ? path.join(this.#workspace, path.relative(this.root, basePath)) : undefined,
+          ocflVersion: nv,
+          ...this.#objectConfig,
+        });
+      } else {
+        yield* this.#objectsUnder(basePath);
+      }
+    }
   }
 }
 
