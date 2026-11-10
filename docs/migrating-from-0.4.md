@@ -488,6 +488,13 @@ If you passed a layout object, pass its name and parameters instead. Those were 
 
 The names are typed as `OcflLayoutName`, so a value typed `string` no longer compiles: type it as `OcflLayoutName`, or a config object as `OcflLayoutConfig`.
 
+A config object's parameters are typed per layout, using `PathDirectStorageLayoutConfig`, `HashAndIdNTupleStorageLayoutConfig` or `HashedNTupleStorageLayoutConfig`. A parameter the layout doesn't declare, or a value of the wrong type, no longer compiles:
+
+```diff
+- ocfl.storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: '2' });
++ ocfl.storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 2 });
+```
+
 ### Layouts 0006 and 0007
 
 `FlatOmitPrefixStorageLayout` (`0006-flat-omit-prefix-storage-layout`) and `NTupleOmitPrefixStorageLayout` (`0007-n-tuple-omit-prefix-storage-layout`) have been removed. They could never map an identifier to a path. Choosing either throws `UNSUPPORTED_LAYOUT`.

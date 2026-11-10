@@ -1,4 +1,12 @@
-import type { ContentAlgorithm } from './digest.ts';
+import type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direct-storage-layout.ts';
+import type { HashAndIdNTupleStorageLayoutConfig } from './extensions/0003-hash-and-id-n-tuple-storage-layout.ts';
+import type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
+
+/** A digest algorithm OCFL allows for content addressing */
+export type ContentAlgorithm = 'sha256' | 'sha512';
+
+/** Digest values keyed by algorithm name */
+export type Digests = { [algorithm: string]: string };
 
 /** `T` and everything nested in it, read-only at compile time. The data isn't frozen. */
 export type DeepReadonly<T> = { readonly [K in keyof T]: DeepReadonly<T[K]> };
@@ -63,7 +71,11 @@ export type OcflLayoutName =
   | '0004-hashed-n-tuple-storage-layout';
 
 /** An official layout name along with that layout's parameters. */
-export type OcflLayoutConfig = { extensionName: OcflLayoutName; [key: string]: unknown };
+export type OcflLayoutConfig =
+  | ({ extensionName: '000N-path-direct-storage-layout' } & PathDirectStorageLayoutConfig)
+  | { extensionName: '0002-flat-direct-storage-layout' }
+  | ({ extensionName: '0003-hash-and-id-n-tuple-storage-layout' } & HashAndIdNTupleStorageLayoutConfig)
+  | ({ extensionName: '0004-hashed-n-tuple-storage-layout' } & HashedNTupleStorageLayoutConfig);
 
 /** Configuration options for an OCFL Object. */
 export type OcflStorageConfig = {

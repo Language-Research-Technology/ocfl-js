@@ -7,12 +7,13 @@ import { FlatDirectStorageLayout } from './0002-flat-direct-storage-layout.ts';
 import { HashAndIdNTupleStorageLayout } from './0003-hash-and-id-n-tuple-storage-layout.ts';
 import { HashedNTupleStorageLayout } from './0004-hashed-n-tuple-storage-layout.ts';
 
-const BUILT_IN_LAYOUTS: Record<OcflLayoutName, new (config?: OcflExtensionConfig) => BuiltInLayout> = {
+// Configs arrive unchecked, from callers and config.json; each layout keeps only its own parameters
+const BUILT_IN_LAYOUTS = {
   '000N-path-direct-storage-layout': PathDirectStorageLayout,
   '0002-flat-direct-storage-layout': FlatDirectStorageLayout,
   '0003-hash-and-id-n-tuple-storage-layout': HashAndIdNTupleStorageLayout,
   '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayout,
-};
+} as Record<OcflLayoutName, new (config?: OcflExtensionConfig) => BuiltInLayout>;
 
 /** @throws {OcflError} `UNSUPPORTED_LAYOUT` if the library doesn't implement the layout */
 function supportedLayoutClass(name: unknown) {

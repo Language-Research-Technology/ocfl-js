@@ -273,17 +273,24 @@ import { join } from 'node:path';
 import ocflFs, {
   type BinaryOptions,
   type CommitOptions,
+  type ContentAlgorithm,
   createStorage,
   type DeepReadonly,
+  type Digests,
   type EncodingOptions,
   type FileRef,
+  type FileRefContent,
+  type FileRefDigest,
+  type FileRefLogical,
   type FileStat,
+  type HashAndIdNTupleStorageLayoutConfig,
   type HashedNTupleStorageLayoutConfig,
   type Inventory,
   type InventoryDigests,
   type InventoryFile,
   type InventoryVersion,
   loadStorage,
+  type LogicalPath,
   object,
   OCFL_VERSIONS,
   ObjectNotFoundError,
@@ -307,6 +314,8 @@ import ocflFs, {
   storageLayout,
   type UpdateMode,
   ValidationError,
+  type ValidationErrorCode,
+  type ValidationErrorOptions,
   type VersionNumber,
   type WriteFileData,
 } from '@ocfl/ocfl-fs';
@@ -314,6 +323,8 @@ import ocflFs, {
 const layoutName: OcflLayoutName = '0004-hashed-n-tuple-storage-layout';
 const storage: OcflStorage = await createStorage({ root: join(import.meta.dirname, 'storage'), layout: layoutName });
 const layoutConfig: OcflLayoutConfig = { extensionName: '000N-path-direct-storage-layout', suffix: '/obj' };
+// @ts-expect-error each layout's parameters are typed
+const _wronglyTypedParameter: OcflLayoutConfig = { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: '2' };
 const configuredStorage = ocflFs.storage({ root: join(import.meta.dirname, 'configured'), layout: layoutConfig });
 
 // @ts-expect-error OcflErrorCode is a closed union
@@ -330,6 +341,25 @@ await written.update(async (t: OcflObjectTransaction) => t.write('a.txt', 'writt
 const writtenInventory: OcflObjectInventory | undefined = await written.getInventory();
 const writtenFile: OcflObjectFile | undefined = written.getFile('a.txt');
 
+const algorithm: ContentAlgorithm | undefined = writtenInventory?.digestAlgorithm;
+const fixity: Digests | undefined = writtenInventory?.getFixity('a.txt');
+const writtenPath: LogicalPath = 'a.txt';
+const byPath: FileRefLogical = { logicalPath: writtenPath, version: 'v1' };
+const byDigest: FileRefDigest = { digest: writtenFile?.digest ?? '' };
+const byContent: FileRefContent = { contentPath: writtenFile?.contentPath ?? '' };
+const refs = [byPath, byDigest, byContent].map((ref) => written.getFile(ref)?.logicalPath);
+const pathDirect: PathDirectStorageLayoutConfig = { suffix: '/obj' };
+const hashAndId: HashAndIdNTupleStorageLayoutConfig = { tupleSize: 2, numberOfTuples: 2 };
+const hashed: HashedNTupleStorageLayoutConfig = { shortObjectRoot: true };
+const configuredLayouts = [
+  storageLayout({ extensionName: '000N-path-direct-storage-layout', ...pathDirect }),
+  storageLayout({ extensionName: '0003-hash-and-id-n-tuple-storage-layout', ...hashAndId }),
+  storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', ...hashed }),
+];
+const validationCode: ValidationErrorCode = 'E060';
+const validationOptions: ValidationErrorOptions = { code: validationCode, description: 'Bad sidecar.', path: 'inventory.json.sha512' };
+const validationError = new ValidationError(validationOptions);
+
 const layout: OcflStorageLayout = storageLayout(layoutName);
 
 if (
@@ -344,6 +374,13 @@ if (
   layout.get('tupleSize') !== 3 ||
   layout.map('object-01') !== '3c0/ff4/240/3c0ff4240c1e116dba14c7627f2319b58aa3d77606d0d90dfc6161608ac987d4' ||
   writtenInventory?.head !== 'v1' ||
+  algorithm !== 'sha512' ||
+  fixity === undefined ||
+  refs.some((logicalPath) => logicalPath !== 'a.txt') ||
+  configuredLayouts[0]?.map('abc') !== 'abc/obj' ||
+  configuredLayouts[1]?.get('tupleSize') !== 2 ||
+  configuredLayouts[2]?.get('shortObjectRoot') !== true ||
+  validationError.code !== 'E060' ||
   (await writtenFile?.text()) !== 'written to the filesystem' ||
   (await storage.has('missing')) ||
   missingCode !== 'OBJECT_NOT_FOUND' ||

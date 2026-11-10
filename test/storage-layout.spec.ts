@@ -164,10 +164,12 @@ describe('storageLayout without a loaded storage', () => {
   });
 
   it('ignores a parameter the layout does not declare', () => {
+    // @ts-expect-error untyped callers can still pass it
     assert.strictEqual(ocfl.storageLayout({ extensionName: HASHED, undeclared: 'ignored' }).get('undeclared'), undefined);
   });
 
   it('has no parameters for the 0002 layout', () => {
+    // @ts-expect-error untyped callers can still pass it
     assert.strictEqual(ocfl.storageLayout({ extensionName: '0002-flat-direct-storage-layout', tupleSize: 2 }).get('tupleSize'), undefined);
   });
 

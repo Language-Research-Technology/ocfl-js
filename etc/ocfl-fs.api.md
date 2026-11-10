@@ -22,6 +22,9 @@ export interface CommitOptions {
 }
 
 // @public
+export type ContentAlgorithm = 'sha256' | 'sha512';
+
+// @public
 export function createStorage(config: OcflStorageConfig): Promise<OcflStorage>;
 
 // @public
@@ -40,6 +43,11 @@ const _default: {
 };
 export default _default;
 
+// @public
+export type Digests = {
+    [algorithm: string]: string;
+};
+
 // @public (undocumented)
 export type EncodingOptions = BufferEncoding | {
     encoding: BufferEncoding;
@@ -50,14 +58,30 @@ export type EncodingOptions = BufferEncoding | {
 export interface FileRef {
     contentPath?: string;
     digest?: string;
-    fixity?: {
-        [algorithm: string]: string;
-    };
+    fixity?: Digests;
     lastModified?: number;
     logicalPath?: string;
     size?: number;
     version?: string | undefined;
 }
+
+// @public (undocumented)
+export type FileRefContent = {
+    contentPath: string;
+    version?: string | undefined;
+};
+
+// @public (undocumented)
+export type FileRefDigest = {
+    digest: string;
+    version?: string | undefined;
+};
+
+// @public (undocumented)
+export type FileRefLogical = {
+    logicalPath: string;
+    version?: string | undefined;
+};
 
 // @public (undocumented)
 export interface FileStat {
@@ -67,15 +91,21 @@ export interface FileStat {
     size?: number;
 }
 
-// Warning: (ae-forgotten-export) The symbol "DefaultConfig_2" needs to be exported by the entry point index.d.ts
-//
 // @public (undocumented)
-export type HashedNTupleStorageLayoutConfig = Partial<typeof DefaultConfig_2>;
+export type HashAndIdNTupleStorageLayoutConfig = {
+    digestAlgorithm?: string;
+    tupleSize?: number;
+    numberOfTuples?: number;
+};
+
+// @public (undocumented)
+export type HashedNTupleStorageLayoutConfig = HashAndIdNTupleStorageLayoutConfig & {
+    shortObjectRoot?: boolean;
+};
 
 // @public (undocumented)
 export interface Inventory {
     contentDirectory?: string;
-    // Warning: (ae-forgotten-export) The symbol "ContentAlgorithm" needs to be exported by the entry point index.d.ts
     digestAlgorithm: ContentAlgorithm;
     // (undocumented)
     fixity?: {
@@ -106,8 +136,6 @@ export interface InventoryFile {
     contentPath: string;
     // (undocumented)
     digest: string;
-    // Warning: (ae-forgotten-export) The symbol "Digests" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
     fixity: Digests;
     // (undocumented)
@@ -138,6 +166,9 @@ export interface InventoryVersion {
 // @public
 export function loadStorage(config: OcflStorageConfig): Promise<OcflStorage>;
 
+// @public (undocumented)
+export type LogicalPath = string;
+
 // @public
 export function object(config: OcflObjectConfig): OcflObject;
 
@@ -165,8 +196,6 @@ export class OcflError extends Error {
     readonly code: OcflErrorCode;
 }
 
-// Warning: (ae-forgotten-export) The symbol "ValidationErrorCode" needs to be exported by the entry point index.d.ts
-//
 // @public (undocumented)
 export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'LAYOUT_MISMATCH' | ValidationErrorCode;
 
@@ -177,10 +206,15 @@ export type OcflExtensionConfig = {
 };
 
 // @public
-export type OcflLayoutConfig = {
-    extensionName: OcflLayoutName;
-    [key: string]: unknown;
-};
+export type OcflLayoutConfig = ({
+    extensionName: '000N-path-direct-storage-layout';
+} & PathDirectStorageLayoutConfig) | {
+    extensionName: '0002-flat-direct-storage-layout';
+} | ({
+    extensionName: '0003-hash-and-id-n-tuple-storage-layout';
+} & HashAndIdNTupleStorageLayoutConfig) | ({
+    extensionName: '0004-hashed-n-tuple-storage-layout';
+} & HashedNTupleStorageLayoutConfig);
 
 // @public
 export type OcflLayoutName = '000N-path-direct-storage-layout' | '0002-flat-direct-storage-layout' | '0003-hash-and-id-n-tuple-storage-layout' | '0004-hashed-n-tuple-storage-layout';
@@ -191,7 +225,7 @@ export class OcflObject {
     // (undocumented)
     _baseInventory(): {
         id?: string;
-        digestAlgorithm: "sha256" | "sha512";
+        digestAlgorithm: ContentAlgorithm;
         type: Inventory['type'];
         contentDirectory: string;
     };
@@ -205,10 +239,6 @@ export class OcflObject {
     exists(): Promise<boolean>;
     files(version?: string): Promise<Generator<OcflObjectFile, void, unknown>>;
     fixityAlgorithms: string[] | undefined;
-    // Warning: (ae-forgotten-export) The symbol "LogicalPath" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "FileRefLogical" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "FileRefDigest" needs to be exported by the entry point index.d.ts
-    // Warning: (ae-forgotten-export) The symbol "FileRefContent" needs to be exported by the entry point index.d.ts
     getFile(opt: LogicalPath | FileRefLogical | FileRefDigest | FileRefContent, version?: string, lazy?: boolean): OcflObjectFile | undefined;
     getInventory(version?: string): Promise<OcflObjectInventory | undefined>;
     get headVersion(): VersionNumber | undefined;
@@ -269,9 +299,7 @@ export class OcflObjectFile {
     // (undocumented)
     digest?: string;
     // (undocumented)
-    fixity?: {
-        [algorithm: string]: string;
-    };
+    fixity?: Digests;
     get lastModified(): number | undefined;
     // (undocumented)
     logicalPath?: string;
@@ -295,7 +323,7 @@ export class OcflObjectInventory {
     diffState(version0: string, version1: string): [InventoryDigests, InventoryDigests];
     _digest: string | undefined;
     // (undocumented)
-    get digestAlgorithm(): "sha256" | "sha512";
+    get digestAlgorithm(): ContentAlgorithm;
     // (undocumented)
     files(versionName?: string): Generator<InventoryFile>;
     // (undocumented)
@@ -474,18 +502,21 @@ export type OcflStorageConfig = {
     ocflVersion?: OcflVersion | undefined;
 };
 
-// Warning: (ae-forgotten-export) The symbol "BuiltInLayout" needs to be exported by the entry point index.d.ts
-//
 // @public
-export type OcflStorageLayout = Pick<BuiltInLayout, 'get' | 'map'>;
+export interface OcflStorageLayout {
+    get(param: string): any;
+    map(id: string): string;
+}
 
 // @public (undocumented)
 export type OcflVersion = '1.0' | '1.1';
 
-// Warning: (ae-forgotten-export) The symbol "DefaultConfig" needs to be exported by the entry point index.d.ts
-//
 // @public (undocumented)
-export type PathDirectStorageLayoutConfig = Partial<typeof DefaultConfig>;
+export type PathDirectStorageLayoutConfig = {
+    omitScheme?: boolean;
+    replace?: [string | RegExp, string][];
+    suffix?: string;
+};
 
 // @public
 export function storage(config: OcflStorageConfig): OcflStorage;
@@ -498,8 +529,22 @@ export type UpdateMode = 'MERGE' | 'REPLACE';
 
 // @public (undocumented)
 export class ValidationError extends OcflError {
-    // Warning: (ae-forgotten-export) The symbol "ValidationErrorOptions" needs to be exported by the entry point index.d.ts
     constructor(options: ValidationErrorOptions);
+    // (undocumented)
+    code: ValidationErrorCode;
+    // (undocumented)
+    description: string;
+    // (undocumented)
+    detail?: string | undefined;
+    // (undocumented)
+    path: string;
+}
+
+// @public (undocumented)
+export type ValidationErrorCode = 'E007' | 'E036' | 'E040' | 'E050' | 'E060' | 'E069' | 'E070' | 'E080' | 'E081' | 'E082';
+
+// @public (undocumented)
+export interface ValidationErrorOptions {
     // (undocumented)
     code: ValidationErrorCode;
     // (undocumented)

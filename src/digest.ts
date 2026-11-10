@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
+import type { Digests } from './types.ts';
 
 type DataType = string | ArrayBufferLike | Uint8Array | Uint16Array | Uint32Array;
 
@@ -10,11 +11,8 @@ interface Hasher {
 
 interface MultiHasher {
   update: (data: DataType) => MultiHasher;
-  digest: () => { [key: string]: string };
+  digest: () => Digests;
 }
-
-const CONTENT = ['sha256', 'sha512'] as const;
-type ContentAlgorithm = (typeof CONTENT)[number];
 
 type Digest = Hasher['digest'];
 type MultiDigest = MultiHasher['digest'];
@@ -163,9 +161,9 @@ function createStreamThrough(algorithm: string | string[] = 'sha512', options?: 
   return ts;
 }
 
-async function digest(algorithm: string[], input: DataType | ReadableStream): Promise<{ [key: string]: string }>;
+async function digest(algorithm: string[], input: DataType | ReadableStream): Promise<Digests>;
 async function digest(algorithm: string, input: DataType | ReadableStream): Promise<string>;
-async function digest(algorithm: string | string[], input: DataType | ReadableStream): Promise<string | { [key: string]: string }> {
+async function digest(algorithm: string | string[], input: DataType | ReadableStream): Promise<string | Digests> {
   if (input instanceof ReadableStream) {
     const hash = createStream(algorithm as string);
     await input.pipeTo(hash);
@@ -190,4 +188,4 @@ const Hashing = {
   digestSync,
 };
 
-export { type ContentAlgorithm, Hashing };
+export { Hashing };

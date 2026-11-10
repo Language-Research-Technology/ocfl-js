@@ -8,7 +8,7 @@ import { OcflError } from './error.ts';
 import { type ContentRelease, OcflObjectInventory, type OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
 import * as store from './store.ts';
-import type { WriteFileData } from './types.ts';
+import type { Digests, WriteFileData } from './types.ts';
 import { isAlreadyExists, parallelize } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
@@ -40,10 +40,10 @@ export interface CommitOptions {
 
 type TrackedPromise<T> = Promise<T> & { done?: boolean };
 
-type Hashes = [digest: string, fixity: { [algorithm: string]: string }];
+type Hashes = [digest: string, fixity: Digests];
 
 /** Split the digests into the content digest and the remaining fixity digests */
-function splitDigests(digests: { [algorithm: string]: string }, algorithm: string): Hashes {
+function splitDigests(digests: Digests, algorithm: string): Hashes {
   const { [algorithm]: digest, ...fixity } = digests;
   if (!digest) {
     throw new Error(`Digest "${algorithm}" was not calculated.`);

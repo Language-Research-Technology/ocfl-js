@@ -2,14 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { OcflConstants } from './constants.ts';
-import { type ContentAlgorithm, Hashing } from './digest.ts';
+import { Hashing } from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
 import { type InventoryFile, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
 import * as store from './store.ts';
 import { OcflObjectTransaction } from './transaction.ts';
-import type { BinaryOptions, EncodingOptions, Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
+import type { BinaryOptions, ContentAlgorithm, EncodingOptions, Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
 import { findNamasteVersion, isDirEmpty, isNotFound, parallelize } from './utils.ts';
 import { createError } from './validation.ts';
 
@@ -17,10 +17,10 @@ const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflC
 const INVENTORY_TYPE = /^https:\/\/ocfl\.io\/([^/]+)\/spec\/#inventory$/;
 
 export type UpdateMode = 'MERGE' | 'REPLACE';
-type LogicalPath = string;
-type FileRefLogical = { logicalPath: string; version?: string | undefined };
-type FileRefDigest = { digest: string; version?: string | undefined };
-type FileRefContent = { contentPath: string; version?: string | undefined };
+export type LogicalPath = string;
+export type FileRefLogical = { logicalPath: string; version?: string | undefined };
+export type FileRefDigest = { digest: string; version?: string | undefined };
+export type FileRefContent = { contentPath: string; version?: string | undefined };
 function contentDigestAlgorithm(algorithm: string | undefined): ContentAlgorithm {
   const name = algorithm || 'sha512';
   if (name !== 'sha256' && name !== 'sha512') {

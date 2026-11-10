@@ -1,10 +1,7 @@
 import path from 'node:path';
 import { OcflError } from './error.ts';
-import type { DeepReadonly, Inventory, InventoryDigests, InventoryVersion } from './types.ts';
+import type { DeepReadonly, Digests, Inventory, InventoryDigests, InventoryVersion } from './types.ts';
 import { createError } from './validation.ts';
-
-/** Digest values keyed by algorithm name */
-type Digests = { [algorithm: string]: string };
 
 export interface InventoryFile {
   logicalPath: string;

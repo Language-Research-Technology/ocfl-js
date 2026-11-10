@@ -1,6 +1,6 @@
 import { OcflError } from './error.ts';
 import type { OcflObject } from './object.ts';
-import type { BinaryOptions } from './types.ts';
+import type { BinaryOptions, Digests } from './types.ts';
 
 export interface FileRef {
   /** Actual path to the file location relative to the ocfl object root. */
@@ -16,7 +16,7 @@ export interface FileRef {
   /** Size of the file in bytes. */
   size?: number;
   /** Fixity information of the file. */
-  fixity?: { [algorithm: string]: string };
+  fixity?: Digests;
 }
 
 export interface FileStat {
@@ -43,7 +43,7 @@ class OcflObjectFile {
   contentPath?: string;
   digest?: string;
   version?: string;
-  fixity?: { [algorithm: string]: string };
+  fixity?: Digests;
 
   constructor(ocflObject: OcflObject, fileRef: FileRef) {
     this.#ocflObject = ocflObject;

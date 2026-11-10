@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import type { OcflExtensionConfig } from './types.ts';
 
-abstract class BuiltInLayout<C extends object = object> {
+abstract class BuiltInLayout<C extends object = object> implements OcflStorageLayout {
   /** Official extension name */
   abstract readonly name: string;
   abstract readonly description: string;
@@ -31,24 +31,28 @@ abstract class BuiltInLayout<C extends object = object> {
     return params;
   }
 
-  /**
-   * Get the specified parameter value
-   * @param param - The extension parameter name
-   */
   // biome-ignore lint/suspicious/noExplicitAny: parameter values are extension specific
   get(param: string): any {
     return (this.parameters as OcflExtensionConfig)[param];
   }
 
-  /**
-   * Map an object identifier to a path
-   * @param id - The identifier of the OCFL Object
-   */
   abstract map(id: string): string;
 }
 
 /** Maps object identifiers to paths, with or without a storage root. */
-type OcflStorageLayout = Pick<BuiltInLayout, 'get' | 'map'>;
+interface OcflStorageLayout {
+  /**
+   * Get the specified parameter value
+   * @param param - The extension parameter name
+   */
+  // biome-ignore lint/suspicious/noExplicitAny: parameter values are extension specific
+  get(param: string): any;
+  /**
+   * Map an object identifier to a path
+   * @param id - The identifier of the OCFL Object
+   */
+  map(id: string): string;
+}
 
 /** Parameter values as config.json stores them, which can't represent a RegExp */
 const asStored = (value: unknown) => JSON.parse(JSON.stringify({ value }));
