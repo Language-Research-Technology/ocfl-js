@@ -232,7 +232,7 @@ class OcflObjectTransaction {
    */
   async commit(options?: CommitOptions): Promise<void> {
     if (!this.#committed) {
-      const count = this.#queue.filter((p) => !p.done).length;
+      const count = this.#queue.filter((p) => !p.done).length + this.#writers.size;
       if (count > 0) {
         await this.rollback();
         throw new Error(
@@ -482,10 +482,14 @@ class OcflObjectTransaction {
           const hashes = splitDigests(hash.digest(), digestAlgo);
           return () => this.#addContent(logicalPath, hashes, staging);
         }),
-      abort: (reason) => writer.abort(reason),
+      abort: async (reason) => {
+        await writer.abort(reason);
+        this.#writers.delete(writer);
+      },
     });
     this.#writers.add(writer);
-    this.#track(writer.closed.finally(() => this.#writers.delete(writer)).catch(() => fs.promises.rm(staging, { recursive: true, force: true })));
+    // An aborted or failed writer has already removed its staged file
+    writer.closed.finally(() => this.#writers.delete(writer)).catch(() => {});
 
     return ws;
   }

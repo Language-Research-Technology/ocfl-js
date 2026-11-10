@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Readable, Writable } from 'node:stream';
+import { Readable } from 'node:stream';
 import { hasErrorCode } from './utils.ts';
 
 interface ListedFile {
@@ -20,9 +20,28 @@ export function createReadable(filePath: string, options?: unknown): ReadableStr
   return Readable.toWeb(fs.createReadStream(filePath, options as Parameters<typeof fs.createReadStream>[1])) as ReadableStream;
 }
 
-export async function createWritable(filePath: string): Promise<WritableStream> {
+/** The file exists once this resolves. Aborting, or a write or close that fails, closes and removes it before the stream settles. */
+export async function createWritable(filePath: string): Promise<WritableStream<Uint8Array>> {
   await createParents(filePath);
-  return Writable.toWeb(fs.createWriteStream(filePath));
+  const handle = await fs.promises.open(filePath, 'w');
+  const discard = async () => {
+    await handle.close().catch(() => {});
+    await fs.promises.rm(filePath, { force: true }).catch(() => {});
+  };
+  const discardOnFailure = async (step: () => Promise<void>) => {
+    try {
+      await step();
+    } catch (error) {
+      await discard();
+      throw error;
+    }
+  };
+  return new WritableStream({
+    // writeFile, unlike write, keeps writing until the whole chunk is written
+    write: (chunk) => discardOnFailure(() => handle.writeFile(chunk)),
+    close: () => discardOnFailure(() => handle.close()),
+    abort: discard,
+  });
 }
 
 /** A string is written as UTF-8 */
