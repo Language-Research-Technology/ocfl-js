@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
-import { NotImplementedError, ObjectNotFoundError, OcflError } from './error.ts';
+import { ObjectNotFoundError, OcflError } from './error.ts';
 import { createByName, differingParameters, OcflStorageLayout } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { OcflObject } from './object.ts';
@@ -30,86 +30,8 @@ async function readSpecText(ocflVersion: OcflVersion) {
  * An abstraction to represent the OCFL Storage Root, which is
  * a base directory used to store OCFL Objects, identified by a [NAMASTE] file “0=ocfl_1.1”.
  */
-
 class OcflStorage {
   ocflVersion: OcflVersion = OCFL_VERSION;
-
-  /**
-   * Get the storage root
-   */
-  get root(): string {
-    throw new NotImplementedError();
-  }
-
-  /**
-   * Construct the path of the object root relative to the storage root
-   * The path is mapped from the object identifier using the algorithm defined in the chosen
-   * storage layout extension (specified in {@link OcflStorageConfig}).
-   * @param id - Identifier of the object
-   */
-  objectRoot(_id: string): string {
-    throw new NotImplementedError();
-  }
-
-  /**
-   * Get an existing object in the Storage or create a new one.
-   * @param opt - A unique identifier for the OCFL Object, should be a URI
-   */
-  object(_opt: string | { id?: string | undefined; root?: string | undefined }): OcflObject {
-    throw new NotImplementedError();
-  }
-
-  /**
-   * Check if the storage has already the object with the given id.
-   */
-  async has(id: string) {
-    return this.object(id).exists();
-  }
-
-  /**
-   * Create the storage root on the filesystem
-   * @param options - Additional options for creating storage root
-   * @param options.ocflSpecText - Write a human-readable copy of the OCFL spec for this root's version into the root
-   */
-  async create(_options?: { ocflSpecText?: boolean | undefined }): Promise<OcflStorage> {
-    throw new NotImplementedError();
-  }
-
-  /**
-   * Check namaste, retrieve storage layout extension, and read its config file.
-   */
-  async load(): Promise<OcflStorage> {
-    throw new NotImplementedError();
-  }
-
-  /**
-   * Check if the storage root path points to an existing file or non-empty directory.
-   * The existing directory may or may not be a valid OCFL Storage.
-   */
-  async exists(): Promise<boolean> {
-    throw new NotImplementedError();
-  }
-
-  [Symbol.asyncIterator](): AsyncIterableIterator<OcflObject> {
-    throw new NotImplementedError();
-  }
-
-  /**
-   * Delete an object and any parent directories it leaves empty, up to but not including the storage root.
-   * Not guarded against a concurrent update of the object.
-   * @param id - Identifier of the object
-   * @throws {ObjectNotFoundError} If the object does not exist.
-   * @throws {OcflError} `NOT_AN_OBJECT` if the path holds something with no OCFL object declaration; nothing is deleted.
-   */
-  async remove(_id: string): Promise<void> {
-    throw new NotImplementedError();
-  }
-}
-
-/**
- * Implementation of {@link OcflStorage}, kept separate so that only the abstract interface is public.
- */
-class OcflStorageImpl extends OcflStorage {
   #root: string;
   #workspace: string;
   #layout: OcflStorageLayout | undefined;
@@ -118,7 +40,6 @@ class OcflStorageImpl extends OcflStorage {
   #configuredOcflVersion: OcflVersion | undefined;
 
   constructor(config: OcflStorageConfig) {
-    super();
     if (!config.root) {
       throw new TypeError('[OcflStorage] config.root is required.');
     }
@@ -180,11 +101,20 @@ class OcflStorageImpl extends OcflStorage {
     return configured;
   }
 
-  get root() {
+  /**
+   * Get the storage root
+   */
+  get root(): string {
     return this.#root;
   }
 
-  objectRoot(id: string) {
+  /**
+   * Construct the path of the object root relative to the storage root
+   * The path is mapped from the object identifier using the algorithm defined in the chosen
+   * storage layout extension (specified in {@link OcflStorageConfig}).
+   * @param id - Identifier of the object
+   */
+  objectRoot(id: string): string {
     if (!this.#layout) {
       throw new Error('[OcflStorage] No layout defined');
     }
@@ -192,9 +122,11 @@ class OcflStorageImpl extends OcflStorage {
   }
 
   /**
+   * Get an existing object in the Storage or create a new one.
    * The root param is a relative path to the storage root.
+   * @param opt - A unique identifier for the OCFL Object, should be a URI
    */
-  object(opt: string | { id?: string | undefined; root?: string | undefined }) {
+  object(opt: string | { id?: string | undefined; root?: string | undefined }): OcflObject {
     let id: string | undefined;
     let root: string | undefined;
     if (typeof opt === 'string') {
@@ -216,11 +148,25 @@ class OcflStorageImpl extends OcflStorage {
     });
   }
 
-  async exists() {
+  /**
+   * Check if the storage has already the object with the given id.
+   */
+  async has(id: string) {
+    return this.object(id).exists();
+  }
+
+  /**
+   * Check if the storage root path points to an existing file or non-empty directory.
+   * The existing directory may or may not be a valid OCFL Storage.
+   */
+  async exists(): Promise<boolean> {
     return !(await isDirEmpty(this.root));
   }
 
-  async load() {
+  /**
+   * Check namaste, retrieve storage layout extension, and read its config file.
+   */
+  async load(): Promise<OcflStorage> {
     const prefix = NAMASTE_PREFIX_STORAGE;
     const [ocflVersion, layout] = (
       await Promise.allSettled([findNamasteVersion(prefix, this.root), fs.promises.readFile(path.join(this.root, OCFL_LAYOUT), 'utf8')])
@@ -266,9 +212,11 @@ class OcflStorageImpl extends OcflStorage {
   }
 
   /**
+   * Create the storage root on the filesystem
    * @param options - Additional options for creating storage root
+   * @param options.ocflSpecText - Write a human-readable copy of the OCFL spec for this root's version into the root
    */
-  async create(options?: { ocflSpecText?: boolean | undefined }) {
+  async create(options?: { ocflSpecText?: boolean | undefined }): Promise<OcflStorage> {
     if (await this.exists()) {
       //cannot create, storage root already exists .
       throw new OcflError('DIRECTORY_NOT_EMPTY', '[OcflStorage] Cannot create storage root in a non-empty directory');
@@ -301,7 +249,14 @@ class OcflStorageImpl extends OcflStorage {
     return this;
   }
 
-  async remove(id: string) {
+  /**
+   * Delete an object and any parent directories it leaves empty, up to but not including the storage root.
+   * Not guarded against a concurrent update of the object.
+   * @param id - Identifier of the object
+   * @throws {ObjectNotFoundError} If the object does not exist.
+   * @throws {OcflError} `NOT_AN_OBJECT` if the path holds something with no OCFL object declaration; nothing is deleted.
+   */
+  async remove(id: string): Promise<void> {
     const object = this.object(id);
     const objectRoot = object.root;
     const relative = path.relative(this.root, objectRoot);
@@ -389,4 +344,4 @@ class OcflStorageImpl extends OcflStorage {
   }
 }
 
-export { OcflStorage, OcflStorageImpl };
+export { OcflStorage };

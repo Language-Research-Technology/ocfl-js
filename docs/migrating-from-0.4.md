@@ -286,6 +286,7 @@ Each public member now corresponds to something the OCFL specification or the li
 | `OcflStorage.purge(id)`                                                                                  | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                        |
 | `OcflStorageImpl`                                                                                        | `OcflStorage`, from `storage()`, `createStorage()` or `loadStorage()`                                                      |
 | `OcflObjectTransactionImpl`                                                                              | `OcflObjectTransaction`, from `object.update()`                                                                            |
+| Constructing, subclassing or `instanceof` on the public classes                                          | The functions that return them, and the classes as types; see [Public classes are types](#public-classes-are-types)        |
 | `OcflDigest.digest()`, `digestSync()`, `createStream()`, `createStreamThrough()`, `getHexDigestLength()` | `createHash()` from `node:crypto`, or `crc32()` from `node:zlib`                                                           |
 | `OcflDigest.initSync()`                                                                                  | Nothing: `storage.load()` and `create()` prepare the digest algorithm of a storage layout                                  |
 | `OcflDigest.CONTENT`                                                                                     | The values `'sha256'` and `'sha512'`                                                                                       |
@@ -304,7 +305,7 @@ Each public member now corresponds to something the OCFL specification or the li
 | `CommitOptions.force`                                                                                    | Nothing: a commit with no changes rolls back                                                                               |
 | `OcflObjectInventory.newVersion()`                                                                       | `object.update()`, which creates each new version                                                                          |
 | `inventory.isChanged`                                                                                    | `inventory.diffState(version0, version1)`; see [Read-only inventories](#read-only-inventories)                             |
-| `inventory.clone()`                                                                                      | `new OcflObjectInventory(inventory.toJSON())`                                                                              |
+| `inventory.clone()`                                                                                      | `inventory.toJSON()`, which gives a plain copy of the inventory data                                                       |
 | The `inventory.created`, `message` and `user` setters                                                    | `transaction.commit({ message, user })`; `created` is set when a version is committed                                      |
 | The `inventory.fixity` setter                                                                            | The `fixityAlgorithms` option of an object or storage                                                                      |
 | The `OcflObjectInventoryMut` type                                                                        | `OcflObjectInventory`                                                                                                      |
@@ -445,6 +446,18 @@ class MyLayout extends extensions.HashedNTupleStorageLayout {}
 ```
 
 `extensions` holds only the built-in layouts. `StorageLayout` also listed any custom layout you had registered: to find one of those, call `OcflStorageLayout.class(name)`, or use `OcflStorageLayout.classes` to list them all. Choosing a layout by class name or registered name in the storage config works as before.
+
+### Public classes are types
+
+`OcflObject`, `OcflStorage`, `OcflObjectTransaction`, `OcflObjectInventory` and `OcflObjectFile` are now exported as types only. You can still name them in annotations, using `import type` or `type` in an import, but you can't construct or subclass them. They no longer exist at runtime, so `instanceof OcflStorage` and `class MyStorage extends OcflStorage` stop working. `new OcflStorage()` used to compile and give an object whose methods only threw.
+
+| Type                    | Get one from                                        |
+| ----------------------- | --------------------------------------------------- |
+| `OcflObject`            | `object()` or `storage.object()`                    |
+| `OcflStorage`           | `storage()`, `createStorage()` or `loadStorage()`   |
+| `OcflObjectTransaction` | `object.update()`, which passes it to your callback |
+| `OcflObjectInventory`   | `object.getInventory()` or `object.inventory`       |
+| `OcflObjectFile`        | `object.getFile()` or `object.files()`              |
 
 ## Other behaviour changes
 

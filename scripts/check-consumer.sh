@@ -78,8 +78,9 @@ cat >"$consumer/tsconfig.json" <<'EOF'
 EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'
-import type { OcflExtension, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl-fs';
-import { extensions, OcflDigest, OcflObject } from '@ocfl/ocfl-fs';
+import type { OcflExtension, OcflObject, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl-fs';
+import * as api from '@ocfl/ocfl-fs';
+import { extensions, OcflDigest } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflStorageImpl is not exported
 import { OcflStorageImpl } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflObjectTransactionImpl is not exported
@@ -175,7 +176,7 @@ await transaction.commit({ force: true });
 inventoryClass.newVersion({});
 // @ts-expect-error OcflObjectInventory.isChanged is gone, use diffState
 inventory.isChanged;
-// @ts-expect-error OcflObjectInventory.clone is gone, use new OcflObjectInventory(inv.toJSON())
+// @ts-expect-error OcflObjectInventory.clone is gone, use inv.toJSON()
 inventory.clone();
 // @ts-expect-error the created setter is gone
 inventory.created = '2026-01-01T00:00:00Z';
@@ -219,10 +220,21 @@ ocflFs.object({ root: '/tmp/object' }, {});
 await ocflFs.createStorage({ root: '/tmp/storage' }, {});
 // @ts-expect-error loadStorage takes one argument
 await ocflFs.loadStorage({ root: '/tmp/storage' }, {});
-// @ts-expect-error the OcflObject constructor takes one argument
-new OcflObject({ root: '/tmp/object' }, {});
+// Through the namespace and with valid arguments, so that only a type-only export can make these fail
+// @ts-expect-error OcflStorage is a type, use storage(), createStorage() or loadStorage()
+new api.OcflStorage({ root: '/tmp/storage' });
+// @ts-expect-error OcflStorage can't be subclassed
+class SubclassedStorage extends api.OcflStorage {}
+// @ts-expect-error OcflObject is a type, use object() or storage.object()
+api.OcflObject;
+// @ts-expect-error OcflObjectTransaction is a type, use object.update()
+api.OcflObjectTransaction;
+// @ts-expect-error OcflObjectInventory is a type, use object.getInventory()
+api.OcflObjectInventory;
+// @ts-expect-error OcflObjectFile is a type, use object.getFile() or object.files()
+api.OcflObjectFile;
 
-export { extension, inventory, inventoryClass, object, storage, transaction };
+export { SubclassedStorage, extension, inventory, inventoryClass, object, storage, transaction };
 EOF
 cat >"$consumer/consumer.ts" <<'EOF'
 import { join } from 'node:path';
@@ -253,12 +265,12 @@ import ocflFs, {
   type OcflErrorCode,
   OcflExtension,
   type OcflExtensionConfig,
-  OcflObject,
+  type OcflObject,
   type OcflObjectConfig,
   type OcflObjectFile,
-  OcflObjectInventory,
-  OcflObjectTransaction,
-  OcflStorage,
+  type OcflObjectInventory,
+  type OcflObjectTransaction,
+  type OcflStorage,
   type OcflStorageConfig,
   OcflStorageLayout,
   type OcflVersion,
@@ -282,8 +294,10 @@ for (const ocflVersion of ocflFs.OCFL_VERSIONS) {
   await ocflFs.storage({ root: join(import.meta.dirname, `spec-${ocflVersion}`), ocflVersion }).create({ ocflSpecText: true });
 }
 
-const written = object({ root: join(import.meta.dirname, 'object'), id: 'written-object' });
-await written.update(async (t) => t.write('a.txt', 'written to the filesystem'));
+const written: OcflObject = object({ root: join(import.meta.dirname, 'object'), id: 'written-object' });
+await written.update(async (t: OcflObjectTransaction) => t.write('a.txt', 'written to the filesystem'));
+const writtenInventory: OcflObjectInventory | undefined = await written.getInventory();
+const writtenFile: OcflObjectFile | undefined = written.getFile('a.txt');
 
 OcflDigest.registerHasherFactory('consumer-digest', async (): Promise<CommonHasher> => {
   throw new Error('only registered, never used');
@@ -308,7 +322,8 @@ if (
   extensions !== ocflFs.extensions ||
   !(layoutInstance instanceof extensions.PathDirectStorageLayout) ||
   prefixedStorage.objectRoot('abc') !== 'prefix-abc' ||
-  (await written.getFile('a.txt')?.text()) !== 'written to the filesystem' ||
+  writtenInventory?.head !== 'v1' ||
+  (await writtenFile?.text()) !== 'written to the filesystem' ||
   !OcflDigest.hasAlgorithm('consumer-digest') ||
   (await storage.has('missing')) ||
   missingCode !== 'OBJECT_NOT_FOUND' ||

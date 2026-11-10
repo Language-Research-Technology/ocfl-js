@@ -64,108 +64,6 @@ function splitDigests(digests: { [algorithm: string]: string }, algorithm: strin
  * If a failed operation's changes to the stored files can't be undone, the transaction can't commit.
  */
 class OcflObjectTransaction {
-  /**
-   * Discard all the changes made in this transaction,
-   * @abstract
-   */
-  async rollback(): Promise<void> {
-    throw new Error('Not Implemented');
-  }
-
-  /**
-   * Commit all the changes made in this transaction to the actual OCFL Object.
-   * @abstract
-   * @param options - Commit options. message and user will be included in the version entry of the inventory.json
-   */
-  async commit(_options?: CommitOptions): Promise<void> {
-    throw new Error('Not Implemented');
-  }
-
-  /**
-   * Write data to a file at `logicalPath`
-   * @abstract
-   * @param logicalPath - A path relative to the object content directory
-   * @param data - Data to be written to the file
-   * @param options - The same options as https://nodejs.org/api/fs.html#fs_fs_writefile_file_data_options_callback
-   */
-  async write(_logicalPath: string, _data: WriteFileData, _options?: object | string): Promise<void> {
-    throw new Error('Not Implemented');
-  }
-
-  /**
-   * Import content by recursively copying a file or directory from local file system to the
-   * OCFL Object content. For example, `object.import('/home/john/data/b','data/b')` will
-   * copy `/home/john/data/b` from the local filesystem to the content `data/b` in the OFCL Object.
-   * Set target to empty string ('') to copy a directory content to the object's content root.
-   * If target is not specified, the base name of the source will be used.
-   * For examples:
-   * To copy '/src/data' directory as 'data' use import('/src/data', 'data').
-   * To copy all files inside '/src/data' directory to the logical root, use import('/src/data', '').
-   * @abstract
-   * @param source - A path to a file or directory in the local filesystem to be copied
-   * @param target - A logical path in the OCFL Object content.
-   */
-  async import(_source: string, _target?: string): Promise<void> {
-    throw new Error('Not Implemented');
-  }
-
-  /**
-   * Duplicate the logical path `source` as a different logical path `target`, both paths will then point
-   * to the same content path and bitstreams. `source` can be a file or a directory.
-   * @abstract
-   * @param source - The logical path to be copied
-   * @param target - The target logical path. To replace an existing target, remove it first.
-   * @throws OcflError `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws OcflError `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
-   */
-  async copy(_source: string, _target: string): Promise<void> {
-    throw new Error('Not Implemented');
-  }
-
-  /**
-   * Changes the logical path of existing content. This is similar to move operation in file systems
-   * Unless renaming files that are not yet commited, this operation will NOT rename the actual file name referenced by the manifest.
-   * `source` can be a file or a directory.
-   * @abstract
-   * @param source - The logical path to be renamed
-   * @param target - The target logical path. To replace an existing target, remove it first.
-   * @throws OcflError `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws OcflError `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
-   */
-  async rename(_source: string, _target: string): Promise<void> {
-    throw new Error('Not Implemented');
-  }
-
-  /**
-   * Remove a file or directory
-   * @abstract
-   * @param logicalPath - A path relative to the object content directory
-   */
-  async remove(_logicalPath: string): Promise<void> {
-    throw new Error('Not Implemented');
-  }
-
-  /**
-   * Makes content from a version earlier than the previous version available in the current version of an OCFL Object.
-   * @abstract
-   */
-  async reinstate(_logicalPath: string, _versionName: string): Promise<number> {
-    throw new Error('Not Implemented');
-  }
-
-  /**
-   * Create a writable stream
-   * @abstract
-   */
-  async createWritable(_logicalPath: string, _options?: unknown): Promise<WritableStream> {
-    throw new Error('Not Implemented');
-  }
-}
-
-/**
- * Implementation of {@link OcflObjectTransaction}, kept separate so that only the abstract interface is public.
- */
-class OcflObjectTransactionImpl extends OcflObjectTransaction {
   _versionPath: string;
   _contentRoot: string;
   _object: OcflObject;
@@ -191,7 +89,6 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     rootExisted: boolean,
     createdNamaste: string | undefined,
   ) {
-    super();
     this._versionPath = versionPath;
     this._contentRoot = path.join(versionPath, inventory.contentDirectory);
     this._object = ocflObject;
@@ -224,7 +121,7 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
           )
         : error;
     }
-    return new OcflObjectTransactionImpl(ocflObject, inventory, versionPath, inPlace ? undefined : workspacePath, rootExisted, createdNamaste);
+    return new OcflObjectTransaction(ocflObject, inventory, versionPath, inPlace ? undefined : workspacePath, rootExisted, createdNamaste);
   }
 
   _getRealPath(logicalPath: string) {
@@ -237,7 +134,10 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     return path.join(this._contentRoot, path.normalize(logicalPath));
   }
 
-  async rollback() {
+  /**
+   * Discard all the changes made in this transaction,
+   */
+  async rollback(): Promise<void> {
     if (!this._committed) {
       // An unclosed writer's `closed` never settles, so abort it first
       await Promise.allSettled([...this._writers].map((w) => w.abort()));
@@ -247,7 +147,11 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     }
   }
 
-  async commit(options?: CommitOptions) {
+  /**
+   * Commit all the changes made in this transaction to the actual OCFL Object.
+   * @param options - Commit options. message and user will be included in the version entry of the inventory.json
+   */
+  async commit(options?: CommitOptions): Promise<void> {
     if (!this._committed) {
       const count = this._queue.filter((p) => !p.done).length;
       if (count > 0) {
@@ -470,6 +374,9 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     }
   }
 
+  /**
+   * Create a writable stream
+   */
   async createWritable(logicalPath: string, options?: unknown): Promise<WritableStream> {
     if (this._committed) {
       throw new Error('Transaction already commited');
@@ -498,7 +405,13 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     return ws;
   }
 
-  async write(logicalPath: string, data: WriteFileData, options?: object | string) {
+  /**
+   * Write data to a file at `logicalPath`
+   * @param logicalPath - A path relative to the object content directory
+   * @param data - Data to be written to the file
+   * @param options - The same options as https://nodejs.org/api/fs.html#fs_fs_writefile_file_data_options_callback
+   */
+  async write(logicalPath: string, data: WriteFileData, options?: object | string): Promise<void> {
     return this._inTurn(async () => {
       checkLogicalPath(logicalPath);
       const digestAlgo = this._inventory.digestAlgorithm;
@@ -557,18 +470,47 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     };
   }
 
-  async import(source: string, target?: string) {
+  /**
+   * Import content by recursively copying a file or directory from local file system to the
+   * OCFL Object content. For example, `object.import('/home/john/data/b','data/b')` will
+   * copy `/home/john/data/b` from the local filesystem to the content `data/b` in the OFCL Object.
+   * Set target to empty string ('') to copy a directory content to the object's content root.
+   * If target is not specified, the base name of the source will be used.
+   * For examples:
+   * To copy '/src/data' directory as 'data' use import('/src/data', 'data').
+   * To copy all files inside '/src/data' directory to the logical root, use import('/src/data', '').
+   * @param source - A path to a file or directory in the local filesystem to be copied
+   * @param target - A logical path in the OCFL Object content.
+   */
+  async import(source: string, target?: string): Promise<void> {
     return this._inTurn(() => this._prepareImport(source, target ?? path.basename(source)));
   }
 
-  async copy(source: string, target: string) {
+  /**
+   * Duplicate the logical path `source` as a different logical path `target`, both paths will then point
+   * to the same content path and bitstreams. `source` can be a file or a directory.
+   * @param source - The logical path to be copied
+   * @param target - The target logical path. To replace an existing target, remove it first.
+   * @throws OcflError `FILE_NOT_FOUND` if `source` doesn't exist
+   * @throws OcflError `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
+   */
+  async copy(source: string, target: string): Promise<void> {
     return this._transact(async () => {
       checkLogicalPath(target);
       this._inventory.copy(source, target);
     });
   }
 
-  async rename(source: string, target: string) {
+  /**
+   * Changes the logical path of existing content. This is similar to move operation in file systems
+   * Unless renaming files that are not yet commited, this operation will NOT rename the actual file name referenced by the manifest.
+   * `source` can be a file or a directory.
+   * @param source - The logical path to be renamed
+   * @param target - The target logical path. To replace an existing target, remove it first.
+   * @throws OcflError `FILE_NOT_FOUND` if `source` doesn't exist
+   * @throws OcflError `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
+   */
+  async rename(source: string, target: string): Promise<void> {
     return this._transact(async () => {
       checkLogicalPath(source);
       checkLogicalPath(target);
@@ -578,11 +520,18 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
     });
   }
 
-  async reinstate(logicalPath: string, versionName: string) {
+  /**
+   * Makes content from a version earlier than the previous version available in the current version of an OCFL Object.
+   */
+  async reinstate(logicalPath: string, versionName: string): Promise<number> {
     return this._transact(async () => this._inventory.reinstate(logicalPath, versionName));
   }
 
-  async remove(logicalPath: string) {
+  /**
+   * Remove a file or directory
+   * @param logicalPath - A path relative to the object content directory
+   */
+  async remove(logicalPath: string): Promise<void> {
     return this._transact(async () => {
       checkLogicalPath(logicalPath);
       const inventory = this._inventory;
@@ -627,4 +576,4 @@ class OcflObjectTransactionImpl extends OcflObjectTransaction {
   }
 }
 
-export { OcflObjectTransaction, OcflObjectTransactionImpl };
+export { OcflObjectTransaction };
