@@ -180,6 +180,7 @@ describe('choosing a layout with invalid parameters', () => {
       ['a string replace', { replace: 'abc' }],
       ['a replace pair without a replacement', { replace: [['a']] }],
       ['a replace pair with a numeric pattern', { replace: [[1, 'b']] }],
+      ['a replace pair with a RegExp pattern', { replace: [[/a/g, 'b']] }],
       ['a replace pair with a numeric replacement', { replace: [['a', 2]] }],
       ['a replace pair with three elements', { replace: [['a', 'b', 'c']] }],
       ['a replace entry that is not a pair', { replace: ['ab'] }],

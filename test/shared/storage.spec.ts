@@ -368,12 +368,29 @@ describe('configured layout of a loaded storage root', () => {
     await ocfl.storage({ root: otherName, layout: HASHED }).load();
   });
 
-  it('loads a root with the configured RegExp parameter that created it', async () => {
-    const root = path.join(tempdir, `root-${rootCount++}`);
-    const layout: OcflLayoutConfig = { extensionName: '000N-path-direct-storage-layout', replace: [[/x/g, 'y']] };
-    await ocfl.createStorage({ root, layout });
-    const storage = await ocfl.storage({ root, layout }).load();
-    assert.strictEqual(storage.objectRoot('xa'), path.join('ya', '__object__'));
+  describe('a root created with replace pairs', () => {
+    const PATH_DIRECT = '000N-path-direct-storage-layout';
+    const layout: OcflLayoutConfig = { extensionName: PATH_DIRECT, replace: [['x', 'y']] };
+    const createWithReplace = async () => {
+      const root = path.join(tempdir, `root-${rootCount++}`);
+      await ocfl.createStorage({ root, layout });
+      return root;
+    };
+
+    it('loads with the configured layout that created it', async () => {
+      const storage = await ocfl.storage({ root: await createWithReplace(), layout }).load();
+      assert.strictEqual(storage.objectRoot('xa'), path.join('ya', '__object__'));
+    });
+
+    it('loads with no layout configured', async () => {
+      const storage = await ocfl.storage({ root: await createWithReplace() }).load();
+      assert.strictEqual(storage.objectRoot('xa'), path.join('ya', '__object__'));
+    });
+
+    it('rejects a configured layout with different replace pairs', async () => {
+      const differing = ocfl.storage({ root: await createWithReplace(), layout: { extensionName: PATH_DIRECT, replace: [['x', 'z']] } });
+      await assert.rejects(differing.load(), { code: 'LAYOUT_MISMATCH' });
+    });
   });
 
   for (const [digestAlgorithm, digest] of Object.entries(DIGESTS_OF_ABC)) {

@@ -110,7 +110,7 @@ describe('the 000N path direct layout', () => {
     const layout = configured({
       replace: [
         ['https://www.ausnc.org.au', 'ausnc'],
-        [/(.+)doi\.org/, ''],
+        ['https://doi.org', ''],
       ],
     });
     const cases: [string, string][] = [

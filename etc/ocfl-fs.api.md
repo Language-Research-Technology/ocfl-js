@@ -402,7 +402,7 @@ export type OcflVersion = '1.0' | '1.1';
 // @public (undocumented)
 export type PathDirectStorageLayoutConfig = {
     omitScheme?: boolean;
-    replace?: [string | RegExp, string][];
+    replace?: [string, string][];
     suffix?: string;
 };
 

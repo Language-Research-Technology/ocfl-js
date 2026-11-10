@@ -5,12 +5,11 @@ import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 
 export type PathDirectStorageLayoutConfig = {
   omitScheme?: boolean;
-  replace?: [string | RegExp, string][];
+  replace?: [string, string][];
   suffix?: string;
 };
 
-const isReplacePair = (pair: unknown) =>
-  Array.isArray(pair) && pair.length === 2 && (typeof pair[0] === 'string' || pair[0] instanceof RegExp) && typeof pair[1] === 'string';
+const isReplacePair = (pair: unknown) => Array.isArray(pair) && pair.length === 2 && typeof pair[0] === 'string' && typeof pair[1] === 'string';
 
 const DefaultConfig: Required<PathDirectStorageLayoutConfig> = {
   omitScheme: false,
@@ -34,10 +33,7 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     super(config, DefaultConfig);
     const invalid = this.parameters.replace.find((pair) => !isReplacePair(pair));
     if (invalid !== undefined) {
-      throw new OcflError(
-        'INVALID_LAYOUT_CONFIG',
-        `Each replace entry must be a [pattern, replacement] pair of a string or RegExp and a string, not ${inspect(invalid)}.`,
-      );
+      throw new OcflError('INVALID_LAYOUT_CONFIG', `Each replace entry must be a [pattern, replacement] pair of strings, not ${inspect(invalid)}.`);
     }
     if (hasDotSegment(this.parameters.suffix)) {
       throw new OcflError('INVALID_LAYOUT_CONFIG', `The suffix '${this.parameters.suffix}' has a . or .. segment.`);
