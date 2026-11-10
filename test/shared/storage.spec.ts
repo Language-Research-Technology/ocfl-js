@@ -3,10 +3,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it, mock } from 'node:test';
-import ocfl, { type OcflError, type OcflLayoutConfig, type OcflStorage, type OcflStorageConfig, type OcflVersion } from '../../src/index.ts';
+import ocfl, { type OcflError, type OcflLayoutConfig, type OcflObject, type OcflStorage, type OcflStorageConfig, type OcflVersion } from '../../src/index.ts';
 import { emptyDirectoriesUnder } from '../empty-directories.ts';
 import { testObject } from '../test-object.ts';
 import { DIGESTS_OF_ABC } from './digests-of-abc.ts';
+
+const workspaceOf = (root: string) => path.join(root, 'extensions', 'ocfl-js-workspace');
 
 describe('constructor', () => {
   it('requires a root', () => {
@@ -569,6 +571,10 @@ describe('removing an object', () => {
     });
     return o;
   };
+  const leaveFailedUpdate = async (o: OcflObject) => {
+    const t = (await o.update())!;
+    await t.write('half-written.txt', 'x');
+  };
 
   it('deletes the object and the parent directories it leaves empty, keeping the storage root', async () => {
     const storage = await createRoot();
@@ -607,6 +613,50 @@ describe('removing an object', () => {
     }
     assert.strictEqual(fs.existsSync(o.root), false);
     assert.strictEqual(fs.existsSync(leftover), true);
+  });
+
+  it('clears a version a failed update left in the workspace, leaving no empty directories, so a recreated object can be updated', async () => {
+    const storage = await createRoot();
+    const o = await createObject(storage, ID);
+    await leaveFailedUpdate(o);
+    await storage.remove(ID);
+    assert.strictEqual(fs.existsSync(workspaceOf(storage.root)), false);
+    assert.deepStrictEqual(await emptyDirectoriesUnder(storage.root), []);
+    const recreated = await createObject(storage, ID);
+    await recreated.update(async (t) => t.write('a.txt', 'a'));
+    await recreated.update(async (t) => t.write('b.txt', 'b'));
+    assert.strictEqual((await recreated.getInventory())?.head, 'v3');
+  });
+
+  it("deletes the workspace parents it leaves empty, keeping a sibling's workspace", async () => {
+    const storage = await createRoot(PATH_DIRECT);
+    const removed = await createObject(storage, 'collection/nested/removed');
+    const sibling = await createObject(storage, 'collection/sibling');
+    await leaveFailedUpdate(removed);
+    await leaveFailedUpdate(sibling);
+    await storage.remove('collection/nested/removed');
+    assert.strictEqual(fs.existsSync(removed._workspace), false);
+    assert.strictEqual(fs.existsSync(path.join(workspaceOf(storage.root), 'collection', 'nested')), false);
+    assert.strictEqual(fs.existsSync(path.join(sibling._workspace, 'v2', 'content', 'half-written.txt')), true);
+  });
+
+  it('leaves the workspace untouched when a check fails and nothing is deleted', async () => {
+    const storage = await createRoot({ ...PATH_DIRECT, omitScheme: true });
+    const other = await createObject(storage, 'https://example.org/object');
+    await leaveFailedUpdate(other);
+    await assert.rejects(storage.remove('http://example.org/object'), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
+    assert.strictEqual(fs.existsSync(path.join(other._workspace, 'v2', 'content', 'half-written.txt')), true);
+  });
+
+  it('leaves the workspace untouched when the directory has no OCFL object declaration', async () => {
+    const storage = await createRoot('0002-flat-direct-storage-layout');
+    await fs.promises.mkdir(path.join(storage.root, 'not-an-object'));
+    await fs.promises.writeFile(path.join(storage.root, 'not-an-object', 'stray.txt'), 'stray');
+    const leftover = path.join(workspaceOf(storage.root), 'not-an-object', 'v1', 'leftover.txt');
+    await fs.promises.mkdir(path.dirname(leftover), { recursive: true });
+    await fs.promises.writeFile(leftover, 'keep me');
+    await assert.rejects(storage.remove('not-an-object'), { code: 'NOT_AN_OBJECT' });
+    assert.strictEqual(await fs.promises.readFile(leftover, 'utf8'), 'keep me');
   });
 
   it('throws ObjectNotFoundError for an object that does not exist', async () => {
@@ -752,7 +802,6 @@ describe('workspace', () => {
   after(async () => {
     await fs.promises.rm(tempdir, { recursive: true, force: true });
   });
-  const workspaceOf = (root: string) => path.join(root, 'extensions', 'ocfl-js-workspace');
   const layouts: OcflLayoutConfig[] = [{ extensionName: '0002-flat-direct-storage-layout' }, { extensionName: '0004-hashed-n-tuple-storage-layout' }];
 
   it('ignores a workspace passed by an untyped caller', async () => {

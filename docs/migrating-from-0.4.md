@@ -466,7 +466,7 @@ await rm(dir, { recursive: true, force: true });
 
 ### Deleting an object
 
-`OcflStorage.remove`, `delete` and `purge` only ever threw. `storage.remove(id)` now deletes an object, without you needing to know the storage layout. It removes the object root and any parent directories left empty, up to but not including the storage root, so the storage root stays valid. It isn't guarded against a concurrent update of the same object.
+`OcflStorage.remove`, `delete` and `purge` only ever threw. `storage.remove(id)` now deletes an object, without you needing to know the storage layout. It removes the object root and any version a failed update left in the workspace, so a recreated object can be updated. Parent directories left empty are removed too, up to but not including the storage root, so the storage root stays valid. It isn't guarded against a concurrent update of the same object.
 
 It throws, and deletes nothing, when:
 
