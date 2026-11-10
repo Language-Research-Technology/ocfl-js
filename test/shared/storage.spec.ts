@@ -195,7 +195,6 @@ describe('OCFL spec text', () => {
 });
 describe('configured layout of a loaded storage root', () => {
   const HASHED = '0004-hashed-n-tuple-storage-layout' as const;
-  const ABC_SHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
   let tempdir: string;
   let rootCount = 0;
   before(async () => {
@@ -302,7 +301,7 @@ describe('configured layout of a loaded storage root', () => {
   it('keeps a configured layout matching the name and parameters the root declares', async () => {
     const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: HASHED, tupleSize: 2, numberOfTuples: 3 } });
     const storage = await ocfl.storage({ root, layout: { extensionName: HASHED, tupleSize: 2 } }).load();
-    assert.strictEqual(storage.objectRoot('abc'), path.join('ba', '78', '16', ABC_SHA256));
+    assert.strictEqual(storage.objectRoot('abc'), path.join('ba', '78', '16', DIGESTS_OF_ABC.sha256));
   });
 
   it('rejects a configured layout whose parameters differ from the root extension config, naming them', async () => {
@@ -369,7 +368,7 @@ describe('configured layout of a loaded storage root', () => {
   it('uses the layout and extension config of the root when no layout is configured', async () => {
     const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: HASHED, tupleSize: 2 } });
     const storage = await ocfl.storage({ root }).load();
-    assert.strictEqual(storage.objectRoot('abc'), path.join('ba', '78', '16', ABC_SHA256));
+    assert.strictEqual(storage.objectRoot('abc'), path.join('ba', '78', '16', DIGESTS_OF_ABC.sha256));
   });
 });
 describe('removing an object', () => {

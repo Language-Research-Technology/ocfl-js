@@ -5,18 +5,12 @@ type DataType = string | ArrayBufferLike | Uint8Array | Uint16Array | Uint32Arra
 
 interface Hasher {
   update: (data: DataType) => Hasher;
-  digest: {
-    (outputType: 'binary'): Uint8Array;
-    (outputType?: 'hex'): string;
-  };
+  digest: () => string;
 }
 
 interface MultiHasher {
   update: (data: DataType) => MultiHasher;
-  digest: {
-    (outputType: 'binary'): { [key: string]: Uint8Array };
-    (outputType?: 'hex'): { [key: string]: string };
-  };
+  digest: () => { [key: string]: string };
 }
 
 const CONTENT = ['sha256', 'sha512'] as const;
@@ -41,19 +35,20 @@ function toBytes(data: DataType): string | Uint8Array {
 
 interface HashState {
   update(data: string | Uint8Array): void;
-  digest(): Uint8Array;
   hex(): string;
 }
 
 function nativeHash(nodeName: string): () => HashState {
   return () => {
     const h = crypto.createHash(nodeName);
-    let result: Buffer | undefined;
-    const final = () => {
-      result ??= h.digest();
-      return result;
+    let result: string | undefined;
+    return {
+      update: (d) => h.update(d),
+      hex: () => {
+        result ??= h.digest('hex');
+        return result;
+      },
     };
-    return { update: (d) => h.update(d), digest: () => new Uint8Array(final()), hex: () => final().toString('hex') };
   };
 }
 
@@ -62,11 +57,6 @@ function crc32Hash(): HashState {
   return {
     update: (d) => {
       crc = zlib.crc32(d, crc);
-    },
-    digest: () => {
-      const b = new Uint8Array(4);
-      new DataView(b.buffer).setUint32(0, crc);
-      return b;
     },
     hex: () => crc.toString(16).padStart(8, '0'),
   };
@@ -78,7 +68,6 @@ function sizeHash(): HashState {
     update: (d) => {
       size += typeof d === 'string' ? Buffer.byteLength(d) : d.byteLength;
     },
-    digest: () => new Uint8Array(new BigUint64Array([BigInt(size)]).buffer),
     hex: () => `${size}`,
   };
 }
@@ -108,15 +97,15 @@ function createHasher(algorithm: string): Hasher {
       state.update(toBytes(data));
       return this;
     },
-    digest: ((encoding?: 'binary' | 'hex') => (encoding === 'binary' ? state.digest() : state.hex())) as Digest,
+    digest: state.hex,
   };
 }
 
 /**
  * Create a hasher instance for calculating multiple types of digest in one go.
  */
-function createMultiHasher(algorithms: string | string[]): MultiHasher {
-  const algoNames = Array.isArray(algorithms) ? (algorithms.length ? [...new Set(algorithms)] : ['sha512']) : [algorithms];
+function createMultiHasher(algorithms: string[]): MultiHasher {
+  const algoNames = algorithms.length ? [...new Set(algorithms)] : ['sha512'];
   const hashers = algoNames.map((name) => [name, createHasher(name)] as const);
   const multiHasher: MultiHasher = {
     update(data) {
@@ -125,13 +114,7 @@ function createMultiHasher(algorithms: string | string[]): MultiHasher {
       }
       return this;
     },
-    digest: ((encoding?: 'binary' | 'hex') => {
-      const result: { [key: string]: string | Uint8Array } = {};
-      for (const [name, hash] of hashers) {
-        result[name] = hash.digest(encoding as 'hex');
-      }
-      return result;
-    }) as MultiDigest,
+    digest: () => Object.fromEntries(hashers.map(([name, hash]) => [name, hash.digest()])),
   };
   return multiHasher;
 }
@@ -156,7 +139,7 @@ function createStream(algorithm: string | string[] = 'sha512'): WritableStreamHa
   ws.update = (data) => {
     hash.update(data);
   };
-  ws.digest = ((encoding?: 'binary' | 'hex') => hash.digest(encoding as 'hex')) as Digest & MultiDigest;
+  ws.digest = hash.digest as Digest & MultiDigest;
   return ws;
 }
 
@@ -176,7 +159,7 @@ function createStreamThrough(algorithm: string | string[] = 'sha512', options?: 
     writableStrategy,
     readableStrategy,
   ) as StreamThroughHash;
-  ts.digest = ((encoding?: 'binary' | 'hex') => hash.digest(encoding as 'hex')) as MultiDigest;
+  ts.digest = hash.digest as MultiDigest;
   return ts;
 }
 
