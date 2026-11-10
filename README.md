@@ -147,6 +147,8 @@ This library implements these storage layouts from the [OCFL Community Extension
 
 It also includes `000N-path-direct-storage-layout`, which isn't a community extension. Loading a storage root that declares any other layout throws `UNSUPPORTED_LAYOUT`.
 
+Storage layouts and digest algorithms are a fixed, built-in set, and there's no plugin API. If you need another one, send a pull request to this repository. [ADR 0001](docs/adr/0001-one-filesystem-only-package-with-no-extension-points.md) explains why.
+
 ## Development
 
 Clone the Git repo with submodules included:

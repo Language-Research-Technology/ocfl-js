@@ -4,7 +4,7 @@ This release converts `@ocfl/ocfl-fs` to TypeScript, ships it as an ES module wi
 
 ## Import everything from `@ocfl/ocfl-fs`
 
-`@ocfl/ocfl-fs` is now the only package you need, and every value and type `@ocfl/ocfl` exported is now exported by `@ocfl/ocfl-fs`.
+`@ocfl/ocfl-fs` is now the only package you need. It exports everything from `@ocfl/ocfl` that's still part of the API, and [API removed before 1.0](#api-removed-before-10) lists what isn't.
 
 You must remove `@ocfl/ocfl` from your dependencies. `@ocfl/ocfl-fs` no longer depends on it, so keeping it installs a second, separate copy of the library, and nothing warns you. Classes from the two copies are different: `instanceof OcflError` is false for an error thrown by `@ocfl/ocfl-fs` if `OcflError` came from `@ocfl/ocfl`.
 
@@ -322,9 +322,10 @@ Each public member now corresponds to something the OCFL specification or the li
 | `OcflExtension`, as a value and as a type                                                                | Nothing: layouts are a fixed set; to add one, send a pull request to this library                                   |
 | `OcflStorageLayout` as a value                                                                           | The `OcflStorageLayout` type, from `storageLayout()`; see [Layout classes](#layout-classes)                         |
 | `OcflExtension.register()`, `OcflStorageLayout.register()`, `setup()`                                    | Nothing: layouts are a fixed set; to add one, send a pull request to this library                                   |
-| `OcflExtension.create()`, `OcflStorageLayout.create()`                                                   | `storageLayout()`, which takes the same config                                                                      |
+| `OcflExtension.create()`, `OcflStorageLayout.create()`                                                   | `storageLayout()`, with the layout's `extensionName` in the config                                                  |
 | `OcflExtension.class()`, `OcflStorageLayout.class()`                                                     | `storageLayout(name)`, which throws `UNSUPPORTED_LAYOUT` for a layout this library doesn't implement                |
 | `OcflExtension.classes`, `OcflStorageLayout.classes`                                                     | The `OcflLayoutName` type, which lists the built-in layouts                                                         |
+| `OcflExtension.NAME`, `DESCRIPTION`, and the same statics on the layout classes                          | The official names under [Choosing a layout](#choosing-a-layout); descriptions have no replacement                  |
 | A layout object's `name`, `description`, `version`, `parameters`, `config` and `set()`                   | The `extensionName` and parameters you passed to `storageLayout()`, and `get(name)` to read a parameter             |
 | The `ExtensionConstructor` type                                                                          | Nothing: it only described layout subclasses                                                                        |
 | `ocfl.StorageLayout`, and the `StorageLayout` export of `@ocfl/ocfl-fs`                                  | `storageLayout()`; see [Layout classes](#layout-classes)                                                            |
