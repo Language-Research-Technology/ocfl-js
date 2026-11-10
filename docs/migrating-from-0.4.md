@@ -140,6 +140,7 @@ Spec violations now throw a `ValidationError`, an `OcflError` whose `code` is th
 E036, E040 and E050 are checked when the inventory is read. A malformed object that used to load, and then failed later with a `TypeError`, now fails in `load()` or `getInventory()`.
 
 Other invalid input that used to cause a `TypeError` now throws a descriptive error:
+
 - an unsupported storage layout or extension name
 - calling `count()` or `files()` on an object that has no inventory
 - calling `storage.object()` with neither an id nor a root

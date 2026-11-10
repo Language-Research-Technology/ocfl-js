@@ -100,7 +100,6 @@ for await (const obj of repo) {
 }
 ```
 
-
 ### Object
 
 The OCFL Object can be instantiated by the storage root as described above. It can also be used directly without
