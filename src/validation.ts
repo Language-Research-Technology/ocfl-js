@@ -1,10 +1,27 @@
 import { OcflError } from './error.ts';
 
 // Messages for the OCFL 1.1 validation codes this library raises: https://ocfl.io/1.1/spec/validation-codes.html
-export type ValidationErrorCode = 'E007' | 'E036' | 'E040' | 'E050' | 'E060' | 'E069' | 'E070' | 'E080' | 'E081' | 'E082';
+export type ValidationErrorCode =
+  | 'E007'
+  | 'E017'
+  | 'E018'
+  | 'E036'
+  | 'E040'
+  | 'E050'
+  | 'E060'
+  | 'E069'
+  | 'E070'
+  | 'E080'
+  | 'E081'
+  | 'E082'
+  | 'E099'
+  | 'E100'
+  | 'E104';
 
 const ERRORS: Record<ValidationErrorCode, string> = {
   E007: 'The text contents of the [version declaration] file must be the same as dvalue, followed by a newline (\\n).',
+  E017: 'The contentDirectory value MUST NOT contain the forward slash (/) path separator.',
+  E018: 'The contentDirectory value MUST NOT be either one or two periods (. or ..).',
   E036: 'An OCFL Object Inventory MUST include the following keys: [id, type, digestAlgorithm, head].',
   E040: '[head] MUST be the version directory name with the highest version number.',
   E050: 'The keys of [the state JSON object] are digest values, each of which MUST correspond to an entry in the manifest of the inventory.',
@@ -14,6 +31,9 @@ const ERRORS: Record<ValidationErrorCode, string> = {
   E080: 'The text contents of [the OCFL version declaration file] MUST be the same as dvalue, followed by a newline (\\n).',
   E081: 'OCFL Objects within the OCFL Storage Root also include a conformance declaration which MUST indicate OCFL Object conformance to the same or earlier version of the specification.',
   E082: 'OCFL Object Roots MUST be stored either as the terminal resource at the end of a directory storage hierarchy or as direct children of a containing OCFL Storage Root.',
+  E099: 'Path elements [of a content path] MUST NOT be ., .., or empty (//).',
+  E100: 'A content path MUST NOT begin or end with a forward slash (/).',
+  E104: 'Version directory names MUST be constructed by prepending v to the version number.',
 };
 
 export interface ValidationErrorOptions {

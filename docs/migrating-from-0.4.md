@@ -118,11 +118,12 @@ try {
 | `OBJECT_NOT_LOADED`           | `getFile()` is called before the inventory has been read; thrown as an `ObjectNotLoadedError`                                 |
 | `UPDATE_IN_PROGRESS`          | An update finds uncommitted changes, because another process is updating the object or an earlier update failed               |
 | `DIRECTORY_NOT_EMPTY`         | An object or storage root is created in a non-empty directory                                                                 |
-| `ID_INCOMPATIBLE_WITH_LAYOUT` | The storage layout can't map the object id                                                                                    |
+| `ID_INCOMPATIBLE_WITH_LAYOUT` | The storage layout can't map the object id, or the id or `root` maps to the storage root, outside it, or into `extensions`    |
 | `UNSUPPORTED_LAYOUT`          | `layout` isn't a supported name or config, or a root's `ocfl_layout.json` names an unsupported layout, even with `layout` set |
 | `LAYOUT_MISMATCH`             | A configured layout's name or parameters differ from the layout the storage root declares                                     |
 | `INVALID_LAYOUT_CONFIG`       | A layout rejects its parameters, or a root's layout extension `config.json` isn't a JSON object                               |
 | `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`                                                  |
+| `INVALID_PATH`                | A path given to `object.readFile()`, `stat()` or `createReadable()` is absolute or leaves the object root                     |
 | `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain                |
 | `FILE_EXISTS`                 | `copy()` or `rename()` names a target that exists; see [Other behaviour changes](#other-behaviour-changes)                    |
 | `FILE_EXISTS`                 | Two sources of one `object.import()` produce the same logical path, or one inside a file                                      |
@@ -143,6 +144,8 @@ Spec violations now throw a `ValidationError`, an `OcflError` whose `code` is th
 | Code | Raised when                                                                          |
 | ---- | ------------------------------------------------------------------------------------ |
 | E007 | An object's version declaration has the wrong contents (previously reported as E006) |
+| E017 | An inventory's `contentDirectory` contains `/`                                       |
+| E018 | An inventory's `contentDirectory` is `.` or `..`                                     |
 | E036 | An inventory has no `head`                                                           |
 | E040 | An inventory's `head` is empty or isn't one of its versions                          |
 | E050 | An inventory's state lists a digest that isn't in its manifest                       |
@@ -152,8 +155,11 @@ Spec violations now throw a `ValidationError`, an `OcflError` whose `code` is th
 | E080 | A storage root's version declaration has the wrong contents                          |
 | E081 | A storage is loaded with an `ocflVersion` later than its root's version declaration  |
 | E082 | An object root is nested inside another object                                       |
+| E099 | A manifest content path has a `.`, `..` or empty segment                             |
+| E100 | A manifest content path begins or ends with `/`                                      |
+| E104 | An inventory version name isn't `v` followed by a version number, such as `v1`       |
 
-E036, E040 and E050 are checked when the inventory is read. A malformed object that used to load, and then failed later with a `TypeError`, now fails in `load()` or `getInventory()`.
+E017, E018, E036, E040, E050, E099, E100 and E104 are checked when the inventory is read. A malformed object that used to load, and then failed later with a `TypeError`, now fails in `load()` or `getInventory()`.
 
 Other invalid input that used to cause a `TypeError` now throws a descriptive error:
 
@@ -617,6 +623,11 @@ The remaining `_` members, such as `object._setInventory()`, `object._requireInv
 - `rename()` throws `FILE_NOT_FOUND` when the source doesn't exist, instead of doing nothing.
 - **Breaking:** `rename()` and `copy()` throw `FILE_EXISTS` when the target exists, even with identical content or when the target is the source. A target exists if it's a file, if it's a directory with anything in it (directories are never merged), or if it's inside a file. When they throw, nothing has changed. `rename()` used to replace the target, and `copy()` onto an existing target wrote an invalid object. To replace a target, remove it first in the same update, then copy or rename onto it.
 - A logical path with a `..` segment, such as `a/../b`, is rejected instead of being normalised. A name that only starts with two dots, such as `..notes.txt`, is now accepted.
+- **Breaking:** an object id or `root` that maps to the storage root, outside it, or into its `extensions` directory throws `ID_INCOMPATIBLE_WITH_LAYOUT` from `objectRoot()`, `object()`, `has()` and `remove()`, and nothing is written. Previously objects could be written outside the storage root.
+- **Breaking:** the path-direct layout rejects an id with a `.` or `..` segment, such as `a/./b`, `../x` or `https://h/a/../b`, with `ID_INCOMPATIBLE_WITH_LAYOUT` instead of normalising it. This includes the encoded forms a URL parser resolves, such as `%2e%2e`, and `\` as a separator. A layout `suffix` with such a segment throws `INVALID_LAYOUT_CONFIG`. The flat-direct layout rejects the ids `.` and `..`.
+- **Breaking:** `object.readFile()`, `stat()` and `createReadable()` throw `INVALID_PATH` for an absolute path or one that leaves the object root. Previously an absolute path was read relative to the object root.
+- `object.getInventory(version)` returns `undefined` for a version that isn't a version name, such as `v1/content/x` or `..`, without reading a file. Previously it read the `inventory.json` at that path.
+- A `contentDirectory` in the storage config that contains `/` or is `.` or `..` makes `storage.object()` throw a `TypeError`. Previously it wrote content outside the version directory.
 - When a storage root's layout extension `config.json` has no `extensionName`, the layout named in `ocfl_layout.json` is used. Previously the storage loaded with no layout.
 - Once an existing object's root inventory has been read, by `load()`, `refresh()`, `update()` or any other method that reads it, `object.ocflVersion` is the version that object declares. It used to report the configured version or the library default, so a 1.0 object in a 1.1 storage root reported 1.1. A configured version only applies when an object is created, and one that differs from an existing object is ignored without an error.
 - Once an existing object's root inventory has been read, `object.digestAlgorithm` and `object.contentDirectory` are the values in that inventory. They used to report the configured values or the library defaults, so a `sha256` object with content directory `data`, loaded with default config, reported `sha512` and `content`. Until the inventory has been read, and for an object that doesn't exist yet, they still report the configured value or default. As with `ocflVersion`, the configured values only apply when an object is created.

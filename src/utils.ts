@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import type { OcflVersion } from './types.ts';
 
@@ -18,6 +19,15 @@ function isNotFound(error: unknown): boolean {
 
 function isNotDir(error: unknown): boolean {
   return isErrnoException(error) && error.code === 'ENOTDIR';
+}
+
+/** `target`, resolved against `root`, relative to `root`: `''` for `root` itself, or `undefined` if it's outside `root` */
+function relativeWithin(root: string, target: string): string | undefined {
+  const relative = path.relative(root, path.resolve(root, target));
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    return undefined;
+  }
+  return relative;
 }
 
 /** The file's text, or `undefined` if it doesn't exist */
@@ -125,4 +135,15 @@ async function findNamasteVersion(prefix: string, rootPath: string): Promise<Ocf
   return version ?? undefined;
 }
 
-export { createLimiter, findNamasteVersion, isAlreadyExists, isDirEmpty, isErrnoException, isNotFound, parseJsonObject, pathExists, readIfExists };
+export {
+  createLimiter,
+  findNamasteVersion,
+  isAlreadyExists,
+  isDirEmpty,
+  isErrnoException,
+  isNotFound,
+  parseJsonObject,
+  pathExists,
+  readIfExists,
+  relativeWithin,
+};

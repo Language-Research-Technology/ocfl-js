@@ -54,6 +54,47 @@ describe('the 000N path direct layout', () => {
     }
   });
 
+  it('rejects an id with a . or .. segment instead of normalising it', () => {
+    const layout = storageLayout(NAME);
+    for (const id of [
+      '../x',
+      'a/../../x',
+      'a/./b',
+      '.',
+      '..',
+      'a/..',
+      'https://h/a/../b',
+      'https://h/a/%2e%2E/b',
+      'https://h/a/.%2e/b',
+      'https://h/a\\..\\b',
+    ]) {
+      assert.throws(() => layout.map(id), { name: 'OcflError', code: 'ID_INCOMPATIBLE_WITH_LAYOUT' }, id);
+    }
+  });
+
+  it('rejects a dot segment that only appears once the URL is parsed', () => {
+    const layout = storageLayout(NAME);
+    for (const id of ['arcp://x;../y', 'https://h/a/.\t./b', 'https://h/a/.\n/b', 'file:..', 'doi:../x']) {
+      assert.throws(() => layout.map(id), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' }, JSON.stringify(id));
+    }
+  });
+
+  it('checks the id after its replacements', () => {
+    const layout = configured({ replace: [['x', '..']] });
+    assert.throws(() => layout.map('a/x/b'), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
+  });
+
+  it('still maps ids whose segments only start with dots', () => {
+    const layout = storageLayout(NAME);
+    assert.strictEqual(layout.map('a/..b/.c'), 'a/..b/.c/__object__');
+  });
+
+  it('rejects a suffix with a . or .. segment', () => {
+    for (const suffix of ['/../x', '..', '/./x']) {
+      assert.throws(() => configured({ suffix }), { name: 'OcflError', code: 'INVALID_LAYOUT_CONFIG' }, suffix);
+    }
+  });
+
   it('can omit schema', () => {
     const layout = configured({ omitScheme: true });
     const cases: [string, string][] = [

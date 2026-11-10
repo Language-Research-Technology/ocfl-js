@@ -9,7 +9,7 @@ import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-stor
 import { createLayout, type LayoutClass, supportedLayoutClass } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
 import * as store from './store.ts';
-import { findNamasteVersion, isDirEmpty, parseJsonObject, readIfExists } from './utils.ts';
+import { findNamasteVersion, isDirEmpty, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
@@ -128,8 +128,15 @@ class OcflStorage {
    * The path is mapped from the object identifier using the algorithm defined in the chosen
    * storage layout extension (specified in {@link OcflStorageConfig}).
    * @param id - Identifier of the object
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id, or maps it to the storage root, outside it, or into its extensions directory
    */
   objectRoot(id: string): string {
+    const objectRoot = this.#mapId(id);
+    this.#checkedObjectPath(objectRoot, `The object id <${id}>`);
+    return objectRoot;
+  }
+
+  #mapId(id: string): string {
     if (!this.#layout) {
       throw new Error('[OcflStorage] No layout defined');
     }
@@ -137,9 +144,22 @@ class OcflStorage {
   }
 
   /**
+   * @returns `relObjectRoot` normalised
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it's the storage root, outside it, or in its extensions directory
+   */
+  #checkedObjectPath(relObjectRoot: string, label: string): string {
+    const relative = relativeWithin(this.root, path.join(this.root, relObjectRoot));
+    if (!relative || relative.split(path.sep)[0] === EXTENSIONS_DIR) {
+      throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${label} maps to "${relObjectRoot}", which can't hold an object in this storage root.`);
+    }
+    return relative;
+  }
+
+  /**
    * Get an existing object in the Storage or create a new one.
    * The root param is a relative path to the storage root.
    * @param opt - A unique identifier for the OCFL Object, should be a URI
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the id or root maps to the storage root, outside it, or into its extensions directory
    */
   object(opt: string | { id?: string | undefined; root?: string | undefined }): OcflObject {
     let id: string | undefined;
@@ -149,15 +169,19 @@ class OcflStorage {
     } else {
       ({ id, root } = opt);
     }
-    const relObjectRoot = root || (id && this.objectRoot(id));
-    if (!relObjectRoot) {
+    let relative: string;
+    if (root) {
+      relative = this.#checkedObjectPath(root, 'The object root');
+    } else if (id) {
+      relative = this.#checkedObjectPath(this.#mapId(id), `The object id <${id}>`);
+    } else {
       throw new TypeError('[OcflStorage] object id or root is required.');
     }
     return new OcflObject({
       id,
-      root: path.join(this.root, relObjectRoot),
+      root: path.join(this.root, relative),
       // @todo:use extension workspace if not defined
-      workspace: this.#workspace ? path.join(this.#workspace, relObjectRoot) : undefined,
+      workspace: this.#workspace ? path.join(this.#workspace, relative) : undefined,
       ocflVersion: this.ocflVersion,
       ...this.#objectConfig,
     });
@@ -165,6 +189,7 @@ class OcflStorage {
 
   /**
    * Check if the storage has already the object with the given id.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` as {@link OcflStorage.object} does
    */
   async has(id: string): Promise<boolean> {
     return this.object(id).exists();
@@ -271,11 +296,6 @@ class OcflStorage {
   async remove(id: string): Promise<void> {
     const object = this.object(id);
     const objectRoot = object.root;
-    const relative = path.relative(this.root, objectRoot);
-    const [firstSegment] = relative.split(path.sep);
-    if (!relative || firstSegment === '..' || firstSegment === EXTENSIONS_DIR) {
-      throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> maps to "${objectRoot}", which can't hold an object in this storage root.`);
-    }
     if (!(await object.exists())) {
       throw new ObjectNotFoundError(id);
     }
@@ -287,7 +307,7 @@ class OcflStorage {
       throw new OcflError('NOT_AN_OBJECT', `"${objectRoot}" has no OCFL object declaration, so nothing was deleted.`);
     }
     await object._validateObjectPath();
-    // A layout can map several ids to one path, such as an id with a `..` segment
+    // A layout can map several ids to one path, such as path-direct with omitScheme mapping http: and https: ids together
     const inventory = await object.getInventory();
     if (inventory?.id !== id) {
       throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `"${objectRoot}" holds the object <${inventory?.id}>, not <${id}>, so nothing was deleted.`);

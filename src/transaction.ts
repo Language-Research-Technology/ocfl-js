@@ -8,7 +8,7 @@ import { type ContentRelease, OcflObjectInventory, type OcflObjectInventoryMut }
 import type { OcflObject } from './object.ts';
 import * as store from './store.ts';
 import type { Digests, WriteFileData } from './types.ts';
-import { createLimiter, isAlreadyExists } from './utils.ts';
+import { createLimiter, isAlreadyExists, relativeWithin } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 
@@ -211,9 +211,7 @@ class OcflObjectTransaction {
 
   #getRealPath(logicalPath: string) {
     checkLogicalPath(logicalPath);
-    const root = path.resolve(this.#contentRoot);
-    const resolved = path.resolve(root, logicalPath);
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    if (relativeWithin(path.resolve(this.#contentRoot), logicalPath) === undefined) {
       throw invalidLogicalPath(logicalPath);
     }
     return path.join(this.#contentRoot, path.normalize(logicalPath));

@@ -5,11 +5,11 @@ import * as Hashing from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
-import { type InventoryFile, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
+import { type InventoryFile, isVersionName, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber, validateStoredInventory } from './inventory.ts';
 import * as store from './store.ts';
 import { type CommitOptions, type ImportSource, OcflObjectTransaction } from './transaction.ts';
 import type { BinaryOptions, ContentAlgorithm, EncodingOptions, Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
-import { findNamasteVersion, isDirEmpty, isNotFound, pathExists } from './utils.ts';
+import { findNamasteVersion, isDirEmpty, isNotFound, pathExists, relativeWithin } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T, EXTENSIONS_DIR } = OcflConstants;
@@ -72,7 +72,11 @@ class OcflObject {
     //this.fixityDigest = config.fixityDigest ?? this.digestAlgorithm;
     this.#digestAlgorithm = contentDigestAlgorithm(config.digestAlgorithm);
     this.#workspace = config.workspace ? path.resolve(config.workspace) : undefined;
-    this.#contentDirectory = config.contentDirectory ?? 'content';
+    const { contentDirectory = 'content' } = config;
+    if (contentDirectory.includes('/') || contentDirectory === '.' || contentDirectory === '..') {
+      throw new TypeError(`[OcflObject] config.contentDirectory must be a directory name, not "${contentDirectory}".`);
+    }
+    this.#contentDirectory = contentDirectory;
     this.fixityAlgorithms = config.fixityAlgorithms;
   }
 
@@ -167,6 +171,9 @@ class OcflObject {
    * @param version - Full name of the version, eg: v1, v2, v3
    */
   async #readInventory(version: string = 'latest'): Promise<OcflObjectInventory | undefined> {
+    if (version !== 'latest' && !isVersionName(version)) {
+      return;
+    }
     const invPath = version === 'latest' ? INVENTORY_NAME : path.join(version, INVENTORY_NAME);
     let datastr: string;
     try {
@@ -183,12 +190,7 @@ class OcflObject {
     if (digest !== actualDigest) {
       throw createError('E060', path.join(this.root, invPath), `recorded=${digest} actual=${actualDigest}`);
     }
-    if (data.head === undefined) {
-      throw createError('E036', path.join(this.root, invPath), 'missing head');
-    }
-    if (data.head === '') {
-      throw createError('E040', path.join(this.root, invPath), 'empty head');
-    }
+    validateStoredInventory(data, path.join(this.root, invPath));
     const inventory = new OcflObjectInventory(data);
     inventory._digest = actualDigest;
     return inventory;
@@ -228,7 +230,7 @@ class OcflObject {
   /**
    * If a cache exists, return the cached inventory. Otherwise read it from the storage and cache it.
    * If the inventory file does not exist, eg in a newly created object, returns undefined.
-   * @param version - Full name of the version, eg: v1, v2, v3
+   * @param version - Full name of the version, eg: v1, v2, v3, or `'latest'`. Anything else returns undefined without reading a file.
    */
   async getInventory(version: string = 'latest'): Promise<OcflObjectInventory | undefined> {
     if (!this.#inventories[version]) {
@@ -344,8 +346,20 @@ class OcflObject {
     return [...inv.files(version)].length;
   }
 
+  /**
+   * @param filePath - The file path relative to the object root.
+   * @throws {@link OcflError} `INVALID_PATH` if `filePath` is absolute or leaves the object root
+   */
   async createReadable(filePath: string, options?: unknown): Promise<ReadableStream> {
-    return store.createReadable(path.join(this.root, filePath), options);
+    return store.createReadable(this.#resolve(filePath), options);
+  }
+
+  /** @throws {@link OcflError} `INVALID_PATH` if `relPath` is absolute or leaves the object root */
+  #resolve(relPath: string): string {
+    if (path.isAbsolute(relPath) || relativeWithin(this.root, relPath) === undefined) {
+      throw new OcflError('INVALID_PATH', `The path "${relPath}" is absolute or leaves the object root.`);
+    }
+    return path.join(this.root, relPath);
   }
 
   /**
@@ -483,20 +497,22 @@ class OcflObject {
    * Read the content of a file inside an object.
    * @param relPath - The file path relative to the object root.
    * @param options - Options passed to `fs.promises.readFile`
+   * @throws {@link OcflError} `INVALID_PATH` if `relPath` is absolute or leaves the object root
    */
   async readFile(relPath: string, options: EncodingOptions): Promise<string>;
   async readFile(relPath: string, options?: BinaryOptions): Promise<Uint8Array>;
   async readFile(relPath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array>;
   async readFile(relPath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array> {
-    return fs.promises.readFile(path.join(this.root, relPath), options);
+    return fs.promises.readFile(this.#resolve(relPath), options);
   }
 
   /**
    * Get the file metadata such as size and modification time.
    * @param relPath - The file path relative to the object root.
+   * @throws {@link OcflError} `INVALID_PATH` if `relPath` is absolute or leaves the object root
    */
   async stat(relPath: string): Promise<fs.Stats> {
-    return fs.promises.stat(path.join(this.root, relPath));
+    return fs.promises.stat(this.#resolve(relPath));
   }
 
   get #label() {
