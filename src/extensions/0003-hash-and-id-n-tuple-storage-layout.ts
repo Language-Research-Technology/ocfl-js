@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { Hashing } from '../digest.ts';
+import * as Hashing from '../digest.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 
 const MAX_ENCODED_ID_LENGTH = 100;

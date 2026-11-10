@@ -180,20 +180,4 @@ function getHexDigestLength(algorithm: string): number {
   return ALGORITHMS.get(algorithm)?.hexLength ?? 0;
 }
 
-interface HashingFunctions {
-  createStream: typeof createStream;
-  createStreamThrough: typeof createStreamThrough;
-  digest: typeof digest;
-  getHexDigestLength: typeof getHexDigestLength;
-  digestSync: typeof digestSync;
-}
-
-const Hashing: HashingFunctions = {
-  createStream,
-  createStreamThrough,
-  digest,
-  getHexDigestLength,
-  digestSync,
-};
-
-export { Hashing };
+export { createStream, createStreamThrough, digest, digestSync, getHexDigestLength };

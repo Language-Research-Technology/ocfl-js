@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { OcflConstants } from './constants.ts';
-import { Hashing } from './digest.ts';
+import * as Hashing from './digest.ts';
 import { OcflError } from './error.ts';
 import { type ContentRelease, OcflObjectInventory, type OcflObjectInventoryMut } from './inventory.ts';
 import type { OcflObject } from './object.ts';
@@ -102,7 +102,7 @@ class OcflObjectTransaction {
    * Create a new transaction instance.
    * @internal
    */
-  static async create(ocflObject: OcflObject, inventory: OcflObjectInventoryMut, workspacePath: string): Promise<OcflObjectTransaction> {
+  static async create(ocflObject: OcflObject, inventory: OcflObjectInventoryMut, workspacePath: string) {
     const rootExisted = await fs.promises.stat(ocflObject.root).then(
       () => true,
       () => false,

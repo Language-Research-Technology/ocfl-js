@@ -135,13 +135,13 @@ class OcflObjectInventory {
   }
 
   /** @internal */
-  _indexAdd(logicalPath: string, version: string, digests: Digests): void {
+  _indexAdd(logicalPath: string, version: string, digests: Digests) {
     this.#fileIndex[version] ??= {};
     this.#fileIndex[version][logicalPath] = digests;
   }
 
   /** @internal */
-  _indexRemove(logicalPath: string): void {
+  _indexRemove(logicalPath: string) {
     delete this.#fileIndex[this.head]?.[logicalPath];
   }
 
@@ -163,7 +163,7 @@ class OcflObjectInventory {
   }
 
   /** @internal */
-  _indexAddFixity(contentPath: string, algorithm: string, value: string): void {
+  _indexAddFixity(contentPath: string, algorithm: string, value: string) {
     let digests = this.#fixityIndex.get(contentPath);
     if (!digests) {
       digests = Object.create(null) as Digests;
@@ -173,12 +173,12 @@ class OcflObjectInventory {
   }
 
   /** @internal */
-  _indexRemoveFixity(contentPath: string): void {
+  _indexRemoveFixity(contentPath: string) {
     this.#fixityIndex.delete(contentPath);
   }
 
   /** @internal */
-  _indexBuild(): void {
+  _indexBuild() {
     this.#fixityIndex.clear();
     for (const [algorithm, digestBlock] of Object.entries(this.fixity ?? {})) {
       for (const [value, cps] of Object.entries(digestBlock)) {
@@ -203,7 +203,7 @@ class OcflObjectInventory {
   }
 
   /** @internal */
-  _indexFindPaths(prefix: string, versionName?: string): string[] {
+  _indexFindPaths(prefix: string, versionName?: string) {
     const res: string[] = [];
     const index = this.#fileIndex[this.#resolveVersion(versionName)];
     const prefixWithSlash = prefix.endsWith('/') ? prefix : `${prefix}/`;
@@ -749,7 +749,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * Apply a plan from {@link _planRename}, which must be from the current head state
    * @internal
    */
-  _applyRename({ transfers, releases }: RenamePlan): void {
+  _applyRename({ transfers, releases }: RenamePlan) {
     this.#applyContentReleases(releases);
     for (const { src, dest, digest, digests } of transfers) {
       this.#unlist(src);
@@ -788,7 +788,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * Apply a plan from {@link _planDelete}, which must be from the current state
    * @internal
    */
-  _applyDelete({ paths, releases }: DeletePlan): number {
+  _applyDelete({ paths, releases }: DeletePlan) {
     const count = this.#delist(paths);
     this.#applyContentReleases(releases);
     return count;

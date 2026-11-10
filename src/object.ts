@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { OcflConstants } from './constants.ts';
-import { Hashing } from './digest.ts';
+import * as Hashing from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
@@ -204,7 +204,7 @@ class OcflObject {
    * Set the latest version of inventory in the cache
    * @internal
    */
-  _setInventory(inventory: OcflObjectInventory, version: string = 'latest'): void {
+  _setInventory(inventory: OcflObjectInventory, version = 'latest') {
     this.#inventories[version] = inventory;
     if (version === 'latest') {
       this.#inventories[inventory.head] = inventory;
@@ -215,7 +215,7 @@ class OcflObject {
    * Rejects an object root inside another OCFL object
    * @internal
    */
-  async _validateObjectPath(): Promise<void> {
+  async _validateObjectPath() {
     var p = this.root;
     while (p !== '.' && p !== '/') {
       p = path.dirname(p);
