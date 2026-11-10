@@ -8,7 +8,7 @@ import type { ContentRelease, OcflObjectInventory } from './inventory.ts';
 import type { OcflObject } from './object.ts';
 import * as store from './store.ts';
 import type { Digests, WriteFileData } from './types.ts';
-import { createLimiter, hasErrorCode, isAlreadyExists, isNotFound, relativeWithin } from './utils.ts';
+import { createLimiter, hasErrorCode, isAlreadyExists, isNotFound, normaliseLogicalPath, parentDirectories, relativeWithin } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 
@@ -21,6 +21,16 @@ function checkLogicalPath(logicalPath: string) {
   if (logicalPath.startsWith('/') || path.isAbsolute(logicalPath) || logicalPath.split(/[/\\]/).includes('..')) {
     throw invalidLogicalPath(logicalPath);
   }
+}
+
+/** A file's logical path in the form the inventory lists, so two spellings of one path are the same path */
+function fileLogicalPath(logicalPath: string) {
+  checkLogicalPath(logicalPath);
+  const normalised = normaliseLogicalPath(logicalPath);
+  if (normalised === '.') {
+    throw new OcflError('INVALID_LOGICAL_PATH', "A file's logical path can't be empty");
+  }
+  return normalised;
 }
 
 function isAsyncIterable(data: unknown): data is AsyncIterable<unknown> {
@@ -91,7 +101,7 @@ async function listImportFiles(source: string, target: string | undefined): Prom
 /** `target` in the form copy() and rename() store, so two spellings of one path are the same path */
 function importTarget(target: string) {
   checkLogicalPath(target);
-  const normalised = path.posix.normalize(target).replace(/\/$/, '');
+  const normalised = normaliseLogicalPath(target);
   if (normalised === '.') {
     throw new OcflError('INVALID_LOGICAL_PATH', "An import target can't be empty; leave it out to import a directory's contents at the object root");
   }
@@ -108,12 +118,9 @@ function checkImportConflicts(files: ImportFile[]) {
     logicalPaths.add(logicalPath);
   }
   for (const logicalPath of logicalPaths) {
-    const segments = logicalPath.split('/');
-    for (let depth = 1; depth < segments.length; depth++) {
-      const parent = segments.slice(0, depth).join('/');
-      if (logicalPaths.has(parent)) {
-        throw new OcflError('FILE_EXISTS', `"${parent}" is imported both as a file and as a directory`);
-      }
+    const parent = parentDirectories(logicalPath).find((directory) => logicalPaths.has(directory));
+    if (parent !== undefined) {
+      throw new OcflError('FILE_EXISTS', `"${parent}" is imported both as a file and as a directory`);
     }
   }
 }
@@ -369,6 +376,8 @@ class OcflObjectTransaction {
     const releases = inventory.getDigest(logicalPath) === digest ? [] : inventory._contentReleases([logicalPath]);
     const isNew = !inventory.getContentPath(digest);
     await this.#removeStagedOnFailure(staging, async () => {
+      // _add checks too, but only once the content has been placed
+      inventory._checkFilePath(logicalPath);
       const realPath = isNew ? this.#getRealPath(logicalPath) : undefined;
       if (isNew) {
         await stage?.();
@@ -445,6 +454,9 @@ class OcflObjectTransaction {
 
   /**
    * Create a writable stream. String chunks are written as UTF-8.
+   * Closing it fails with {@link OcflError} `FILE_EXISTS` if `logicalPath` is an existing directory, or is inside an existing file.
+   * @param logicalPath - A path relative to the object content directory, stored in its normalised form: `./a//b` is `a/b`
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `logicalPath` is empty or absolute, or contains `..`
    */
   async createWritable(logicalPath: string): Promise<WritableStream> {
     if (this.#committed) {
@@ -452,7 +464,7 @@ class OcflObjectTransaction {
     }
     const digestAlgo = this.#inventory.digestAlgorithm;
     const hash = Hashing.createMultiHasher(this.#digestAlgorithms);
-    checkLogicalPath(logicalPath);
+    const target = fileLogicalPath(logicalPath);
     const staging = this.#stagingPath();
     const writer = (await store.createWritable(staging)).getWriter();
     const ws = new WritableStream({
@@ -471,7 +483,7 @@ class OcflObjectTransaction {
         this.#inTurn(async () => {
           await writer.close();
           const hashes = splitDigests(hash.digest(), digestAlgo);
-          return () => this.#addContent(logicalPath, hashes, staging);
+          return () => this.#addContent(target, hashes, staging);
         }),
       abort: async (reason) => {
         await writer.abort(reason);
@@ -487,13 +499,15 @@ class OcflObjectTransaction {
 
   /**
    * Write data to a file at `logicalPath`
-   * @param logicalPath - A path relative to the object content directory
+   * @param logicalPath - A path relative to the object content directory, stored in its normalised form: `./a//b` is `a/b`
    * @param data - The file's content. A string, or a string chunk, is written as UTF-8; decode base64 or hex
    * first, e.g. `Buffer.from(text, 'base64')`.
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `logicalPath` is empty or absolute, or contains `..`
+   * @throws {@link OcflError} `FILE_EXISTS` if `logicalPath` is an existing directory, or is inside an existing file. An existing file is replaced.
    */
   async write(logicalPath: string, data: WriteFileData): Promise<void> {
     return this.#inTurn(async () => {
-      checkLogicalPath(logicalPath);
+      const target = fileLogicalPath(logicalPath);
       const digestAlgo = this.#inventory.digestAlgorithm;
       const digestAlgos = this.#digestAlgorithms;
       const staging = this.#stagingPath();
@@ -502,11 +516,11 @@ class OcflObjectTransaction {
         const hash = Hashing.createMultiHasher(digestAlgos);
         await this.#removeStagedOnFailure(staging, () => store.writeFile(staging, hashedBytes(chunks, hash)));
         const hashes = splitDigests(hash.digest(), digestAlgo);
-        return () => this.#addContent(logicalPath, hashes, staging);
+        return () => this.#addContent(target, hashes, staging);
       }
       const content = Hashing.toBytes(data);
       const hashes = splitDigests(await Hashing.digest(digestAlgos, content), digestAlgo);
-      return () => this.#addContent(logicalPath, hashes, staging, () => store.writeFile(staging, content));
+      return () => this.#addContent(target, hashes, staging, () => store.writeFile(staging, content));
     });
   }
 
@@ -532,6 +546,9 @@ class OcflObjectTransaction {
       ),
     );
     return async () => {
+      for (const { logicalPath } of files) {
+        this.#inventory._checkFilePath(logicalPath);
+      }
       const errors: unknown[] = [];
       for (const file of hashed) {
         if (!('digests' in file)) {
@@ -559,6 +576,7 @@ class OcflObjectTransaction {
    * @param target - The logical path the source becomes
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `target` is empty or absolute, or contains `..`
    * @throws {@link OcflError} `UNSUPPORTED_FILE_TYPE` if `source` is, or contains, anything other than a regular file or directory, such as a symlink
+   * @throws {@link OcflError} `FILE_EXISTS` if a file would be an existing directory, or inside an existing file, importing nothing. An existing file is replaced.
    * @throws `AggregateError` of each file's error if any file can't be imported, including {@link OcflError} `SOURCE_CHANGED` if a file changed while it was being imported
    */
   async import(source: string, target?: string): Promise<void> {
@@ -609,6 +627,8 @@ class OcflObjectTransaction {
 
   /**
    * Makes content from a version earlier than the previous version available in the current version of an OCFL Object.
+   * A reinstated file replaces a file or directory at its logical path.
+   * @throws {@link OcflError} `FILE_EXISTS` if a reinstated file would be inside an existing file. To replace that file, remove it first.
    */
   async reinstate(logicalPath: string, versionName: string): Promise<number> {
     return this.#transact(async () => {
