@@ -11,7 +11,6 @@ const api: {
     OCFL_VERSIONS: typeof OCFL_VERSIONS;
     createStorage: typeof createStorage;
     loadStorage: typeof loadStorage;
-    object: typeof object;
     storage: typeof storage;
     storageLayout: typeof storageLayout;
 };
@@ -178,9 +177,6 @@ export function loadStorage(config: OcflStorageConfig): Promise<OcflStorage>;
 // @public (undocumented)
 export type LogicalPath = string;
 
-// @public
-export function object(config: OcflObjectConfig): OcflObject;
-
 // @public (undocumented)
 export class ObjectNotFoundError extends OcflError {
     constructor(label: string);
@@ -230,7 +226,6 @@ export interface OcflLayoutParameters {
 
 // @public
 export class OcflObject {
-    constructor(config: OcflObjectConfig);
     get contentDirectory(): string;
     count(version?: string): Promise<number>;
     // (undocumented)
@@ -270,17 +265,6 @@ export class OcflObject {
     get versions(): VersionNumber[];
     get workspace(): string | undefined;
 }
-
-// @public
-export type OcflObjectConfig = {
-    root: string;
-    workspace?: string | undefined;
-    id?: string | undefined;
-    fixityAlgorithms?: string[] | undefined;
-    digestAlgorithm?: ContentAlgorithm | undefined;
-    contentDirectory?: string | undefined;
-    ocflVersion?: OcflVersion | undefined;
-};
 
 // @public
 export class OcflObjectFile {

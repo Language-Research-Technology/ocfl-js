@@ -102,13 +102,11 @@ for await (const obj of repo) {
 
 ### Object
 
-The OCFL Object can be instantiated by the storage root as described above. It can also be used directly without
-the storage root. For example, if you want to manipulate an ocfl object directory that is not associated with a storage layout.
-
-To create a new object or read an existing object that is not part of any storage:
+An OCFL Object is always opened through its storage root, by its id, or by its path relative to the storage root:
 
 ```js
-const object = ocfl.object({ root: '/var/data/myocflobject' });
+const object = storage.object('test-object');
+const objectAtPath = storage.object({ root: 'ab/cd/another-object' });
 ```
 
 Add a content to the object from a directory in the local file system. This will create a new version `v1`.

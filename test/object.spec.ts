@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import ocfl, { type Inventory, ObjectNotFoundError, ObjectNotLoadedError, type OcflVersion } from '../src/index.ts';
+import { OcflObject } from '../src/object.ts';
 import { withFsFailure } from './fs-failures.ts';
 import { ocflError } from './ocfl-error.ts';
 
@@ -25,11 +26,11 @@ describe('OcflObject with a malformed or missing inventory', () => {
   /** Create a one-file object, then rewrite its inventory (and sidecar) with `corrupt` */
   async function malformedObject(name: string, corrupt: (inv: Partial<Inventory>) => void) {
     const root = path.join(tempdir, name);
-    await ocfl.object({ id: name, root }).update(async (t) => t.write('a.txt', 'a'));
+    await new OcflObject({ id: name, root }).update(async (t) => t.write('a.txt', 'a'));
     const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8'));
     corrupt(inv);
     await writeInventory(path.join(root, 'inventory.json'), JSON.stringify(inv, null, 2));
-    return ocfl.object({ root });
+    return new OcflObject({ root });
   }
 
   it('rejects an update when the inventory head is not in versions', async () => {
@@ -74,7 +75,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
 
   it('finds no file in a version that does not exist', async () => {
     const root = path.join(tempdir, 'missing-version');
-    const o = ocfl.object({ id: 'missing-version', root });
+    const o = new OcflObject({ id: 'missing-version', root });
     await o.update(async (t) => t.write('a.txt', 'a'));
     await o.load();
     const { digest } = o.getFile('a.txt')!;
@@ -85,20 +86,20 @@ describe('OcflObject with a malformed or missing inventory', () => {
 
   it('rejects a digestAlgorithm that is not lowercase', () => {
     // @ts-expect-error deliberately invalid
-    assert.throws(() => ocfl.object({ id: 'upper-digest', root: path.join(tempdir, 'upper-digest'), digestAlgorithm: 'SHA256' }), {
+    assert.throws(() => new OcflObject({ id: 'upper-digest', root: path.join(tempdir, 'upper-digest'), digestAlgorithm: 'SHA256' }), {
       message: 'Invalid digest algorithm. Must be one of `sha256` or `sha512`.',
     });
   });
 
   it('rejects an unsupported digestAlgorithm', () => {
     // @ts-expect-error deliberately invalid
-    assert.throws(() => ocfl.object({ id: 'md5-digest', root: path.join(tempdir, 'md5-digest'), digestAlgorithm: 'md5' }), {
+    assert.throws(() => new OcflObject({ id: 'md5-digest', root: path.join(tempdir, 'md5-digest'), digestAlgorithm: 'md5' }), {
       message: 'Invalid digest algorithm. Must be one of `sha256` or `sha512`.',
     });
   });
 
   it('replaces the previous version content when updating in REPLACE mode', async () => {
-    const o = ocfl.object({ id: 'replace-mode', root: path.join(tempdir, 'replace-mode') });
+    const o = new OcflObject({ id: 'replace-mode', root: path.join(tempdir, 'replace-mode') });
     await o.update(async (t) => t.write('a.txt', 'a'));
     await o.update(async (t) => t.write('b.txt', 'b'), { mode: 'REPLACE' });
     const paths = Array.from(await o.files(), (f) => f.logicalPath);
@@ -106,7 +107,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
   });
 
   it('keeps the previous version content when updating in the default MERGE mode', async () => {
-    const o = ocfl.object({ id: 'merge-mode', root: path.join(tempdir, 'merge-mode') });
+    const o = new OcflObject({ id: 'merge-mode', root: path.join(tempdir, 'merge-mode') });
     await o.update(async (t) => t.write('a.txt', 'a'));
     await o.update(async (t) => t.write('b.txt', 'b'));
     const paths = Array.from(await o.files(), (f) => f.logicalPath).sort();
@@ -114,7 +115,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
   });
 
   it('rejects an unknown update mode', async () => {
-    const o = ocfl.object({ id: 'bad-mode', root: path.join(tempdir, 'bad-mode') });
+    const o = new OcflObject({ id: 'bad-mode', root: path.join(tempdir, 'bad-mode') });
     await assert.rejects(
       // @ts-expect-error deliberately invalid
       o.update(async (t) => t.write('a.txt', 'a'), { mode: 'APPEND' }),
@@ -128,20 +129,20 @@ describe('OcflObject with a malformed or missing inventory', () => {
   });
 
   it('exports the object errors for instanceof checks', async () => {
-    const o = ocfl.object({ id: 'exported-errors', root: path.join(tempdir, 'exported-errors') });
+    const o = new OcflObject({ id: 'exported-errors', root: path.join(tempdir, 'exported-errors') });
     assert.throws(() => o.getFile('a.txt'), ObjectNotLoadedError);
     await o.load();
     assert.throws(() => o.getFile('a.txt'), ObjectNotFoundError);
   });
 
   it('rejects counting or listing files of an object without an inventory', async () => {
-    const o = ocfl.object({ id: 'no-inventory', root: path.join(tempdir, 'no-inventory') });
+    const o = new OcflObject({ id: 'no-inventory', root: path.join(tempdir, 'no-inventory') });
     await assert.rejects(o.count(), ocflError('OBJECT_NOT_FOUND'));
     await assert.rejects(o.files(), ocflError('OBJECT_NOT_FOUND'));
   });
 
   it('rejects an update while another update of the same object is uncommitted', async () => {
-    const o = ocfl.object({ id: 'concurrent', root: path.join(tempdir, 'concurrent') });
+    const o = new OcflObject({ id: 'concurrent', root: path.join(tempdir, 'concurrent') });
     await o.update(async (t) => {
       await t.write('a.txt', 'a');
       await assert.rejects(
@@ -156,7 +157,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
     await fs.promises.mkdir(root);
     await fs.promises.writeFile(path.join(root, 'stray.txt'), 'x');
     await assert.rejects(
-      ocfl.object({ id: 'not-empty', root }).update(async (t) => t.write('a.txt', 'a')),
+      new OcflObject({ id: 'not-empty', root }).update(async (t) => t.write('a.txt', 'a')),
       ocflError('DIRECTORY_NOT_EMPTY'),
     );
   });
@@ -174,7 +175,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
           unreadable,
           () =>
             assert.rejects(
-              ocfl.object({ id: 'unreadable', root }).update(async (t) => t.write('a.txt', 'a')),
+              new OcflObject({ id: 'unreadable', root }).update(async (t) => t.write('a.txt', 'a')),
               { code: 'EACCES' },
             ),
           'EACCES',
@@ -187,11 +188,11 @@ describe('OcflObject with a malformed or missing inventory', () => {
   it('rethrows from exists() when its root cannot be opened', async () => {
     const root = path.join(tempdir, 'unopenable');
     await fs.promises.mkdir(root);
-    await withFsFailure('opendir', root, () => assert.rejects(ocfl.object({ root }).exists(), { code: 'EACCES' }), 'EACCES');
+    await withFsFailure('opendir', root, () => assert.rejects(new OcflObject({ root }).exists(), { code: 'EACCES' }), 'EACCES');
   });
 
   it('rejects a logical path that is absolute or leaves the object', async () => {
-    const o = ocfl.object({ id: 'bad-path', root: path.join(tempdir, 'bad-path') });
+    const o = new OcflObject({ id: 'bad-path', root: path.join(tempdir, 'bad-path') });
     await assert.rejects(
       o.update(async (t) => t.write('../escape.txt', 'x')),
       ocflError('INVALID_LOGICAL_PATH'),
@@ -219,20 +220,20 @@ describe('OcflObject with a malformed or missing inventory', () => {
   });
 
   it('accepts a logical path whose name starts with two dots', async () => {
-    const o = ocfl.object({ id: 'dot-name', root: path.join(tempdir, 'dot-name') });
+    const o = new OcflObject({ id: 'dot-name', root: path.join(tempdir, 'dot-name') });
     await o.update(async (t) => t.write('..notes.txt', 'x'));
     assert.strictEqual(await o.getFile('..notes.txt')?.text(), 'x');
   });
 
   it('rejects reading a lazy file the object does not contain', async () => {
     const root = path.join(tempdir, 'lazy-missing');
-    await ocfl.object({ id: 'lazy-missing', root }).update(async (t) => t.write('a.txt', 'a'));
-    const file = ocfl.object({ root }).getFile('missing.txt', undefined, true);
+    await new OcflObject({ id: 'lazy-missing', root }).update(async (t) => t.write('a.txt', 'a'));
+    const file = new OcflObject({ root }).getFile('missing.txt', undefined, true);
     await assert.rejects(file!.text(), ocflError('FILE_NOT_FOUND'));
   });
 
   it('rejects copying from a logical path the object does not contain', async () => {
-    const o = ocfl.object({ id: 'copy-missing', root: path.join(tempdir, 'copy-missing') });
+    const o = new OcflObject({ id: 'copy-missing', root: path.join(tempdir, 'copy-missing') });
     await o.update(async (t) => t.write('a.txt', 'a'));
     await assert.rejects(
       o.update(async (t) => t.copy('missing.txt', 'b.txt')),
@@ -241,7 +242,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
   });
 
   it('rejects renaming a logical path the object does not contain', async () => {
-    const o = ocfl.object({ id: 'rename-missing', root: path.join(tempdir, 'rename-missing') });
+    const o = new OcflObject({ id: 'rename-missing', root: path.join(tempdir, 'rename-missing') });
     await o.update(async (t) => t.write('a.txt', 'a'));
     await assert.rejects(
       o.update(async (t) => t.rename('missing.txt', 'b.txt')),
@@ -264,7 +265,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
 
       cases.forEach(([name, source, target], index) => {
         it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
-          const o = ocfl.object({ id: `${op}-${index}`, root: path.join(tempdir, `${op}-occupied-${index}`) });
+          const o = new OcflObject({ id: `${op}-${index}`, root: path.join(tempdir, `${op}-occupied-${index}`) });
           await o.update(async (t) => {
             for (const [logicalPath, content] of Object.entries(files)) {
               await t.write(logicalPath, content);
@@ -280,7 +281,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
       });
 
       it('throws FILE_NOT_FOUND for a missing source, even onto an existing file', async () => {
-        const o = ocfl.object({ id: `${op}-missing`, root: path.join(tempdir, `${op}-occupied-missing`) });
+        const o = new OcflObject({ id: `${op}-missing`, root: path.join(tempdir, `${op}-occupied-missing`) });
         await o.update(async (t) => t.write('a.txt', 'a'));
         await assert.rejects(
           o.update(async (t) => t[op]('missing.txt', 'a.txt')),
@@ -289,7 +290,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
       });
 
       it('replaces a target removed first in the same transaction, keeping the earlier version', async () => {
-        const o = ocfl.object({ id: `${op}-removed`, root: path.join(tempdir, `${op}-occupied-removed`) });
+        const o = new OcflObject({ id: `${op}-removed`, root: path.join(tempdir, `${op}-occupied-removed`) });
         await o.update(async (t) => {
           await t.write('a.txt', 'a');
           await t.write('b.txt', 'b');
@@ -307,12 +308,12 @@ describe('OcflObject with a malformed or missing inventory', () => {
   it('rejects an import target outside the object before reading any source', async () => {
     const source = path.join(tempdir, 'import-source.txt');
     await fs.promises.writeFile(source, 'x');
-    const o = ocfl.object({ id: 'import-fail', root: path.join(tempdir, 'import-fail') });
+    const o = new OcflObject({ id: 'import-fail', root: path.join(tempdir, 'import-fail') });
     await assert.rejects(o.import([{ source, target: '../escape.txt' }]), ocflError('INVALID_LOGICAL_PATH'));
   });
 
   it('rolls back and rethrows the update error when an earlier operation failed', async () => {
-    const o = ocfl.object({ id: 'rollback', root: path.join(tempdir, 'rollback') });
+    const o = new OcflObject({ id: 'rollback', root: path.join(tempdir, 'rollback') });
     await assert.rejects(
       o.update(async (t) => {
         await t.write('a.txt', 'a');
@@ -331,7 +332,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
     await fs.promises.writeFile(path.join(dir, 'ok.txt'), 'ok');
     await fs.promises.writeFile(path.join(dir, 'locked.txt'), 'locked');
     await fs.promises.chmod(path.join(dir, 'locked.txt'), 0o000);
-    const o = ocfl.object({ id: 'import-dir', root: path.join(tempdir, 'import-dir-object') });
+    const o = new OcflObject({ id: 'import-dir', root: path.join(tempdir, 'import-dir-object') });
     try {
       await assert.rejects(o.import(dir));
       await assert.rejects(o.count(), ocflError('OBJECT_NOT_FOUND'));
@@ -341,7 +342,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
   });
 
   it('rolls back an update that leaves a writable stream open', async () => {
-    const o = ocfl.object({ id: 'open-writer', root: path.join(tempdir, 'open-writer') });
+    const o = new OcflObject({ id: 'open-writer', root: path.join(tempdir, 'open-writer') });
     await assert.rejects(
       o.update(async (t) => {
         await t.createWritable('a.txt');
@@ -364,12 +365,12 @@ describe('OcflObject.ocflVersion', () => {
 
   async function existingObject(name: string, ocflVersion: OcflVersion) {
     const root = path.join(tempdir, name);
-    await ocfl.object({ id: name, root, ocflVersion }).update(async (t) => t.write('a.txt', 'a'));
+    await new OcflObject({ id: name, root, ocflVersion }).update(async (t) => t.write('a.txt', 'a'));
     return root;
   }
 
   it('reports the version of a 1.0 object when none is configured', async () => {
-    const o = ocfl.object({ root: await existingObject('unconfigured', '1.0') });
+    const o = new OcflObject({ root: await existingObject('unconfigured', '1.0') });
     await o.load();
     assert.strictEqual(o.ocflVersion, '1.0');
   });
@@ -389,32 +390,32 @@ describe('OcflObject.ocflVersion', () => {
   });
 
   it('ignores a configured version that differs from the object', async () => {
-    const o = ocfl.object({ root: await existingObject('configured-earlier', '1.1'), ocflVersion: '1.0' });
+    const o = new OcflObject({ root: await existingObject('configured-earlier', '1.1'), ocflVersion: '1.0' });
     await o.load();
     assert.strictEqual(o.ocflVersion, '1.1');
   });
 
   it('is correct after refresh on an object that has not been loaded', async () => {
-    const o = ocfl.object({ root: await existingObject('refresh', '1.0') });
+    const o = new OcflObject({ root: await existingObject('refresh', '1.0') });
     await o.refresh();
     assert.strictEqual(o.ocflVersion, '1.0');
   });
 
   it('is correct after update on an object that has not been loaded', async () => {
-    const o = ocfl.object({ root: await existingObject('update', '1.0') });
+    const o = new OcflObject({ root: await existingObject('update', '1.0') });
     await o.update(async (t) => t.write('b.txt', 'b'));
     assert.strictEqual(o.ocflVersion, '1.0');
   });
 
   it('is not changed by reading an earlier version with an older inventory', async () => {
     const root = await existingObject('earlier-inventory', '1.1');
-    const o = ocfl.object({ root });
+    const o = new OcflObject({ root });
     await o.update(async (t) => t.write('b.txt', 'b'));
     const earlier = path.join(root, 'v1', 'inventory.json');
     const data = (await fs.promises.readFile(earlier, 'utf8')).replace('https://ocfl.io/1.1/spec/#inventory', 'https://ocfl.io/1.0/spec/#inventory');
     await writeInventory(earlier, data);
 
-    const reader = ocfl.object({ root });
+    const reader = new OcflObject({ root });
     await reader.load();
     assert.strictEqual(reader.ocflVersion, '1.1');
     assert.strictEqual((await reader.getInventory('v1'))?.type, 'https://ocfl.io/1.0/spec/#inventory');
@@ -423,14 +424,14 @@ describe('OcflObject.ocflVersion', () => {
 
   it('returns the configured version or the default before loading', async () => {
     const configured = await existingObject('before-load-configured', '1.1');
-    assert.strictEqual(ocfl.object({ root: configured, ocflVersion: '1.0' }).ocflVersion, '1.0');
+    assert.strictEqual(new OcflObject({ root: configured, ocflVersion: '1.0' }).ocflVersion, '1.0');
     const unconfigured = await existingObject('before-load-default', '1.0');
-    assert.strictEqual(ocfl.object({ root: unconfigured }).ocflVersion, '1.1');
+    assert.strictEqual(new OcflObject({ root: unconfigured }).ocflVersion, '1.1');
   });
 
   it('leaves the version of an existing object unchanged on update', async () => {
     const root = await existingObject('update-unchanged', '1.0');
-    const o = ocfl.object({ root, ocflVersion: '1.1' });
+    const o = new OcflObject({ root, ocflVersion: '1.1' });
     await o.update(async (t) => t.write('b.txt', 'b'));
     assert.deepStrictEqual(
       (await fs.promises.readdir(root)).filter((f) => f.startsWith('0=')),

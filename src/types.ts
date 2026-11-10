@@ -92,7 +92,7 @@ export type OcflStorageLayout<N extends OcflLayoutName = OcflLayoutName> = N ext
     }
   : never;
 
-/** Configuration options for an OCFL Object. */
+/** Configuration options for an OCFL storage root and the objects opened through it. */
 export type OcflStorageConfig = {
   /** Absolute path to the ocfl storage root. */
   root: string;
@@ -121,7 +121,7 @@ export type OcflStorageConfig = {
   ocflVersion?: OcflVersion | undefined;
 };
 
-/** Configuration options for an OCFL Object. */
+/** @internal */
 export type OcflObjectConfig = {
   /** Absolute path to the ocfl object root. */
   root: string;

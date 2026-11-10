@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
-import ocfl, { type OcflObject, type OcflObjectTransaction } from '../../src/index.ts';
+import type { OcflObjectTransaction } from '../../src/index.ts';
+import { OcflObject } from '../../src/object.ts';
 
 const sha512 = (text: string) => createHash('sha512').update(text).digest('hex');
 
@@ -29,7 +30,7 @@ describe('transaction from update() with no callback', () => {
     await fs.promises.writeFile(path.join(source, 'data', 'a', 'a.txt'), 'data a');
     await fs.promises.writeFile(path.join(source, 'data', 'b', 'b.txt'), 'data b');
     await fs.promises.writeFile(path.join(source, 'data', 'a', 'aa', 'aa.txt'), 'data aa');
-    object = ocfl.object({ id: 'test', root, workspace });
+    object = new OcflObject({ id: 'test', root, workspace });
   });
 
   afterEach(async () => {
@@ -106,7 +107,7 @@ describe('transaction from update() with no callback', () => {
   });
 
   it('write with fixity', async () => {
-    const withFixity = ocfl.object({ id: 'test', root, workspace, fixityAlgorithms: ['size', 'crc32'] });
+    const withFixity = new OcflObject({ id: 'test', root, workspace, fixityAlgorithms: ['size', 'crc32'] });
     const trx = await begin(withFixity);
     await trx.write('test.txt', 'Hello, World!');
     await trx.commit();
@@ -116,7 +117,7 @@ describe('transaction from update() with no callback', () => {
   });
 
   it('records created, message, user and fixity on a later version, leaving earlier versions as they were', async () => {
-    const withFixity = ocfl.object({ id: 'test', root, workspace, fixityAlgorithms: ['size'] });
+    const withFixity = new OcflObject({ id: 'test', root, workspace, fixityAlgorithms: ['size'] });
     let trx = await begin(withFixity);
     await trx.write('a.txt', 'first');
     await trx.commit({ message: 'one', user: { name: 'ann' } });
@@ -126,7 +127,7 @@ describe('transaction from update() with no callback', () => {
     await trx.write('b.txt', 'second!');
     await trx.commit({ message: 'two', user: { name: 'bob', address: 'mailto:bob@example.com' } });
 
-    const inventory = (await ocfl.object({ root }).getInventory())!;
+    const inventory = (await new OcflObject({ root }).getInventory())!;
     assert.strictEqual(inventory.head, 'v2');
     assert.strictEqual(inventory.message, 'two');
     assert.deepStrictEqual(inventory.user, { name: 'bob', address: 'mailto:bob@example.com' });
@@ -143,7 +144,7 @@ describe('transaction from update() with no callback', () => {
     await trx.write('a.txt', 'same');
     await trx.commit();
     assert.strictEqual(object.inventory!.head, 'v1');
-    assert.strictEqual((await ocfl.object({ root }).getInventory())!.head, 'v1');
+    assert.strictEqual((await new OcflObject({ root }).getInventory())!.head, 'v1');
     assert(!fs.existsSync(path.join(root, 'v2')));
     assert(!fs.existsSync(path.join(workspace, 'v2')));
   });
@@ -159,7 +160,7 @@ describe('transaction from update() with no callback', () => {
     await trx.remove('b.txt');
     await trx.commit();
 
-    const reader = ocfl.object({ root });
+    const reader = new OcflObject({ root });
     await reader.load();
     const inventory = reader.inventory!;
     assert.deepStrictEqual(Object.keys(inventory.versions), ['v1', 'v2']);

@@ -34,7 +34,7 @@ The package is ESM-only and publishes compiled code from `dist/`.
 
   ```diff
   - import ocfl from '@ocfl/ocfl';
-  + import { object, storage } from '@ocfl/ocfl-fs';
+  + import { storage } from '@ocfl/ocfl-fs';
   + // or
   + import * as ocfl from '@ocfl/ocfl-fs';
   ```
@@ -58,7 +58,7 @@ The declarations show where a value can be missing, so code that assumed otherwi
 | `inventory.getDigest()`, `inventory.versionState()` | `undefined` for an unknown logical path or version                                                           |
 | `file.size`, `file.lastModified`                    | `number \| undefined`; set only when the object was loaded with `{ filesMetadata: true }`                    |
 
-Optional config properties (`OcflStorageConfig`, `OcflObjectConfig`, commit options) accept an explicit `undefined`, so they work with `exactOptionalPropertyTypes`.
+Optional config properties (`OcflStorageConfig`, commit options) accept an explicit `undefined`, so they work with `exactOptionalPropertyTypes`.
 
 `readFile()` on `OcflObject` is typed `Promise<string>` when given an encoding and `Promise<Uint8Array>` otherwise. An encoding has to be a `BufferEncoding`, so a value typed `string` no longer compiles: narrow it or cast it first. When the compiler can't tell whether there's an encoding, as with a value typed `BufferEncoding | undefined`, the result is typed `Promise<string | Uint8Array>`. `null` is no longer accepted as the options argument, and an options object declared as an `interface` has to be spread or redeclared as a `type`. `file.buffer()` is typed for bytes only and doesn't accept an encoding, so use `file.text(encoding)` for a string.
 
@@ -371,16 +371,40 @@ Each public member now corresponds to something the OCFL specification or the li
 | `OcflConstants`                                                                                          | `OCFL_VERSIONS`, on the default API and as a named export of `@ocfl/ocfl-fs`. The other values were internal        |
 | The `MultiHasher` type                                                                                   | Nothing: no public signature used it                                                                                |
 | `OcflStore`, including `createReadStream()` and `createWriteStream()`                                    | Nothing: the library always uses `node:fs`; see [Filesystem only](#filesystem-only)                                 |
-| `OcflFsStore`                                                                                            | Nothing: `storage()`, `object()`, `createStorage()` and `loadStorage()` use the filesystem directly                 |
+| `OcflFsStore`                                                                                            | Nothing: `storage()`, `createStorage()` and `loadStorage()` use the filesystem directly                             |
 | `OcflFsStoreConfig`                                                                                      | Nothing: the only option was `fs`; see [Filesystem only](#filesystem-only)                                          |
-| `implementOcfl`                                                                                          | `storage()`, `object()`, `createStorage()`, `loadStorage()`, `storageLayout()` and `OCFL_VERSIONS`                  |
+| `implementOcfl`                                                                                          | `storage()`, `createStorage()`, `loadStorage()`, `storageLayout()` and `OCFL_VERSIONS`                              |
 | The `ListedFile` and `ListOptions` types                                                                 | Nothing: they only described `OcflStore.list()`                                                                     |
-| The second argument to `storage()`, `object()`, `createStorage()` and `loadStorage()`                    | Nothing: put the data in a real directory; see [Filesystem only](#filesystem-only)                                  |
+| The second argument to `storage()`, `createStorage()` and `loadStorage()`                                | Nothing: put the data in a real directory; see [Filesystem only](#filesystem-only)                                  |
 | Members whose names start with `_`, such as `object._inventory` and `transaction._commit()`              | Nothing: they were internal; see [Internal members](#internal-members)                                              |
+| `object()` and `OcflObjectConfig`                                                                        | `storage.object(id)` or `storage.object({ root })`; see [Opening an object](#opening-an-object)                     |
+
+### Opening an object
+
+Objects are opened only through their storage root, which supplies the object's OCFL version, workspace and digest settings. `object()` opened one by its path alone, so a new object was always OCFL 1.1, even in a 1.0 storage root, and without a `workspace` its updates wrote straight into the object root.
+
+Open the storage root, then the object by its id, or by its path relative to the storage root:
+
+```diff
+- const object = ocfl.object({ root: '/var/data/myocfl/ab/cd/object-1' });
++ const storage = await ocfl.loadStorage({ root: '/var/data/myocfl' });
++ const object = storage.object('object-1');
+```
+
+or, by path:
+
+```js
+import path from 'node:path';
+
+const storage = await ocfl.loadStorage({ root: '/var/data/myocfl' });
+const object = storage.object({ root: path.relative(storage.root, '/var/data/myocfl/ab/cd/object-1') });
+```
+
+An object that isn't in any storage root can't be opened with this library. To work with one, create a storage root and move the object into it.
 
 ### Filesystem only
 
-The library now stores OCFL on the local filesystem through `node:fs`, and storing it anywhere else isn't supported. `storage()`, `object()`, `createStorage()` and `loadStorage()` take one configuration argument, and the `{ fs }` option has gone.
+The library now stores OCFL on the local filesystem through `node:fs`, and storing it anywhere else isn't supported. `storage()`, `createStorage()` and `loadStorage()` take one configuration argument, and the `{ fs }` option has gone.
 
 **Warning for JavaScript callers:** a second argument isn't checked at runtime, so untyped code that still passes `{ fs }` has it silently ignored and writes to the real filesystem. A `root` meant for [memfs](https://www.npmjs.com/package/memfs) would end up on your disk. TypeScript rejects the second argument, but find and remove any such call in plain JavaScript before upgrading.
 
@@ -553,7 +577,7 @@ Loading a storage root that declares either of them, or any other layout this li
 
 | Type                    | Get one from                                        |
 | ----------------------- | --------------------------------------------------- |
-| `OcflObject`            | `object()` or `storage.object()`                    |
+| `OcflObject`            | `storage.object()`                                  |
 | `OcflStorage`           | `storage()`, `createStorage()` or `loadStorage()`   |
 | `OcflObjectTransaction` | `object.update()`, which passes it to your callback |
 | `OcflObjectInventory`   | `object.getInventory()` or `object.inventory`       |
