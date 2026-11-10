@@ -151,10 +151,10 @@ Storage layouts and digest algorithms are a fixed, built-in set, and there's no 
 
 ## Development
 
-Clone the Git repo with submodules included:
+Clone the Git repo:
 
 ```bash
-git clone --recurse-submodules https://github.com/Language-Research-Technology/ocfl-js
+git clone https://github.com/Language-Research-Technology/ocfl-js
 ```
 
 The package lives at the repository root. Development needs Node.js 22.18 or later. Install the dependencies:
