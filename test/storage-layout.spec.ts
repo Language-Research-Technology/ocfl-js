@@ -114,28 +114,21 @@ describe('choosing a layout that is not supported', () => {
   });
 
   for (const [entryPoint, choose] of invalidLayoutEntryPoints) {
-    it(`rejects an unknown name through ${entryPoint}`, () => {
-      assert.throws(() => choose('no-such-layout' as never), ocflError('UNSUPPORTED_LAYOUT'));
-    });
-
-    for (const name of ['0006-flat-omit-prefix-storage-layout', '0007-n-tuple-omit-prefix-storage-layout', '0009-digest-algorithms']) {
+    for (const name of [
+      'no-such-layout',
+      '0006-flat-omit-prefix-storage-layout',
+      '0007-n-tuple-omit-prefix-storage-layout',
+      '0009-digest-algorithms',
+      'FlatDirectStorageLayout',
+      'constructor',
+      '__proto__',
+      'toString',
+    ]) {
       it(`rejects ${name} through ${entryPoint}`, () => {
         assert.throws(() => choose(name as never), ocflError('UNSUPPORTED_LAYOUT'));
         assert.throws(() => choose({ extensionName: name } as never), ocflError('UNSUPPORTED_LAYOUT'));
       });
     }
-
-    for (const name of ['constructor', '__proto__', 'toString']) {
-      it(`rejects ${name}, a property every object inherits, through ${entryPoint}`, () => {
-        assert.throws(() => choose(name as never), ocflError('UNSUPPORTED_LAYOUT'));
-        assert.throws(() => choose({ extensionName: name } as never), ocflError('UNSUPPORTED_LAYOUT'));
-      });
-    }
-
-    it(`rejects a class name through ${entryPoint}`, () => {
-      assert.throws(() => choose('FlatDirectStorageLayout' as never), ocflError('UNSUPPORTED_LAYOUT'));
-      assert.throws(() => choose({ extensionName: 'FlatDirectStorageLayout' } as never), ocflError('UNSUPPORTED_LAYOUT'));
-    });
 
     it(`rejects a layout object through ${entryPoint}`, () => {
       const layout = ocfl.storageLayout('0002-flat-direct-storage-layout');
@@ -182,9 +175,6 @@ describe('storageLayout without a loaded storage', () => {
   });
 
   it('maps an id with the 0004 layout', () => {
-    assert.strictEqual(
-      ocfl.storageLayout('0004-hashed-n-tuple-storage-layout').map('object-01'),
-      '3c0/ff4/240/3c0ff4240c1e116dba14c7627f2319b58aa3d77606d0d90dfc6161608ac987d4',
-    );
+    assert.strictEqual(ocfl.storageLayout('0004-hashed-n-tuple-storage-layout').map('object-01'), `3c0/ff4/240/${SHA256_OF_OBJECT_01}`);
   });
 });
