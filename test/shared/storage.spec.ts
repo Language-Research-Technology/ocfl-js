@@ -206,16 +206,17 @@ describe('configured layout of a loaded storage root', () => {
   after(async () => {
     await fs.promises.rm(tempdir, { recursive: true, force: true });
   });
-  const createRoot = async ({ layoutFile, extensionConfig }: { layoutFile?: string; extensionConfig?: object } = {}) => {
+  const createRoot = async ({ layoutFile, extensionConfig }: { layoutFile?: string; extensionConfig?: object | string } = {}) => {
     const root = path.join(tempdir, `root-${rootCount++}`);
     await fs.promises.mkdir(root);
     await fs.promises.writeFile(path.join(root, '0=ocfl_1.1'), 'ocfl_1.1\n');
     if (layoutFile !== undefined) {
       await fs.promises.writeFile(path.join(root, 'ocfl_layout.json'), layoutFile);
     }
-    if (extensionConfig) {
+    if (extensionConfig !== undefined) {
       await fs.promises.mkdir(path.join(root, 'extensions', HASHED), { recursive: true });
-      await fs.promises.writeFile(path.join(root, 'extensions', HASHED, 'config.json'), JSON.stringify(extensionConfig));
+      const content = typeof extensionConfig === 'string' ? extensionConfig : JSON.stringify(extensionConfig);
+      await fs.promises.writeFile(path.join(root, 'extensions', HASHED, 'config.json'), content);
     }
     return root;
   };
@@ -243,13 +244,12 @@ describe('configured layout of a loaded storage root', () => {
         path: path.join(root, 'ocfl_layout.json'),
       });
     });
-  }
 
-  it('still loads a root with an unparsable ocfl_layout.json when no layout is configured', async () => {
-    const root = await createRoot({ layoutFile: 'not json' });
-    const storage = await ocfl.storage({ root }).load();
-    assert.throws(() => storage.objectRoot('abc'), /No layout defined/);
-  });
+    it(`rejects a root whose ocfl_layout.json ${problem} when no layout is configured`, async () => {
+      const root = await createRoot({ layoutFile });
+      await assert.rejects(ocfl.storage({ root }).load(), { code: 'E070', path: path.join(root, 'ocfl_layout.json') });
+    });
+  }
 
   for (const extension of ['0006-flat-omit-prefix-storage-layout', '0007-n-tuple-omit-prefix-storage-layout', '9999-unimplemented-layout', 'constructor']) {
     it(`rejects a root declaring ${extension} with no layout configured`, async () => {
@@ -276,9 +276,15 @@ describe('configured layout of a loaded storage root', () => {
     });
   }
 
+  it('rejects a root whose ocfl_layout.json extension is empty', async () => {
+    const root = await createRoot({ layoutFile: declaring('') });
+    await assert.rejects(ocfl.storage({ root }).load(), { code: 'UNSUPPORTED_LAYOUT' });
+    await assert.rejects(ocfl.storage({ root, layout: '0002-flat-direct-storage-layout' }).load(), { code: 'UNSUPPORTED_LAYOUT' });
+  });
+
   it('rejects a root whose ocfl_layout.json extension is a non-string holding a supported name', async () => {
     const root = await createRoot({ layoutFile: JSON.stringify({ extension: ['0002-flat-direct-storage-layout'] }) });
-    await assert.rejects(ocfl.storage({ root }).load(), { code: 'UNSUPPORTED_LAYOUT' });
+    await assert.rejects(ocfl.storage({ root }).load(), { code: 'E070' });
   });
 
   it('rejects a root whose extension config extensionName is a non-string holding a supported name', async () => {
@@ -367,6 +373,69 @@ describe('configured layout of a loaded storage root', () => {
       assert.strictEqual(await object.getFile('a.txt')?.text(), 'content');
     });
   }
+
+  for (const [problem, extensionConfig] of [
+    ['is not JSON', '{ truncated'],
+    ['is empty', ''],
+    ['has a null root', 'null'],
+    ['has an array root', '[]'],
+  ] as const) {
+    it(`rejects a root whose extension config ${problem}`, async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig });
+      await assert.rejects(
+        ocfl.storage({ root }).load(),
+        (error: OcflError) => error.code === 'INVALID_LAYOUT_CONFIG' && error.message.includes(path.join(root, 'extensions', HASHED, 'config.json')),
+      );
+    });
+
+    it(`rejects a configured layout when the root extension config ${problem}`, async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig });
+      await assert.rejects(ocfl.storage({ root, layout: { extensionName: HASHED, tupleSize: 4 } }).load(), { code: 'INVALID_LAYOUT_CONFIG' });
+    });
+  }
+
+  it('loads a root with no extension config with the layout defaults', async () => {
+    const root = await createRoot({ layoutFile: declaring(HASHED) });
+    const storage = await ocfl.storage({ root }).load();
+    assert.strictEqual(storage.objectRoot('abc'), path.join('ba7', '816', 'bf8', DIGESTS_OF_ABC.sha256));
+  });
+
+  it('loads a root with no ocfl_layout.json and no layout configured without a layout', async () => {
+    const root = await createRoot();
+    const storage = await ocfl.storage({ root }).load();
+    assert.throws(() => storage.objectRoot('abc'), /No layout defined/);
+  });
+
+  it('rejects an unsupported declared layout before reading its extension config', async () => {
+    const extension = '9999-unimplemented-layout';
+    const root = await createRoot({ layoutFile: declaring(extension) });
+    await fs.promises.mkdir(path.join(root, 'extensions', extension, 'config.json'), { recursive: true });
+    await assert.rejects(ocfl.storage({ root }).load(), { code: 'UNSUPPORTED_LAYOUT' });
+  });
+
+  it('rejects a declared layout name that is a path before reading outside the root', async () => {
+    const root = await createRoot({ layoutFile: declaring('../outside') });
+    await fs.promises.mkdir(path.join(root, 'outside', 'config.json'), { recursive: true });
+    await assert.rejects(ocfl.storage({ root }).load(), { code: 'UNSUPPORTED_LAYOUT' });
+  });
+
+  it('rejects a root whose extension config has invalid parameter values', async () => {
+    const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { digestAlgorithm: 'not-a-digest' } });
+    await assert.rejects(ocfl.storage({ root }).load(), { code: 'INVALID_LAYOUT_CONFIG' });
+  });
+
+  it('rejects a root whose extension config cannot be read with the file system error', async () => {
+    const root = await createRoot({ layoutFile: declaring(HASHED) });
+    await fs.promises.mkdir(path.join(root, 'extensions', HASHED, 'config.json'), { recursive: true });
+    await assert.rejects(ocfl.storage({ root }).load(), { code: 'EISDIR' });
+  });
+
+  it('rejects a root whose ocfl_layout.json cannot be read with the file system error', async () => {
+    const root = await createRoot();
+    await fs.promises.mkdir(path.join(root, 'ocfl_layout.json'));
+    await assert.rejects(ocfl.storage({ root }).load(), { code: 'EISDIR' });
+    await assert.rejects(ocfl.storage({ root, layout: HASHED }).load(), { code: 'EISDIR' });
+  });
 
   it('uses the layout and extension config of the root when no layout is configured', async () => {
     const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: HASHED, tupleSize: 2 } });

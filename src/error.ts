@@ -12,6 +12,7 @@ type OcflErrorCode =
   | 'FILE_EXISTS'
   | 'UNSUPPORTED_LAYOUT'
   | 'LAYOUT_MISMATCH'
+  | 'INVALID_LAYOUT_CONFIG'
   | 'UNSUPPORTED_FILE_TYPE'
   | 'SOURCE_CHANGED'
   | ValidationErrorCode;

@@ -9,7 +9,7 @@ import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-stor
 import { createLayout, supportedLayoutClass } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
 import * as store from './store.ts';
-import { findNamasteVersion, isDirEmpty } from './utils.ts';
+import { findNamasteVersion, isDirEmpty, parseJsonObject, readIfExists } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
@@ -23,6 +23,24 @@ const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1
 async function readSpecText(ocflVersion: OcflVersion) {
   const file = SPEC_TEXT_FILES[ocflVersion];
   return { file, content: await fs.promises.readFile(new URL(`../resources/${file}`, import.meta.url)) };
+}
+
+/** @throws `ValidationError` `E070` if `content` has no string `extension` */
+function declaredLayoutName(file: string, content: string): string {
+  const extension = parseJsonObject(content)?.extension;
+  if (typeof extension !== 'string') {
+    throw createError('E070', file, 'it has no string extension');
+  }
+  return extension;
+}
+
+/** @throws {@link OcflError} `INVALID_LAYOUT_CONFIG` if `content` isn't a JSON object */
+function parseLayoutConfig(file: string, content: string): OcflExtensionConfig {
+  const config = parseJsonObject(content);
+  if (!config) {
+    throw new OcflError('INVALID_LAYOUT_CONFIG', `The layout config ${file} is not a JSON object.`);
+  }
+  return config;
 }
 
 /**
@@ -61,10 +79,9 @@ class OcflStorage {
 
   #resolveLayout(declaredName: string | undefined, rootLayoutConfig: OcflExtensionConfig | undefined) {
     const configured = this.#configuredLayout;
-    if (!declaredName) {
+    if (declaredName === undefined) {
       return configured;
     }
-    supportedLayoutClass(declaredName);
     const rootName = configured ? declaredName : (rootLayoutConfig?.extensionName ?? declaredName);
     const rootLayoutClass = supportedLayoutClass(rootName);
     if (configured && configured.name !== rootName) {
@@ -148,12 +165,16 @@ class OcflStorage {
 
   /**
    * Check namaste, retrieve storage layout extension, and read its config file.
+   * @throws `ValidationError` `E070` if `ocfl_layout.json` exists but has no string `extension`.
+   * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if `ocfl_layout.json` names a layout this library doesn't implement.
+   * @throws {@link OcflError} `INVALID_LAYOUT_CONFIG` if the layout's `config.json` isn't a JSON object or has parameters the layout rejects.
+   * @throws The file system error if `ocfl_layout.json` or the layout's `config.json` exists but can't be read.
    */
   async load(): Promise<OcflStorage> {
     const prefix = NAMASTE_PREFIX_STORAGE;
-    const [ocflVersion, layout] = (
-      await Promise.allSettled([findNamasteVersion(prefix, this.root), fs.promises.readFile(path.join(this.root, OCFL_LAYOUT), 'utf8')])
-    ).map((r) => (r.status === 'fulfilled' ? r.value : undefined));
+    const layoutPath = path.join(this.root, OCFL_LAYOUT);
+    const [namaste, layoutRead] = await Promise.allSettled([findNamasteVersion(prefix, this.root), readIfExists(layoutPath)]);
+    const ocflVersion = namaste.status === 'fulfilled' ? namaste.value : undefined;
     if (ocflVersion === '') {
       throw createError('E080', this.root);
     }
@@ -167,23 +188,19 @@ class OcflStorage {
       throw createError('E081', this.root, `configured ocflVersion ${configured} is later than the storage root's ${rootVersion}`);
     }
     this.ocflVersion = configured ?? rootVersion;
-    let layoutName: string | undefined;
-    let layoutConfig: OcflExtensionConfig | undefined;
-    // load layout
-    try {
-      if (layout) {
-        layoutName = JSON.parse(layout).extension;
-      }
-    } catch (_error) {}
-    if (layout !== undefined && typeof layoutName !== 'string' && this.#configuredLayout) {
-      throw createError('E070', path.join(this.root, OCFL_LAYOUT), 'the configured layout cannot be checked against this file');
+    if (layoutRead.status === 'rejected') {
+      throw layoutRead.reason;
     }
-    // load ext config if exists
-    if (layoutName) {
-      try {
-        const cfgstr = await fs.promises.readFile(path.join(this.root, EXTENSIONS_DIR, layoutName, EXTENSION_CONFIG), 'utf8');
-        layoutConfig = JSON.parse(cfgstr);
-      } catch (_error) {}
+    const layout = layoutRead.value;
+    const layoutName = layout === undefined ? undefined : declaredLayoutName(layoutPath, layout);
+    let layoutConfig: OcflExtensionConfig | undefined;
+    if (layoutName !== undefined) {
+      supportedLayoutClass(layoutName);
+      const configPath = path.join(this.root, EXTENSIONS_DIR, layoutName, EXTENSION_CONFIG);
+      const content = await readIfExists(configPath);
+      if (content !== undefined) {
+        layoutConfig = parseLayoutConfig(configPath, content);
+      }
     }
     this.#layout = this.#resolveLayout(layoutName, layoutConfig);
 

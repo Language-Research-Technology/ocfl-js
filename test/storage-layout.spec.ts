@@ -146,6 +146,26 @@ describe('choosing a layout that is not supported', () => {
   }
 });
 
+describe('choosing a layout with invalid parameters', () => {
+  const invalidParameters: [string, OcflLayoutConfig][] = [
+    ['an unknown digestAlgorithm for 0003', { extensionName: '0003-hash-and-id-n-tuple-storage-layout', digestAlgorithm: 'nope' }],
+    ['an unknown digestAlgorithm for 0004', { extensionName: '0004-hashed-n-tuple-storage-layout', digestAlgorithm: 'nope' }],
+    ['tuples longer than the digest for 0003', { extensionName: '0003-hash-and-id-n-tuple-storage-layout', tupleSize: 33, numberOfTuples: 2 }],
+    ['tuples longer than the digest for 0004', { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 33, numberOfTuples: 2 }],
+    [
+      'shortObjectRoot with tuples using the whole digest for 0004',
+      { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 32, numberOfTuples: 2, shortObjectRoot: true },
+    ],
+  ];
+  for (const [entryPoint, choose] of invalidLayoutEntryPoints) {
+    for (const [problem, layout] of invalidParameters) {
+      it(`rejects ${problem} through ${entryPoint}`, () => {
+        assert.throws(() => choose(layout as never), ocflError('INVALID_LAYOUT_CONFIG'));
+      });
+    }
+  }
+});
+
 describe('storageLayout without a loaded storage', () => {
   const HASHED = '0004-hashed-n-tuple-storage-layout';
 
