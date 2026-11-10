@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
-import { OcflObject } from '../src/object.ts';
+import type { OcflObject } from '../src/object.ts';
+import { testObject } from './test-object.ts';
 
 const CONCURRENCY_LIMIT = 10;
 
@@ -30,7 +31,7 @@ describe('import', () => {
     tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-import-'));
     source = path.join(tempdir, 'source');
     await fs.promises.mkdir(source);
-    object = new OcflObject({ id: 'test', root: path.join(tempdir, 'object') });
+    object = testObject({ id: 'test', root: path.join(tempdir, 'object') });
   });
 
   afterEach(async () => {
@@ -140,7 +141,7 @@ describe('import', () => {
     });
 
     it("puts a directory's contents at the root when omitted, from either entry point", async () => {
-      const other = new OcflObject({ id: 'other', root: path.join(tempdir, 'other') });
+      const other = testObject({ id: 'other', root: path.join(tempdir, 'other') });
       await object.import(source);
       await other.update(async (t) => t.import(source));
       assert.deepStrictEqual(await logicalPaths(object), ['a.txt', 'sub/b.txt']);

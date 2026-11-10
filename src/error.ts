@@ -17,6 +17,7 @@ type OcflErrorCode =
   | 'UNSUPPORTED_FILE_TYPE'
   | 'SOURCE_CHANGED'
   | 'MUTABLE_HEAD_ACTIVE'
+  | 'CROSS_FILESYSTEM_MOVE'
   | ValidationErrorCode;
 
 /** Base class for errors a client can handle by their `code`. The message isn't part of the contract. */

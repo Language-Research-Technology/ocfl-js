@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import { isErrnoException } from './utils.ts';
+import { hasErrorCode } from './utils.ts';
 
 interface ListedFile {
   /** Relative to the listed directory */
@@ -11,10 +11,6 @@ interface ListedFile {
 }
 
 const MAX_PENDING_STATS = 32;
-
-function hasErrorCode(error: unknown, ...codes: string[]) {
-  return isErrnoException(error) && codes.includes(error.code as string);
-}
 
 async function createParents(filePath: string) {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
@@ -79,35 +75,34 @@ export async function* listFiles(dirPath: string): AsyncGenerator<ListedFile> {
 
 export async function move(source: string, target: string): Promise<void> {
   await createParents(target);
-  try {
-    await fs.promises.rename(source, target);
-    return;
-  } catch (error) {
-    if (!hasErrorCode(error, 'EXDEV')) {
-      throw error;
-    }
-  }
-  // Stage on the target's filesystem so the final step is an atomic rename.
-  const staging = await fs.promises.mkdtemp(path.join(path.dirname(target), `.${path.basename(target)}-`));
-  try {
-    const staged = path.join(staging, path.basename(target));
-    await fs.promises.cp(source, staged, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
-    await fs.promises.rename(staged, target);
-  } finally {
-    await fs.promises.rm(staging, { recursive: true, force: true });
-  }
-  // The target is complete, so a leftover source must not fail the move
-  await fs.promises.rm(source, { recursive: true, force: true }).catch(() => {});
+  await fs.promises.rename(source, target);
 }
 
-/** A missing directory is not an error */
-export async function removeIfEmpty(dirPath: string): Promise<void> {
+/**
+ * A missing directory is not an error
+ * @returns Whether the directory is gone
+ */
+export async function removeIfEmpty(dirPath: string): Promise<boolean> {
   try {
     await fs.promises.rmdir(dirPath);
+    return true;
   } catch (error) {
+    if (hasErrorCode(error, 'ENOENT')) {
+      return true;
+    }
     // POSIX allows EEXIST in place of ENOTEMPTY
-    if (!hasErrorCode(error, 'ENOENT', 'ENOTEMPTY', 'EEXIST')) {
-      throw error;
+    if (hasErrorCode(error, 'ENOTEMPTY', 'EEXIST')) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+/** Remove `dirPath` and then each parent while it is empty, stopping below `stopAt` */
+export async function removeEmptyAncestors(dirPath: string, stopAt: string): Promise<void> {
+  for (let dir = dirPath; dir.startsWith(stopAt + path.sep); dir = path.dirname(dir)) {
+    if (!(await removeIfEmpty(dir))) {
+      return;
     }
   }
 }

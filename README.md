@@ -68,6 +68,8 @@ To include a human-readable copy of the OCFL spec in a new storage root, pass `o
 await ocfl.storage({ root: '/var/data/myocfl' }).create({ ocflSpecText: true });
 ```
 
+An update assembles its new version in the storage root's workspace, `extensions/ocfl-js-workspace`, and then renames it into the object, so a reader never sees a partial version. The workspace is always inside the storage root, so the whole storage root must be on one filesystem. `create` documents the workspace in `ocfl-js-workspace.md` at the top of the storage root.
+
 Use the `storage` instance to create an object and import files:
 
 ```js

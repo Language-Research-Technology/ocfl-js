@@ -8,6 +8,7 @@ const OcflConstants = {
   INVENTORY_NAME: 'inventory.json',
   EXTENSIONS_DIR: 'extensions',
   EXTENSION_CONFIG: 'config.json',
+  WORKSPACE_EXTENSION: 'ocfl-js-workspace',
 } as const;
 
 export { OcflConstants };

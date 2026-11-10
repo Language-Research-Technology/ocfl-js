@@ -1,12 +1,11 @@
-// throw error if workspace is the same as root or a subdirectory of root
-
 import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, before, describe, it } from 'node:test';
+import { after, before, describe, it, mock } from 'node:test';
 import ocfl, { type OcflError, type OcflLayoutConfig, type OcflStorage, type OcflStorageConfig, type OcflVersion } from '../../src/index.ts';
-import { OcflObject } from '../../src/object.ts';
+import { emptyDirectoriesUnder } from '../empty-directories.ts';
+import { testObject } from '../test-object.ts';
 import { DIGESTS_OF_ABC } from './digests-of-abc.ts';
 
 describe('constructor', () => {
@@ -25,10 +24,6 @@ describe('constructor', () => {
       },
       { code: 'UNSUPPORTED_LAYOUT' },
     );
-
-    assert.throws(() => {
-      storage = ocfl.storage({ root: '/data/storage-1', workspace: '/data/storage-1/temp' });
-    });
   });
 });
 describe('access existing storage', () => {
@@ -699,11 +694,23 @@ describe('removing an object', () => {
     assert.strictEqual(fs.existsSync(path.join(target, 'inventory.json')), true);
   });
 
+  for (const root of ['extensions/ocfl-js-workspace/an-object', 'extensions', 'Extensions/ocfl-js-workspace/an-object', '../outside', '.']) {
+    it(`refuses to open an object at ${root}, which can't hold an object in this storage root`, async () => {
+      const storage = await createRoot(PATH_DIRECT);
+      assert.throws(() => storage.object({ root }), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
+    });
+  }
+
+  it('refuses an id the layout maps into the extensions directory', async () => {
+    const storage = await createRoot({ ...PATH_DIRECT, suffix: '' });
+    assert.throws(() => storage.object('extensions/ocfl-js-workspace/an-object'), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
+  });
+
   it('deletes nothing in the storage root extensions directory', async () => {
     const layout = { ...PATH_DIRECT, suffix: '' };
     const storage = await createRoot(layout);
     const target = path.join(storage.root, 'extensions', 'an-extension');
-    await new OcflObject({ id: 'extensions/an-extension', root: target }).update(async (t) => t.write('test.txt', 'test'));
+    await testObject({ id: 'extensions/an-extension', root: target }).update(async (t) => t.write('test.txt', 'test'));
     await assert.rejects(storage.remove('extensions/an-extension'), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
     assert.strictEqual(fs.existsSync(path.join(target, 'inventory.json')), true);
   });
@@ -736,4 +743,104 @@ describe('spec violations', () => {
 });
 describe('constructor', () => {
   it('can create new storage', () => {});
+});
+describe('workspace', () => {
+  let tempdir: string;
+  before(async () => {
+    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-workspace-'));
+  });
+  after(async () => {
+    await fs.promises.rm(tempdir, { recursive: true, force: true });
+  });
+  const workspaceOf = (root: string) => path.join(root, 'extensions', 'ocfl-js-workspace');
+  const layouts: OcflLayoutConfig[] = [{ extensionName: '0002-flat-direct-storage-layout' }, { extensionName: '0004-hashed-n-tuple-storage-layout' }];
+
+  it('ignores a workspace passed by an untyped caller', async () => {
+    const scratch = path.join(tempdir, 'scratch');
+    const storage = await ocfl.storage({ root: path.join(tempdir, 'ignores'), workspace: scratch } as OcflStorageConfig).create();
+    const o = storage.object('object-1');
+    await o.update(async (t) => {
+      await t.write('a.txt', 'a');
+      assert.ok(fs.existsSync(path.join(workspaceOf(storage.root), path.relative(storage.root, o.root), 'v1')));
+    });
+    assert.ok(!fs.existsSync(scratch));
+  });
+
+  it("reserves a version when another update's cleanup removes the empty workspace first", async () => {
+    const storage = await ocfl.storage({ root: path.join(tempdir, 'race') }).create();
+    const o = storage.object('object-1');
+    const reservation = path.join(o._workspace, 'v1');
+    const realMkdir = fs.promises.mkdir;
+    let raced = false;
+    const spy = mock.method(fs.promises, 'mkdir', async (...args: Parameters<typeof realMkdir>) => {
+      if (!raced && String(args[0]) === reservation) {
+        raced = true;
+        await fs.promises.rm(path.join(storage.root, 'extensions'), { recursive: true });
+      }
+      return realMkdir.apply(fs.promises, args);
+    });
+    try {
+      await o.update(async (t) => t.write('a.txt', 'a'));
+    } finally {
+      spy.mock.restore();
+    }
+    assert.ok(raced);
+    assert.strictEqual(await o.getFile('a.txt')!.text(), 'a');
+  });
+
+  it('reports any other failure to reserve a version, leaving nothing behind', async () => {
+    const storage = await ocfl.storage({ root: path.join(tempdir, 'reserve-fails') }).create();
+    const o = storage.object('object-1');
+    const reservation = path.join(o._workspace, 'v1');
+    const realMkdir = fs.promises.mkdir;
+    const spy = mock.method(fs.promises, 'mkdir', async (...args: Parameters<typeof realMkdir>) => {
+      if (String(args[0]) === reservation) {
+        throw Object.assign(new Error('injected failure'), { code: 'EACCES' });
+      }
+      return realMkdir.apply(fs.promises, args);
+    });
+    try {
+      await assert.rejects(
+        o.update(async (t) => t.write('a.txt', 'a')),
+        { code: 'EACCES' },
+      );
+    } finally {
+      spy.mock.restore();
+    }
+    assert.ok(!fs.existsSync(o.root));
+  });
+
+  it('documents the workspace as a local extension in a new storage root', async () => {
+    const storage = await ocfl.storage({ root: path.join(tempdir, 'documented') }).create();
+    const text = await fs.promises.readFile(path.join(storage.root, 'ocfl-js-workspace.md'), 'utf8');
+    assert.match(text, /extensions\/ocfl-js-workspace/);
+  });
+
+  for (const layout of layouts) {
+    it(`assembles a version in extensions/ocfl-js-workspace and leaves no empty directories (${layout.extensionName})`, async () => {
+      const storage = await ocfl.storage({ root: path.join(tempdir, `ok-${layout.extensionName}`), layout }).create();
+      const o = storage.object('object-1');
+      const assembly = path.join(workspaceOf(storage.root), path.relative(storage.root, o.root), 'v1');
+      await o.update(async (t) => {
+        await t.write('a.txt', 'a');
+        assert.ok(fs.existsSync(assembly), `expected ${assembly} during the update`);
+      });
+      assert.ok(!fs.existsSync(workspaceOf(storage.root)));
+      assert.deepStrictEqual(await emptyDirectoriesUnder(storage.root), []);
+    });
+
+    it(`leaves no empty directories after a rolled-back update (${layout.extensionName})`, async () => {
+      const storage = await ocfl.storage({ root: path.join(tempdir, `rollback-${layout.extensionName}`), layout }).create();
+      const o = storage.object('object-1');
+      await assert.rejects(
+        o.update(async (t) => {
+          await t.write('a.txt', 'a');
+          throw new Error('abandon');
+        }),
+        /abandon/,
+      );
+      assert.ok(!fs.existsSync(workspaceOf(storage.root)));
+      assert.deepStrictEqual(await emptyDirectoriesUnder(storage.root), []);
+    });
+  }
 });

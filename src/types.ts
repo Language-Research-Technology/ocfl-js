@@ -96,8 +96,6 @@ export type OcflStorageLayout<N extends OcflLayoutName = OcflLayoutName> = N ext
 export type OcflStorageConfig = {
   /** Absolute path to the ocfl storage root. */
   root: string;
-  /** Absolute path to storage workspace directory. Each object works in its own subdirectory; use it for one storage root at a time. */
-  workspace?: string | undefined;
   /**
    * A layout that identifies an arrangement of directories and OCFL objects under the storage root,
    * as an official extension name or `{ extensionName, ...params }`. Anything else throws `UNSUPPORTED_LAYOUT`.
@@ -125,8 +123,10 @@ export type OcflStorageConfig = {
 export type OcflObjectConfig = {
   /** Absolute path to the ocfl object root. */
   root: string;
-  /** Absolute path to object workspace directory. Use it for one object at a time. */
-  workspace?: string | undefined;
+  /** Absolute path to the storage root holding the object. */
+  storageRoot: string;
+  /** Absolute path where the object's updates are assembled, inside its storage root's workspace. */
+  workspace: string;
   /** Identifier for the object.  Only be used in a newly created object. */
   id?: string | undefined;
   /** Additional digest algorithms to be calculated for each file and added to the fixity block. */
@@ -135,6 +135,6 @@ export type OcflObjectConfig = {
   digestAlgorithm?: ContentAlgorithm | undefined;
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
   contentDirectory?: string | undefined;
-  /** Ocfl version. Only applies to a newly created object. @defaultValue `"1.1"` */
-  ocflVersion?: OcflVersion | undefined;
+  /** Ocfl version. Only applies to a newly created object. */
+  ocflVersion: OcflVersion;
 };

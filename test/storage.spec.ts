@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it, mock } from 'node:test';
-import ocfl from '../src/index.ts';
+import ocfl, { type OcflObject } from '../src/index.ts';
 import { fsError, stillOpen, trackOpendir, withFsFailure } from './fs-failures.ts';
 import { ocflError } from './ocfl-error.ts';
 
@@ -83,6 +83,29 @@ describe('iterating a storage root', () => {
   });
   after(async () => {
     await fs.promises.rm(tempdir, { recursive: true, force: true });
+  });
+
+  it('does not look for objects in the extensions directory while an update is in progress', async () => {
+    const storage = await ocfl.storage({ root }).load();
+    let first: OcflObject | undefined;
+    for await (const o of storage) {
+      first ??= o;
+    }
+    const inProgress = (await first!.update())!;
+    await inProgress.write('in-progress.txt', 'x');
+    try {
+      const opened = await trackOpendir(async () => {
+        for await (const _o of storage) {
+        }
+      });
+      const extensions = path.join(storage.root, 'extensions');
+      assert.deepStrictEqual(
+        opened.map((d) => d.path).filter((p) => p === extensions || p.startsWith(extensions + path.sep)),
+        [],
+      );
+    } finally {
+      await inProgress.rollback();
+    }
   });
 
   it('closes every directory it opened when the loop breaks early', async () => {

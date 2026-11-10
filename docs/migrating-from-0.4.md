@@ -54,7 +54,7 @@ The declarations show where a value can be missing, so code that assumed otherwi
 | `object.getInventory()`                             | `Promise<OcflObjectInventory \| undefined>`, `undefined` when the object has no inventory yet                |
 | `object.inventory`                                  | `OcflObjectInventory \| undefined` until the object is loaded                                                |
 | `object.getFile()`                                  | `undefined` when the object has no such file (see [Errors for missing objects](#errors-for-missing-objects)) |
-| `object.id`, `object.workspace`                     | `string \| undefined`                                                                                        |
+| `object.id`                                         | `string \| undefined`                                                                                        |
 | `inventory.getDigest()`, `inventory.versionState()` | `undefined` for an unknown logical path or version                                                           |
 | `file.size`, `file.lastModified`                    | `number \| undefined`; set only when the object was loaded with `{ filesMetadata: true }`                    |
 
@@ -133,6 +133,7 @@ try {
 | `SOURCE_CHANGED`              | A file changed while it was being imported                                                                                    |
 | `MUTABLE_HEAD_ACTIVE`         | An update or import finds an active mutable head (extension 0005); see [Other behaviour changes](#other-behaviour-changes)    |
 | `NOT_AN_OBJECT`               | `storage.remove()` finds something with no OCFL object declaration at the object's path, and deletes nothing                  |
+| `CROSS_FILESYSTEM_MOVE`       | An update can't rename its new version into the object, because part of the storage root is on another filesystem             |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                 |
 
 Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`. Invalid layout parameters are the exception: they throw `INVALID_LAYOUT_CONFIG`, because a storage root's `config.json` can hold them too.
@@ -260,7 +261,7 @@ An update now removes only what it created:
 
 - A failed update removes the version directory it was building, so an existing object is left as it was. This includes a commit that fails partway.
 - A failed first version also removes the conformance declaration it wrote, and the object root if the update created it.
-- A workspace directory is removed only when it's left empty.
+- A workspace directory is removed only when it's left empty, along with any of its parents, up to the storage root, that it leaves empty.
 
 Starting an update while another update of the same version is open now throws `UPDATE_IN_PROGRESS` straight away. Previously it was detected only once the first update had written a file.
 
@@ -401,6 +402,7 @@ Each public member now corresponds to something the OCFL specification or the li
 | The second argument to `storage()`, `createStorage()` and `loadStorage()`                                | Nothing: put the data in a real directory; see [Filesystem only](#filesystem-only)                                  |
 | Members whose names start with `_`, such as `object._inventory` and `transaction._commit()`              | Nothing: they were internal; see [Internal members](#internal-members)                                              |
 | `object()` and `OcflObjectConfig`                                                                        | `storage.object(id)` or `storage.object({ root })`; see [Opening an object](#opening-an-object)                     |
+| The `workspace` option of `storage()`, `createStorage()` and `loadStorage()`                             | Nothing: updates use the storage root's own workspace; see [Workspace](#workspace)                                  |
 
 ### Opening an object
 
@@ -424,6 +426,23 @@ const object = storage.object({ root: path.relative(storage.root, '/var/data/myo
 ```
 
 An object that isn't in any storage root can't be opened with this library. To work with one, create a storage root and move the object into it.
+
+### Workspace
+
+Updates are assembled in the storage root's own workspace, `extensions/ocfl-js-workspace`, and the `workspace` option has been removed. Remove it from your configuration:
+
+```diff
+  const storage = await ocfl.loadStorage({
+    root: '/opt/storage/ocfl',
+-   workspace: '/opt/storage/scratch-ocfl',
+  });
+```
+
+**Warning for JavaScript callers:** the option isn't checked at runtime, so untyped code that still passes `workspace` has it silently ignored, and updates use `extensions/ocfl-js-workspace` inside the storage root. TypeScript reports it as an unknown property.
+
+A version is published by renaming it from the workspace into the object, which only works within one filesystem. A workspace elsewhere, such as `/tmp`, made each update copy its version into the object instead, so a crash could leave a partial copy inside the object. Now a version is never copied: if a rename crosses filesystems, the update throws `CROSS_FILESYSTEM_MOVE` and leaves the object as it was. Keep the whole storage root on one filesystem.
+
+The workspace directory exists only while an update is running, or after an update was interrupted, when it holds that update's partial version. Delete it once no update is running. `ocfl-js-workspace` isn't a registered OCFL extension, so `create()` writes `ocfl-js-workspace.md` into a new storage root to document it, and a validator may warn about the directory while an update is in progress. After upgrading, and once no update is running, delete any workspace directory you used to pass, and `extensions/workspace` in the storage root, which was the default.
 
 ### Filesystem only
 

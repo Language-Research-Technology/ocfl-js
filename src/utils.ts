@@ -9,6 +9,10 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
 }
 
+function hasErrorCode(error: unknown, ...codes: string[]): boolean {
+  return isErrnoException(error) && codes.includes(error.code as string);
+}
+
 function isAlreadyExists(error: unknown): boolean {
   return isErrnoException(error) && error.code === 'EEXIST';
 }
@@ -138,6 +142,7 @@ async function findNamasteVersion(prefix: string, rootPath: string): Promise<Ocf
 export {
   createLimiter,
   findNamasteVersion,
+  hasErrorCode,
   isAlreadyExists,
   isDirEmpty,
   isErrnoException,
