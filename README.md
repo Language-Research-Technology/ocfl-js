@@ -160,6 +160,15 @@ It also includes `000N-path-direct-storage-layout`, which isn't a community exte
 
 Storage layouts and digest algorithms are a fixed, built-in set, and there's no plugin API. If you need another one, send a pull request to this repository. [ADR 0001](docs/adr/0001-one-filesystem-only-package-with-no-extension-points.md) explains why.
 
+### Mutable head (extension 0005)
+
+The library doesn't support [`0005-mutable-head`](https://ocfl.github.io/extensions/0005-mutable-head.html). Another tool can leave an object with an active mutable head, which is a head inventory at `extensions/0005-mutable-head/head/inventory.json`. For such an object:
+
+- `update()` and `import()` throw `MUTABLE_HEAD_ACTIVE` and write nothing. The extension forbids new versions while a head is active, because they would invalidate the head's content.
+- Reads ignore the head. They show the versions in the root inventory, which may be older than the head.
+
+If you need support for this extension, send a pull request.
+
 ## Development
 
 Clone the Git repo:

@@ -441,3 +441,119 @@ describe('OcflObject.ocflVersion', () => {
     assert.strictEqual(type, 'https://ocfl.io/1.0/spec/#inventory');
   });
 });
+
+describe('OcflObject with an active mutable head (extension 0005)', () => {
+  let tempdir: string;
+  before(async () => {
+    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-mutable-head-'));
+  });
+  after(async () => {
+    await fs.promises.rm(tempdir, { recursive: true, force: true });
+  });
+
+  async function objectWithHead(name: string) {
+    const root = path.join(tempdir, name);
+    const workspace = path.join(tempdir, `${name}-workspace`);
+    await new OcflObject({ id: name, root }).update(async (t) => t.write('a.txt', 'a'));
+    const headInventory = path.join(root, 'extensions', '0005-mutable-head', 'head', 'inventory.json');
+    await fs.promises.mkdir(path.dirname(headInventory), { recursive: true });
+    await fs.promises.copyFile(path.join(root, 'inventory.json'), headInventory);
+    return { root, workspace, headInventory };
+  }
+
+  async function headVersion(root: string) {
+    const o = new OcflObject({ root });
+    await o.load();
+    return o.inventory?.head;
+  }
+
+  async function snapshot(dir: string) {
+    const entries = await fs.promises.readdir(dir, { recursive: true, withFileTypes: true }).catch(() => []);
+    const files = await Promise.all(
+      entries.map(async (e) => {
+        const p = path.join(e.parentPath, e.name);
+        return [path.relative(dir, p), e.isFile() ? await fs.promises.readFile(p, 'utf8') : null] as const;
+      }),
+    );
+    return files.sort(([a], [b]) => a.localeCompare(b));
+  }
+
+  async function assertRefusedUnchanged(name: string, act: (o: OcflObject) => Promise<unknown>) {
+    const { root, workspace } = await objectWithHead(name);
+    const initial = await snapshot(root);
+    await assert.rejects(act(new OcflObject({ root, workspace })), ocflError('MUTABLE_HEAD_ACTIVE'));
+    assert.deepStrictEqual(await snapshot(root), initial);
+    assert.deepStrictEqual(await snapshot(workspace), []);
+  }
+
+  it('refuses update() with an updater, without calling it or changing anything', async () => {
+    let called = false;
+    await assertRefusedUnchanged('with-updater', (o) =>
+      o.update(async (t) => {
+        called = true;
+        await t.write('b.txt', 'b');
+      }),
+    );
+    assert.strictEqual(called, false);
+  });
+
+  it('refuses update() without an updater, returning no transaction and changing nothing', async () => {
+    await assertRefusedUnchanged('without-updater', (o) => o.update());
+  });
+
+  it('refuses import(), changing nothing', async () => {
+    const source = path.join(tempdir, 'import-source.txt');
+    await fs.promises.writeFile(source, 'b');
+    await assertRefusedUnchanged('import', (o) => o.import(source));
+  });
+
+  it('refuses an in-place update without leaving a lock, so a later update works once the head is gone', async () => {
+    const { root, headInventory } = await objectWithHead('head-removed');
+    const initial = await snapshot(root);
+    const o = new OcflObject({ root });
+    await assert.rejects(
+      o.update(async (t) => t.write('b.txt', 'b')),
+      ocflError('MUTABLE_HEAD_ACTIVE'),
+    );
+    assert.deepStrictEqual(await snapshot(root), initial);
+    await fs.promises.rm(headInventory);
+    await o.update(async (t) => t.write('b.txt', 'b'));
+    assert.strictEqual(await headVersion(root), 'v2');
+  });
+
+  it('reports an object nested in another object before an active mutable head', async () => {
+    const { root } = await objectWithHead('outer');
+    const nested = path.join(root, 'nested');
+    const nestedHead = path.join(nested, 'extensions', '0005-mutable-head', 'head', 'inventory.json');
+    await fs.promises.mkdir(path.dirname(nestedHead), { recursive: true });
+    await fs.promises.writeFile(nestedHead, '{}');
+    await assert.rejects(
+      new OcflObject({ id: 'nested', root: nested }).update(async (t) => t.write('b.txt', 'b')),
+      ocflError('E082'),
+    );
+  });
+
+  it('allows update() when the extension directory has no head inventory', async () => {
+    const { root, headInventory } = await objectWithHead('no-head-inventory');
+    await fs.promises.rm(headInventory);
+    await new OcflObject({ root }).update(async (t) => t.write('b.txt', 'b'));
+    assert.strictEqual(await headVersion(root), 'v2');
+  });
+
+  it('rethrows when the head inventory cannot be checked, changing nothing', async () => {
+    const { root, headInventory } = await objectWithHead('unreadable-head');
+    await fs.promises.rm(headInventory);
+    const initial = await snapshot(root);
+    await withFsFailure(
+      'stat',
+      headInventory,
+      () =>
+        assert.rejects(
+          new OcflObject({ root }).update(async (t) => t.write('b.txt', 'b')),
+          { code: 'EACCES' },
+        ),
+      'EACCES',
+    );
+    assert.deepStrictEqual(await snapshot(root), initial);
+  });
+});

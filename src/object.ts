@@ -9,11 +9,12 @@ import { type InventoryFile, OcflObjectInventory, OcflObjectInventoryMut, Versio
 import * as store from './store.ts';
 import { type CommitOptions, type ImportSource, OcflObjectTransaction } from './transaction.ts';
 import type { BinaryOptions, ContentAlgorithm, EncodingOptions, Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
-import { findNamasteVersion, isDirEmpty, isNotFound } from './utils.ts';
+import { findNamasteVersion, isDirEmpty, isNotFound, pathExists } from './utils.ts';
 import { createError } from './validation.ts';
 
-const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
+const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T, EXTENSIONS_DIR } = OcflConstants;
 const INVENTORY_TYPE = /^https:\/\/ocfl\.io\/([^/]+)\/spec\/#inventory$/;
+const MUTABLE_HEAD_INVENTORY = path.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
 
 export type UpdateMode = 'MERGE' | 'REPLACE';
 
@@ -267,6 +268,7 @@ class OcflObject {
    * Without one, the transaction is returned, and the caller must call {@link OcflObjectTransaction.commit},
    * which takes the message and user, or {@link OcflObjectTransaction.rollback}.
    * @throws `TypeError` if `options` isn't an object, has an unknown mode, or has a message or user without an `updater`
+   * @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE` if the object has an active mutable head (extension 0005); nothing is written
    */
   async update(updater?: (transaction: OcflObjectTransaction) => Promise<unknown>, options: UpdateOptions = {}): Promise<OcflObjectTransaction | undefined> {
     if (typeof options !== 'object' || options === null) {
@@ -282,6 +284,12 @@ class OcflObject {
     const inv = (await this.getInventory()) ?? this.#baseInventory();
     const newInv = OcflObjectInventoryMut.newVersion(inv, mode === 'REPLACE');
     await this._validateObjectPath();
+    if (await pathExists(path.join(this.root, MUTABLE_HEAD_INVENTORY))) {
+      throw new OcflError(
+        'MUTABLE_HEAD_ACTIVE',
+        `OCFL Object "${this.#label}" has an active mutable head (extension 0005), which this library doesn't support; new versions can't be created until it is committed or removed`,
+      );
+    }
     const t = await OcflObjectTransaction.create(this, newInv, this.workspace || this.root);
     if (typeof updater === 'function') {
       try {
@@ -303,14 +311,14 @@ class OcflObject {
    * @param source - A path to a file or directory in the local filesystem
    * @param target - The logical path the source becomes
    * @param options - The mode, and the message and user recorded in the version
-   * @throws The errors of {@link OcflObjectTransaction.import}
+   * @throws The errors of {@link OcflObjectTransaction.import} and {@link OcflObject.update}
    */
   async import(source: string, target?: string, options?: UpdateOptions): Promise<void>;
   /**
    * Import a file or directory from the local filesystem as one new version, without a target.
    * @param source - A path to a file or directory in the local filesystem
    * @param options - The mode, and the message and user recorded in the version
-   * @throws The errors of {@link OcflObjectTransaction.import}
+   * @throws The errors of {@link OcflObjectTransaction.import} and {@link OcflObject.update}
    */
   async import(source: string, options: UpdateOptions): Promise<void>;
   /**
@@ -318,7 +326,7 @@ class OcflObject {
    * @param sources - Each source, and the logical path it becomes
    * @param options - The mode, and the message and user recorded in the version
    * @throws {@link OcflError} `FILE_EXISTS` if two sources produce the same logical path
-   * @throws The errors of {@link OcflObjectTransaction.import}
+   * @throws The errors of {@link OcflObjectTransaction.import} and {@link OcflObject.update}
    */
   async import(sources: ImportSource[], options?: UpdateOptions): Promise<void>;
   async import(sources: string | ImportSource[], targetOrOptions?: string | UpdateOptions, options?: UpdateOptions): Promise<void> {
