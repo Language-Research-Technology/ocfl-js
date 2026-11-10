@@ -103,7 +103,7 @@ class OcflObjectTransaction {
    * Create a new transaction instance.
    * @internal
    */
-  static async create(ocflObject: OcflObject, inventory: OcflObjectInventoryMut, workspacePath: string) {
+  static async create(ocflObject: OcflObject, inventory: OcflObjectInventoryMut, workspacePath: string): Promise<OcflObjectTransaction> {
     const rootExisted = await fs.promises.stat(ocflObject.root).then(
       () => true,
       () => false,

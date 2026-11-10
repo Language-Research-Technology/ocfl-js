@@ -91,14 +91,14 @@ class OcflObjectFile {
   /**
    * Returns the last modified time of the file, in millisecond since the UNIX epoch (January 1st, 1970 at Midnight).
    */
-  get lastModified() {
+  get lastModified(): number | undefined {
     return this.#lastModified;
   }
 
   /**
    * Returns the file size in bytes.
    */
-  get size() {
+  get size(): number | undefined {
     return this.#size;
   }
 

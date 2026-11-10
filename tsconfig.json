@@ -15,6 +15,8 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
+    // Exports must state their types, so a function body can't silently change a published signature
+    "isolatedDeclarations": true,
     // Maps point into src/, which is published alongside dist/
     "declaration": true,
     "declarationMap": true,

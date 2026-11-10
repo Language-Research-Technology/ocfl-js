@@ -25,7 +25,7 @@ const DefaultConfig: Required<HashAndIdNTupleStorageLayoutConfig> = {
 
 class HashAndIdNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   readonly name = '0003-hash-and-id-n-tuple-storage-layout';
-  readonly description =
+  readonly description: string =
     'OCFL object identifiers are hashed and encoded as lowercase hex strings.' +
     ' These digests are then divided into N n-tuple segments,' +
     ' which are used to create nested paths under the OCFL storage root.' +

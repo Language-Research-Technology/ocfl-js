@@ -58,7 +58,7 @@ interface OcflStorageLayout {
 const asStored = (value: unknown) => JSON.parse(JSON.stringify({ value }));
 
 /** Names of the parameters of `reference` whose effective values, defaults included, differ in `extension` */
-function differingParameters(extension: BuiltInLayout, reference: BuiltInLayout) {
+function differingParameters(extension: BuiltInLayout, reference: BuiltInLayout): string[] {
   const names: string[] = [];
   // for...in includes the defaults inherited from the parameters prototype
   for (const name in reference.parameters) {

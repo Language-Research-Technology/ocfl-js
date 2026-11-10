@@ -20,7 +20,7 @@ export type * from './types.ts';
 export type { ValidationErrorCode, ValidationErrorOptions } from './validation.ts';
 export { ValidationError } from './validation.ts';
 
-export const OCFL_VERSIONS = OcflConstants.OCFL_VERSIONS;
+export const OCFL_VERSIONS: readonly ['1.1', '1.0'] = OcflConstants.OCFL_VERSIONS;
 
 /**
  * Instantiate a storage layout from its official extension name or a config object
@@ -59,4 +59,13 @@ export async function loadStorage(config: OcflStorageConfig): Promise<OcflStorag
   return new OcflStorage(config).load();
 }
 
-export default { OCFL_VERSIONS, createStorage, loadStorage, object, storage, storageLayout };
+const api: {
+  OCFL_VERSIONS: typeof OCFL_VERSIONS;
+  createStorage: typeof createStorage;
+  loadStorage: typeof loadStorage;
+  object: typeof object;
+  storage: typeof storage;
+  storageLayout: typeof storageLayout;
+} = { OCFL_VERSIONS, createStorage, loadStorage, object, storage, storageLayout };
+
+export default api;

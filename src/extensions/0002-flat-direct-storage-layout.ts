@@ -10,7 +10,7 @@ const { EXTENSIONS_DIR } = OcflConstants;
  */
 class FlatDirectStorageLayout extends BuiltInLayout {
   readonly name = '0002-flat-direct-storage-layout';
-  readonly description = 'OCFL object identifiers are mapped directly to directory names that are direct children of the OCFL storage root.';
+  readonly description: string = 'OCFL object identifiers are mapped directly to directory names that are direct children of the OCFL storage root.';
 
   map(id: string): string {
     let reason: string | undefined;

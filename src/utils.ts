@@ -8,11 +8,11 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
 }
 
-function isAlreadyExists(error: unknown) {
+function isAlreadyExists(error: unknown): boolean {
   return isErrnoException(error) && error.code === 'EEXIST';
 }
 
-function isNotFound(error: unknown) {
+function isNotFound(error: unknown): boolean {
   return isErrnoException(error) && error.code === 'ENOENT';
 }
 

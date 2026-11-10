@@ -176,11 +176,19 @@ function digestSync(algorithm: string, input: DataType): string {
   return createHasher(algorithm).update(input).digest();
 }
 
-function getHexDigestLength(algorithm: string) {
+function getHexDigestLength(algorithm: string): number {
   return ALGORITHMS.get(algorithm)?.hexLength ?? 0;
 }
 
-const Hashing = {
+interface HashingFunctions {
+  createStream: typeof createStream;
+  createStreamThrough: typeof createStreamThrough;
+  digest: typeof digest;
+  getHexDigestLength: typeof getHexDigestLength;
+  digestSync: typeof digestSync;
+}
+
+const Hashing: HashingFunctions = {
   createStream,
   createStreamThrough,
   digest,

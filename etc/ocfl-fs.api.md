@@ -7,6 +7,17 @@
 import fs from 'node:fs';
 
 // @public (undocumented)
+const api: {
+    OCFL_VERSIONS: typeof OCFL_VERSIONS;
+    createStorage: typeof createStorage;
+    loadStorage: typeof loadStorage;
+    object: typeof object;
+    storage: typeof storage;
+    storageLayout: typeof storageLayout;
+};
+export default api;
+
+// @public (undocumented)
 export type BinaryOptions = {
     encoding?: null | undefined;
     [key: string]: unknown;
@@ -31,17 +42,6 @@ export function createStorage(config: OcflStorageConfig): Promise<OcflStorage>;
 export type DeepReadonly<T> = {
     readonly [K in keyof T]: DeepReadonly<T[K]>;
 };
-
-// @public (undocumented)
-const _default: {
-    OCFL_VERSIONS: readonly ["1.1", "1.0"];
-    createStorage: typeof createStorage;
-    loadStorage: typeof loadStorage;
-    object: typeof object;
-    storage: typeof storage;
-    storageLayout: typeof storageLayout;
-};
-export default _default;
 
 // @public
 export type Digests = {
@@ -187,7 +187,7 @@ export class ObjectNotLoadedError extends OcflError {
 }
 
 // @public (undocumented)
-export const OCFL_VERSIONS: readonly ["1.1", "1.0"];
+export const OCFL_VERSIONS: readonly ['1.1', '1.0'];
 
 // @public
 export class OcflError extends Error {
@@ -339,7 +339,7 @@ export class OcflObjectInventory {
     // (undocumented)
     toString(): string;
     // (undocumented)
-    get type(): "https://ocfl.io/1.0/spec/#inventory" | "https://ocfl.io/1.1/spec/#inventory";
+    get type(): Inventory['type'];
     // (undocumented)
     get user(): DeepReadonly<InventoryVersion['user']>;
     get version(): DeepReadonly<InventoryVersion>;

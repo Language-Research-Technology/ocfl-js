@@ -133,7 +133,7 @@ class OcflStorage {
   /**
    * Check if the storage has already the object with the given id.
    */
-  async has(id: string) {
+  async has(id: string): Promise<boolean> {
     return this.object(id).exists();
   }
 

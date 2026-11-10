@@ -16,7 +16,7 @@ const DefaultConfig: Required<PathDirectStorageLayoutConfig> = {
 
 class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   readonly name = '000N-path-direct-storage-layout';
-  readonly description = 'OCFL object identifiers are used directly as the path.';
+  readonly description: string = 'OCFL object identifiers are used directly as the path.';
 
   constructor(config?: PathDirectStorageLayoutConfig) {
     super(config, DefaultConfig);

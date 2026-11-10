@@ -62,7 +62,7 @@ class OcflObject {
       throw new Error('[OcflObject] config.root and config.workspace must be different.');
     }
     this.#root = path.resolve(config.root);
-    this.#configuredOcflVersion = config.ocflVersion || (OCFL_VERSION as OcflVersion);
+    this.#configuredOcflVersion = config.ocflVersion || OCFL_VERSION;
     //this.contentVersion = null; // No content yet
     this.#id = config.id;
     //this.fixityDigest = config.fixityDigest ?? this.digestAlgorithm;
@@ -204,7 +204,7 @@ class OcflObject {
    * Set the latest version of inventory in the cache
    * @internal
    */
-  _setInventory(inventory: OcflObjectInventory, version = 'latest') {
+  _setInventory(inventory: OcflObjectInventory, version: string = 'latest'): void {
     this.#inventories[version] = inventory;
     if (version === 'latest') {
       this.#inventories[inventory.head] = inventory;
@@ -215,7 +215,7 @@ class OcflObject {
    * Rejects an object root inside another OCFL object
    * @internal
    */
-  async _validateObjectPath() {
+  async _validateObjectPath(): Promise<void> {
     var p = this.root;
     while (p !== '.' && p !== '/') {
       p = path.dirname(p);
@@ -299,7 +299,7 @@ class OcflObject {
    * @param content - The source path(s) or an array of a tuple [source, logical path]
    * @param mode - Update mode. Defaults to `'MERGE'`.
    */
-  async import(content: string | string[] | string[][], mode: UpdateMode = 'MERGE') {
+  async import(content: string | string[] | string[][], mode: UpdateMode = 'MERGE'): Promise<void> {
     const items = typeof content === 'string' ? [[content, '']] : content.map((p) => (typeof p === 'string' ? [p, ''] : p));
 
     await this.update(async (t) => {
@@ -315,7 +315,7 @@ class OcflObject {
   /**
    * Count the number of files contained in this object
    */
-  async count(version?: string) {
+  async count(version?: string): Promise<number> {
     const inv = await this._requireInventory();
     return [...inv.files(version)].length;
   }
@@ -386,7 +386,7 @@ class OcflObject {
   /**
    * Return the latest version of the cached data from inventory.json which can be read using {@link OcflObject.getInventory}
    */
-  get inventory() {
+  get inventory(): OcflObjectInventory | undefined {
     return this.#inventories.latest;
   }
 
@@ -394,7 +394,7 @@ class OcflObject {
    * Reads the object inventory file and cache it in the memory.
    * Optionally, preloads and reads all files metadata from the filesystem.
    */
-  async load({ filesMetadata }: { filesMetadata?: boolean | undefined } = {}) {
+  async load({ filesMetadata }: { filesMetadata?: boolean | undefined } = {}): Promise<void> {
     const inv = await this.#readInventory();
     this.#inventories = {};
     if (inv) {
@@ -471,7 +471,7 @@ class OcflObject {
    * Get the file metadata such as size and modification time.
    * @param relPath - The file path relative to the object root.
    */
-  async stat(relPath: string) {
+  async stat(relPath: string): Promise<fs.Stats> {
     return fs.promises.stat(path.join(this.root, relPath));
   }
 
@@ -479,11 +479,11 @@ class OcflObject {
     return this.id ?? this.root;
   }
 
-  toString() {
+  toString(): string {
     return `OcflObject { root: ${this.root}, id: ${this.id} }`;
   }
 
-  toJSON() {
+  toJSON(): { root: string; id: string | undefined } {
     return { root: this.root, id: this.id };
   }
 }
