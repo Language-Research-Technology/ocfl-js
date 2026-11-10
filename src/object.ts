@@ -75,7 +75,7 @@ class OcflObject {
 
   /**
    * The digest algorithm used to identify files within the OCFL object. For an existing object, only reliable once its
-   * root inventory has been read, by {@link load} or any method that reads it. Until then, and for an object that
+   * root inventory has been read, by {@link OcflObject.load} or any method that reads it. Until then, and for an object that
    * doesn't exist yet, this is the configured algorithm or the library default.
    */
   get digestAlgorithm(): ContentAlgorithm {
@@ -84,7 +84,7 @@ class OcflObject {
 
   /**
    * The name of the directory holding each version's content. For an existing object, only reliable once its root
-   * inventory has been read, by {@link load} or any method that reads it. Until then, and for an object that doesn't
+   * inventory has been read, by {@link OcflObject.load} or any method that reads it. Until then, and for an object that doesn't
    * exist yet, this is the configured directory or the library default.
    */
   get contentDirectory(): string {
@@ -129,7 +129,7 @@ class OcflObject {
 
   /**
    * The OCFL version the object adheres to, eg 1.0, 1.1. For an existing object, only reliable once its root inventory
-   * has been read, by {@link load} or any method that reads it. Until then, and for an object that doesn't exist yet,
+   * has been read, by {@link OcflObject.load} or any method that reads it. Until then, and for an object that doesn't exist yet,
    * this is the configured version or the library default.
    */
   get ocflVersion(): OcflVersion {
@@ -259,7 +259,7 @@ class OcflObject {
   /**
    * Update the content files or directories as one transaction and commit the changes as a new version.
    * After obtaining the OcflObjectTransaction instance, make sure to either call the
-   * {@link OcflObjectTransaction#commit} or {@link OcflObjectTransaction#rollback} method to complete the transaction.
+   * {@link OcflObjectTransaction.commit} or {@link OcflObjectTransaction.rollback} method to complete the transaction.
    * If callback function `cb` is provided, all update operations can be done in the callback function
    * and all changes are automatically commited at the end of the function.
    */
@@ -352,8 +352,8 @@ class OcflObject {
    * @param version - The object version name, eg: 'v1', 'v2'. Default to 'latest'. Only used if opt is a LogicalPath. Defaults to `'latest'`.
    * @param lazy - If true, always return a file instance even if the object inventory file is not loaded.
    * @returns `undefined` if the object has no such file.
-   * @throws {ObjectNotLoadedError} If not lazy and the inventory has not been read, by {@link load} or any method that reads it.
-   * @throws {ObjectNotFoundError} If not lazy and the loaded object does not exist.
+   * @throws {@link ObjectNotLoadedError} If not lazy and the inventory has not been read, by {@link OcflObject.load} or any method that reads it.
+   * @throws {@link ObjectNotFoundError} If not lazy and the loaded object does not exist.
    */
   getFile(opt: LogicalPath | FileRefLogical | FileRefDigest | FileRefContent, version?: string, lazy?: boolean): OcflObjectFile | undefined {
     const inv = this.inventory;
@@ -378,7 +378,7 @@ class OcflObject {
   }
 
   /**
-   * Return the latest version of the cached data from inventory.json which can be read using {@link getInventory()}
+   * Return the latest version of the cached data from inventory.json which can be read using {@link OcflObject.getInventory}
    */
   get inventory() {
     return this._inventory.latest;
@@ -411,7 +411,7 @@ class OcflObject {
   /**
    * Bring the cached latest inventory up to date, reading only the sidecar file if the object hasn't changed.
    * A loaded object keeps its last good inventory if a commit is in progress, and a later refresh picks up the new version.
-   * With nothing cached, behaves like {@link load}.
+   * With nothing cached, behaves like {@link OcflObject.load}.
    * File metadata from `load({ filesMetadata: true })` doesn't carry over to a new inventory.
    */
   async refresh(): Promise<void> {

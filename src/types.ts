@@ -41,7 +41,7 @@ export interface Inventory {
   };
   /**
    * The name of the designated content directory within the version directories.
-   * @default content
+   * @defaultValue content
    */
   contentDirectory?: string;
 }

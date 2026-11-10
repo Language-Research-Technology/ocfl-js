@@ -191,8 +191,8 @@ class OcflStorage {
 
   /**
    * Create the storage root on the filesystem
-   * @param options - Additional options for creating storage root
-   * @param options.ocflSpecText - Write a human-readable copy of the OCFL spec for this root's version into the root
+   * @param options - Additional options for creating storage root. `ocflSpecText` writes a human-readable copy of the OCFL spec for this root's version
+   * into the root
    */
   async create(options?: { ocflSpecText?: boolean | undefined }): Promise<OcflStorage> {
     if (await this.exists()) {
@@ -227,8 +227,8 @@ class OcflStorage {
    * Delete an object and any parent directories it leaves empty, up to but not including the storage root.
    * Not guarded against a concurrent update of the object.
    * @param id - Identifier of the object
-   * @throws {ObjectNotFoundError} If the object does not exist.
-   * @throws {OcflError} `NOT_AN_OBJECT` if the path holds something with no OCFL object declaration; nothing is deleted.
+   * @throws {@link ObjectNotFoundError} If the object does not exist.
+   * @throws {@link OcflError} `NOT_AN_OBJECT` if the path holds something with no OCFL object declaration; nothing is deleted.
    */
   async remove(id: string): Promise<void> {
     const object = this.object(id);

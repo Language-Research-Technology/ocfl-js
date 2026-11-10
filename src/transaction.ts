@@ -541,7 +541,7 @@ class OcflObjectTransaction {
     });
   }
 
-  /** {@link _inTurn} for an operation with nothing to prepare */
+  /** `_inTurn` for an operation with nothing to prepare */
   async _transact<T>(op: () => Promise<T>): Promise<T> {
     return this._inTurn(async () => op);
   }

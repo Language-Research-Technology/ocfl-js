@@ -23,7 +23,7 @@ export const OCFL_VERSIONS = OcflConstants.OCFL_VERSIONS;
 /**
  * Instantiate a storage layout from its official extension name or a config object
  * @param config - Official extension name or `{ extensionName, ...params }`
- * @throws {OcflError} `UNSUPPORTED_LAYOUT` if anything else is given
+ * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if anything else is given
  */
 export function storageLayout(config: OcflLayoutName | OcflLayoutConfig): OcflStorageLayout {
   return createLayout(config);

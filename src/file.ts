@@ -109,7 +109,7 @@ class OcflObjectFile {
 
   /**
    * Get the file content as a buffer
-   * @param options Options passed to `fs.promises.readFile`
+   * @param options - Options passed to `fs.promises.readFile`
    */
   async buffer(options?: BinaryOptions): Promise<Uint8Array> {
     return this.#ocflObject.readFile(await this.#resolveContentPath(), options);
@@ -117,7 +117,7 @@ class OcflObjectFile {
 
   /**
    * Get the file content as a string
-   * @param encoding String encoding, default to utf8
+   * @param encoding - String encoding, default to utf8
    */
   async text(encoding: BufferEncoding = 'utf8'): Promise<string> {
     return this.#ocflObject.readFile(await this.#resolveContentPath(), encoding);
@@ -125,7 +125,7 @@ class OcflObjectFile {
 
   /**
    * Get the file content as a ES Streams standard ReadableStream
-   * @param options Options passed to `fs.createReadStream`
+   * @param options - Options passed to `fs.createReadStream`
    */
   async stream(options?: unknown): Promise<ReadableStream> {
     return this.#ocflObject.createReadable(await this.#resolveContentPath(), options);

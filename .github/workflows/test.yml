@@ -29,6 +29,8 @@ jobs:
         run: pnpm lint:knip
       - name: Lint (consumer)
         run: pnpm lint:consumer
+      - name: Lint (API)
+        run: pnpm lint:api
       - name: Lint (commit messages)
         if: github.event_name == 'pull_request'
         env:
