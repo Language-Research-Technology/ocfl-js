@@ -147,6 +147,8 @@ describe('choosing a layout that is not supported', () => {
 });
 
 describe('choosing a layout with invalid parameters', () => {
+  const rowsFor = (extensionName: string, rows: [string, Record<string, unknown>][]): [string, OcflLayoutConfig][] =>
+    rows.map(([problem, params]) => [`${problem} for ${extensionName.slice(0, 4)}`, { extensionName, ...params } as never]);
   const invalidParameters: [string, OcflLayoutConfig][] = [
     ['an unknown digestAlgorithm for 0003', { extensionName: '0003-hash-and-id-n-tuple-storage-layout', digestAlgorithm: 'nope' }],
     ['an unknown digestAlgorithm for 0004', { extensionName: '0004-hashed-n-tuple-storage-layout', digestAlgorithm: 'nope' }],
@@ -156,6 +158,32 @@ describe('choosing a layout with invalid parameters', () => {
       'shortObjectRoot with tuples using the whole digest for 0004',
       { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 32, numberOfTuples: 2, shortObjectRoot: true },
     ],
+    ...['0003-hash-and-id-n-tuple-storage-layout', '0004-hashed-n-tuple-storage-layout'].flatMap((extensionName) =>
+      rowsFor(extensionName, [
+        ['a string tupleSize', { tupleSize: '3' }],
+        ['a string numberOfTuples', { numberOfTuples: 'x' }],
+        ['a numeric digestAlgorithm', { digestAlgorithm: 5 }],
+        ['an empty digestAlgorithm', { digestAlgorithm: '' }],
+        ['a negative tupleSize', { tupleSize: -1 }],
+        ['a fractional tupleSize', { tupleSize: 2.5 }],
+        ['a NaN numberOfTuples', { numberOfTuples: Number.NaN }],
+        ['numberOfTuples over 32', { tupleSize: 1, numberOfTuples: 33 }],
+        ['tupleSize over 32', { tupleSize: 33, numberOfTuples: 1 }],
+        ['a zero tupleSize with tuples', { tupleSize: 0, numberOfTuples: 3 }],
+        ['tuples with a zero numberOfTuples', { tupleSize: 3, numberOfTuples: 0 }],
+      ]),
+    ),
+    ...rowsFor('0004-hashed-n-tuple-storage-layout', [['a string shortObjectRoot', { shortObjectRoot: 'yes' }]]),
+    ...rowsFor('000N-path-direct-storage-layout', [
+      ['a string omitScheme', { omitScheme: 'yes' }],
+      ['a numeric suffix', { suffix: 5 }],
+      ['a string replace', { replace: 'abc' }],
+      ['a replace pair without a replacement', { replace: [['a']] }],
+      ['a replace pair with a numeric pattern', { replace: [[1, 'b']] }],
+      ['a replace pair with a numeric replacement', { replace: [['a', 2]] }],
+      ['a replace pair with three elements', { replace: [['a', 'b', 'c']] }],
+      ['a replace entry that is not a pair', { replace: ['ab'] }],
+    ]),
   ];
   for (const [entryPoint, choose] of invalidLayoutEntryPoints) {
     for (const [problem, layout] of invalidParameters) {

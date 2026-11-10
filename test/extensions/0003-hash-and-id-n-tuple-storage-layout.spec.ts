@@ -1,6 +1,7 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import { storageLayout } from '../../src/index.ts';
+import { ocflError } from '../ocfl-error.ts';
 
 const NAME = '0003-hash-and-id-n-tuple-storage-layout';
 const configured = (params: Record<string, unknown>) => storageLayout({ extensionName: NAME, ...params });
@@ -68,11 +69,11 @@ describe('the 0003 hash and id n-tuple layout', () => {
   });
 
   it('rejects a digestAlgorithm that is not lowercase', () => {
-    assert.throws(() => configured({ digestAlgorithm: 'MD5' }), { message: 'Invalid digestAlgorithm' });
+    assert.throws(() => configured({ digestAlgorithm: 'MD5' }), ocflError('INVALID_LAYOUT_CONFIG'));
   });
 
   it('rejects an unknown digestAlgorithm', () => {
-    assert.throws(() => configured({ digestAlgorithm: 'sha3' }), { message: 'Invalid digestAlgorithm' });
+    assert.throws(() => configured({ digestAlgorithm: 'sha3' }), ocflError('INVALID_LAYOUT_CONFIG'));
   });
 
   it('can map valid id with tupleSize=0 and numberOfTuples=0', () => {

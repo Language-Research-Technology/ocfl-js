@@ -37,4 +37,4 @@ function createLayout(selection: OcflLayoutName | OcflLayoutConfig): BuiltInLayo
   return new layoutClass(typeof selection === 'string' ? undefined : selection);
 }
 
-export { createLayout, supportedLayoutClass };
+export { createLayout, type LayoutClass, supportedLayoutClass };

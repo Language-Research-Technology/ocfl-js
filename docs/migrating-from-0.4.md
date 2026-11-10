@@ -74,6 +74,20 @@ Option values used to be matched case-insensitively. They now have to match exac
 
 For example, `digestAlgorithm: 'SHA512'` and `update(fn, { mode: 'replace' })` now throw. A layout configured with `digestAlgorithm: 'MD5'` used to pass validation and then fail on the first `map()`. It is now rejected when the layout is created.
 
+## Layout parameters are checked
+
+A layout parameter of the wrong type or out of range used to be accepted, and the layout then mapped objects to the wrong paths. It now throws `INVALID_LAYOUT_CONFIG` when the layout is created, whether the parameter comes from the `layout` option, `storageLayout()` or a storage root's `extensions/<layout>/config.json`. An error from `config.json` names that file.
+
+| Layout     | Parameter                     | Accepted values                                                                 |
+| ---------- | ----------------------------- | ------------------------------------------------------------------------------- |
+| 0003, 0004 | `tupleSize`, `numberOfTuples` | Integers from 0 to 32; if either is 0, both must be                             |
+| 0004       | `shortObjectRoot`             | A boolean                                                                       |
+| 000N       | `omitScheme`                  | A boolean                                                                       |
+| 000N       | `suffix`                      | A string                                                                        |
+| 000N       | `replace`                     | An array of `[pattern, replacement]` pairs: a string or `RegExp`, then a string |
+
+These limits come from the 0003 and 0004 extensions. A storage root whose `config.json` sets `tupleSize` or `numberOfTuples` above 32 no longer loads.
+
 ## Digest algorithms
 
 - `blake2b-160`, `blake2b-256` and `blake2b-384` are no longer supported, because `node:crypto` doesn't provide them. `blake2b-512` is still supported.

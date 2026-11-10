@@ -9,6 +9,10 @@ import ocfl, { type OcflError, type OcflLayoutConfig, type OcflStorage, type Ocf
 import { DIGESTS_OF_ABC } from './digests-of-abc.ts';
 
 describe('constructor', () => {
+  it('requires a root', () => {
+    assert.throws(() => ocfl.storage({ root: '' }), TypeError);
+  });
+
   it('can create new storage', () => {
     let storage: OcflStorage;
     storage = ocfl.storage({ root: '/data/storage-1' });
@@ -433,9 +437,31 @@ describe('configured layout of a loaded storage root', () => {
     await assert.rejects(ocfl.storage({ root }).load(), { code: 'UNSUPPORTED_LAYOUT' });
   });
 
-  it('rejects a root whose extension config has invalid parameter values', async () => {
-    const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { digestAlgorithm: 'not-a-digest' } });
-    await assert.rejects(ocfl.storage({ root }).load(), { code: 'INVALID_LAYOUT_CONFIG' });
+  const namesConfigFile = (root: string) => (error: OcflError) =>
+    error.code === 'INVALID_LAYOUT_CONFIG' && error.message.includes(path.join(root, 'extensions', HASHED, 'config.json'));
+
+  for (const [problem, extensionConfig] of [
+    ['an unknown digestAlgorithm', { digestAlgorithm: 'not-a-digest' }],
+    ['a string tupleSize', { tupleSize: '3' }],
+    ['tuples longer than the digest', { tupleSize: 32, numberOfTuples: 3 }],
+  ] as const) {
+    it(`rejects a root whose extension config has ${problem}, naming the file`, async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig });
+      await assert.rejects(ocfl.storage({ root }).load(), namesConfigFile(root));
+    });
+
+    it(`rejects a configured layout when the root extension config has ${problem}, naming the file`, async () => {
+      const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig });
+      await assert.rejects(ocfl.storage({ root, layout: HASHED }).load(), namesConfigFile(root));
+    });
+  }
+
+  it('rejects an invalid configured layout without naming a config file', async () => {
+    const root = await createRoot({ layoutFile: declaring(HASHED) });
+    assert.throws(
+      () => ocfl.storage({ root, layout: { extensionName: HASHED, tupleSize: '3' } as never }),
+      (error: OcflError) => error.code === 'INVALID_LAYOUT_CONFIG' && !error.message.includes('config.json'),
+    );
   });
 
   it('rejects a root whose extension config cannot be read with the file system error', async () => {
