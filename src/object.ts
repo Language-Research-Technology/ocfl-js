@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Readable } from 'node:stream';
 import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
@@ -8,15 +7,21 @@ import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
 import { type InventoryFile, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
 import * as store from './store.ts';
-import { OcflObjectTransaction } from './transaction.ts';
+import { type CommitOptions, type ImportSource, OcflObjectTransaction } from './transaction.ts';
 import type { BinaryOptions, ContentAlgorithm, EncodingOptions, Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
-import { findNamasteVersion, isDirEmpty, isNotFound, parallelize } from './utils.ts';
+import { findNamasteVersion, isDirEmpty, isNotFound } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
 const INVENTORY_TYPE = /^https:\/\/ocfl\.io\/([^/]+)\/spec\/#inventory$/;
 
 export type UpdateMode = 'MERGE' | 'REPLACE';
+
+/** How `OcflObject.update()` and `OcflObject.import()` create a version */
+export interface UpdateOptions extends CommitOptions {
+  /** `'MERGE'` starts the new version from the previous version's files, and `'REPLACE'` starts it empty; earlier versions and the manifest are kept in both. Defaults to `'MERGE'`. */
+  mode?: UpdateMode | undefined;
+}
 export type LogicalPath = string;
 export type FileRefLogical = { logicalPath: string; version?: string | undefined };
 export type FileRefDigest = { digest: string; version?: string | undefined };
@@ -264,52 +269,70 @@ class OcflObject {
 
   /**
    * Update the content files or directories as one transaction and commit the changes as a new version.
-   * After obtaining the OcflObjectTransaction instance, make sure to either call the
-   * {@link OcflObjectTransaction.commit} or {@link OcflObjectTransaction.rollback} method to complete the transaction.
-   * If callback function `cb` is provided, all update operations can be done in the callback function
-   * and all changes are automatically commited at the end of the function.
+   * With an `updater`, the changes it makes are committed when it resolves, with the message and user in `options`,
+   * and rolled back if it rejects.
+   * Without one, the transaction is returned, and the caller must call {@link OcflObjectTransaction.commit},
+   * which takes the message and user, or {@link OcflObjectTransaction.rollback}.
+   * @throws `TypeError` if `options` isn't an object, has an unknown mode, or has a message or user without an `updater`
    */
-  async update(updater?: (transaction: OcflObjectTransaction) => Promise<unknown>, mode_: UpdateMode = 'MERGE'): Promise<OcflObjectTransaction | undefined> {
-    if (mode_ !== 'MERGE' && mode_ !== 'REPLACE') {
-      throw new TypeError(`Invalid mode '${mode_}'`);
+  async update(updater?: (transaction: OcflObjectTransaction) => Promise<unknown>, options: UpdateOptions = {}): Promise<OcflObjectTransaction | undefined> {
+    if (typeof options !== 'object' || options === null) {
+      throw new TypeError(`Options must be an object, such as { mode: 'REPLACE' }, not ${String(options)}`);
+    }
+    const { mode = 'MERGE', ...commitOptions } = options;
+    if (mode !== 'MERGE' && mode !== 'REPLACE') {
+      throw new TypeError(`Invalid mode '${mode}'`);
+    }
+    if (typeof updater !== 'function' && (commitOptions.message !== undefined || commitOptions.user !== undefined)) {
+      throw new TypeError('Without an updater, pass the message and user to commit()');
     }
     const inv = (await this.getInventory()) ?? this.#baseInventory();
-    const newInv = OcflObjectInventoryMut.newVersion(inv, mode_ === 'REPLACE');
+    const newInv = OcflObjectInventoryMut.newVersion(inv, mode === 'REPLACE');
     await this._validateObjectPath();
     const t = await OcflObjectTransaction.create(this, newInv, this.workspace || this.root);
     if (typeof updater === 'function') {
       try {
         await updater(t);
       } catch (error) {
-        // console.log(error);
         await t.rollback();
         throw error;
       }
-      await t.commit();
+      await t.commit(commitOptions);
       return;
     }
     return t;
   }
 
   /**
-   * Import one or more content files or directories to the object
-   * in one transaction and commit the changes as a new version.
-   * Use this method to simplify copying all contents of a directory
-   * in local filesystem to the OCFL Object content directory
-   * @param content - The source path(s) or an array of a tuple [source, logical path]
-   * @param mode - Update mode. Defaults to `'MERGE'`.
+   * Import a file or directory from the local filesystem as one new version.
+   * `target` is the logical path the source becomes, as in {@link OcflObjectTransaction.import}: without one,
+   * a directory's contents go at the object root and a file keeps its own name there.
+   * @param source - A path to a file or directory in the local filesystem
+   * @param target - The logical path the source becomes
+   * @param options - The mode, and the message and user recorded in the version
+   * @throws The errors of {@link OcflObjectTransaction.import}
    */
-  async import(content: string | string[] | string[][], mode: UpdateMode = 'MERGE'): Promise<void> {
-    const items = typeof content === 'string' ? [[content, '']] : content.map((p) => (typeof p === 'string' ? [p, ''] : p));
-
-    await this.update(async (t) => {
-      const res = await parallelize([...items], async ([source = '', target]) => t.import(source, target));
-      const errors = res.filter((r) => r instanceof Error);
-      if (errors.length) {
-        const sources = items.filter((_, i) => res[i] instanceof Error).map(([source]) => source);
-        throw new AggregateError(errors, `Cannot add the files: ${sources.join(', ')}`);
-      }
-    }, mode);
+  async import(source: string, target?: string, options?: UpdateOptions): Promise<void>;
+  /**
+   * Import a file or directory from the local filesystem as one new version, without a target.
+   * @param source - A path to a file or directory in the local filesystem
+   * @param options - The mode, and the message and user recorded in the version
+   * @throws The errors of {@link OcflObjectTransaction.import}
+   */
+  async import(source: string, options: UpdateOptions): Promise<void>;
+  /**
+   * Import several files or directories from the local filesystem as one new version.
+   * @param sources - Each source, and the logical path it becomes
+   * @param options - The mode, and the message and user recorded in the version
+   * @throws {@link OcflError} `FILE_EXISTS` if two sources produce the same logical path
+   * @throws The errors of {@link OcflObjectTransaction.import}
+   */
+  async import(sources: ImportSource[], options?: UpdateOptions): Promise<void>;
+  async import(sources: string | ImportSource[], targetOrOptions?: string | UpdateOptions, options?: UpdateOptions): Promise<void> {
+    const target = typeof targetOrOptions === 'string' ? targetOrOptions : undefined;
+    const updateOptions = typeof targetOrOptions === 'object' ? targetOrOptions : options;
+    const items = typeof sources === 'string' ? [{ source: sources, target }] : sources;
+    await this.update(async (t) => t._importAll(items), updateOptions);
   }
 
   /**
@@ -321,7 +344,7 @@ class OcflObject {
   }
 
   async createReadable(filePath: string, options?: unknown): Promise<ReadableStream> {
-    return Readable.toWeb(fs.createReadStream(path.join(this.root, filePath), options as Parameters<typeof fs.createReadStream>[1])) as ReadableStream;
+    return store.createReadable(path.join(this.root, filePath), options);
   }
 
   /**

@@ -1,7 +1,6 @@
 /** Models a set of ocfl object modifying operations as a transaction that is as close as atomic as possible */
 import fs from 'node:fs';
 import path from 'node:path';
-import { Readable } from 'node:stream';
 import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { OcflError } from './error.ts';
@@ -9,7 +8,7 @@ import { type ContentRelease, OcflObjectInventory, type OcflObjectInventoryMut }
 import type { OcflObject } from './object.ts';
 import * as store from './store.ts';
 import type { Digests, WriteFileData } from './types.ts';
-import { isAlreadyExists, parallelize } from './utils.ts';
+import { createLimiter, isAlreadyExists } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 
@@ -36,6 +35,78 @@ export interface CommitOptions {
         address?: string;
       }
     | undefined;
+}
+
+/** A file or directory to import, and where it goes in the object */
+export interface ImportSource {
+  /** A path to a file or directory in the local filesystem */
+  source: string;
+  /** The logical path the source becomes. Without one, a directory's contents go at the object root and a file keeps its own name there. */
+  target?: string | undefined;
+}
+
+/** Files imports read or copy at once, across all the imports in a transaction */
+const IMPORT_CONCURRENCY = 10;
+
+interface ImportFile {
+  source: string;
+  logicalPath: string;
+}
+
+/** Every file under `source`, with the logical path it becomes */
+async function listImportFiles(source: string, target: string | undefined): Promise<ImportFile[]> {
+  const base = target === undefined ? undefined : importTarget(target);
+  const stat = await fs.promises.lstat(source);
+  if (stat.isFile()) {
+    return [{ source, logicalPath: base ?? path.basename(source) }];
+  }
+  if (!stat.isDirectory()) {
+    throw unsupportedFileType(source);
+  }
+  const files: ImportFile[] = [];
+  for (const entry of await fs.promises.readdir(source, { recursive: true, withFileTypes: true })) {
+    const file = path.join(entry.parentPath, entry.name);
+    if (entry.isFile()) {
+      files.push({ source: file, logicalPath: path.posix.join(base ?? '', ...path.relative(source, file).split(path.sep)) });
+    } else if (!entry.isDirectory()) {
+      throw unsupportedFileType(file);
+    }
+  }
+  return files;
+}
+
+/** `target` in the form copy() and rename() store, so two spellings of one path are the same path */
+function importTarget(target: string) {
+  checkLogicalPath(target);
+  const normalised = path.posix.normalize(target).replace(/\/$/, '');
+  if (normalised === '.') {
+    throw new OcflError('INVALID_LOGICAL_PATH', "An import target can't be empty; leave it out to import a directory's contents at the object root");
+  }
+  return normalised;
+}
+
+/** @throws {@link OcflError} `FILE_EXISTS` if two files have one logical path, or one is inside another */
+function checkImportConflicts(files: ImportFile[]) {
+  const logicalPaths = new Set<string>();
+  for (const { logicalPath } of files) {
+    if (logicalPaths.has(logicalPath)) {
+      throw new OcflError('FILE_EXISTS', `More than one source imports to "${logicalPath}"`);
+    }
+    logicalPaths.add(logicalPath);
+  }
+  for (const logicalPath of logicalPaths) {
+    const segments = logicalPath.split('/');
+    for (let depth = 1; depth < segments.length; depth++) {
+      const parent = segments.slice(0, depth).join('/');
+      if (logicalPaths.has(parent)) {
+        throw new OcflError('FILE_EXISTS', `"${parent}" is imported both as a file and as a directory`);
+      }
+    }
+  }
+}
+
+function unsupportedFileType(filePath: string) {
+  return new OcflError('UNSUPPORTED_FILE_TYPE', `"${filePath}" is not a regular file or directory`);
 }
 
 type TrackedPromise<T> = Promise<T> & { done?: boolean };
@@ -80,6 +151,7 @@ class OcflObjectTransaction {
   #writers = new Set<WritableStreamDefaultWriter>();
   #committed = false;
   #commitBlocker: Error | undefined;
+  #limit = createLimiter(IMPORT_CONCURRENCY);
 
   private constructor(
     ocflObject: OcflObject,
@@ -436,55 +508,67 @@ class OcflObjectTransaction {
     });
   }
 
-  async #prepareImportFile(source: string, target: string) {
-    if (!target) {
-      throw new TypeError('Target logical path must not be empty if source is a file.');
+  /** The source was hashed before the copy, so the copy is hashed too, to check they're the same bytes */
+  async #stageImportedFile(source: string, staging: string, digest: string) {
+    await store.copyFile(source, staging);
+    if ((await Hashing.digest(this.#inventory.digestAlgorithm, store.createReadable(staging))) !== digest) {
+      throw new OcflError('SOURCE_CHANGED', `"${source}" changed while it was being imported`);
     }
-    const rs = Readable.toWeb(fs.createReadStream(source)) as ReadableStream;
-    const hashes = splitDigests(await Hashing.digest(this.#digestAlgorithms, rs), this.#inventory.digestAlgorithm);
-    const staging = this.#stagingPath();
-    return () => this.#addContent(target, hashes, staging, () => store.copyFile(source, staging));
   }
 
   /** @returns the step that adds the prepared files, which must run in the import's turn */
-  async #prepareImport(source: string, dest: string): Promise<() => Promise<void>> {
-    checkLogicalPath(dest);
-    const srcStat = await fs.promises.stat(source);
-    if (srcStat.isFile()) {
-      return this.#prepareImportFile(source, dest);
-    }
-    if (!srcStat.isDirectory()) {
-      return async () => {};
-    }
-    const files = await fs.promises.readdir(source);
-    const prepared = await parallelize(files, (filename) => this.#prepareImport(path.join(source, filename), path.join(dest, filename)));
+  async #prepareImport(sources: ImportSource[]): Promise<() => Promise<void>> {
+    const files = (await Promise.all(sources.map(({ source, target }) => listImportFiles(source, target)))).flat();
+    checkImportConflicts(files);
+    const algorithms = this.#digestAlgorithms;
+    const hashed = await Promise.all(
+      files.map((file) =>
+        this.#limit(() => Hashing.digest(algorithms, store.createReadable(file.source))).then(
+          (digests) => ({ ...file, digests }),
+          (error: unknown) => ({ ...file, error }),
+        ),
+      ),
+    );
     return async () => {
-      const errors: unknown[] = prepared.filter((step) => step instanceof Error);
-      for (const step of prepared) {
-        if (!(step instanceof Error)) {
-          await step().catch((error) => errors.push(error));
+      const errors: unknown[] = [];
+      for (const file of hashed) {
+        if (!('digests' in file)) {
+          errors.push(file.error);
+          continue;
         }
+        const hashes = splitDigests(file.digests, this.#inventory.digestAlgorithm);
+        const staging = this.#stagingPath();
+        await this.#addContent(file.logicalPath, hashes, staging, () => this.#limit(() => this.#stageImportedFile(file.source, staging, hashes[0]))).catch(
+          (error) => errors.push(error),
+        );
       }
       if (errors.length) {
-        throw new AggregateError(errors, `Cannot import the directory ${source}`);
+        throw new AggregateError(errors, `Cannot import ${sources.map(({ source }) => source).join(', ')}`);
       }
     };
   }
 
   /**
-   * Import content by recursively copying a file or directory from local file system to the
-   * OCFL Object content. For example, `object.import('/home/john/data/b','data/b')` will
-   * copy `/home/john/data/b` from the local filesystem to the content `data/b` in the OFCL Object.
-   * Set target to empty string ('') to copy a directory content to the object's content root.
-   * If target is not specified, the base name of the source will be used.
-   * For examples:
-   * To copy '/src/data' directory as 'data' use import('/src/data', 'data').
-   * To copy all files inside '/src/data' directory to the logical root, use import('/src/data', '').
-   * @param source - A path to a file or directory in the local filesystem to be copied
-   * @param target - A logical path in the OCFL Object content.
+   * Copy a file or directory from the local filesystem into the object, recursively.
+   * `t.import('/src/data')` puts the directory's contents at the object root, and
+   * `t.import('/src/data', 'data')` puts them under `data/`. A file without a target keeps its own name.
+   * Everything under a directory is imported, including hidden files.
+   * @param source - A path to a file or directory in the local filesystem
+   * @param target - The logical path the source becomes
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `target` is empty or absolute, or contains `..`
+   * @throws {@link OcflError} `UNSUPPORTED_FILE_TYPE` if `source` is, or contains, anything other than a regular file or directory, such as a symlink
+   * @throws `AggregateError` of each file's error if any file can't be imported, including {@link OcflError} `SOURCE_CHANGED` if a file changed while it was being imported
    */
   async import(source: string, target?: string): Promise<void> {
-    return this.#inTurn(() => this.#prepareImport(source, target ?? path.basename(source)));
+    return this._importAll([{ source, target }]);
+  }
+
+  /**
+   * Import several sources as one operation.
+   * @internal
+   */
+  async _importAll(sources: ImportSource[]): Promise<void> {
+    return this.#inTurn(() => this.#prepareImport(sources));
   }
 
   /**

@@ -12,6 +12,8 @@ type OcflErrorCode =
   | 'FILE_EXISTS'
   | 'UNSUPPORTED_LAYOUT'
   | 'LAYOUT_MISMATCH'
+  | 'UNSUPPORTED_FILE_TYPE'
+  | 'SOURCE_CHANGED'
   | ValidationErrorCode;
 
 /** Base class for errors a client can handle by their `code`. The message isn't part of the contract. */

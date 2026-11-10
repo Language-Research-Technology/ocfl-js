@@ -71,23 +71,26 @@ Use the `storage` instance to create an object and import files:
 ```js
 let o = storage.object('test-object');
 
-// import from one directory
+// the directory's contents go at the object root
 await o.import('/var/data/dir1');
 
-// import from multiple directories
-await o.import(['/var/data/dir2', '/var/data/dir3', '/var/data/dir4']);
+// record who made the version and why
+await o.import('/var/data/dir1', { message: 'Nightly sync', user: { name: 'importer' } });
 
-// import from multiple files and directories to specific logical paths
-// use an array of [source, target] where source is the path to source file or directory
-// and target is the logical path of the file in the object.
-// To put files under a source directory in the root of object, set target to empty string ('')
+// put the contents under a logical path, and replace everything in the previous version
+await o.import('/var/data/dir2', 'dir2', { mode: 'REPLACE' });
+
+// several sources as one version; a file without a target keeps its own name
 await o.import([
-  ['/var/data/file1', 'test1/file1'],
-  ['/var/data2/file1', 'test2/file1'],
-  ['/var/data2/dir1', 'test2/dir1'],
-  ['/var/data2/dir2', ''],
+  { source: '/var/data/file1', target: 'test1/file1' },
+  { source: '/var/data2/dir1', target: 'test2/dir1' },
+  { source: '/var/data2/readme.txt' },
 ]);
 ```
+
+Each `import()` creates one version. The target is the logical path the source becomes. Without one, a directory's contents go at the object root and a file keeps its own name there. Everything under a directory is imported, including hidden files, and a symlink makes the import fail.
+
+A new version starts from the previous version's files in `'MERGE'` mode, the default, so anything not imported carries over. In `'REPLACE'` mode it starts empty, so it holds only what this update adds. Earlier versions, and the manifest of all the content they hold, are kept in both modes.
 
 OCFL objects inside the OCFL storage can be iterated with `for ... of` construct:
 
@@ -115,15 +118,18 @@ Add a content to the object from a directory in the local file system. This will
 object.import('/testdata');
 ```
 
-Add multiple files from different sources as one transaction. All changes will be saved as one new version `v2`).
+Make several changes as one transaction. All changes are saved as one new version `v2`, with the message and user given:
 
 ```js
-await object.update(async (t) => {
-  // create a new text file test.txt
-  await t.write('test.txt', 'abc');
-  // add a file or folder '/home/john/data/b' to 'data/b'
-  await t.import('/home/john/data/b', 'data/b');
-});
+await object.update(
+  async (t) => {
+    // create a new text file test.txt
+    await t.write('test.txt', 'abc');
+    // add the file or directory '/home/john/data/b' as 'data/b'
+    await t.import('/home/john/data/b', 'data/b');
+  },
+  { message: 'Add b', user: { name: 'john' } },
+);
 ```
 
 Operations called concurrently in one transaction, such as with `Promise.all`, give the same result as awaiting them one after another in the order they were called. A stream from `t.createWritable()` takes its place in that order once its queued writes finish and it closes.

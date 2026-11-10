@@ -11,9 +11,9 @@ export type { HashAndIdNTupleStorageLayoutConfig } from './extensions/0003-hash-
 export type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 export type { FileRef, FileStat, OcflObjectFile } from './file.ts';
 export type { InventoryFile, OcflObjectInventory, VersionNumber } from './inventory.ts';
-export type { FileRefContent, FileRefDigest, FileRefLogical, LogicalPath, OcflObject, UpdateMode } from './object.ts';
+export type { FileRefContent, FileRefDigest, FileRefLogical, LogicalPath, OcflObject, UpdateMode, UpdateOptions } from './object.ts';
 export type { OcflStorage } from './storage.ts';
-export type { CommitOptions, OcflObjectTransaction } from './transaction.ts';
+export type { CommitOptions, ImportSource, OcflObjectTransaction } from './transaction.ts';
 export type * from './types.ts';
 export type { ValidationErrorCode, ValidationErrorOptions } from './validation.ts';
 export { ValidationError } from './validation.ts';

@@ -106,6 +106,12 @@ export type HashedNTupleStorageLayoutConfig = {
     shortObjectRoot?: boolean;
 };
 
+// @public
+export interface ImportSource {
+    source: string;
+    target?: string | undefined;
+}
+
 // @public (undocumented)
 export interface Inventory {
     contentDirectory?: string;
@@ -200,7 +206,7 @@ export class OcflError extends Error {
 }
 
 // @public (undocumented)
-export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'LAYOUT_MISMATCH' | ValidationErrorCode;
+export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'LAYOUT_MISMATCH' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | ValidationErrorCode;
 
 // @public
 export type OcflLayoutConfig<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? {
@@ -237,7 +243,9 @@ export class OcflObject {
     getInventory(version?: string): Promise<OcflObjectInventory | undefined>;
     get headVersion(): VersionNumber | undefined;
     get id(): string | undefined;
-    import(content: string | string[] | string[][], mode?: UpdateMode): Promise<void>;
+    import(source: string, target?: string, options?: UpdateOptions): Promise<void>;
+    import(source: string, options: UpdateOptions): Promise<void>;
+    import(sources: ImportSource[], options?: UpdateOptions): Promise<void>;
     get inventory(): OcflObjectInventory | undefined;
     load(input?: {
         filesMetadata?: boolean | undefined;
@@ -258,7 +266,7 @@ export class OcflObject {
     };
     // (undocumented)
     toString(): string;
-    update(updater?: (transaction: OcflObjectTransaction) => Promise<unknown>, mode_?: UpdateMode): Promise<OcflObjectTransaction | undefined>;
+    update(updater?: (transaction: OcflObjectTransaction) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObjectTransaction | undefined>;
     get versions(): VersionNumber[];
     get workspace(): string | undefined;
 }
@@ -422,6 +430,11 @@ export function storageLayout<N extends OcflLayoutName>(config: N | OcflLayoutCo
 
 // @public (undocumented)
 export type UpdateMode = 'MERGE' | 'REPLACE';
+
+// @public
+export interface UpdateOptions extends CommitOptions {
+    mode?: UpdateMode | undefined;
+}
 
 // @public (undocumented)
 export class ValidationError extends OcflError {

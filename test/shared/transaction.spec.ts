@@ -198,7 +198,7 @@ describe('transaction from update() with no callback', () => {
 
   it('copy', async () => {
     const trx = await begin();
-    await trx.import(source, '');
+    await trx.import(source);
     await trx.copy('data/a/a.txt', 'data/c/c.txt');
     await trx.commit();
     assert.strictEqual(object.inventory!.getDigest('data/c/c.txt'), sha512('data a'));
@@ -207,7 +207,7 @@ describe('transaction from update() with no callback', () => {
 
   it('rename', async () => {
     const trx = await begin();
-    await trx.import(source, '');
+    await trx.import(source);
     await trx.rename('data/a/a.txt', 'data/c/c.txt');
     const content = path.join(workspace, 'v1/content');
     assert(fs.existsSync(path.join(content, 'data/c/c.txt')));
@@ -219,7 +219,7 @@ describe('transaction from update() with no callback', () => {
 
   it('remove', async () => {
     let trx = await begin();
-    await trx.import(source, '');
+    await trx.import(source);
     assert.strictEqual(read(path.join(workspace, 'v1/content/data/a/a.txt')), 'data a');
     await trx.remove('data/a/a.txt');
     assert(!fs.existsSync(path.join(workspace, 'v1/content/data/a/a.txt')));
@@ -233,7 +233,7 @@ describe('transaction from update() with no callback', () => {
 
   it('reinstate', async () => {
     let trx = await begin();
-    await trx.import(source, '');
+    await trx.import(source);
     await trx.commit();
     assert(object.inventory!.getDigest('metadata.json'));
     trx = await begin();

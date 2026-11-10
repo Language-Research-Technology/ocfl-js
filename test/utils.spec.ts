@@ -1,56 +1,31 @@
 import assert from 'node:assert';
-import { performance } from 'node:perf_hooks';
 import { describe, it } from 'node:test';
 import { setTimeout } from 'node:timers/promises';
 import * as utils from '../src/utils.ts';
 
-describe('utils.parallelize', () => {
-  it('can accept empty array', async () => {
-    const input: number[] = [];
-    const output = await utils.parallelize(input, async (i) => {
-      await setTimeout(10);
-      return i;
-    });
-    assert.equal(output.length, 0);
+describe('utils.createLimiter', () => {
+  it('runs at most the given number of functions at once', async () => {
+    const limit = utils.createLimiter(3);
+    let running = 0;
+    let max = 0;
+    const results = await Promise.all(
+      [...Array(10).keys()].map((i) =>
+        limit(async () => {
+          running++;
+          max = Math.max(max, running);
+          await setTimeout(5);
+          running--;
+          return i;
+        }),
+      ),
+    );
+    assert.deepStrictEqual(results, [...Array(10).keys()]);
+    assert.strictEqual(max, 3);
   });
-  it('can run function concurrently', async () => {
-    const input = [1, 2, 3, 4, 5];
-    const startTime = performance.now();
-    await utils.parallelize(input, async (i) => {
-      await setTimeout(100);
-      return i;
-    });
-    const endTime = performance.now();
-    assert(endTime - startTime < 110);
-  });
-  it('can work with input array length less than concurrency count', async () => {
-    const input = [1, 2, 3];
-    const seq: number[] = [];
-    const output = await utils.parallelize(input.concat([]), async (i) => {
-      await setTimeout(100 + i * 2);
-      seq.push(i);
-      return i;
-    });
-    assert.deepStrictEqual(input, output);
-    assert.deepStrictEqual(input, seq);
-  });
-  it('can work with input array length greater than concurrency count', async () => {
-    const input = [...Array(30).keys()];
-    const startTime = performance.now();
-    const output = await utils.parallelize(input.concat([]), async (i) => {
-      await setTimeout(100);
-      return i;
-    });
-    const endTime = performance.now();
-    assert.deepStrictEqual(input, output);
-    //console.log(endTime - startTime);
-    assert(endTime - startTime < 320);
-  });
-  it('can work with callback that returns a promise', async () => {
-    const input = [...Array(30).keys()];
-    const startTime = performance.now();
-    await utils.parallelize(input.concat([]), async (_i) => setTimeout(100));
-    const endTime = performance.now();
-    assert(endTime - startTime < 320);
+
+  it('frees the slot of a function that rejects', async () => {
+    const limit = utils.createLimiter(1);
+    await assert.rejects(limit(async () => Promise.reject(new Error('failed'))));
+    assert.strictEqual(await limit(async () => 'next'), 'next');
   });
 });

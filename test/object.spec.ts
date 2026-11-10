@@ -99,7 +99,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
   it('replaces the previous version content when updating in REPLACE mode', async () => {
     const o = ocfl.object({ id: 'replace-mode', root: path.join(tempdir, 'replace-mode') });
     await o.update(async (t) => t.write('a.txt', 'a'));
-    await o.update(async (t) => t.write('b.txt', 'b'), 'REPLACE');
+    await o.update(async (t) => t.write('b.txt', 'b'), { mode: 'REPLACE' });
     const paths = Array.from(await o.files(), (f) => f.logicalPath);
     assert.deepStrictEqual(paths, ['b.txt']);
   });
@@ -116,12 +116,12 @@ describe('OcflObject with a malformed or missing inventory', () => {
     const o = ocfl.object({ id: 'bad-mode', root: path.join(tempdir, 'bad-mode') });
     await assert.rejects(
       // @ts-expect-error deliberately invalid
-      o.update(async (t) => t.write('a.txt', 'a'), 'APPEND'),
+      o.update(async (t) => t.write('a.txt', 'a'), { mode: 'APPEND' }),
       { name: 'TypeError', message: "Invalid mode 'APPEND'" },
     );
     await assert.rejects(
       // @ts-expect-error deliberately invalid
-      o.update(async (t) => t.write('a.txt', 'a'), 'replace'),
+      o.update(async (t) => t.write('a.txt', 'a'), { mode: 'replace' }),
       { name: 'TypeError', message: "Invalid mode 'replace'" },
     );
   });
@@ -274,15 +274,11 @@ describe('OcflObject with a malformed or missing inventory', () => {
     });
   }
 
-  it('keeps the error of each source an import fails on', async () => {
+  it('rejects an import target outside the object before reading any source', async () => {
     const source = path.join(tempdir, 'import-source.txt');
     await fs.promises.writeFile(source, 'x');
     const o = ocfl.object({ id: 'import-fail', root: path.join(tempdir, 'import-fail') });
-    await assert.rejects(o.import([[source, '../escape.txt']]), (e) => {
-      assert.ok(e instanceof AggregateError);
-      assert.strictEqual(e.errors.length, 1);
-      return ocflError('INVALID_LOGICAL_PATH')(e.errors[0]);
-    });
+    await assert.rejects(o.import([{ source, target: '../escape.txt' }]), ocflError('INVALID_LOGICAL_PATH'));
   });
 
   it('rolls back and rethrows the update error when an earlier operation failed', async () => {
