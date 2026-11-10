@@ -103,7 +103,8 @@ export type OcflStorageConfig = {
    * as an official extension name or `{ extensionName, ...params }`. Anything else throws `UNSUPPORTED_LAYOUT`.
    * Loading a root that declares a supported layout with a different name or parameters throws `LAYOUT_MISMATCH`,
    * loading one that declares a layout this library doesn't implement throws `UNSUPPORTED_LAYOUT`,
-   * and loading one whose `ocfl_layout.json` has no readable `extension` throws `E070`.
+   * loading one whose `ocfl_layout.json` has no string `extension` throws `E070`,
+   * and parameters the layout rejects, in this option or in the root's layout config, throw `INVALID_LAYOUT_CONFIG`.
    */
   layout?: OcflLayoutName | OcflLayoutConfig | undefined;
   /** A default list of digest algorithm names to be added to the fixity block of objects under this storage. */

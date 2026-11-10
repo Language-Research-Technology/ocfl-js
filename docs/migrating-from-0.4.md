@@ -107,6 +107,7 @@ try {
 | `ID_INCOMPATIBLE_WITH_LAYOUT` | The storage layout can't map the object id                                                                                    |
 | `UNSUPPORTED_LAYOUT`          | `layout` isn't a supported name or config, or a root's `ocfl_layout.json` names an unsupported layout, even with `layout` set |
 | `LAYOUT_MISMATCH`             | A configured layout's name or parameters differ from the layout the storage root declares                                     |
+| `INVALID_LAYOUT_CONFIG`       | A layout rejects its parameters, or a root's layout extension `config.json` isn't a JSON object                               |
 | `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`                                                  |
 | `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain                |
 | `FILE_EXISTS`                 | `copy()` or `rename()` names a target that exists; see [Other behaviour changes](#other-behaviour-changes)                    |
@@ -116,7 +117,7 @@ try {
 | `NOT_AN_OBJECT`               | `storage.remove()` finds something with no OCFL object declaration at the object's path, and deletes nothing                  |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                 |
 
-Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`.
+Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`. Invalid layout parameters are the exception: they throw `INVALID_LAYOUT_CONFIG`, because a storage root's `config.json` can hold them too.
 
 An import checks its targets and walks its sources before reading any file, and throws `INVALID_LOGICAL_PATH`, `UNSUPPORTED_FILE_TYPE` or `FILE_EXISTS` directly. If files then fail to import, it throws an `AggregateError` whose `errors` holds the error for each failed file, with its `code` where it has one.
 
@@ -132,7 +133,7 @@ Spec violations now throw a `ValidationError`, an `OcflError` whose `code` is th
 | E050 | An inventory's state lists a digest that isn't in its manifest                       |
 | E060 | The inventory sidecar digest doesn't match the inventory                             |
 | E069 | A storage root has no conformance declaration                                        |
-| E070 | A configured layout meets an `ocfl_layout.json` with no readable `extension`         |
+| E070 | A storage root's `ocfl_layout.json` has no string `extension`                        |
 | E080 | A storage root's version declaration has the wrong contents                          |
 | E081 | A storage is loaded with an `ocflVersion` later than its root's version declaration  |
 | E082 | An object root is nested inside another object                                       |
@@ -579,4 +580,7 @@ The remaining `_` members, such as `object._setInventory()`, `object._requireInv
 - When a storage root's layout extension `config.json` has no `extensionName`, the layout named in `ocfl_layout.json` is used. Previously the storage loaded with no layout.
 - Once an existing object's root inventory has been read, by `load()`, `refresh()`, `update()` or any other method that reads it, `object.ocflVersion` is the version that object declares. It used to report the configured version or the library default, so a 1.0 object in a 1.1 storage root reported 1.1. A configured version only applies when an object is created, and one that differs from an existing object is ignored without an error.
 - Once an existing object's root inventory has been read, `object.digestAlgorithm` and `object.contentDirectory` are the values in that inventory. They used to report the configured values or the library defaults, so a `sha256` object with content directory `data`, loaded with default config, reported `sha512` and `content`. Until the inventory has been read, and for an object that doesn't exist yet, they still report the configured value or default. As with `ocflVersion`, the configured values only apply when an object is created.
-- `load()` keeps a layout passed in the storage config, instead of always replacing it with the root's. The configured layout is used when the root has no `ocfl_layout.json`. If the root names a layout this library doesn't implement, `load()` throws `UNSUPPORTED_LAYOUT`, because a configured layout could map identifiers to the wrong paths. If the root names a supported layout with a different name or parameters, `load()` throws `LAYOUT_MISMATCH`. If the file exists but has no readable `extension`, the configured layout can't be checked, so `load()` throws `E070`.
+- `load()` keeps a layout passed in the storage config, instead of always replacing it with the root's. The configured layout is used when the root has no `ocfl_layout.json`. If the root names a layout this library doesn't implement, `load()` throws `UNSUPPORTED_LAYOUT`, because a configured layout could map identifiers to the wrong paths. If the root names a supported layout with a different name or parameters, `load()` throws `LAYOUT_MISMATCH`. If the file exists but has no string `extension`, `load()` throws `E070`, with or without a configured layout. Previously, without one, the storage loaded with no layout.
+- `load()` throws `UNSUPPORTED_LAYOUT` when `ocfl_layout.json` has an empty `extension`. Previously the storage loaded with no layout, or with the configured one.
+- `load()` throws `INVALID_LAYOUT_CONFIG` when the root's layout extension `config.json` isn't a JSON object, or has parameters the layout rejects. Previously it used the layout's default parameters, so objects mapped to the wrong paths. A missing `config.json` still means the defaults.
+- When `ocfl_layout.json` or the layout extension `config.json` exists but can't be read, `load()` rejects with the file system error, such as `EACCES`. Previously it treated the file as missing.

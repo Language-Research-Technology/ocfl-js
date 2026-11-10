@@ -1,5 +1,6 @@
 import path from 'node:path';
 import * as Hashing from '../digest.ts';
+import { OcflError } from '../error.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 
 const MAX_ENCODED_ID_LENGTH = 100;
@@ -36,11 +37,14 @@ class HashAndIdNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     const c = this.parameters;
     const digestLength = Hashing.getHexDigestLength(c.digestAlgorithm);
     if (!digestLength) {
-      throw new Error('Invalid digestAlgorithm');
+      throw new OcflError('INVALID_LAYOUT_CONFIG', 'Invalid digestAlgorithm');
     }
     const p = c.numberOfTuples * c.tupleSize;
     if (p > digestLength) {
-      throw new Error('Product of numberOfTuples and tupleSize is greater than the number of characters in the hex encoded digest.');
+      throw new OcflError(
+        'INVALID_LAYOUT_CONFIG',
+        'Product of numberOfTuples and tupleSize is greater than the number of characters in the hex encoded digest.',
+      );
     }
   }
 

@@ -20,6 +20,28 @@ function isNotDir(error: unknown): boolean {
   return isErrnoException(error) && error.code === 'ENOTDIR';
 }
 
+/** The file's text, or `undefined` if it doesn't exist */
+async function readIfExists(file: string): Promise<string | undefined> {
+  try {
+    return await fs.promises.readFile(file, 'utf8');
+  } catch (error) {
+    if (isNotFound(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+/** `content` parsed as a JSON object, or `undefined` if it isn't one */
+function parseJsonObject(content: string): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(content);
+    return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
 type Limiter = <T>(fn: () => Promise<T>) => Promise<T>;
 
 /** @returns a function that runs the functions given to it, at most `count` at once */
@@ -103,4 +125,4 @@ async function findNamasteVersion(prefix: string, rootPath: string): Promise<Ocf
   return version ?? undefined;
 }
 
-export { createLimiter, findNamasteVersion, isAlreadyExists, isDirEmpty, isErrnoException, isNotFound };
+export { createLimiter, findNamasteVersion, isAlreadyExists, isDirEmpty, isErrnoException, isNotFound, parseJsonObject, readIfExists };
