@@ -5,7 +5,6 @@ import { OcflObject } from './object.ts';
 import { OcflStorage } from './storage.ts';
 import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig } from './types.ts';
 
-export { OcflDigest } from './digest.ts';
 export type { OcflErrorCode } from './error.ts';
 export { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 export { OcflExtension, OcflStorageLayout } from './extension.ts';

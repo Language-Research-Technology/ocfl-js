@@ -46,18 +46,6 @@ export interface Inventory {
   contentDirectory?: string;
 }
 
-export type IDataType = string | ArrayBufferLike | Uint8Array | Uint16Array | Uint32Array;
-
-export interface CommonHasher {
-  init: () => CommonHasher;
-  update: (data: IDataType) => CommonHasher;
-  digest: {
-    (outputType: 'binary'): Uint8Array;
-    (outputType?: 'hex'): string;
-  };
-  digestSize: number;
-}
-
 export type EncodingOptions = BufferEncoding | { encoding: BufferEncoding; [key: string]: unknown };
 export type BinaryOptions = { encoding?: null | undefined; [key: string]: unknown };
 

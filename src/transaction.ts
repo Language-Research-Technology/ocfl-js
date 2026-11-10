@@ -382,7 +382,7 @@ class OcflObjectTransaction {
       throw new Error('Transaction already commited');
     }
     const digestAlgo = this._inventory.digestAlgorithm;
-    const hs = await Hashing.createStream(this._digestAlgorithms);
+    const hs = Hashing.createStream(this._digestAlgorithms);
     checkLogicalPath(logicalPath);
     const staging = this._stagingPath();
     const writer = (await store.createWritable(staging, options)).getWriter();
@@ -426,7 +426,7 @@ class OcflObjectTransaction {
         return () => this._addContent(logicalPath, hashes, staging, () => store.writeFile(staging, content, options));
       }
       if (data instanceof ReadableStream) {
-        const hs = await Hashing.createStreamThrough(digestAlgos);
+        const hs = Hashing.createStreamThrough(digestAlgos);
         await this._removeStagedOnFailure(staging, () => store.writeFile(staging, data.pipeThrough(hs), options));
         const hashes = splitDigests(hs.digest(), digestAlgo);
         return () => this._addContent(logicalPath, hashes, staging);

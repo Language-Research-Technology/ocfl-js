@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import ocfl, { OcflDigest, type OcflError, type OcflStorage, type OcflStorageConfig, OcflStorageLayout, type OcflVersion } from '../../src/index.ts';
+import ocfl, { type OcflError, type OcflStorage, type OcflStorageConfig, OcflStorageLayout, type OcflVersion } from '../../src/index.ts';
+import { DIGESTS_OF_ABC } from './digests-of-abc.ts';
 
 describe('constructor', () => {
   it('can create new storage', () => {
@@ -419,19 +420,22 @@ describe('configured layout of a loaded storage root', () => {
     await ocfl.storage({ root, layout: new SaltedHashedLayout() }).load();
   });
 
-  it('initialises the digest algorithm of a configured layout', async () => {
-    const algorithm = 'blake2b-512';
-    OcflDigest.registerHasherFactory(algorithm, async () => {
-      const hasher: unknown = { digestSize: 1, init: () => hasher, update: () => hasher, digest: () => 'digested' };
-      return hasher as never;
+  for (const [digestAlgorithm, digest] of Object.entries(DIGESTS_OF_ABC)) {
+    it(`creates, writes to and reloads a root hashed with ${digestAlgorithm}`, async () => {
+      const root = path.join(tempdir, `root-${rootCount++}`);
+      const layout = { extensionName: HASHED, digestAlgorithm, tupleSize: 1, numberOfTuples: 1 };
+      const created = await ocfl.createStorage({ root, layout });
+      await created.object('abc').update(async (t) => {
+        await t.write('a.txt', 'content');
+      });
+
+      const loaded = await ocfl.loadStorage({ root });
+      const object = loaded.object('abc');
+      assert.strictEqual(object.root, path.join(root, digest.charAt(0), digest));
+      await object.load();
+      assert.strictEqual(await object.getFile('a.txt')?.text(), 'content');
     });
-    const layout = ocfl.storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', digestAlgorithm: algorithm, tupleSize: 1, numberOfTuples: 1 });
-    const root = await createRoot();
-    const storage = ocfl.storage({ root, layout });
-    assert.throws(() => storage.objectRoot('abc'), /not initialized/);
-    await storage.load();
-    assert.strictEqual(storage.objectRoot('abc'), path.join('d', 'digested'));
-  });
+  }
 
   it('uses the layout and extension config of the root when no layout is configured', async () => {
     const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: HASHED, tupleSize: 2 } });

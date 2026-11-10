@@ -80,7 +80,19 @@ EOF
 cat >"$consumer/removed-api.ts" <<'EOF'
 import type { OcflExtension, OcflObject, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl-fs';
 import * as api from '@ocfl/ocfl-fs';
-import { extensions, OcflDigest } from '@ocfl/ocfl-fs';
+import { extensions } from '@ocfl/ocfl-fs';
+// @ts-expect-error OcflDigest is gone, digest algorithms are a fixed table
+import { OcflDigest } from '@ocfl/ocfl-fs';
+// @ts-expect-error registerHasherFactory is gone, digest algorithms are a fixed table
+import { registerHasherFactory } from '@ocfl/ocfl-fs';
+// @ts-expect-error hasAlgorithm is gone, digest algorithms are a fixed table
+import { hasAlgorithm } from '@ocfl/ocfl-fs';
+// @ts-expect-error CommonHasher is gone along with hasher registration
+import type { CommonHasher } from '@ocfl/ocfl-fs';
+// @ts-expect-error MultiHasher is gone along with hasher registration
+import type { MultiHasher } from '@ocfl/ocfl-fs';
+// @ts-expect-error IDataType is gone along with hasher registration
+import type { IDataType } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflStorageImpl is not exported
 import { OcflStorageImpl } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflObjectTransactionImpl is not exported
@@ -134,14 +146,6 @@ extension.p;
 storage.delete('id');
 // @ts-expect-error OcflStorage.purge is gone
 storage.purge('id');
-// @ts-expect-error OcflDigest.digest is gone
-OcflDigest.digest('sha256', 'a');
-// @ts-expect-error OcflDigest.digestSync is gone
-OcflDigest.digestSync('sha256', 'a');
-// @ts-expect-error OcflDigest.createStream is gone
-OcflDigest.createStream('sha256');
-// @ts-expect-error OcflDigest.CONTENT is gone
-OcflDigest.CONTENT;
 // @ts-expect-error OcflObject.fileByLogicalPath is gone, use load then getFile
 await object.fileByLogicalPath('a.txt');
 // @ts-expect-error OcflObject.fileByDigest is gone, use load then getFile
@@ -242,7 +246,6 @@ import { join } from 'node:path';
 import ocflFs, {
   type BinaryOptions,
   type CommitOptions,
-  type CommonHasher,
   createStorage,
   type DeepReadonly,
   type EncodingOptions,
@@ -250,7 +253,6 @@ import ocflFs, {
   type FileRef,
   type FileStat,
   type HashedNTupleStorageLayoutConfig,
-  type IDataType,
   type Inventory,
   type InventoryDigests,
   type InventoryFile,
@@ -260,7 +262,6 @@ import ocflFs, {
   OCFL_VERSIONS,
   ObjectNotFoundError,
   ObjectNotLoadedError,
-  OcflDigest,
   OcflError,
   type OcflErrorCode,
   OcflExtension,
@@ -299,10 +300,6 @@ await written.update(async (t: OcflObjectTransaction) => t.write('a.txt', 'writt
 const writtenInventory: OcflObjectInventory | undefined = await written.getInventory();
 const writtenFile: OcflObjectFile | undefined = written.getFile('a.txt');
 
-OcflDigest.registerHasherFactory('consumer-digest', async (): Promise<CommonHasher> => {
-  throw new Error('only registered, never used');
-});
-
 class PrefixedLayout extends extensions.FlatDirectStorageLayout {
   map(id: string) {
     return `prefix-${super.map(id)}`;
@@ -324,7 +321,6 @@ if (
   prefixedStorage.objectRoot('abc') !== 'prefix-abc' ||
   writtenInventory?.head !== 'v1' ||
   (await writtenFile?.text()) !== 'written to the filesystem' ||
-  !OcflDigest.hasAlgorithm('consumer-digest') ||
   (await storage.has('missing')) ||
   missingCode !== 'OBJECT_NOT_FOUND' ||
   !(ValidationError.prototype instanceof OcflError)

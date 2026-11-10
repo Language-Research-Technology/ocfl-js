@@ -13,8 +13,6 @@ import { createError } from './validation.ts';
 
 const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
 
-import { Hashing } from './digest.ts';
-
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 
 import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
@@ -203,10 +201,6 @@ class OcflStorage {
       } catch (_error) {}
     }
     this.#layout = this.#resolveLayout(layoutName, layoutConfig);
-    const layoutDigestAlgorithm = this.#layout?.get('digestAlgorithm');
-    if (layoutDigestAlgorithm) {
-      await Hashing.initSync(layoutDigestAlgorithm);
-    }
 
     return this;
   }
@@ -232,10 +226,6 @@ class OcflStorage {
     // create layout
     if (!this.#layout) {
       this.#layout = new DEFAULT_LAYOUT();
-    }
-    const layoutDigestAlgorithm = this.#layout.get('digestAlgorithm');
-    if (layoutDigestAlgorithm) {
-      await Hashing.initSync(layoutDigestAlgorithm);
     }
     const layout = { extension: this.#layout.name, description: this.#layout.description };
     await store.writeFile(path.join(this.root, OCFL_LAYOUT), JSON.stringify(layout, null, 2), 'utf8');

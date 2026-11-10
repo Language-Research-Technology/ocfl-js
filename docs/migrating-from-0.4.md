@@ -11,8 +11,8 @@ You must remove `@ocfl/ocfl` from your dependencies. `@ocfl/ocfl-fs` no longer d
 After removing it, change the package name in your imports:
 
 ```diff
-- import { OcflDigest, type OcflObject } from '@ocfl/ocfl';
-+ import { OcflDigest, type OcflObject } from '@ocfl/ocfl-fs';
+- import { OcflError, type OcflObject } from '@ocfl/ocfl';
++ import { OcflError, type OcflObject } from '@ocfl/ocfl-fs';
 ```
 
 ## Node.js 22.12 or later
@@ -78,6 +78,7 @@ For example, `digestAlgorithm: 'SHA512'` and `update(fn, 'replace')` now throw. 
 
 - `blake2b-160`, `blake2b-256` and `blake2b-384` are no longer supported, because `node:crypto` doesn't provide them. `blake2b-512` is still supported.
 - `OcflDigest.FIXITY` has been removed.
+- Digest algorithms are a fixed, built-in set that needs no setup. `OcflDigest` and hasher registration have been removed.
 
 ## Error classes and codes
 
@@ -288,8 +289,12 @@ Each public member now corresponds to something the OCFL specification or the li
 | `OcflObjectTransactionImpl`                                                                              | `OcflObjectTransaction`, from `object.update()`                                                                            |
 | Constructing, subclassing or `instanceof` on the public classes                                          | The functions that return them, and the classes as types; see [Public classes are types](#public-classes-are-types)        |
 | `OcflDigest.digest()`, `digestSync()`, `createStream()`, `createStreamThrough()`, `getHexDigestLength()` | `createHash()` from `node:crypto`, or `crc32()` from `node:zlib`                                                           |
-| `OcflDigest.initSync()`                                                                                  | Nothing: `storage.load()` and `create()` prepare the digest algorithm of a storage layout                                  |
+| `OcflDigest.initSync()`                                                                                  | Nothing: the built-in digest algorithms need no initialisation                                                             |
 | `OcflDigest.CONTENT`                                                                                     | The values `'sha256'` and `'sha512'`                                                                                       |
+| `OcflDigest.registerHasherFactory()`                                                                     | Nothing: digest algorithms are a fixed set; to add one, send a pull request to this library                                |
+| `OcflDigest.hasAlgorithm()`                                                                              | Nothing: the supported algorithms are listed in [Option values](#option-values-are-matched-exactly)                        |
+| `OcflDigest`                                                                                             | Nothing: all its members have gone; see the rows above                                                                     |
+| The `CommonHasher` and `IDataType` types                                                                 | Nothing: they only described hashers passed to `registerHasherFactory()`                                                   |
 | `OcflObject.fileByLogicalPath(path, version)`                                                            | `await object.load()` once, then `object.getFile(path, version)`                                                           |
 | `OcflObject.fileByDigest(digest, version)`                                                               | `await object.load()` once, then `object.getFile({ digest, version })`                                                     |
 | `OcflObject.fileByContentPath(path, version)`                                                            | `await object.load()` once, then `object.getFile({ contentPath: path, version })`                                          |
@@ -310,7 +315,7 @@ Each public member now corresponds to something the OCFL specification or the li
 | The `inventory.fixity` setter                                                                            | The `fixityAlgorithms` option of an object or storage                                                                      |
 | The `OcflObjectInventoryMut` type                                                                        | `OcflObjectInventory`                                                                                                      |
 | `OcflObject.export()`                                                                                    | `object.files(version)` and `file.stream()`; see [Writing a version out](#writing-a-version-out)                           |
-| `extensions.DigestAlgorithm`                                                                             | Nothing to replace: to add an algorithm from extension 0009, call `OcflDigest.registerHasherFactory()`                     |
+| `extensions.DigestAlgorithm`                                                                             | Nothing to replace: to add an algorithm from extension 0009, send a pull request to this library                           |
 | `ocfl.StorageLayout`, and the `StorageLayout` export of `@ocfl/ocfl-fs`                                  | `extensions`, on the default API and as a named export of `@ocfl/ocfl-fs`; see [Layout classes](#layout-classes)           |
 | The `StorageLayout` type                                                                                 | `typeof extensions`, or `extensions.PathDirectStorageLayout` and the other classes as types                                |
 | `OcflStorageLayout.layout`                                                                               | `extensions`, or `OcflStorageLayout.class(name)` to find a registered custom layout; see [Layout classes](#layout-classes) |
