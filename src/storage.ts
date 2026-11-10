@@ -165,16 +165,21 @@ class OcflStorage {
 
   /**
    * Check namaste, retrieve storage layout extension, and read its config file.
+   * @throws `ValidationError` `E069` if the storage root has no declaration, `E080` if its declaration is invalid.
+   * @throws `ValidationError` `E081` if the configured `ocflVersion` is later than the storage root's.
    * @throws `ValidationError` `E070` if `ocfl_layout.json` exists but has no string `extension`.
    * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if `ocfl_layout.json` names a layout this library doesn't implement.
    * @throws {@link OcflError} `INVALID_LAYOUT_CONFIG` if the layout's `config.json` isn't a JSON object or has parameters the layout rejects.
-   * @throws The file system error if `ocfl_layout.json` or the layout's `config.json` exists but can't be read.
+   * @throws The file system error if the storage root declaration, `ocfl_layout.json` or the layout's `config.json` exists but can't be read.
    */
   async load(): Promise<OcflStorage> {
     const prefix = NAMASTE_PREFIX_STORAGE;
     const layoutPath = path.join(this.root, OCFL_LAYOUT);
     const [namaste, layoutRead] = await Promise.allSettled([findNamasteVersion(prefix, this.root), readIfExists(layoutPath)]);
-    const ocflVersion = namaste.status === 'fulfilled' ? namaste.value : undefined;
+    if (namaste.status === 'rejected') {
+      throw namaste.reason;
+    }
+    const ocflVersion = namaste.value;
     if (ocflVersion === '') {
       throw createError('E080', this.root);
     }
