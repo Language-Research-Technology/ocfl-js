@@ -14,9 +14,12 @@ describe('constructor', () => {
     storage = ocfl.storage({ root: '/data/storage-1' });
     assert.equal(storage.root, '/data/storage-1');
 
-    assert.throws(() => {
-      storage = ocfl.storage({ root: '/data/storage-1', layout: ocfl.storageLayout('test' as never) as never });
-    });
+    assert.throws(
+      () => {
+        storage = ocfl.storage({ root: '/data/storage-1', layout: 'test' as never });
+      },
+      { code: 'UNSUPPORTED_LAYOUT' },
+    );
 
     assert.throws(() => {
       storage = ocfl.storage({ root: '/data/storage-1', workspace: '/data/storage-1/temp' });
