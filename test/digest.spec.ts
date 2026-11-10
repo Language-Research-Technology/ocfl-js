@@ -27,53 +27,17 @@ describe('Hashing', () => {
       const hash2 = await Hashing.digest(['sha512'], inputData);
       assert.strictEqual(hash2.sha512, controlDigest);
     });
-  });
-
-  describe('createStream', async () => {
-    it('can be used as stream', async () => {
-      const hs = Hashing.createStream('sha512');
-      const w = hs.getWriter();
-      await w.write(inputData);
-      await w.close();
-      assert.strictEqual(hs.digest(), controlDigest);
+    it('can calculate hash from a stream of byte chunks', async () => {
+      assert.strictEqual(await Hashing.digest('sha512', createReadable()), controlDigest);
     });
-    it('can be piped from readable stream', async () => {
-      const r = createReadable();
-      const hs = Hashing.createStream('sha512');
-      await r.pipeTo(hs);
-      assert.strictEqual(hs.digest(), controlDigest);
+    it('can calculate hash from a stream of string chunks', async () => {
+      assert.strictEqual(await Hashing.digest('sha512', createReadable('utf8')), controlDigest);
     });
-    it('can be digest multiple algorithms', async () => {
-      const r = createReadable();
-      const hs = Hashing.createStream(['sha512']);
-      await r.pipeTo(hs);
-      assert.strictEqual(hs.digest().sha512, controlDigest);
+    it('can calculate several digests from one stream', async () => {
+      assert.strictEqual((await Hashing.digest(['sha512'], createReadable())).sha512, controlDigest);
     });
-  });
-
-  describe('createStreamThrough', async () => {
-    it('can be piped from readable stream with string chunk', async () => {
-      const r = createReadable('utf8');
-      const hs = Hashing.createStreamThrough('sha512');
-      const rs = r.pipeThrough(hs);
-      let outputData = '';
-      for await (const chunk of rs) {
-        outputData += chunk;
-      }
-      assert.strictEqual(inputData, outputData);
-      assert.strictEqual(hs.digest(), controlDigest);
-    });
-    it('can be piped from readable stream with buffer chunk', async () => {
-      const r = createReadable();
-      const hs = Hashing.createStreamThrough('sha512');
-      const rs = r.pipeThrough(hs);
-      const buffers = [];
-      for await (const chunk of rs) {
-        buffers.push(chunk);
-      }
-      const outputData = Buffer.concat(buffers).toString('utf8');
-      assert.strictEqual(inputData, outputData);
-      assert.strictEqual(hs.digest(), controlDigest);
+    it('rejects a chunk that is not bytes or a string', async () => {
+      await assert.rejects(Hashing.digest('sha512', Readable.from([42])), /Unsupported data type: \[object Number\]/);
     });
   });
 

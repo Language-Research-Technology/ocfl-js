@@ -23,6 +23,18 @@ function checkLogicalPath(logicalPath: string) {
   }
 }
 
+function isAsyncIterable(data: unknown): data is AsyncIterable<unknown> {
+  return typeof (data as AsyncIterable<unknown> | null)?.[Symbol.asyncIterator] === 'function';
+}
+
+async function* hashedBytes(source: AsyncIterable<unknown>, hash: ReturnType<typeof Hashing.createMultiHasher>) {
+  for await (const chunk of source) {
+    const bytes = Hashing.toBytes(chunk);
+    hash.update(bytes);
+    yield bytes;
+  }
+}
+
 export interface CommitOptions {
   /** Freeform text used to record the rationale for creating the current version */
   message?: string | undefined;
@@ -448,26 +460,33 @@ class OcflObjectTransaction {
   }
 
   /**
-   * Create a writable stream
+   * Create a writable stream. String chunks are written as UTF-8.
    */
-  async createWritable(logicalPath: string, options?: unknown): Promise<WritableStream> {
+  async createWritable(logicalPath: string): Promise<WritableStream> {
     if (this.#committed) {
       throw new Error('Transaction already commited');
     }
     const digestAlgo = this.#inventory.digestAlgorithm;
-    const hs = Hashing.createStream(this.#digestAlgorithms);
+    const hash = Hashing.createMultiHasher(this.#digestAlgorithms);
     checkLogicalPath(logicalPath);
     const staging = this.#stagingPath();
-    const writer = (await store.createWritable(staging, options)).getWriter();
+    const writer = (await store.createWritable(staging)).getWriter();
     const ws = new WritableStream({
-      write(chunk) {
-        hs.update(chunk);
-        return writer.write(chunk);
+      async write(chunk) {
+        let bytes: Uint8Array;
+        try {
+          bytes = Hashing.toBytes(chunk);
+        } catch (error) {
+          await writer.abort(error);
+          throw error;
+        }
+        hash.update(bytes);
+        return writer.write(bytes);
       },
       close: () =>
         this.#inTurn(async () => {
           await writer.close();
-          const hashes = splitDigests(hs.digest(), digestAlgo);
+          const hashes = splitDigests(hash.digest(), digestAlgo);
           return () => this.#addContent(logicalPath, hashes, staging);
         }),
       abort: (reason) => writer.abort(reason),
@@ -481,30 +500,25 @@ class OcflObjectTransaction {
   /**
    * Write data to a file at `logicalPath`
    * @param logicalPath - A path relative to the object content directory
-   * @param data - Data to be written to the file
-   * @param options - The same options as https://nodejs.org/api/fs.html#fs_fs_writefile_file_data_options_callback
+   * @param data - The file's content. A string, or a string chunk, is written as UTF-8; decode base64 or hex
+   * first, e.g. `Buffer.from(text, 'base64')`.
    */
-  async write(logicalPath: string, data: WriteFileData, options?: object | string): Promise<void> {
+  async write(logicalPath: string, data: WriteFileData): Promise<void> {
     return this.#inTurn(async () => {
       checkLogicalPath(logicalPath);
       const digestAlgo = this.#inventory.digestAlgorithm;
       const digestAlgos = this.#digestAlgorithms;
       const staging = this.#stagingPath();
-      if (typeof data === 'string' || ArrayBuffer.isView(data)) {
-        const content =
-          ArrayBuffer.isView(data) && !(data instanceof Uint8Array || data instanceof Uint16Array || data instanceof Uint32Array)
-            ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
-            : data;
-        const hashes = splitDigests(await Hashing.digest(digestAlgos, content as string | Uint8Array), digestAlgo);
-        return () => this.#addContent(logicalPath, hashes, staging, () => store.writeFile(staging, content, options));
-      }
-      if (data instanceof ReadableStream) {
-        const hs = Hashing.createStreamThrough(digestAlgos);
-        await this.#removeStagedOnFailure(staging, () => store.writeFile(staging, data.pipeThrough(hs), options));
-        const hashes = splitDigests(hs.digest(), digestAlgo);
+      const chunks = data instanceof Blob ? data.stream() : data;
+      if (isAsyncIterable(chunks)) {
+        const hash = Hashing.createMultiHasher(digestAlgos);
+        await this.#removeStagedOnFailure(staging, () => store.writeFile(staging, hashedBytes(chunks, hash)));
+        const hashes = splitDigests(hash.digest(), digestAlgo);
         return () => this.#addContent(logicalPath, hashes, staging);
       }
-      throw new TypeError(`Unsupported data type: ${Object.prototype.toString.call(data)}`);
+      const content = Hashing.toBytes(data);
+      const hashes = splitDigests(await Hashing.digest(digestAlgos, content), digestAlgo);
+      return () => this.#addContent(logicalPath, hashes, staging, () => store.writeFile(staging, content));
     });
   }
 

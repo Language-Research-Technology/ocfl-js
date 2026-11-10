@@ -364,13 +364,13 @@ export class OcflObjectInventory {
 export class OcflObjectTransaction {
     commit(options?: CommitOptions): Promise<void>;
     copy(source: string, target: string): Promise<void>;
-    createWritable(logicalPath: string, options?: unknown): Promise<WritableStream>;
+    createWritable(logicalPath: string): Promise<WritableStream>;
     import(source: string, target?: string): Promise<void>;
     reinstate(logicalPath: string, versionName: string): Promise<number>;
     remove(logicalPath: string): Promise<void>;
     rename(source: string, target: string): Promise<void>;
     rollback(): Promise<void>;
-    write(logicalPath: string, data: WriteFileData, options?: object | string): Promise<void>;
+    write(logicalPath: string, data: WriteFileData): Promise<void>;
 }
 
 // @public
@@ -480,8 +480,8 @@ export class VersionNumber {
     zeroPaddingLength: number | undefined;
 }
 
-// @public (undocumented)
-export type WriteFileData = string | Uint8Array | DataView | ArrayBuffer | ReadableStream;
+// @public
+export type WriteFileData = string | ArrayBufferView | ArrayBuffer | Blob | AsyncIterable<string | ArrayBufferView | ArrayBuffer>;
 
 // (No @packageDocumentation comment for this package)
 
