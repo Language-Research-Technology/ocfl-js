@@ -15,7 +15,7 @@ const BUILT_IN_LAYOUTS = {
   '0002-flat-direct-storage-layout': FlatDirectStorageLayout,
   '0003-hash-and-id-n-tuple-storage-layout': HashAndIdNTupleStorageLayout,
   '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayout,
-} as Record<OcflLayoutName, LayoutClass>;
+} satisfies Record<OcflLayoutName, unknown> as Record<OcflLayoutName, LayoutClass>;
 
 /** @throws {OcflError} `UNSUPPORTED_LAYOUT` if the library doesn't implement the layout */
 function supportedLayoutClass(name: unknown): LayoutClass {
