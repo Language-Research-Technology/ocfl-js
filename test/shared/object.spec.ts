@@ -326,7 +326,7 @@ describe('update', () => {
       await assert.rejects(t.import(f1, '')); // target path cannot be empty string
       await t.import(f1);
       // directory
-      await t.import(f2, '');
+      await t.import(f2);
       await t.copy('foo', 'foo2');
     });
     const inv = JSON.parse(await fs.promises.readFile(path.join(objectx.root, 'inventory.json'), 'utf8'));
@@ -391,12 +391,13 @@ describe('update', () => {
   });
 
   it('can update using replace mode', async () => {
-    await objectx.update(async (t) => {
-      // file
-      await t.import(path.join(datadir, 'test_input.txt'));
-      // directory
-      await t.import(path.join(datadir, 'sample_dir'));
-    }, 'REPLACE');
+    await objectx.update(
+      async (t) => {
+        await t.import(path.join(datadir, 'test_input.txt'));
+        await t.import(path.join(datadir, 'sample_dir'), 'sample_dir');
+      },
+      { mode: 'REPLACE' },
+    );
     const inv = (await objectx.getInventory())!;
     assert.strictEqual(inv.head, 'v6');
     const files = [...(await objectx.files())].map((f) => f.logicalPath).sort();
@@ -484,7 +485,7 @@ describe('update', () => {
     const f1 = path.join(datadir, 'fixtures/1.1/content/spec-ex-full/v3');
     const f2 = path.join(datadir, 'fixtures/1.1/content/spec-ex-diff-paths/v1');
     const o = createObject('object-import-2', true);
-    await o.import([f1, f2]);
+    await o.import([{ source: f1 }, { source: f2 }]);
     const inv = JSON.parse(await fs.promises.readFile(path.join(o.root, 'inventory.json'), 'utf8'));
     assert.strictEqual(inv.head, 'v1');
     await validateFile(o, path.join(f1, 'foo/bar.xml'), 'foo/bar.xml');
@@ -871,7 +872,7 @@ describe('update', () => {
           await fs.promises.writeFile(path.join(source, 'sub/other.txt'), 'other');
 
           const o = newObject();
-          await o.update(async (t) => t.import(source, ''));
+          await o.update(async (t) => t.import(source));
 
           const inventory = await assertManifestMatchesFiles(o);
           assert.strictEqual(Object.keys(inventory.manifest).length, 2);

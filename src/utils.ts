@@ -16,33 +16,29 @@ function isNotFound(error: unknown): boolean {
   return isErrnoException(error) && error.code === 'ENOENT';
 }
 
-/**
- * Run `asyncFn` over every element of `inputStack` with at most `count` calls in flight.
- * Rejections are returned in the result array rather than thrown.
- * @param inputStack - Consumed during the process.
- * @param count - Maximum number of concurrency
- */
-async function parallelize<T, R>(inputStack: T[], asyncFn: (input: T) => Promise<R>, count = 10): Promise<(R | Error)[]> {
-  const promises: Promise<void>[] = [];
-  let len = Math.min(inputStack.length, count);
-  const result: (R | Error)[] = [];
-  while (len--) {
-    promises.push(
-      (async () => {
-        while (inputStack.length) {
-          const input = inputStack.pop() as T;
-          const index = inputStack.length;
-          try {
-            result[index] = await asyncFn(input);
-          } catch (error) {
-            result[index] = error instanceof Error ? error : new Error(String(error), { cause: error });
-          }
-        }
-      })().catch(() => {}),
-    );
-  }
-  await Promise.all(promises);
-  return result;
+type Limiter = <T>(fn: () => Promise<T>) => Promise<T>;
+
+/** @returns a function that runs the functions given to it, at most `count` at once */
+function createLimiter(count: number): Limiter {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  return async (fn) => {
+    if (active < count) {
+      active++;
+    } else {
+      await new Promise<void>((resolve) => waiting.push(resolve));
+    }
+    try {
+      return await fn();
+    } finally {
+      const next = waiting.shift();
+      if (next) {
+        next();
+      } else {
+        active--;
+      }
+    }
+  };
 }
 
 async function isDirEmpty(dirPath: string): Promise<boolean> {
@@ -78,4 +74,4 @@ async function findNamasteVersion(prefix: string, rootPath: string): Promise<Ocf
   return version ?? undefined;
 }
 
-export { findNamasteVersion, isAlreadyExists, isDirEmpty, isErrnoException, isNotFound, parallelize };
+export { createLimiter, findNamasteVersion, isAlreadyExists, isDirEmpty, isErrnoException, isNotFound };

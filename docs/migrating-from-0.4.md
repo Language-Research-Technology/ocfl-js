@@ -72,7 +72,7 @@ Option values used to be matched case-insensitively. They now have to match exac
 | `digestAlgorithm` for storage layouts 0003 and 0004 | `'md5'`, `'sha1'`, `'sha256'`, `'sha512'`, `'sha512/256'`, `'blake2b-512'`, `'crc32'`, `'size'` |
 | `update()` / `import()` mode                        | `'MERGE'`, `'REPLACE'`                                                                          |
 
-For example, `digestAlgorithm: 'SHA512'` and `update(fn, 'replace')` now throw. A layout configured with `digestAlgorithm: 'MD5'` used to pass validation and then fail on the first `map()`. It is now rejected when the layout is created.
+For example, `digestAlgorithm: 'SHA512'` and `update(fn, { mode: 'replace' })` now throw. A layout configured with `digestAlgorithm: 'MD5'` used to pass validation and then fail on the first `map()`. It is now rejected when the layout is created.
 
 ## Digest algorithms
 
@@ -110,12 +110,15 @@ try {
 | `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`                                                  |
 | `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain                |
 | `FILE_EXISTS`                 | `copy()` or `rename()` names a target that exists; see [Other behaviour changes](#other-behaviour-changes)                    |
+| `FILE_EXISTS`                 | Two sources of one `object.import()` produce the same logical path, or one inside a file                                      |
+| `UNSUPPORTED_FILE_TYPE`       | An import source is, or contains, something other than a regular file or directory, such as a symlink                         |
+| `SOURCE_CHANGED`              | A file changed while it was being imported                                                                                    |
 | `NOT_AN_OBJECT`               | `storage.remove()` finds something with no OCFL object declaration at the object's path, and deletes nothing                  |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                 |
 
 Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`.
 
-When `object.import()` fails for one or more sources, it throws an `AggregateError`. Its `errors` holds the error for each failed source, with its `code` where it has one. A failed directory source is itself an `AggregateError` of the errors for its files.
+An import checks its targets and walks its sources before reading any file, and throws `INVALID_LOGICAL_PATH`, `UNSUPPORTED_FILE_TYPE` or `FILE_EXISTS` directly. If files then fail to import, it throws an `AggregateError` whose `errors` holds the error for each failed file, with its `code` where it has one.
 
 ## Errors for invalid OCFL content
 
@@ -270,6 +273,35 @@ For content stored by the update in progress:
 - Directories are handled file by file, so one can mix committed and new files.
 
 Renaming or removing a file from an earlier version still changes only the logical path.
+
+## Importing and updating
+
+`update()` takes its mode in an options object, which also takes the message and user recorded in the version. A mode passed on its own, as in `update(fn, 'REPLACE')`, throws a `TypeError`:
+
+```ts
+await object.update(async (t) => t.write('a.txt', 'a'), { mode: 'REPLACE', message: 'Start again', user: { name: 'importer' } });
+```
+
+Without an updater, pass the message and user to `commit()`. Passing them to `update()` without an updater throws a `TypeError`.
+
+`object.import()` takes one source, with an optional target and the same options, or an array of `{ source, target }`:
+
+| Before                                        | Now                                                                   |
+| --------------------------------------------- | --------------------------------------------------------------------- |
+| `import('/data/dir', 'REPLACE')`              | `import('/data/dir', { mode: 'REPLACE' })`                            |
+| `import(['/data/a', '/data/b'])`              | `import([{ source: '/data/a' }, { source: '/data/b' }])`              |
+| `import([['/data/a', 'a'], ['/data/b', '']])` | `import([{ source: '/data/a', target: 'a' }, { source: '/data/b' }])` |
+
+**Warning:** `import('/data/dir', 'REPLACE')` still compiles, and now imports the directory under a logical path named `REPLACE`.
+
+In both `object.import()` and `t.import()`, the target is the logical path the source becomes. Without one, a directory's contents go at the object root and a file keeps its own name there. **Breaking:** a target of `''` throws `INVALID_LOGICAL_PATH`; leave the target out instead. **Breaking:** `t.import('/data/dir')` used to import the directory under `dir/`. Pass the name, as in `t.import('/data/dir', 'dir')`, to keep that.
+
+An import also:
+
+- fails with `UNSUPPORTED_FILE_TYPE` on a symlink or any other file that isn't a regular file or directory. These used to be skipped.
+- fails with `FILE_EXISTS`, and creates no version, if two of its sources produce the same logical path, or one imports a file where another imports a directory. Previously one silently replaced the other. Targets are normalised as `copy()` and `rename()` normalise theirs, so `./a.txt` and `a.txt` are the same path. Importing over a path the previous version has is still an ordinary update.
+- fails with `SOURCE_CHANGED` if a file changes while it's being imported, instead of storing the new bytes under the old digest and leaving the object invalid.
+- reads at most a fixed number of files at once across all the imports in one update. Deep directory trees used to open enough files at once to fail with `EMFILE`.
 
 ## API removed before 1.0
 
