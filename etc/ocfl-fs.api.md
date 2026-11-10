@@ -449,19 +449,10 @@ export interface ValidationErrorOptions {
 
 // @public (undocumented)
 export class VersionNumber {
-    constructor(num: number, zeroPaddingLength?: number);
-    // (undocumented)
-    static fromInt(num: number, zeroPaddingLength: number): VersionNumber;
-    // (undocumented)
-    static fromString(versionLabel: string): VersionNumber;
     // (undocumented)
     next(): VersionNumber;
     // (undocumented)
-    static next(versionLabel: string): VersionNumber;
-    // (undocumented)
     previous(): VersionNumber | undefined;
-    // (undocumented)
-    static previous(versionLabel: string): VersionNumber | undefined;
     // (undocumented)
     toString(): string;
     // (undocumented)

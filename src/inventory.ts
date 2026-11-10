@@ -24,7 +24,7 @@ export interface ContentRelease {
 class VersionNumber {
   value: number;
   zeroPaddingLength: number | undefined;
-  constructor(num: number, zeroPaddingLength?: number) {
+  private constructor(num: number, zeroPaddingLength?: number) {
     this.value = num;
     this.zeroPaddingLength = zeroPaddingLength;
   }
@@ -43,9 +43,7 @@ class VersionNumber {
       return new VersionNumber(n, this.zeroPaddingLength);
     }
   }
-  static fromInt(num: number, zeroPaddingLength: number): VersionNumber {
-    return new VersionNumber(num, zeroPaddingLength);
-  }
+  /** @internal */
   static fromString(versionLabel: string): VersionNumber {
     const label = versionLabel.replace('v', '');
     let zeroPaddingLength: number | undefined;
@@ -55,12 +53,9 @@ class VersionNumber {
     return new VersionNumber(parseInt(label, 10), zeroPaddingLength);
   }
 
+  /** @internal */
   static next(versionLabel: string): VersionNumber {
     return VersionNumber.fromString(versionLabel).next();
-  }
-
-  static previous(versionLabel: string): VersionNumber | undefined {
-    return VersionNumber.fromString(versionLabel).previous();
   }
 }
 
