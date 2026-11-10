@@ -1,8 +1,7 @@
 import { OcflConstants } from './constants.ts';
 import { createLayout } from './extensions/index.ts';
-import { OcflObject } from './object.ts';
 import { OcflStorage } from './storage.ts';
-import type { OcflLayoutConfig, OcflLayoutName, OcflObjectConfig, OcflStorageConfig, OcflStorageLayout } from './types.ts';
+import type { OcflLayoutConfig, OcflLayoutName, OcflStorageConfig, OcflStorageLayout } from './types.ts';
 
 export type { OcflErrorCode } from './error.ts';
 export { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
@@ -30,13 +29,6 @@ export function storageLayout<N extends OcflLayoutName>(config: N | OcflLayoutCo
 }
 
 /**
- * Instantiate an OCFL Object
- */
-export function object(config: OcflObjectConfig): OcflObject {
-  return new OcflObject(config);
-}
-
-/**
  * Instantiate an OCFL Storage root
  */
 export function storage(config: OcflStorageConfig): OcflStorage {
@@ -61,9 +53,8 @@ const api: {
   OCFL_VERSIONS: typeof OCFL_VERSIONS;
   createStorage: typeof createStorage;
   loadStorage: typeof loadStorage;
-  object: typeof object;
   storage: typeof storage;
   storageLayout: typeof storageLayout;
-} = { OCFL_VERSIONS, createStorage, loadStorage, object, storage, storageLayout };
+} = { OCFL_VERSIONS, createStorage, loadStorage, storage, storageLayout };
 
 export default api;

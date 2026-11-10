@@ -9,12 +9,12 @@ import ocfl, {
   type Inventory,
   ObjectNotFoundError,
   ObjectNotLoadedError,
-  type OcflObject,
-  type OcflObjectConfig,
   type OcflObjectTransaction,
   type OcflVersion,
   type WriteFileData,
 } from '../../src/index.ts';
+import { OcflObject } from '../../src/object.ts';
+import type { OcflObjectConfig } from '../../src/types.ts';
 import { withFsFailure } from '../fs-failures.ts';
 
 let objcount = 0;
@@ -30,9 +30,7 @@ async function validateFile(object: OcflObject, srcPath: string, logicalPath: st
   assert.strictEqual(content.toString(), await object.getFile({ logicalPath })!.text());
 }
 
-before(() => {
-  //object = ocfl.object({ root: '/data/objects/object-1' });
-});
+before(() => {});
 
 // describe("object encapsulation", function () {
 //   it("cannot access protected properties", function () {
@@ -43,24 +41,24 @@ before(() => {
 describe('constructor', () => {
   it('can create new object', () => {
     let object: OcflObject;
-    object = ocfl.object({ root: '/data/objects/object-1' });
+    object = new OcflObject({ root: '/data/objects/object-1' });
     assert.equal(object.root, '/data/objects/object-1');
-    object = ocfl.object({ root: '/data/objects/object-1', digestAlgorithm: 'sha256', id: 'object-1' });
+    object = new OcflObject({ root: '/data/objects/object-1', digestAlgorithm: 'sha256', id: 'object-1' });
     assert.equal(object.root, '/data/objects/object-1');
     assert.equal(object.id, 'object-1');
     assert.throws(() => {
-      object = ocfl.object({ root: '/data/objects/object-1', workspace: '/data/objects/object-1' });
+      object = new OcflObject({ root: '/data/objects/object-1', workspace: '/data/objects/object-1' });
     });
   });
 });
 
 describe('access existing object', () => {
   let invRaw: Inventory, invRawFiles: string[];
-  let object = ocfl.object({ root: '/tmp/dummy' });
+  let object = new OcflObject({ root: '/tmp/dummy' });
 
   before(async () => {
     const config = { root: path.join(import.meta.dirname, 'test-data/fixtures/1.1/good-objects/spec-ex-full') };
-    object = ocfl.object(config);
+    object = new OcflObject(config);
     invRaw = JSON.parse(await fs.promises.readFile(path.join(config.root, 'inventory.json'), 'utf8'));
     invRawFiles = Object.values(invRaw.versions[invRaw.head]!.state).flat();
   });
@@ -130,7 +128,7 @@ describe('update', () => {
     if (useWorkspace) {
       config.workspace = `${config.root}-tmp`;
     }
-    return ocfl.object(config);
+    return new OcflObject(config);
   }
 
   async function readInventory(object: OcflObject): Promise<Inventory> {
@@ -169,7 +167,7 @@ describe('update', () => {
   }
 
   async function assertReads(o: OcflObject, expected: Record<string, string>) {
-    const reloaded = ocfl.object({ root: o.root });
+    const reloaded = new OcflObject({ root: o.root });
     await reloaded.load();
     for (const [logicalPath, content] of Object.entries(expected)) {
       assert.strictEqual(await reloaded.getFile(logicalPath)!.text(), content, logicalPath);
@@ -548,10 +546,10 @@ describe('update', () => {
 
     it('attaches fixity to content first written without it, in an update that creates a version', async () => {
       const root = path.join(tempdir, 'object-fixity-attach');
-      await ocfl.object({ id: 'object-fixity-attach', root }).update(async (t) => {
+      await new OcflObject({ id: 'object-fixity-attach', root }).update(async (t) => {
         await t.write('a.txt', 'first');
       });
-      const object = ocfl.object({ id: 'object-fixity-attach', root, fixityAlgorithms: ['md5'] });
+      const object = new OcflObject({ id: 'object-fixity-attach', root, fixityAlgorithms: ['md5'] });
       await object.update(async (t) => {
         await t.write('b.txt', 'first');
       });
@@ -564,10 +562,10 @@ describe('update', () => {
     it('creates no version for an update whose only effect is new fixity', async () => {
       const root = path.join(tempdir, 'object-fixity-only');
       const workspace = `${root}-tmp`;
-      await ocfl.object({ id: 'object-fixity-only', root, workspace }).update(async (t) => {
+      await new OcflObject({ id: 'object-fixity-only', root, workspace }).update(async (t) => {
         await t.write('a.txt', 'first');
       });
-      const object = ocfl.object({ id: 'object-fixity-only', root, workspace, fixityAlgorithms: ['md5'] });
+      const object = new OcflObject({ id: 'object-fixity-only', root, workspace, fixityAlgorithms: ['md5'] });
       await object.update(async (t) => {
         await t.write('a.txt', 'first');
       });
@@ -628,7 +626,7 @@ describe('update', () => {
     for (const [name, end] of [...endings, noOp, emptyCommit]) {
       it(`leaves an existing object intact after ${name} with no workspace`, async () => {
         const { root } = dirs();
-        const o = ocfl.object({ id: 'scoped', root });
+        const o = new OcflObject({ id: 'scoped', root });
         await o.update(async (t) => t.write('a.txt', 'a'));
         const before = await snapshot(root);
 
@@ -643,7 +641,7 @@ describe('update', () => {
     for (const [name, end] of endings) {
       it(`leaves no partial object after ${name} on a new object with no workspace`, async () => {
         const { root } = dirs();
-        const o = ocfl.object({ id: 'scoped', root });
+        const o = new OcflObject({ id: 'scoped', root });
 
         await end(o);
 
@@ -655,7 +653,7 @@ describe('update', () => {
       it(`keeps an object root that already existed after ${name} with no workspace`, async () => {
         const { root } = dirs();
         await fs.promises.mkdir(root, { recursive: true });
-        const o = ocfl.object({ id: 'scoped', root });
+        const o = new OcflObject({ id: 'scoped', root });
 
         await end(o);
 
@@ -675,7 +673,7 @@ describe('update', () => {
         const { root, workspace } = dirs(true);
         await fs.promises.mkdir(workspace!, { recursive: true });
         await fs.promises.writeFile(path.join(workspace!, 'unrelated.txt'), 'keep');
-        const o = ocfl.object({ id: 'scoped', root, workspace });
+        const o = new OcflObject({ id: 'scoped', root, workspace });
 
         await update(o);
 
@@ -685,7 +683,7 @@ describe('update', () => {
 
       it(`removes a workspace left empty by ${name} update`, async () => {
         const { root, workspace } = dirs(true);
-        const o = ocfl.object({ id: 'scoped', root, workspace });
+        const o = new OcflObject({ id: 'scoped', root, workspace });
 
         await update(o);
 
@@ -695,7 +693,7 @@ describe('update', () => {
       it(`handles an object root inside the workspace after ${name} update`, async () => {
         const { workspace } = dirs(true);
         const root = path.join(workspace!, 'object');
-        const o = ocfl.object({ id: 'scoped', root, workspace });
+        const o = new OcflObject({ id: 'scoped', root, workspace });
         await o.update(async (t) => t.write('a.txt', 'a'));
         const before = await snapshot(root);
 
@@ -711,8 +709,8 @@ describe('update', () => {
     it('does not disturb another object in progress in a shared workspace', async () => {
       const base = dirs(true);
       const other = path.join(path.dirname(base.root), 'other');
-      const a = ocfl.object({ id: 'a', root: base.root, workspace: base.workspace });
-      const b = ocfl.object({ id: 'b', root: other, workspace: base.workspace });
+      const a = new OcflObject({ id: 'a', root: base.root, workspace: base.workspace });
+      const b = new OcflObject({ id: 'b', root: other, workspace: base.workspace });
       await a.update(async (t) => t.write('a.txt', 'a'));
 
       const inProgress = (await a.update())!;
@@ -745,7 +743,7 @@ describe('update', () => {
       for (const { step, method, target } of commitSteps.filter((s) => useWorkspace || !s.workspaceOnly)) {
         it(`leaves an existing object intact when ${step} fails, ${label}`, async () => {
           const { root, workspace } = dirs(useWorkspace);
-          const o = ocfl.object({ id: 'scoped', root, workspace });
+          const o = new OcflObject({ id: 'scoped', root, workspace });
           await o.update(async (t) => t.write('a.txt', 'a'));
           const before = await snapshot(root);
 
@@ -760,7 +758,7 @@ describe('update', () => {
 
         it(`leaves no partial object when ${step} fails on a new object, ${label}`, async () => {
           const { root, workspace } = dirs(useWorkspace);
-          const o = ocfl.object({ id: 'scoped', root, workspace });
+          const o = new OcflObject({ id: 'scoped', root, workspace });
 
           await withFsFailure(method, target(root, workspace ?? root, 'v1'), () => assert.rejects(o.update(writeB), /injected failure/));
 
@@ -774,7 +772,7 @@ describe('update', () => {
 
     it('restores the root inventory when the previous version has no inventory of its own', async () => {
       const { root } = dirs();
-      const o = ocfl.object({ id: 'scoped', root });
+      const o = new OcflObject({ id: 'scoped', root });
       await o.update(async (t) => t.write('a.txt', 'a'));
       await fs.promises.rm(path.join(root, 'v1/inventory.json'));
       const before = await snapshot(root);
@@ -786,7 +784,7 @@ describe('update', () => {
 
     it('keeps a file that only looks like its staged inventory when nothing was staged', async () => {
       const { root } = dirs();
-      const o = ocfl.object({ id: 'scoped', root });
+      const o = new OcflObject({ id: 'scoped', root });
       await o.update(async (t) => t.write('a.txt', 'a'));
       await fs.promises.writeFile(path.join(root, 'inventory.json.tmp'), 'not ours');
 
@@ -797,7 +795,7 @@ describe('update', () => {
 
     it('reports the updater error when the empty workspace cannot be removed', async () => {
       const { root, workspace } = dirs(true);
-      const o = ocfl.object({ id: 'scoped', root, workspace });
+      const o = new OcflObject({ id: 'scoped', root, workspace });
 
       await withFsFailure('rmdir', workspace!, () => throwing(o));
     });
@@ -805,7 +803,7 @@ describe('update', () => {
     it('removes a failed first version when the object root is inside the workspace', async () => {
       const { workspace } = dirs(true);
       const root = path.join(workspace!, 'object');
-      const o = ocfl.object({ id: 'scoped', root, workspace });
+      const o = new OcflObject({ id: 'scoped', root, workspace });
 
       await throwing(o);
 
@@ -817,7 +815,7 @@ describe('update', () => {
     for (const useWorkspace of [true, false]) {
       it(`refuses an overlapping update of the same object, with${useWorkspace ? '' : 'out'} a workspace`, async () => {
         const { root, workspace } = dirs(useWorkspace);
-        const o = ocfl.object({ id: 'scoped', root, workspace });
+        const o = new OcflObject({ id: 'scoped', root, workspace });
         await o.update(async (t) => t.write('a.txt', 'a'));
 
         const first = (await o.update())!;
@@ -832,7 +830,7 @@ describe('update', () => {
     for (const useWorkspace of [true, false]) {
       it(`lets only one concurrent update reserve a version, with${useWorkspace ? '' : 'out'} a workspace`, async () => {
         const { root, workspace } = dirs(useWorkspace);
-        const o = ocfl.object({ id: 'scoped', root, workspace });
+        const o = new OcflObject({ id: 'scoped', root, workspace });
         await o.update(async (t) => t.write('a.txt', 'a'));
 
         const results = await Promise.allSettled([o.update(), o.update()]);
@@ -847,7 +845,7 @@ describe('update', () => {
 
     it('resolves when the committed update cannot remove its empty workspace', async () => {
       const { root, workspace } = dirs(true);
-      const o = ocfl.object({ id: 'scoped', root, workspace });
+      const o = new OcflObject({ id: 'scoped', root, workspace });
 
       await withFsFailure('rmdir', workspace!, () => o.update(writeB));
 
@@ -1621,7 +1619,7 @@ describe('digestAlgorithm and contentDirectory', () => {
   before(async () => {
     tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-properties-'));
     written = path.join(tempdir, 'written');
-    await ocfl.object({ id: 'written', root: written, digestAlgorithm: 'sha256', contentDirectory: 'data' }).update(async (t) => t.write('a.txt', 'a'));
+    await new OcflObject({ id: 'written', root: written, digestAlgorithm: 'sha256', contentDirectory: 'data' }).update(async (t) => t.write('a.txt', 'a'));
   });
 
   after(async () => {
@@ -1629,14 +1627,14 @@ describe('digestAlgorithm and contentDirectory', () => {
   });
 
   it('reports the values of an existing object loaded with default config', async () => {
-    const o = ocfl.object({ root: written });
+    const o = new OcflObject({ root: written });
     await o.load();
     assert.strictEqual(o.digestAlgorithm, 'sha256');
     assert.strictEqual(o.contentDirectory, 'data');
   });
 
   it('reports the configured values until the inventory has been read', async () => {
-    const o = ocfl.object({ root: written, digestAlgorithm: 'sha512', contentDirectory: 'stuff' });
+    const o = new OcflObject({ root: written, digestAlgorithm: 'sha512', contentDirectory: 'stuff' });
     assert.strictEqual(o.digestAlgorithm, 'sha512');
     assert.strictEqual(o.contentDirectory, 'stuff');
     await o.getInventory();
@@ -1645,26 +1643,26 @@ describe('digestAlgorithm and contentDirectory', () => {
   });
 
   it('reports the defaults before the inventory has been read when nothing is configured', () => {
-    const o = ocfl.object({ root: written });
+    const o = new OcflObject({ root: written });
     assert.strictEqual(o.digestAlgorithm, 'sha512');
     assert.strictEqual(o.contentDirectory, 'content');
   });
 
   it('reports the configured values for an object that does not exist yet, even after a load', async () => {
-    const o = ocfl.object({ root: path.join(tempdir, 'not-yet'), digestAlgorithm: 'sha256', contentDirectory: 'data' });
+    const o = new OcflObject({ root: path.join(tempdir, 'not-yet'), digestAlgorithm: 'sha256', contentDirectory: 'data' });
     await o.getInventory();
     assert.strictEqual(o.digestAlgorithm, 'sha256');
     assert.strictEqual(o.contentDirectory, 'data');
   });
 
   it('reports the defaults for an object that does not exist yet with nothing configured', () => {
-    const o = ocfl.object({ root: path.join(tempdir, 'not-yet') });
+    const o = new OcflObject({ root: path.join(tempdir, 'not-yet') });
     assert.strictEqual(o.digestAlgorithm, 'sha512');
     assert.strictEqual(o.contentDirectory, 'content');
   });
 
   it('reports the spec default for an inventory with no contentDirectory, whatever is configured', async () => {
-    const o = ocfl.object({ root: fixture, digestAlgorithm: 'sha256', contentDirectory: 'data' });
+    const o = new OcflObject({ root: fixture, digestAlgorithm: 'sha256', contentDirectory: 'data' });
     await o.load();
     assert.strictEqual(o.digestAlgorithm, 'sha512');
     assert.strictEqual(o.contentDirectory, 'content');
@@ -1673,7 +1671,7 @@ describe('digestAlgorithm and contentDirectory', () => {
   it('creates a new object with its configured values', async () => {
     const root = path.join(tempdir, 'configured');
     const content = 'configured content';
-    const o = ocfl.object({ id: 'configured', root, digestAlgorithm: 'sha256', contentDirectory: 'data' });
+    const o = new OcflObject({ id: 'configured', root, digestAlgorithm: 'sha256', contentDirectory: 'data' });
     await o.update(async (t) => t.write('a.txt', content));
 
     const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8')) as Inventory;
@@ -1688,7 +1686,7 @@ describe('digestAlgorithm and contentDirectory', () => {
 
   it('creates a new object with the defaults when nothing is configured', async () => {
     const root = path.join(tempdir, 'defaulted');
-    await ocfl.object({ id: 'defaulted', root }).update(async (t) => t.write('a.txt', 'a'));
+    await new OcflObject({ id: 'defaulted', root }).update(async (t) => t.write('a.txt', 'a'));
 
     const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8')) as Inventory;
     assert.strictEqual(inv.digestAlgorithm, 'sha512');
@@ -1698,9 +1696,9 @@ describe('digestAlgorithm and contentDirectory', () => {
 
   it('keeps the object values when an update is configured differently', async () => {
     const root = path.join(tempdir, 'differs');
-    await ocfl.object({ id: 'differs', root, digestAlgorithm: 'sha256', contentDirectory: 'data' }).update(async (t) => t.write('a.txt', 'a'));
+    await new OcflObject({ id: 'differs', root, digestAlgorithm: 'sha256', contentDirectory: 'data' }).update(async (t) => t.write('a.txt', 'a'));
 
-    const o = ocfl.object({ root, digestAlgorithm: 'sha512', contentDirectory: 'stuff' });
+    const o = new OcflObject({ root, digestAlgorithm: 'sha512', contentDirectory: 'stuff' });
     await o.update(async (t) => t.write('b.txt', 'b'));
 
     const inv = JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8')) as Inventory;
@@ -1713,7 +1711,7 @@ describe('digestAlgorithm and contentDirectory', () => {
 
   for (const property of ['digestAlgorithm', 'contentDirectory'] as const) {
     it(`has no setter for ${property}`, () => {
-      const o: Record<typeof property, string> = ocfl.object({ root: written });
+      const o: Record<typeof property, string> = new OcflObject({ root: written });
       assert.throws(() => {
         o[property] = 'sha256';
       }, TypeError);
@@ -1723,7 +1721,7 @@ describe('digestAlgorithm and contentDirectory', () => {
 
 describe('file lookup errors', () => {
   let tempdir: string;
-  const missingObject = () => ocfl.object({ id: 'missing', root: path.join(tempdir, 'missing') });
+  const missingObject = () => new OcflObject({ id: 'missing', root: path.join(tempdir, 'missing') });
 
   before(async () => {
     tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-lookup-'));
@@ -1734,7 +1732,7 @@ describe('file lookup errors', () => {
   });
 
   it('keeps serving getFile from the loaded inventory while reloading', async () => {
-    const o = ocfl.object({ root: fixture });
+    const o = new OcflObject({ root: fixture });
     await o.load();
     const reload = o.load();
     assert.ok(o.getFile('foo/bar.xml'));
@@ -1742,7 +1740,7 @@ describe('file lookup errors', () => {
   });
 
   it('throws ObjectNotLoadedError from getFile before load', () => {
-    const o = ocfl.object({ root: fixture });
+    const o = new OcflObject({ root: fixture });
     assert.throws(() => o.getFile('foo/bar.xml'), ObjectNotLoadedError);
     assert.throws(() => o.getFile('foo/bar.xml'), { name: 'ObjectNotLoadedError', message: /spec-ex-full.*load\(\)/ });
   });
@@ -1771,13 +1769,13 @@ describe('file lookup errors', () => {
   });
 
   it('reads a lazy file from an existing object without loading', async () => {
-    const o = ocfl.object({ root: fixture });
+    const o = new OcflObject({ root: fixture });
     const expected = await fs.promises.readFile(path.join(fixture, 'v2/content/foo/bar.xml'), 'utf8');
     assert.strictEqual(await o.getFile('foo/bar.xml', undefined, true)?.text(), expected);
   });
 
   it('finds a file in an existing object by logical path, digest and content path', async () => {
-    const o = ocfl.object({ root: fixture });
+    const o = new OcflObject({ root: fixture });
     await o.load();
     const byPath = o.getFile('foo/bar.xml');
     assert.strictEqual(byPath?.contentPath, 'v2/content/foo/bar.xml');
@@ -1786,7 +1784,7 @@ describe('file lookup errors', () => {
   });
 
   it('returns undefined for a file that is not in an existing object', async () => {
-    const o = ocfl.object({ root: fixture });
+    const o = new OcflObject({ root: fixture });
     await o.load();
     assert.strictEqual(o.getFile('nope.txt'), undefined);
     assert.strictEqual(o.getFile({ digest: 'abc' }), undefined);
@@ -1795,18 +1793,18 @@ describe('file lookup errors', () => {
 
   it('rejects load with the stat error when filesMetadata meets a dangling symlink', async () => {
     const root = path.join(tempdir, 'dangling-symlink');
-    await ocfl.object({ id: 'dangling-symlink', root }).update(async (t) => t.write('a.txt', 'a'));
+    await new OcflObject({ id: 'dangling-symlink', root }).update(async (t) => t.write('a.txt', 'a'));
     await fs.promises.symlink(path.join(tempdir, 'nowhere'), path.join(root, 'dangling'));
-    await assert.rejects(ocfl.object({ root }).load({ filesMetadata: true }), { code: 'ENOENT', syscall: 'stat' });
+    await assert.rejects(new OcflObject({ root }).load({ filesMetadata: true }), { code: 'ENOENT', syscall: 'stat' });
   });
 
   it('rejects load with the opendir error when filesMetadata meets an unreadable directory', { skip: process.getuid?.() === 0 }, async () => {
     const root = path.join(tempdir, 'unreadable-directory');
-    await ocfl.object({ id: 'unreadable-directory', root }).update(async (t) => t.write('a.txt', 'a'));
+    await new OcflObject({ id: 'unreadable-directory', root }).update(async (t) => t.write('a.txt', 'a'));
     const unreadable = path.join(root, 'unreadable');
     await fs.promises.mkdir(unreadable, { mode: 0o000 });
     try {
-      await assert.rejects(ocfl.object({ root }).load({ filesMetadata: true }), { code: 'EACCES', syscall: 'opendir' });
+      await assert.rejects(new OcflObject({ root }).load({ filesMetadata: true }), { code: 'EACCES', syscall: 'opendir' });
     } finally {
       await fs.promises.chmod(unreadable, 0o700);
     }
@@ -1819,13 +1817,13 @@ describe('refresh', () => {
 
   async function committedObject() {
     const root = path.join(tempdir, `refresh-${++objectCount}`);
-    await ocfl.object({ id: `refresh-${objectCount}`, root }).update(async (t) => t.write('a.txt', 'v1'));
+    await new OcflObject({ id: `refresh-${objectCount}`, root }).update(async (t) => t.write('a.txt', 'v1'));
     return root;
   }
 
   async function loadedObject() {
     const root = await committedObject();
-    const o = ocfl.object({ root });
+    const o = new OcflObject({ root });
     await o.load();
     return { root, o };
   }
@@ -1852,7 +1850,7 @@ describe('refresh', () => {
 
   it('behaves like load on a never-loaded object', async () => {
     const root = await committedObject();
-    const o = ocfl.object({ root });
+    const o = new OcflObject({ root });
     await o.refresh();
     assert.strictEqual(o.inventory?.head, 'v1');
   });
@@ -1860,11 +1858,11 @@ describe('refresh', () => {
   it('rejects with E060 on a mismatched never-loaded object', async () => {
     const root = await committedObject();
     await fs.promises.writeFile(path.join(root, 'inventory.json.sha512'), 'abc inventory.json\n');
-    await assert.rejects(ocfl.object({ root }).refresh(), { code: 'E060' });
+    await assert.rejects(new OcflObject({ root }).refresh(), { code: 'E060' });
   });
 
   it('reports a never-loaded object that does not exist as missing', async () => {
-    const o = ocfl.object({ id: 'missing', root: path.join(tempdir, 'missing') });
+    const o = new OcflObject({ id: 'missing', root: path.join(tempdir, 'missing') });
     await o.refresh();
     assert.strictEqual(o.inventory, undefined);
     assert.throws(() => o.getFile('a.txt'), ObjectNotFoundError);
@@ -1872,7 +1870,7 @@ describe('refresh', () => {
 
   it('picks up a version committed by another instance', async () => {
     const { root, o } = await loadedObject();
-    await ocfl.object({ root }).update(async (t) => t.write('b.txt', 'v2'));
+    await new OcflObject({ root }).update(async (t) => t.write('b.txt', 'v2'));
     assert.strictEqual(o.inventory?.head, 'v1');
     await o.refresh();
     assert.strictEqual(o.inventory?.head, 'v2');
@@ -1889,7 +1887,7 @@ describe('refresh', () => {
 
   it('does not read inventory.json after committing through the same instance', async () => {
     const root = await committedObject();
-    const o = ocfl.object({ root });
+    const o = new OcflObject({ root });
     await o.update(async (t) => t.write('b.txt', 'v2'));
     await fs.promises.rm(path.join(root, 'inventory.json'));
     await o.refresh();
@@ -1899,7 +1897,7 @@ describe('refresh', () => {
   it('keeps the last good inventory during a commit, then picks up the new one', async () => {
     const { root, o } = await loadedObject();
     const sidecar = path.join(root, 'inventory.json.sha512');
-    await ocfl.object({ root }).update(async (t) => t.write('b.txt', 'v2'));
+    await new OcflObject({ root }).update(async (t) => t.write('b.txt', 'v2'));
     const committed = await fs.promises.readFile(sidecar);
     await fs.promises.writeFile(sidecar, 'abc inventory.json\n');
     await o.refresh();
@@ -1936,9 +1934,9 @@ describe('refresh', () => {
 
   it('keeps cached past version inventories when a new version arrives', async () => {
     const root = await committedObject();
-    const writer = ocfl.object({ root });
+    const writer = new OcflObject({ root });
     await writer.update(async (t) => t.write('b.txt', 'v2'));
-    const o = ocfl.object({ root });
+    const o = new OcflObject({ root });
     await o.load();
     const v1 = await o.getInventory('v1');
     await writer.update(async (t) => t.write('c.txt', 'v3'));
@@ -1951,7 +1949,7 @@ describe('refresh', () => {
   it('keeps the cached inventory of the former head when a new version arrives', async () => {
     const { root, o } = await loadedObject();
     const v1 = await o.getInventory('v1');
-    await ocfl.object({ root }).update(async (t) => t.write('b.txt', 'v2'));
+    await new OcflObject({ root }).update(async (t) => t.write('b.txt', 'v2'));
     await fs.promises.rm(path.join(root, 'v1/inventory.json'));
     await o.refresh();
     assert.strictEqual(o.inventory?.head, 'v2');
@@ -1960,7 +1958,7 @@ describe('refresh', () => {
 
   it('does not replace an inventory that became newer while refreshing', async () => {
     const { root, o } = await loadedObject();
-    const writer = ocfl.object({ root });
+    const writer = new OcflObject({ root });
     await writer.update(async (t) => t.write('b.txt', 'v2'));
     const reached = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
@@ -2011,7 +2009,7 @@ describe("'latest' version name", () => {
   const headContentPath = 'v2/content/foo/bar.xml';
 
   it('finds the head file like the explicit head version', async () => {
-    const o = ocfl.object({ root: fixture });
+    const o = new OcflObject({ root: fixture });
     await o.load();
     const explicit = o.getFile(logicalPath, 'v3');
     assert.strictEqual(explicit?.version, 'v3');
@@ -2029,18 +2027,18 @@ describe("'latest' version name", () => {
   });
 
   it('treats an empty version name as a version that does not exist', async () => {
-    const o = ocfl.object({ root: fixture });
+    const o = new OcflObject({ root: fixture });
     await o.load();
     const digest = o.getFile(logicalPath)!.digest!;
     assert.strictEqual(o.getFile(logicalPath, ''), undefined);
     assert.strictEqual(o.getFile({ logicalPath, version: '' }), undefined);
     assert.strictEqual(o.getFile({ digest, version: '' }), undefined);
     assert.strictEqual(o.getFile({ contentPath: headContentPath, version: '' }), undefined);
-    await assert.rejects(ocfl.object({ root: fixture }).getFile(logicalPath, '', true)!.text(), { code: 'FILE_NOT_FOUND' });
+    await assert.rejects(new OcflObject({ root: fixture }).getFile(logicalPath, '', true)!.text(), { code: 'FILE_NOT_FOUND' });
   });
 
   it('leaves explicit older versions unchanged', async () => {
-    const o = ocfl.object({ root: fixture });
+    const o = new OcflObject({ root: fixture });
     await o.load();
     const file = o.getFile(logicalPath, 'v1');
     assert.strictEqual(file?.version, 'v1');
@@ -2061,7 +2059,7 @@ describe('spec violations', () => {
     const root = path.join(tempdir, 'bad-namaste');
     await fs.promises.mkdir(root);
     await fs.promises.writeFile(path.join(root, '0=ocfl_object_1.1'), 'wrong\n');
-    const o = ocfl.object({ id: 'bad-namaste', root });
+    const o = new OcflObject({ id: 'bad-namaste', root });
     await assert.rejects(
       o.update(async (t) => t.write('a.txt', 'a')),
       { code: 'E007', path: root },
@@ -2070,15 +2068,15 @@ describe('spec violations', () => {
 
   it('reports E060 when the inventory sidecar digest does not match', async () => {
     const root = path.join(tempdir, 'bad-sidecar');
-    await ocfl.object({ id: 'bad-sidecar', root }).update(async (t) => t.write('a.txt', 'a'));
+    await new OcflObject({ id: 'bad-sidecar', root }).update(async (t) => t.write('a.txt', 'a'));
     await fs.promises.writeFile(path.join(root, 'inventory.json.sha512'), 'abc inventory.json\n');
-    await assert.rejects(ocfl.object({ root }).load(), { code: 'E060' });
+    await assert.rejects(new OcflObject({ root }).load(), { code: 'E060' });
   });
 
   it('reports E082 when an object root is nested in another object', async () => {
     const parent = path.join(tempdir, 'parent');
-    await ocfl.object({ id: 'parent', root: parent }).update(async (t) => t.write('a.txt', 'a'));
-    const child = ocfl.object({ id: 'child', root: path.join(parent, 'child') });
+    await new OcflObject({ id: 'parent', root: parent }).update(async (t) => t.write('a.txt', 'a'));
+    const child = new OcflObject({ id: 'child', root: path.join(parent, 'child') });
     await assert.rejects(
       child.update(async (t) => t.write('b.txt', 'b')),
       { code: 'E082' },

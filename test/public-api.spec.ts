@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import * as entryPoint from '../src/index.ts';
-import ocfl, { createStorage, loadStorage, OCFL_VERSIONS, object, storage, storageLayout } from '../src/index.ts';
+import ocfl, { createStorage, loadStorage, OCFL_VERSIONS, type OcflObject, storage, storageLayout } from '../src/index.ts';
 
 describe('the public entry point', () => {
   let dir: string;
@@ -29,10 +29,13 @@ describe('the public entry point', () => {
     }
   });
 
+  it('has no object() to open an object without its storage root', () => {
+    assert.ok(!('object' in entryPoint), 'object is exported');
+  });
+
   it('has a default export holding the same API as the named exports', () => {
-    assert.deepStrictEqual(Object.keys(ocfl).sort(), ['OCFL_VERSIONS', 'createStorage', 'loadStorage', 'object', 'storage', 'storageLayout']);
+    assert.deepStrictEqual(Object.keys(ocfl).sort(), ['OCFL_VERSIONS', 'createStorage', 'loadStorage', 'storage', 'storageLayout']);
     assert.strictEqual(ocfl.storage, storage);
-    assert.strictEqual(ocfl.object, object);
     assert.strictEqual(ocfl.createStorage, createStorage);
     assert.strictEqual(ocfl.loadStorage, loadStorage);
     assert.strictEqual(ocfl.storageLayout, storageLayout);
@@ -68,21 +71,25 @@ describe('the public entry point', () => {
     assert.ok(fs.existsSync(path.join(root, '0=ocfl_1.1')));
   });
 
-  it('writes an object to disk through object', async () => {
-    const root = path.join(dir, 'object');
-    await object({ root, id: 'a' }).update(async (t) => t.write('a.txt', 'hello'));
-    assert.strictEqual(await fs.promises.readFile(path.join(root, 'v1/content/a.txt'), 'utf8'), 'hello');
+  it('writes an object through its storage root and opens it again by its path relative to that root', async () => {
+    const root = path.join(dir, 'root');
+    const created = await createStorage({ root, layout: '0002-flat-direct-storage-layout' });
+    await created.object('a').update(async (t) => t.write('a.txt', 'hello'));
+    assert.strictEqual(await fs.promises.readFile(path.join(root, 'a/v1/content/a.txt'), 'utf8'), 'hello');
+    const opened = (await loadStorage({ root })).object({ root: 'a' });
+    await opened.load();
+    assert.strictEqual(await opened.getFile('a.txt')!.text(), 'hello');
   });
 });
 
 describe('OcflObject readFile', () => {
   const bytes = [0x68, 0xc3, 0xa9, 0x6c, 0x6c, 0x6f];
   let dir: string;
-  let o: ReturnType<typeof object>;
+  let o: OcflObject;
 
   before(async () => {
     dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-read-file-'));
-    o = object({ root: path.join(dir, 'object'), id: 'a' });
+    o = (await createStorage({ root: path.join(dir, 'root'), layout: '0002-flat-direct-storage-layout' })).object('a');
     await o.update(async (t) => {
       await t.write('a.txt', new Uint8Array(bytes));
       await t.write('empty.txt', '');

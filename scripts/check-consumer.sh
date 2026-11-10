@@ -119,8 +119,12 @@ export { inventory, object, transactionClass };
 EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'
-import type { OcflObject, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl-fs';
+import type { OcflObject, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl-fs';
 import * as api from '@ocfl/ocfl-fs';
+// @ts-expect-error object is gone, open an object through its storage root
+import { object as standaloneObject } from '@ocfl/ocfl-fs';
+// @ts-expect-error OcflObjectConfig is gone along with object
+import type { OcflObjectConfig } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflDigest is gone, digest algorithms are a fixed table
 import { OcflDigest } from '@ocfl/ocfl-fs';
 // @ts-expect-error registerHasherFactory is gone, digest algorithms are a fixed table
@@ -169,7 +173,7 @@ import { classes } from '@ocfl/ocfl-fs';
 import { HashedNTupleStorageLayout } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflStore is gone, the library always uses node:fs
 import { OcflStore } from '@ocfl/ocfl-fs';
-// @ts-expect-error implementOcfl is gone, use storage, object, createStorage or loadStorage
+// @ts-expect-error implementOcfl is gone, use storage, createStorage or loadStorage
 import { implementOcfl } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflFsStore is gone, the library always uses node:fs
 import { OcflFsStore } from '@ocfl/ocfl-fs';
@@ -208,8 +212,6 @@ await object.fileByLogicalPath('a.txt');
 await object.fileByDigest('abc');
 // @ts-expect-error OcflObject.fileByContentPath is gone, use load then getFile
 await object.fileByContentPath('v1/content/a.txt');
-// @ts-expect-error OcflObjectConfig.extensions is gone
-const objectConfig: OcflObjectConfig = { root: '/tmp/object', extensions: [] };
 // @ts-expect-error OcflObject.digestAlgorithm has no setter, configure it when creating the object
 object.digestAlgorithm = 'sha256';
 // @ts-expect-error OcflObject.contentDirectory is read-only, configure it when creating the object
@@ -272,8 +274,8 @@ layout.version;
 layout.set('tupleSize', 2);
 // @ts-expect-error storage takes one argument
 ocflFs.storage({ root: '/tmp/storage' }, {});
-// @ts-expect-error object takes one argument
-ocflFs.object({ root: '/tmp/object' }, {});
+// @ts-expect-error object is gone from the default export
+ocflFs.object({ root: '/tmp/object' });
 // @ts-expect-error createStorage takes one argument
 await ocflFs.createStorage({ root: '/tmp/storage' }, {});
 // @ts-expect-error loadStorage takes one argument
@@ -330,7 +332,6 @@ import ocflFs, {
   type InventoryVersion,
   loadStorage,
   type LogicalPath,
-  object,
   OCFL_VERSIONS,
   ObjectNotFoundError,
   ObjectNotLoadedError,
@@ -339,7 +340,6 @@ import ocflFs, {
   type OcflLayoutConfig,
   type OcflLayoutName,
   type OcflObject,
-  type OcflObjectConfig,
   type OcflObjectFile,
   type OcflObjectInventory,
   type OcflObjectTransaction,
@@ -374,7 +374,7 @@ for (const ocflVersion of ocflFs.OCFL_VERSIONS) {
   await ocflFs.storage({ root: join(import.meta.dirname, `spec-${ocflVersion}`), ocflVersion }).create({ ocflSpecText: true });
 }
 
-const written: OcflObject = object({ root: join(import.meta.dirname, 'object'), id: 'written-object' });
+const written: OcflObject = storage.object('written-object');
 await written.update(async (t: OcflObjectTransaction) => t.write('a.txt', 'written to the filesystem'));
 const writtenInventory: OcflObjectInventory | undefined = await written.getInventory();
 const writtenFile: OcflObjectFile | undefined = written.getFile('a.txt');
@@ -415,7 +415,6 @@ const anyTupleSize = anyLayout.name === '0004-hashed-n-tuple-storage-layout' ? a
 if (
   createStorage !== ocflFs.createStorage ||
   loadStorage !== ocflFs.loadStorage ||
-  object !== ocflFs.object ||
   openStorage !== ocflFs.storage ||
   storageLayout !== ocflFs.storageLayout ||
   OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||

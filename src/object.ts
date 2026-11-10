@@ -56,9 +56,7 @@ class OcflObject {
   #inventories: { [version: string]: OcflObjectInventory } = {};
   #latestRead = false;
 
-  /**
-   * Create a new OCFL Object
-   */
+  /** @internal */
   constructor(config: OcflObjectConfig) {
     if (!config.root) {
       throw new TypeError('[OcflObject] config.root is required.');

@@ -124,6 +124,20 @@ describe('OCFL version of a loaded storage root', () => {
     assert.strictEqual(inventory.type, 'https://ocfl.io/1.0/spec/#inventory');
   });
 
+  it('opens an existing 1.0 object in a 1.1 root by its path, at the version the object declares', async () => {
+    const root = await createRoot('root-1.1-object-1.0', '1.0');
+    const written = (await ocfl.storage({ root }).load()).object('http://example.org/object-1.0');
+    await written.update(async (t) => t.write('test.txt', 'test'));
+    await fs.promises.rm(path.join(root, '0=ocfl_1.0'));
+    await fs.promises.writeFile(path.join(root, '0=ocfl_1.1'), 'ocfl_1.1\n');
+    const storage = await ocfl.storage({ root }).load();
+    const o = storage.object({ root: path.relative(root, written.root) });
+    await o.load();
+    assert.strictEqual(storage.ocflVersion, '1.1');
+    assert.strictEqual(o.ocflVersion, '1.0');
+    assert.strictEqual(await o.getFile('test.txt')!.text(), 'test');
+  });
+
   it('reports E081 when the configured version is later than the root', async () => {
     const root = await createRoot('root-1.0-configured-1.1', '1.0');
     await assert.rejects(ocfl.storage({ root, ocflVersion: '1.1' }).load(), { code: 'E081', path: root });

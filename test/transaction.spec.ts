@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import ocfl from '../src/index.ts';
+import { OcflObject } from '../src/object.ts';
 import { failFsMethod, fsError, mountSeparately } from './fs-failures.ts';
 
 describe('OcflObjectTransaction against a temporary directory', () => {
@@ -34,14 +35,14 @@ describe('OcflObjectTransaction against a temporary directory', () => {
   });
 
   describe('with the workspace on another filesystem', () => {
-    const writeA = (object: ReturnType<typeof ocfl.object>) => object.update(async (t) => t.write('a.txt', 'hello'));
+    const writeA = (object: OcflObject) => object.update(async (t) => t.write('a.txt', 'hello'));
 
     beforeEach(() => {
       mountSeparately(workspace);
     });
 
     it('commits the version and leaves nothing behind', async () => {
-      const object = ocfl.object({ id: 'an-object', root, workspace });
+      const object = new OcflObject({ id: 'an-object', root, workspace });
 
       await writeA(object);
 
@@ -57,14 +58,14 @@ describe('OcflObjectTransaction against a temporary directory', () => {
         throw fsError('EIO');
       });
 
-      await assert.rejects(writeA(ocfl.object({ id: 'an-object', root, workspace })), { code: 'EIO' });
+      await assert.rejects(writeA(new OcflObject({ id: 'an-object', root, workspace })), { code: 'EIO' });
 
       assert.strictEqual(fs.existsSync(root), false);
     });
 
     it('still commits when the workspace copy cannot be removed', async () => {
       failFsMethod('rm', (target) => target.startsWith(workspace + path.sep), 'EBUSY');
-      const object = ocfl.object({ id: 'an-object', root, workspace });
+      const object = new OcflObject({ id: 'an-object', root, workspace });
 
       await writeA(object);
 
