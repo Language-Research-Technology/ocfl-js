@@ -58,7 +58,7 @@ function differingParameters(extension: BuiltInLayout, reference: BuiltInLayout)
   const names: string[] = [];
   // for...in includes the defaults inherited from the parameters prototype
   for (const name in reference.parameters) {
-    if (name !== 'extensionName' && !isDeepStrictEqual(asStored(extension.get(name)), asStored(reference.get(name)))) {
+    if (!isDeepStrictEqual(asStored(extension.get(name)), asStored(reference.get(name)))) {
       names.push(name);
     }
   }

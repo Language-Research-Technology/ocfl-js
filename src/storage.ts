@@ -70,7 +70,7 @@ class OcflStorage {
     if (configured && configured.name !== rootName) {
       throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's layout "${rootName}".`);
     }
-    const rootLayout = new rootLayoutClass({ ...rootLayoutConfig, extensionName: rootName });
+    const rootLayout = new rootLayoutClass(rootLayoutConfig);
     if (!configured) {
       return rootLayout;
     }

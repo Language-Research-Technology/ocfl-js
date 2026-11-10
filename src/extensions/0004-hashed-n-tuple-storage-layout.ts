@@ -1,9 +1,9 @@
 import path from 'node:path';
 import { Hashing } from '../digest.ts';
 import { BuiltInLayout } from '../extension.ts';
+import type { OcflExtensionConfig } from '../types.ts';
 
 const DefaultConfig = {
-  extensionName: '0004-hashed-n-tuple-storage-layout',
   digestAlgorithm: 'sha256',
   tupleSize: 3,
   numberOfTuples: 3,
@@ -12,13 +12,13 @@ const DefaultConfig = {
 export type HashedNTupleStorageLayoutConfig = Partial<typeof DefaultConfig>;
 
 class HashedNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
-  readonly name = DefaultConfig.extensionName;
+  readonly name = '0004-hashed-n-tuple-storage-layout';
   readonly description =
     'OCFL object identifiers are hashed and encoded as lowercase hex strings.' +
     ' These digests are then divided into N n-tuple segments,' +
     ' which are used to create nested paths under the OCFL storage root.';
 
-  constructor(config?: HashedNTupleStorageLayoutConfig) {
+  constructor(config?: OcflExtensionConfig) {
     super(config, DefaultConfig);
     const c = this.parameters;
     const digestLength = Hashing.getHexDigestLength(c.digestAlgorithm);

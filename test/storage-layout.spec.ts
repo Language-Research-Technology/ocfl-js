@@ -83,11 +83,13 @@ describe('choosing a built-in layout', () => {
     });
   });
 
-  it('records no parameters for the 0002 layout', async () => {
-    const root = path.join(dir, 'root');
-    await ocfl.createStorage({ root, layout: { extensionName: '0002-flat-direct-storage-layout' } });
-    assert.ok(!fs.existsSync(path.join(root, 'extensions/0002-flat-direct-storage-layout/config.json')));
-  });
+  for (const { name } of builtInLayouts) {
+    it(`records no extension config for ${name} chosen by a config object with no parameters`, async () => {
+      const root = path.join(dir, 'root');
+      await ocfl.createStorage({ root, layout: { extensionName: name } });
+      assert.ok(!fs.existsSync(path.join(root, `extensions/${name}/config.json`)));
+    });
+  }
 
   it('describes each built-in layout in ocfl_layout.json', async () => {
     for (const { name } of builtInLayouts) {
