@@ -492,8 +492,8 @@ class OcflObjectTransaction {
    * to the same content path and bitstreams. `source` can be a file or a directory.
    * @param source - The logical path to be copied
    * @param target - The target logical path. To replace an existing target, remove it first.
-   * @throws OcflError `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws OcflError `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
+   * @throws {@link OcflError} `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
    */
   async copy(source: string, target: string): Promise<void> {
     return this.#transact(async () => {
@@ -508,8 +508,8 @@ class OcflObjectTransaction {
    * `source` can be a file or a directory.
    * @param source - The logical path to be renamed
    * @param target - The target logical path. To replace an existing target, remove it first.
-   * @throws OcflError `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws OcflError `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
+   * @throws {@link OcflError} `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
    */
   async rename(source: string, target: string): Promise<void> {
     return this.#transact(async () => {

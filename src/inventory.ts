@@ -694,7 +694,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   /**
    * Resolve a copy or rename to the files it transfers, changing nothing.
-   * @throws OcflError FILE_NOT_FOUND if the source is missing, FILE_EXISTS if the target exists
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the source is missing, `FILE_EXISTS` if the target exists
    */
   #planTransfer(srcLogicalPath: string, destLogicalPath: string): Transfer[] {
     // Filesystem paths are normalised, so the check and the state must use the same form as the file on disk
@@ -724,7 +724,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   /**
    * Rename a logical path or directory
-   * @throws OcflError FILE_EXISTS if the target exists
+   * @throws {@link OcflError} `FILE_EXISTS` if the target exists
    */
   rename(srcLogicalPath: string, destLogicalPath: string): void {
     this._applyRename(this._planRename(srcLogicalPath, destLogicalPath));
@@ -733,7 +733,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   /**
    * Resolve a rename to its transfers and the content it moves, changing nothing. Only files this
    * version stored at a source's own content path move.
-   * @throws OcflError FILE_NOT_FOUND if the source is missing, FILE_EXISTS if the target exists
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the source is missing, `FILE_EXISTS` if the target exists
    * @internal
    */
   _planRename(srcLogicalPath: string, destLogicalPath: string): RenamePlan {
@@ -759,7 +759,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   /**
    * Create an alias or reference of a logical path or directory
-   * @throws OcflError FILE_EXISTS if the target exists
+   * @throws {@link OcflError} `FILE_EXISTS` if the target exists
    */
   copy(srcLogicalPath: string, destLogicalPath: string): void {
     for (const { dest, digest, digests } of this.#planTransfer(srcLogicalPath, destLogicalPath)) {

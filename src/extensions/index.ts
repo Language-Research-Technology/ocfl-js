@@ -16,7 +16,7 @@ const BUILT_IN_LAYOUTS = {
   '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayout,
 } satisfies Record<OcflLayoutName, LayoutClass>;
 
-/** @throws {OcflError} `UNSUPPORTED_LAYOUT` if the library doesn't implement the layout */
+/** @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if the library doesn't implement the layout */
 function supportedLayoutClass(name: unknown): LayoutClass {
   if (typeof name !== 'string') {
     throw new OcflError('UNSUPPORTED_LAYOUT', `A layout name must be a string, not ${inspect(name)}.`);
