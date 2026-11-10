@@ -1,6 +1,6 @@
 import { OcflError } from './error.ts';
 import type { OcflObject } from './object.ts';
-import type { BinaryOptions } from './types.ts';
+import type { BinaryOptions, Digests } from './types.ts';
 
 export interface FileRef {
   /** Actual path to the file location relative to the ocfl object root. */
@@ -16,7 +16,7 @@ export interface FileRef {
   /** Size of the file in bytes. */
   size?: number;
   /** Fixity information of the file. */
-  fixity?: { [algorithm: string]: string };
+  fixity?: Digests;
 }
 
 export interface FileStat {
@@ -43,7 +43,7 @@ class OcflObjectFile {
   contentPath?: string;
   digest?: string;
   version?: string;
-  fixity?: { [algorithm: string]: string };
+  fixity?: Digests;
 
   constructor(ocflObject: OcflObject, fileRef: FileRef) {
     this.#ocflObject = ocflObject;
@@ -91,14 +91,14 @@ class OcflObjectFile {
   /**
    * Returns the last modified time of the file, in millisecond since the UNIX epoch (January 1st, 1970 at Midnight).
    */
-  get lastModified() {
+  get lastModified(): number | undefined {
     return this.#lastModified;
   }
 
   /**
    * Returns the file size in bytes.
    */
-  get size() {
+  get size(): number | undefined {
     return this.#size;
   }
 
@@ -109,7 +109,7 @@ class OcflObjectFile {
 
   /**
    * Get the file content as a buffer
-   * @param options Options passed to `fs.promises.readFile`
+   * @param options - Options passed to `fs.promises.readFile`
    */
   async buffer(options?: BinaryOptions): Promise<Uint8Array> {
     return this.#ocflObject.readFile(await this.#resolveContentPath(), options);
@@ -117,7 +117,7 @@ class OcflObjectFile {
 
   /**
    * Get the file content as a string
-   * @param encoding String encoding, default to utf8
+   * @param encoding - String encoding, default to utf8
    */
   async text(encoding: BufferEncoding = 'utf8'): Promise<string> {
     return this.#ocflObject.readFile(await this.#resolveContentPath(), encoding);
@@ -125,7 +125,7 @@ class OcflObjectFile {
 
   /**
    * Get the file content as a ES Streams standard ReadableStream
-   * @param options Options passed to `fs.createReadStream`
+   * @param options - Options passed to `fs.createReadStream`
    */
   async stream(options?: unknown): Promise<ReadableStream> {
     return this.#ocflObject.createReadable(await this.#resolveContentPath(), options);

@@ -1,4 +1,12 @@
-import type { ContentAlgorithm } from './digest.ts';
+import type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direct-storage-layout.ts';
+import type { HashAndIdNTupleStorageLayoutConfig } from './extensions/0003-hash-and-id-n-tuple-storage-layout.ts';
+import type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
+
+/** A digest algorithm OCFL allows for content addressing */
+export type ContentAlgorithm = 'sha256' | 'sha512';
+
+/** Digest values keyed by algorithm name */
+export type Digests = { [algorithm: string]: string };
 
 /** `T` and everything nested in it, read-only at compile time. The data isn't frozen. */
 export type DeepReadonly<T> = { readonly [K in keyof T]: DeepReadonly<T[K]> };
@@ -41,7 +49,7 @@ export interface Inventory {
   };
   /**
    * The name of the designated content directory within the version directories.
-   * @default content
+   * @defaultValue content
    */
   contentDirectory?: string;
 }
@@ -53,17 +61,32 @@ export type WriteFileData = string | Uint8Array | DataView | ArrayBuffer | Reada
 
 export type OcflVersion = '1.0' | '1.1';
 
-export type OcflExtensionConfig = { extensionName?: string; [key: string]: unknown };
+/** The parameters of each layout this library implements, by official extension name. */
+export interface OcflLayoutParameters {
+  '000N-path-direct-storage-layout': PathDirectStorageLayoutConfig;
+  '0002-flat-direct-storage-layout': Record<never, never>;
+  '0003-hash-and-id-n-tuple-storage-layout': HashAndIdNTupleStorageLayoutConfig;
+  '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayoutConfig;
+}
 
 /** The official extension name of a layout this library implements. */
-export type OcflLayoutName =
-  | '000N-path-direct-storage-layout'
-  | '0002-flat-direct-storage-layout'
-  | '0003-hash-and-id-n-tuple-storage-layout'
-  | '0004-hashed-n-tuple-storage-layout';
+export type OcflLayoutName = keyof OcflLayoutParameters;
 
-/** An official layout name along with that layout's parameters. */
-export type OcflLayoutConfig = { extensionName: OcflLayoutName; [key: string]: unknown };
+/** An official layout name along with that layout's parameters; a union over every layout by default. */
+export type OcflLayoutConfig<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? { extensionName: N } & OcflLayoutParameters[N] : never;
+
+/** A storage layout: its official name, its effective parameters (defaults included), and its mapping; a union over every layout by default, narrowed by `name`. */
+export type OcflStorageLayout<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName
+  ? {
+      readonly name: N;
+      readonly parameters: Readonly<Required<OcflLayoutParameters[N]>>;
+      /**
+       * Map an object identifier to a path
+       * @param id - The identifier of the OCFL Object
+       */
+      map(id: string): string;
+    }
+  : never;
 
 /** Configuration options for an OCFL Object. */
 export type OcflStorageConfig = {

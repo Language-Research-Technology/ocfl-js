@@ -1,7 +1,6 @@
 import path from 'node:path';
-import { Hashing } from '../digest.ts';
-import { BuiltInLayout } from '../extension.ts';
-import type { OcflExtensionConfig } from '../types.ts';
+import * as Hashing from '../digest.ts';
+import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 
 const MAX_ENCODED_ID_LENGTH = 100;
 
@@ -12,7 +11,13 @@ function encapsulationDirectory(id: string, digest: string) {
   return encoded.length > MAX_ENCODED_ID_LENGTH ? `${encoded.slice(0, MAX_ENCODED_ID_LENGTH)}-${digest}` : encoded;
 }
 
-const DefaultConfig = {
+export type HashAndIdNTupleStorageLayoutConfig = {
+  digestAlgorithm?: string;
+  tupleSize?: number;
+  numberOfTuples?: number;
+};
+
+const DefaultConfig: Required<HashAndIdNTupleStorageLayoutConfig> = {
   digestAlgorithm: 'sha256',
   tupleSize: 3,
   numberOfTuples: 3,
@@ -20,7 +25,7 @@ const DefaultConfig = {
 
 class HashAndIdNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   readonly name = '0003-hash-and-id-n-tuple-storage-layout';
-  readonly description =
+  readonly description: string =
     'OCFL object identifiers are hashed and encoded as lowercase hex strings.' +
     ' These digests are then divided into N n-tuple segments,' +
     ' which are used to create nested paths under the OCFL storage root.' +

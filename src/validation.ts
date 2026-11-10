@@ -1,7 +1,9 @@
 import { OcflError } from './error.ts';
 
 // Messages for the OCFL 1.1 validation codes this library raises: https://ocfl.io/1.1/spec/validation-codes.html
-const ERRORS = {
+export type ValidationErrorCode = 'E007' | 'E036' | 'E040' | 'E050' | 'E060' | 'E069' | 'E070' | 'E080' | 'E081' | 'E082';
+
+const ERRORS: Record<ValidationErrorCode, string> = {
   E007: 'The text contents of the [version declaration] file must be the same as dvalue, followed by a newline (\\n).',
   E036: 'An OCFL Object Inventory MUST include the following keys: [id, type, digestAlgorithm, head].',
   E040: '[head] MUST be the version directory name with the highest version number.',
@@ -14,9 +16,7 @@ const ERRORS = {
   E082: 'OCFL Object Roots MUST be stored either as the terminal resource at the end of a directory storage hierarchy or as direct children of a containing OCFL Storage Root.',
 };
 
-export type ValidationErrorCode = keyof typeof ERRORS;
-
-interface ValidationErrorOptions {
+export interface ValidationErrorOptions {
   code: ValidationErrorCode;
   description: string;
   path: string;
@@ -41,7 +41,7 @@ export class ValidationError extends OcflError {
  * @param path - Path the problem was found at
  * @param detail - Extra context appended to the message
  */
-export const createError = (code: ValidationErrorCode, path: string, detail?: string) => {
+export const createError = (code: ValidationErrorCode, path: string, detail?: string): ValidationError => {
   const description = Object.hasOwn(ERRORS, code) ? ERRORS[code] : undefined;
   if (!description) {
     throw new RangeError(`Unknown OCFL validation code ${code}`);

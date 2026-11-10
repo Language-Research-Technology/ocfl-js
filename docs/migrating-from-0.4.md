@@ -282,7 +282,7 @@ Each public member now corresponds to something the OCFL specification or the li
 | `OcflObjectTransaction.delete()`                                                                         | `remove()`                                                                                                          |
 | `OcflStorage.objects()`                                                                                  | `for await (const object of storage)`                                                                               |
 | `OcflStorage.objectRootAbs(id)`                                                                          | `storage.object(id).root`                                                                                           |
-| `OcflExtension.p`                                                                                        | `get(name)` on the layout from `storageLayout()`                                                                    |
+| `OcflExtension.p`                                                                                        | `parameters` on the layout from `storageLayout()`, defaults included                                                |
 | `OcflStorage.delete(id)`                                                                                 | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                 |
 | `OcflStorage.purge(id)`                                                                                  | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                 |
 | `OcflStorageImpl`                                                                                        | `OcflStorage`, from `storage()`, `createStorage()` or `loadStorage()`                                               |
@@ -326,10 +326,11 @@ Each public member now corresponds to something the OCFL specification or the li
 | `OcflExtension.class()`, `OcflStorageLayout.class()`                                                     | `storageLayout(name)`, which throws `UNSUPPORTED_LAYOUT` for a layout this library doesn't implement                |
 | `OcflExtension.classes`, `OcflStorageLayout.classes`                                                     | The `OcflLayoutName` type, which lists the built-in layouts                                                         |
 | `OcflExtension.NAME`, `DESCRIPTION`, and the same statics on the layout classes                          | The official names under [Choosing a layout](#choosing-a-layout); descriptions have no replacement                  |
-| A layout object's `name`, `description`, `version`, `parameters`, `config` and `set()`                   | The `extensionName` and parameters you passed to `storageLayout()`, and `get(name)` to read a parameter             |
+| A layout object's `description`, `version`, `config` and `set()`                                         | `name` and the read-only `parameters`; set parameters through `storageLayout()`                                     |
 | The `ExtensionConstructor` type                                                                          | Nothing: it only described layout subclasses                                                                        |
 | `ocfl.StorageLayout`, and the `StorageLayout` export of `@ocfl/ocfl-fs`                                  | `storageLayout()`; see [Layout classes](#layout-classes)                                                            |
-| The `StorageLayout` type                                                                                 | The `OcflStorageLayout` type, which has only `map` and `get`                                                        |
+| The `StorageLayout` type                                                                                 | The `OcflStorageLayout` type: `name`, read-only `parameters` and `map`                                              |
+| The `OcflExtensionConfig` type                                                                           | `OcflLayoutConfig`, which types each layout's parameters                                                            |
 | `OcflStorageLayout.layout`                                                                               | `storageLayout()`; see [Layout classes](#layout-classes)                                                            |
 | `OcflConstants`                                                                                          | `OCFL_VERSIONS`, on the default API and as a named export of `@ocfl/ocfl-fs`. The other values were internal        |
 | The `MultiHasher` type                                                                                   | Nothing: no public signature used it                                                                                |
@@ -339,6 +340,7 @@ Each public member now corresponds to something the OCFL specification or the li
 | `implementOcfl`                                                                                          | `storage()`, `object()`, `createStorage()`, `loadStorage()`, `storageLayout()` and `OCFL_VERSIONS`                  |
 | The `ListedFile` and `ListOptions` types                                                                 | Nothing: they only described `OcflStore.list()`                                                                     |
 | The second argument to `storage()`, `object()`, `createStorage()` and `loadStorage()`                    | Nothing: put the data in a real directory; see [Filesystem only](#filesystem-only)                                  |
+| Members whose names start with `_`, such as `object._inventory` and `transaction._commit()`              | Nothing: they were internal; see [Internal members](#internal-members)                                              |
 
 ### Filesystem only
 
@@ -459,7 +461,15 @@ To map identifiers to paths without a storage root, use `storageLayout()` with t
 + const layout = ocfl.storageLayout({ extensionName: '000N-path-direct-storage-layout', omitScheme: true });
 ```
 
-It returns an `OcflStorageLayout`, which has only `map(id)` and `get(name)`. The class names and their official names are listed under [Choosing a layout](#choosing-a-layout).
+It returns an `OcflStorageLayout`: its `name`, its read-only `parameters` with the defaults filled in, and `map(id)`. Each layout's `parameters` are typed, and a layout whose kind isn't known until run time is narrowed by `name`:
+
+```diff
+- layout.get('tupleSize');
++ ocfl.storageLayout('0004-hashed-n-tuple-storage-layout').parameters.tupleSize; // number
++ if (layout.name === '0004-hashed-n-tuple-storage-layout') layout.parameters.tupleSize;
+```
+
+The class names and their official names are listed under [Choosing a layout](#choosing-a-layout).
 
 ### Choosing a layout
 
@@ -488,6 +498,13 @@ If you passed a layout object, pass its name and parameters instead. Those were 
 
 The names are typed as `OcflLayoutName`, so a value typed `string` no longer compiles: type it as `OcflLayoutName`, or a config object as `OcflLayoutConfig`.
 
+A config object's parameters are typed per layout, using `PathDirectStorageLayoutConfig`, `HashAndIdNTupleStorageLayoutConfig` or `HashedNTupleStorageLayoutConfig`. A parameter the layout doesn't declare, or a value of the wrong type, no longer compiles:
+
+```diff
+- ocfl.storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: '2' });
++ ocfl.storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 2 });
+```
+
 ### Layouts 0006 and 0007
 
 `FlatOmitPrefixStorageLayout` (`0006-flat-omit-prefix-storage-layout`) and `NTupleOmitPrefixStorageLayout` (`0007-n-tuple-omit-prefix-storage-layout`) have been removed. They could never map an identifier to a path. Choosing either throws `UNSUPPORTED_LAYOUT`.
@@ -505,6 +522,12 @@ Loading a storage root that declares either of them, or any other layout this li
 | `OcflObjectTransaction` | `object.update()`, which passes it to your callback |
 | `OcflObjectInventory`   | `object.getInventory()` or `object.inventory`       |
 | `OcflObjectFile`        | `object.getFile()` or `object.files()`              |
+
+### Internal members
+
+Members used only inside their own class, such as `object._inventory`, `object._readInventory()`, `transaction._commit()` and `transaction._queue`, are now JavaScript private fields. They're gone from the published types and can't be reached at runtime. `Object.keys()` and `console.log()` or `util.inspect()` of an object or transaction no longer show them, and `JSON.stringify()` of a transaction now gives `{}`. Because a `Proxy` can't reach private fields, calling a method on an object or transaction wrapped in one, such as Vue's `reactive()` or a MobX observable, now throws a `TypeError`. Keep them out of reactive state, for example with Vue's `markRaw()`.
+
+The remaining `_` members, such as `object._setInventory()`, `object._requireInventory()` and `inventory._digest`, are shared between the library's classes. They're no longer in the published types, and neither are `OcflObjectTransaction.create()`, `VersionNumber.fromString()` and `VersionNumber.next()`. They still exist at runtime, but they aren't part of the API and can change in any release. The `OcflObjectTransaction` and `VersionNumber` constructors are private, and `VersionNumber.fromInt()` and the static `VersionNumber.previous()` have been removed.
 
 ## Other behaviour changes
 

@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { describe, it } from 'node:test';
-import { Hashing } from '../src/digest.ts';
+import * as Hashing from '../src/digest.ts';
 import { DIGESTS_OF_ABC } from './shared/digests-of-abc.ts';
 
 describe('Hashing', () => {

@@ -2,14 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { OcflConstants } from './constants.ts';
-import { type ContentAlgorithm, Hashing } from './digest.ts';
+import * as Hashing from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
 import { type InventoryFile, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
 import * as store from './store.ts';
 import { OcflObjectTransaction } from './transaction.ts';
-import type { BinaryOptions, EncodingOptions, Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
+import type { BinaryOptions, ContentAlgorithm, EncodingOptions, Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
 import { findNamasteVersion, isDirEmpty, isNotFound, parallelize } from './utils.ts';
 import { createError } from './validation.ts';
 
@@ -17,10 +17,10 @@ const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflC
 const INVENTORY_TYPE = /^https:\/\/ocfl\.io\/([^/]+)\/spec\/#inventory$/;
 
 export type UpdateMode = 'MERGE' | 'REPLACE';
-type LogicalPath = string;
-type FileRefLogical = { logicalPath: string; version?: string | undefined };
-type FileRefDigest = { digest: string; version?: string | undefined };
-type FileRefContent = { contentPath: string; version?: string | undefined };
+export type LogicalPath = string;
+export type FileRefLogical = { logicalPath: string; version?: string | undefined };
+export type FileRefDigest = { digest: string; version?: string | undefined };
+export type FileRefContent = { contentPath: string; version?: string | undefined };
 function contentDigestAlgorithm(algorithm: string | undefined): ContentAlgorithm {
   const name = algorithm || 'sha512';
   if (name !== 'sha256' && name !== 'sha512') {
@@ -29,7 +29,7 @@ function contentDigestAlgorithm(algorithm: string | undefined): ContentAlgorithm
   return name;
 }
 
-/** Failures of reading a root inventory that a writer has only partly replaced. `_readInventory` handles a missing inventory, so ENOENT means its sidecar. */
+/** Failures of reading a root inventory that a writer has only partly replaced. `#readInventory` handles a missing inventory, so ENOENT means its sidecar. */
 function isMidCommitRead(err: unknown) {
   return err instanceof SyntaxError || isNotFound(err) || (err instanceof OcflError && err.code === 'E060');
 }
@@ -48,7 +48,7 @@ class OcflObject {
    * A default list of digest algorithms to be calculated for each file in this object and added to the fixity block.
    */
   fixityAlgorithms: string[] | undefined;
-  _inventory: { [version: string]: OcflObjectInventory } = {};
+  #inventories: { [version: string]: OcflObjectInventory } = {};
   #latestRead = false;
 
   /**
@@ -62,20 +62,19 @@ class OcflObject {
       throw new Error('[OcflObject] config.root and config.workspace must be different.');
     }
     this.#root = path.resolve(config.root);
-    this.#configuredOcflVersion = config.ocflVersion || (OCFL_VERSION as OcflVersion);
+    this.#configuredOcflVersion = config.ocflVersion || OCFL_VERSION;
     //this.contentVersion = null; // No content yet
     this.#id = config.id;
     //this.fixityDigest = config.fixityDigest ?? this.digestAlgorithm;
     this.#digestAlgorithm = contentDigestAlgorithm(config.digestAlgorithm);
     this.#workspace = config.workspace ? path.resolve(config.workspace) : undefined;
     this.#contentDirectory = config.contentDirectory ?? 'content';
-    this._inventory = {};
     this.fixityAlgorithms = config.fixityAlgorithms;
   }
 
   /**
    * The digest algorithm used to identify files within the OCFL object. For an existing object, only reliable once its
-   * root inventory has been read, by {@link load} or any method that reads it. Until then, and for an object that
+   * root inventory has been read, by {@link OcflObject.load} or any method that reads it. Until then, and for an object that
    * doesn't exist yet, this is the configured algorithm or the library default.
    */
   get digestAlgorithm(): ContentAlgorithm {
@@ -84,7 +83,7 @@ class OcflObject {
 
   /**
    * The name of the directory holding each version's content. For an existing object, only reliable once its root
-   * inventory has been read, by {@link load} or any method that reads it. Until then, and for an object that doesn't
+   * inventory has been read, by {@link OcflObject.load} or any method that reads it. Until then, and for an object that doesn't
    * exist yet, this is the configured directory or the library default.
    */
   get contentDirectory(): string {
@@ -129,7 +128,7 @@ class OcflObject {
 
   /**
    * The OCFL version the object adheres to, eg 1.0, 1.1. For an existing object, only reliable once its root inventory
-   * has been read, by {@link load} or any method that reads it. Until then, and for an object that doesn't exist yet,
+   * has been read, by {@link OcflObject.load} or any method that reads it. Until then, and for an object that doesn't exist yet,
    * this is the configured version or the library default.
    */
   get ocflVersion(): OcflVersion {
@@ -137,7 +136,10 @@ class OcflObject {
     return (declared as OcflVersion | undefined) ?? this.#configuredOcflVersion;
   }
 
-  /** @returns The path of the declaration file, if this call wrote one */
+  /**
+   * @returns The path of the declaration file, if this call wrote one
+   * @internal
+   */
   async _ensureNamaste(): Promise<string | undefined> {
     const prefix = NAMASTE_PREFIX_OBJECT;
     const nv = await findNamasteVersion(prefix, this.root);
@@ -165,7 +167,7 @@ class OcflObject {
    * Read and parse the inventory.json file
    * @param version - Full name of the version, eg: v1, v2, v3
    */
-  async _readInventory(version: string = 'latest'): Promise<OcflObjectInventory | undefined> {
+  async #readInventory(version: string = 'latest'): Promise<OcflObjectInventory | undefined> {
     const invPath = version === 'latest' ? INVENTORY_NAME : path.join(version, INVENTORY_NAME);
     let datastr: string;
     try {
@@ -200,16 +202,19 @@ class OcflObject {
 
   /**
    * Set the latest version of inventory in the cache
+   * @internal
    */
   _setInventory(inventory: OcflObjectInventory, version = 'latest') {
-    //this._inventory['latest'] = this._inventory[inventory.head] = inventory;
-    this._inventory[version] = inventory;
+    this.#inventories[version] = inventory;
     if (version === 'latest') {
-      this._inventory[inventory.head] = inventory;
+      this.#inventories[inventory.head] = inventory;
     }
   }
 
-  // all the parent directories cannot be an ocfl object
+  /**
+   * Rejects an object root inside another OCFL object
+   * @internal
+   */
   async _validateObjectPath() {
     var p = this.root;
     while (p !== '.' && p !== '/') {
@@ -227,8 +232,8 @@ class OcflObject {
    * @param version - Full name of the version, eg: v1, v2, v3
    */
   async getInventory(version: string = 'latest'): Promise<OcflObjectInventory | undefined> {
-    if (!this._inventory[version]) {
-      const inv = await this._readInventory(version);
+    if (!this.#inventories[version]) {
+      const inv = await this.#readInventory(version);
       if (inv) {
         this._setInventory(inv, version);
       }
@@ -236,9 +241,10 @@ class OcflObject {
         this.#latestRead = true;
       }
     }
-    return this._inventory[version];
+    return this.#inventories[version];
   }
 
+  /** @internal */
   async _requireInventory(): Promise<OcflObjectInventory> {
     const inv = await this.getInventory();
     if (!inv) {
@@ -247,7 +253,7 @@ class OcflObject {
     return inv;
   }
 
-  _baseInventory() {
+  #baseInventory() {
     return {
       ...(this.id === undefined ? {} : { id: this.id }),
       digestAlgorithm: this.digestAlgorithm || 'sha512',
@@ -259,7 +265,7 @@ class OcflObject {
   /**
    * Update the content files or directories as one transaction and commit the changes as a new version.
    * After obtaining the OcflObjectTransaction instance, make sure to either call the
-   * {@link OcflObjectTransaction#commit} or {@link OcflObjectTransaction#rollback} method to complete the transaction.
+   * {@link OcflObjectTransaction.commit} or {@link OcflObjectTransaction.rollback} method to complete the transaction.
    * If callback function `cb` is provided, all update operations can be done in the callback function
    * and all changes are automatically commited at the end of the function.
    */
@@ -267,7 +273,7 @@ class OcflObject {
     if (mode_ !== 'MERGE' && mode_ !== 'REPLACE') {
       throw new TypeError(`Invalid mode '${mode_}'`);
     }
-    const inv = (await this.getInventory()) ?? this._baseInventory();
+    const inv = (await this.getInventory()) ?? this.#baseInventory();
     const newInv = OcflObjectInventoryMut.newVersion(inv, mode_ === 'REPLACE');
     await this._validateObjectPath();
     const t = await OcflObjectTransaction.create(this, newInv, this.workspace || this.root);
@@ -293,7 +299,7 @@ class OcflObject {
    * @param content - The source path(s) or an array of a tuple [source, logical path]
    * @param mode - Update mode. Defaults to `'MERGE'`.
    */
-  async import(content: string | string[] | string[][], mode: UpdateMode = 'MERGE') {
+  async import(content: string | string[] | string[][], mode: UpdateMode = 'MERGE'): Promise<void> {
     const items = typeof content === 'string' ? [[content, '']] : content.map((p) => (typeof p === 'string' ? [p, ''] : p));
 
     await this.update(async (t) => {
@@ -309,7 +315,7 @@ class OcflObject {
   /**
    * Count the number of files contained in this object
    */
-  async count(version?: string) {
+  async count(version?: string): Promise<number> {
     const inv = await this._requireInventory();
     return [...inv.files(version)].length;
   }
@@ -352,8 +358,8 @@ class OcflObject {
    * @param version - The object version name, eg: 'v1', 'v2'. Default to 'latest'. Only used if opt is a LogicalPath. Defaults to `'latest'`.
    * @param lazy - If true, always return a file instance even if the object inventory file is not loaded.
    * @returns `undefined` if the object has no such file.
-   * @throws {ObjectNotLoadedError} If not lazy and the inventory has not been read, by {@link load} or any method that reads it.
-   * @throws {ObjectNotFoundError} If not lazy and the loaded object does not exist.
+   * @throws {@link ObjectNotLoadedError} If not lazy and the inventory has not been read, by {@link OcflObject.load} or any method that reads it.
+   * @throws {@link ObjectNotFoundError} If not lazy and the loaded object does not exist.
    */
   getFile(opt: LogicalPath | FileRefLogical | FileRefDigest | FileRefContent, version?: string, lazy?: boolean): OcflObjectFile | undefined {
     const inv = this.inventory;
@@ -378,19 +384,19 @@ class OcflObject {
   }
 
   /**
-   * Return the latest version of the cached data from inventory.json which can be read using {@link getInventory()}
+   * Return the latest version of the cached data from inventory.json which can be read using {@link OcflObject.getInventory}
    */
-  get inventory() {
-    return this._inventory.latest;
+  get inventory(): OcflObjectInventory | undefined {
+    return this.#inventories.latest;
   }
 
   /**
    * Reads the object inventory file and cache it in the memory.
    * Optionally, preloads and reads all files metadata from the filesystem.
    */
-  async load({ filesMetadata }: { filesMetadata?: boolean | undefined } = {}) {
-    const inv = await this._readInventory();
-    this._inventory = {};
+  async load({ filesMetadata }: { filesMetadata?: boolean | undefined } = {}): Promise<void> {
+    const inv = await this.#readInventory();
+    this.#inventories = {};
     if (inv) {
       this._setInventory(inv);
     }
@@ -411,7 +417,7 @@ class OcflObject {
   /**
    * Bring the cached latest inventory up to date, reading only the sidecar file if the object hasn't changed.
    * A loaded object keeps its last good inventory if a commit is in progress, and a later refresh picks up the new version.
-   * With nothing cached, behaves like {@link load}.
+   * With nothing cached, behaves like {@link OcflObject.load}.
    * File metadata from `load({ filesMetadata: true })` doesn't carry over to a new inventory.
    */
   async refresh(): Promise<void> {
@@ -431,7 +437,7 @@ class OcflObject {
     }
     let inventory: OcflObjectInventory | undefined;
     try {
-      inventory = await this._readInventory();
+      inventory = await this.#readInventory();
     } catch (err) {
       if (isMidCommitRead(err)) {
         return;
@@ -445,7 +451,7 @@ class OcflObject {
     if (inventory) {
       this._setInventory(inventory);
     } else {
-      this._inventory = {};
+      this.#inventories = {};
     }
   }
 
@@ -465,7 +471,7 @@ class OcflObject {
    * Get the file metadata such as size and modification time.
    * @param relPath - The file path relative to the object root.
    */
-  async stat(relPath: string) {
+  async stat(relPath: string): Promise<fs.Stats> {
     return fs.promises.stat(path.join(this.root, relPath));
   }
 
@@ -473,11 +479,11 @@ class OcflObject {
     return this.id ?? this.root;
   }
 
-  toString() {
+  toString(): string {
     return `OcflObject { root: ${this.root}, id: ${this.id} }`;
   }
 
-  toJSON() {
+  toJSON(): { root: string; id: string | undefined } {
     return { root: this.root, id: this.id };
   }
 }

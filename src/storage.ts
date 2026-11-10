@@ -4,7 +4,7 @@ import path from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import { ObjectNotFoundError, OcflError } from './error.ts';
-import { type BuiltInLayout, differingParameters } from './extension.ts';
+import { type BuiltInLayout, differingParameters, type OcflExtensionConfig } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { createLayout, supportedLayoutClass } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
@@ -16,7 +16,7 @@ const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONF
 
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 
-import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
+import type { OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
 
 const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1.1': 'ocfl_1.1.md' };
 
@@ -75,7 +75,8 @@ class OcflStorage {
       return rootLayout;
     }
     const differences = differingParameters(configured, rootLayout).map(
-      (name) => `configured ${name}: ${inspect(configured.get(name))}, root ${name}: ${inspect(rootLayout.get(name))}`,
+      (name) =>
+        `configured ${name}: ${inspect((configured.parameters as OcflExtensionConfig)[name])}, root ${name}: ${inspect((rootLayout.parameters as OcflExtensionConfig)[name])}`,
     );
     if (differences.length) {
       throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's: ${differences.join('; ')}.`);
@@ -133,7 +134,7 @@ class OcflStorage {
   /**
    * Check if the storage has already the object with the given id.
    */
-  async has(id: string) {
+  async has(id: string): Promise<boolean> {
     return this.object(id).exists();
   }
 
@@ -191,8 +192,8 @@ class OcflStorage {
 
   /**
    * Create the storage root on the filesystem
-   * @param options - Additional options for creating storage root
-   * @param options.ocflSpecText - Write a human-readable copy of the OCFL spec for this root's version into the root
+   * @param options - Additional options for creating storage root. `ocflSpecText` writes a human-readable copy of the OCFL spec for this root's version
+   * into the root
    */
   async create(options?: { ocflSpecText?: boolean | undefined }): Promise<OcflStorage> {
     if (await this.exists()) {
@@ -227,8 +228,8 @@ class OcflStorage {
    * Delete an object and any parent directories it leaves empty, up to but not including the storage root.
    * Not guarded against a concurrent update of the object.
    * @param id - Identifier of the object
-   * @throws {ObjectNotFoundError} If the object does not exist.
-   * @throws {OcflError} `NOT_AN_OBJECT` if the path holds something with no OCFL object declaration; nothing is deleted.
+   * @throws {@link ObjectNotFoundError} If the object does not exist.
+   * @throws {@link OcflError} `NOT_AN_OBJECT` if the path holds something with no OCFL object declaration; nothing is deleted.
    */
   async remove(id: string): Promise<void> {
     const object = this.object(id);

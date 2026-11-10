@@ -73,8 +73,49 @@ cat >"$consumer/tsconfig.json" <<'EOF'
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["consumer.ts", "removed-api.ts"]
+  "include": ["*.ts"]
 }
+EOF
+# Typechecked but never run: each @ts-expect-error names a member that is #private
+cat >"$consumer/private-members.ts" <<'EOF'
+import type { OcflObject, OcflObjectTransaction } from '@ocfl/ocfl-fs';
+declare const object: OcflObject;
+declare const transaction: OcflObjectTransaction;
+// @ts-expect-error _inventory is #private
+object._inventory;
+// @ts-expect-error _readInventory is #private
+object._readInventory();
+// @ts-expect-error _baseInventory is #private
+object._baseInventory();
+// @ts-expect-error _commit is #private
+transaction._commit();
+// @ts-expect-error _queue is #private
+transaction._queue;
+// @ts-expect-error _inventory is #private
+transaction._inventory;
+export { object, transaction };
+EOF
+# Typechecked but never run: each @ts-expect-error names a member that is @internal
+cat >"$consumer/internal-members.ts" <<'EOF'
+import type { OcflObject, OcflObjectInventory, OcflObjectTransaction } from '@ocfl/ocfl-fs';
+declare const object: OcflObject;
+declare const inventory: OcflObjectInventory;
+declare const transactionClass: typeof OcflObjectTransaction;
+// @ts-expect-error _setInventory is @internal
+object._setInventory(inventory);
+// @ts-expect-error _ensureNamaste is @internal
+object._ensureNamaste();
+// @ts-expect-error _requireInventory is @internal
+object._requireInventory();
+// @ts-expect-error _validateObjectPath is @internal
+object._validateObjectPath();
+// @ts-expect-error _digest is @internal
+inventory._digest;
+// @ts-expect-error _indexGet is @internal
+inventory._indexGet('a');
+// @ts-expect-error create is @internal
+transactionClass.create(object, inventory as never, '');
+export { inventory, object, transactionClass };
 EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'
@@ -219,17 +260,15 @@ ocflFs.StorageLayout;
 ocflFs.extensions;
 // @ts-expect-error OcflStorageLayout is a type, use storageLayout()
 api.OcflStorageLayout;
-// @ts-expect-error OcflStorageLayout exposes only map and get
-layout.parameters;
-// @ts-expect-error OcflStorageLayout exposes only map and get
+// @ts-expect-error OcflStorageLayout exposes only name, parameters and map
 layout.config;
-// @ts-expect-error OcflStorageLayout exposes only map and get
-layout.name;
-// @ts-expect-error OcflStorageLayout exposes only map and get
+// @ts-expect-error OcflStorageLayout exposes only name, parameters and map
 layout.description;
-// @ts-expect-error OcflStorageLayout exposes only map and get
+// @ts-expect-error OcflStorageLayout exposes only name, parameters and map
+layout.get('tupleSize');
+// @ts-expect-error OcflStorageLayout exposes only name, parameters and map
 layout.version;
-// @ts-expect-error OcflStorageLayout exposes only map and get
+// @ts-expect-error OcflStorageLayout exposes only name, parameters and map
 layout.set('tupleSize', 2);
 // @ts-expect-error storage takes one argument
 ocflFs.storage({ root: '/tmp/storage' }, {});
@@ -273,24 +312,30 @@ import { join } from 'node:path';
 import ocflFs, {
   type BinaryOptions,
   type CommitOptions,
+  type ContentAlgorithm,
   createStorage,
   type DeepReadonly,
+  type Digests,
   type EncodingOptions,
   type FileRef,
+  type FileRefContent,
+  type FileRefDigest,
+  type FileRefLogical,
   type FileStat,
+  type HashAndIdNTupleStorageLayoutConfig,
   type HashedNTupleStorageLayoutConfig,
   type Inventory,
   type InventoryDigests,
   type InventoryFile,
   type InventoryVersion,
   loadStorage,
+  type LogicalPath,
   object,
   OCFL_VERSIONS,
   ObjectNotFoundError,
   ObjectNotLoadedError,
   OcflError,
   type OcflErrorCode,
-  type OcflExtensionConfig,
   type OcflLayoutConfig,
   type OcflLayoutName,
   type OcflObject,
@@ -307,6 +352,8 @@ import ocflFs, {
   storageLayout,
   type UpdateMode,
   ValidationError,
+  type ValidationErrorCode,
+  type ValidationErrorOptions,
   type VersionNumber,
   type WriteFileData,
 } from '@ocfl/ocfl-fs';
@@ -314,6 +361,8 @@ import ocflFs, {
 const layoutName: OcflLayoutName = '0004-hashed-n-tuple-storage-layout';
 const storage: OcflStorage = await createStorage({ root: join(import.meta.dirname, 'storage'), layout: layoutName });
 const layoutConfig: OcflLayoutConfig = { extensionName: '000N-path-direct-storage-layout', suffix: '/obj' };
+// @ts-expect-error each layout's parameters are typed
+const _wronglyTypedParameter: OcflLayoutConfig = { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: '2' };
 const configuredStorage = ocflFs.storage({ root: join(import.meta.dirname, 'configured'), layout: layoutConfig });
 
 // @ts-expect-error OcflErrorCode is a closed union
@@ -330,7 +379,38 @@ await written.update(async (t: OcflObjectTransaction) => t.write('a.txt', 'writt
 const writtenInventory: OcflObjectInventory | undefined = await written.getInventory();
 const writtenFile: OcflObjectFile | undefined = written.getFile('a.txt');
 
-const layout: OcflStorageLayout = storageLayout(layoutName);
+const algorithm: ContentAlgorithm | undefined = writtenInventory?.digestAlgorithm;
+const fixity: Digests | undefined = writtenInventory?.getFixity('a.txt');
+const writtenPath: LogicalPath = 'a.txt';
+const byPath: FileRefLogical = { logicalPath: writtenPath, version: 'v1' };
+const byDigest: FileRefDigest = { digest: writtenFile?.digest ?? '' };
+const byContent: FileRefContent = { contentPath: writtenFile?.contentPath ?? '' };
+const refs = [byPath, byDigest, byContent].map((ref) => written.getFile(ref)?.logicalPath);
+const pathDirect: PathDirectStorageLayoutConfig = { suffix: '/obj' };
+const hashAndId: HashAndIdNTupleStorageLayoutConfig = { tupleSize: 2, numberOfTuples: 2 };
+const hashed: HashedNTupleStorageLayoutConfig = { shortObjectRoot: true };
+const pathDirectLayout = storageLayout({ extensionName: '000N-path-direct-storage-layout', ...pathDirect });
+const hashAndIdLayout = storageLayout({ extensionName: '0003-hash-and-id-n-tuple-storage-layout', ...hashAndId });
+const hashedLayout = storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', ...hashed });
+const validationCode: ValidationErrorCode = 'E060';
+const validationOptions: ValidationErrorOptions = { code: validationCode, description: 'Bad sidecar.', path: 'inventory.json.sha512' };
+const validationError = new ValidationError(validationOptions);
+
+const layout: OcflStorageLayout<'0004-hashed-n-tuple-storage-layout'> = storageLayout('0004-hashed-n-tuple-storage-layout');
+const tupleSize: number = layout.parameters.tupleSize;
+const declaredLayout = (): OcflLayoutName => layoutName;
+const anyLayout: OcflStorageLayout = storageLayout(declaredLayout());
+const _typeOnly = () => {
+  // @ts-expect-error parameters are read-only
+  layout.parameters.tupleSize = 2;
+  // @ts-expect-error a misspelt parameter doesn't typecheck
+  layout.parameters.tupleSze;
+  // @ts-expect-error parameters are read through `parameters`, not get()
+  layout.get('tupleSize');
+  // @ts-expect-error a layout of unknown kind is narrowed by name before reading its parameters
+  anyLayout.parameters.tupleSize;
+};
+const anyTupleSize = anyLayout.name === '0004-hashed-n-tuple-storage-layout' ? anyLayout.parameters.tupleSize : undefined;
 
 if (
   createStorage !== ocflFs.createStorage ||
@@ -341,9 +421,17 @@ if (
   OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
   !OCFL_VERSIONS.includes('1.1') ||
   configuredStorage.objectRoot('abc') !== 'abc/obj' ||
-  layout.get('tupleSize') !== 3 ||
+  tupleSize !== 3 ||
+  anyTupleSize !== 3 ||
   layout.map('object-01') !== '3c0/ff4/240/3c0ff4240c1e116dba14c7627f2319b58aa3d77606d0d90dfc6161608ac987d4' ||
   writtenInventory?.head !== 'v1' ||
+  algorithm !== 'sha512' ||
+  fixity === undefined ||
+  refs.some((logicalPath) => logicalPath !== 'a.txt') ||
+  pathDirectLayout.map('abc') !== 'abc/obj' ||
+  hashAndIdLayout.parameters.tupleSize !== 2 ||
+  hashedLayout.parameters.shortObjectRoot !== true ||
+  validationError.code !== 'E060' ||
   (await writtenFile?.text()) !== 'written to the filesystem' ||
   (await storage.has('missing')) ||
   missingCode !== 'OBJECT_NOT_FOUND' ||

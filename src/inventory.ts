@@ -1,10 +1,7 @@
 import path from 'node:path';
 import { OcflError } from './error.ts';
-import type { DeepReadonly, Inventory, InventoryDigests, InventoryVersion } from './types.ts';
+import type { ContentAlgorithm, DeepReadonly, Digests, Inventory, InventoryDigests, InventoryVersion } from './types.ts';
 import { createError } from './validation.ts';
-
-/** Digest values keyed by algorithm name */
-type Digests = { [algorithm: string]: string };
 
 export interface InventoryFile {
   logicalPath: string;
@@ -27,29 +24,27 @@ export interface ContentRelease {
 class VersionNumber {
   value: number;
   zeroPaddingLength: number | undefined;
-  constructor(num: number, zeroPaddingLength?: number) {
+  private constructor(num: number, zeroPaddingLength?: number) {
     this.value = num;
     this.zeroPaddingLength = zeroPaddingLength;
   }
-  valueOf() {
+  valueOf(): number {
     return this.value;
   }
-  toString() {
+  toString(): string {
     return `v${this.zeroPaddingLength ? `${this.value}`.padStart(this.zeroPaddingLength, '0') : this.value}`;
   }
-  next() {
+  next(): VersionNumber {
     return new VersionNumber(this.value + 1, this.zeroPaddingLength);
   }
-  previous() {
+  previous(): VersionNumber | undefined {
     const n = this.value - 1;
     if (n > 0) {
       return new VersionNumber(n, this.zeroPaddingLength);
     }
   }
-  static fromInt(num: number, zeroPaddingLength: number) {
-    return new VersionNumber(num, zeroPaddingLength);
-  }
-  static fromString(versionLabel: string) {
+  /** @internal */
+  static fromString(versionLabel: string): VersionNumber {
     const label = versionLabel.replace('v', '');
     let zeroPaddingLength: number | undefined;
     if (label.startsWith('0')) {
@@ -58,12 +53,9 @@ class VersionNumber {
     return new VersionNumber(parseInt(label, 10), zeroPaddingLength);
   }
 
-  static next(versionLabel: string) {
+  /** @internal */
+  static next(versionLabel: string): VersionNumber {
     return VersionNumber.fromString(versionLabel).next();
-  }
-
-  static previous(versionLabel: string) {
-    return VersionNumber.fromString(versionLabel).previous();
   }
 }
 
@@ -108,11 +100,15 @@ class OcflObjectInventory {
 
   metadata: { [contentPath: string]: { size: number; lastModified: number } } | undefined;
 
-  /** Digest of this inventory's bytes in storage, as recorded in its sidecar */
+  /**
+   * Digest of this inventory's bytes in storage, as recorded in its sidecar
+   * @internal
+   */
   _digest: string | undefined;
 
   /**
    * Helper function to find the digest by logical file path and cached it by indexing
+   * @internal
    */
   _indexGet(logicalPath: string, versionName?: string, onlyUsecache?: boolean): Digests | undefined {
     const version = this.#resolveVersion(versionName);
@@ -138,20 +134,26 @@ class OcflObjectInventory {
     return digests;
   }
 
+  /** @internal */
   _indexAdd(logicalPath: string, version: string, digests: Digests) {
     this.#fileIndex[version] ??= {};
     this.#fileIndex[version][logicalPath] = digests;
   }
 
+  /** @internal */
   _indexRemove(logicalPath: string) {
     delete this.#fileIndex[this.head]?.[logicalPath];
   }
 
+  /** @internal */
   _indexGetFixity(contentPath: string): Digests {
     return this.#fixityIndex.get(contentPath) ?? {};
   }
 
-  /** A digest's file index entry, with the fixity of all its content paths */
+  /**
+   * A digest's file index entry, with the fixity of all its content paths
+   * @internal
+   */
   _indexDigests(digest: string): Digests {
     const digests: Digests = { [this.digestAlgorithm]: digest };
     for (const cp of this.#requireContentPaths(digest)) {
@@ -160,6 +162,7 @@ class OcflObjectInventory {
     return digests;
   }
 
+  /** @internal */
   _indexAddFixity(contentPath: string, algorithm: string, value: string) {
     let digests = this.#fixityIndex.get(contentPath);
     if (!digests) {
@@ -169,10 +172,12 @@ class OcflObjectInventory {
     digests[algorithm] = value;
   }
 
+  /** @internal */
   _indexRemoveFixity(contentPath: string) {
     this.#fixityIndex.delete(contentPath);
   }
 
+  /** @internal */
   _indexBuild() {
     this.#fixityIndex.clear();
     for (const [algorithm, digestBlock] of Object.entries(this.fixity ?? {})) {
@@ -197,6 +202,7 @@ class OcflObjectInventory {
     }
   }
 
+  /** @internal */
   _indexFindPaths(prefix: string, versionName?: string) {
     const res: string[] = [];
     const index = this.#fileIndex[this.#resolveVersion(versionName)];
@@ -222,23 +228,23 @@ class OcflObjectInventory {
     this._indexBuild();
   }
 
-  get id() {
+  get id(): string {
     return this.#data.id;
   }
-  get type() {
+  get type(): Inventory['type'] {
     return this.#data.type;
   }
-  get digestAlgorithm() {
+  get digestAlgorithm(): ContentAlgorithm {
     return this.#data.digestAlgorithm;
   }
-  get head() {
+  get head(): string {
     return this.#data.head;
   }
   /** The version number of the current head */
-  get versionNumber() {
+  get versionNumber(): VersionNumber {
     return VersionNumber.fromString(this.head);
   }
-  get contentDirectory() {
+  get contentDirectory(): string {
     return this.#data.contentDirectory || 'content';
   }
   get manifest(): DeepReadonly<InventoryDigests> {
@@ -282,7 +288,7 @@ class OcflObjectInventory {
     return versionName === undefined || versionName === 'latest' ? this.head : versionName;
   }
 
-  toString() {
+  toString(): string {
     return JSON.stringify(this.#data, null, 2);
   }
 
@@ -311,7 +317,7 @@ class OcflObjectInventory {
     }
   }
 
-  *find(fn: (file: InventoryFile) => boolean, version?: string) {
+  *find(fn: (file: InventoryFile) => boolean, version?: string): Generator<InventoryFile, void, unknown> {
     for (const f of this.files(version)) {
       if (fn(f)) {
         yield f;
@@ -342,7 +348,7 @@ class OcflObjectInventory {
   /**
    * Get the digest of a content represented by the logicalPath of the specified version
    */
-  getDigest(logicalPath: string, versionName?: string) {
+  getDigest(logicalPath: string, versionName?: string): string | undefined {
     return this._indexGet(logicalPath, versionName, true)?.[this.digestAlgorithm];
   }
 
@@ -570,7 +576,10 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     return `${this.head}/${this.contentDirectory}/${logicalPath}`;
   }
 
-  /** What happens to the content of logical paths once they all stop using it, for content this version stored */
+  /**
+   * What happens to the content of logical paths once they all stop using it, for content this version stored
+   * @internal
+   */
   _contentReleases(logicalPaths: string[]): ContentRelease[] {
     const leaving = new Set(logicalPaths);
     const ownPaths = new Set(logicalPaths.map((logicalPath) => this.#ownContentPath(logicalPath)));
@@ -605,7 +614,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     this.#forgetFixity(from);
     this.#writable.manifest[digest] = [to];
     for (const [algorithm, value] of fixity) {
-      this.addFixity(to, algorithm, value);
+      this.#addFixity(to, algorithm, value);
     }
   }
 
@@ -630,7 +639,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     const contentPath = this.#ownContentPath(logicalPath);
     this.#writable.manifest[digest] = [contentPath];
     for (const [digestName, digestValue] of Object.entries(fixity)) {
-      this.addFixity(contentPath, digestName, digestValue);
+      this.#addFixity(contentPath, digestName, digestValue);
     }
     return { [this.digestAlgorithm]: digest, ...fixity };
   }
@@ -640,7 +649,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     const recorded = this._indexGetFixity(contentPath);
     const missing = Object.entries(fixity).filter(([digestName]) => !recorded[digestName]);
     for (const [digestName, digestValue] of missing) {
-      this.addFixity(contentPath, digestName, digestValue);
+      this.#addFixity(contentPath, digestName, digestValue);
     }
     const digests = this._indexDigests(digest);
     if (missing.length > 0) {
@@ -656,7 +665,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   /**
    * Low-level method to add a set of digest entries associated to file into the fixity block
    */
-  addFixity(contentPath: string, digestName: string, digestValue: string) {
+  #addFixity(contentPath: string, digestName: string, digestValue: string) {
     if (!digestValue || !digestName) {
       return;
     }
@@ -685,9 +694,9 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   /**
    * Resolve a copy or rename to the files it transfers, changing nothing.
-   * @throws OcflError FILE_NOT_FOUND if the source is missing, FILE_EXISTS if the target exists
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the source is missing, `FILE_EXISTS` if the target exists
    */
-  _planTransfer(srcLogicalPath: string, destLogicalPath: string): Transfer[] {
+  #planTransfer(srcLogicalPath: string, destLogicalPath: string): Transfer[] {
     // Filesystem paths are normalised, so the check and the state must use the same form as the file on disk
     const target = path.posix.normalize(destLogicalPath).replace(/\/$/, '');
     const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
@@ -715,19 +724,20 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   /**
    * Rename a logical path or directory
-   * @throws OcflError FILE_EXISTS if the target exists
+   * @throws {@link OcflError} `FILE_EXISTS` if the target exists
    */
-  rename(srcLogicalPath: string, destLogicalPath: string) {
+  rename(srcLogicalPath: string, destLogicalPath: string): void {
     this._applyRename(this._planRename(srcLogicalPath, destLogicalPath));
   }
 
   /**
    * Resolve a rename to its transfers and the content it moves, changing nothing. Only files this
    * version stored at a source's own content path move.
-   * @throws OcflError FILE_NOT_FOUND if the source is missing, FILE_EXISTS if the target exists
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the source is missing, `FILE_EXISTS` if the target exists
+   * @internal
    */
   _planRename(srcLogicalPath: string, destLogicalPath: string): RenamePlan {
-    const transfers = this._planTransfer(srcLogicalPath, destLogicalPath);
+    const transfers = this.#planTransfer(srcLogicalPath, destLogicalPath);
     const releases = transfers.flatMap(({ src, dest, digest }) => {
       const from = this.getContentPath(digest);
       return from === this.#ownContentPath(src) ? [{ digest, from, to: this.#ownContentPath(dest) }] : [];
@@ -735,7 +745,10 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     return { transfers, releases };
   }
 
-  /** Apply a plan from {@link _planRename}, which must be from the current head state */
+  /**
+   * Apply a plan from {@link _planRename}, which must be from the current head state
+   * @internal
+   */
   _applyRename({ transfers, releases }: RenamePlan) {
     this.#applyContentReleases(releases);
     for (const { src, dest, digest, digests } of transfers) {
@@ -746,10 +759,10 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
 
   /**
    * Create an alias or reference of a logical path or directory
-   * @throws OcflError FILE_EXISTS if the target exists
+   * @throws {@link OcflError} `FILE_EXISTS` if the target exists
    */
-  copy(srcLogicalPath: string, destLogicalPath: string) {
-    for (const { dest, digest, digests } of this._planTransfer(srcLogicalPath, destLogicalPath)) {
+  copy(srcLogicalPath: string, destLogicalPath: string): void {
+    for (const { dest, digest, digests } of this.#planTransfer(srcLogicalPath, destLogicalPath)) {
       this.#list(dest, digest, digests);
     }
   }
@@ -758,17 +771,23 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * Delete a file or directory. Content the head version stored moves to a remaining logical path
    * that uses it, or leaves the manifest if none does.
    */
-  delete(logicalPath: string) {
+  delete(logicalPath: string): number {
     return this._applyDelete(this._planDelete(logicalPath));
   }
 
-  /** Resolve a delete to the paths it unlists and what happens to their content, changing nothing */
+  /**
+   * Resolve a delete to the paths it unlists and what happens to their content, changing nothing
+   * @internal
+   */
   _planDelete(logicalPath: string): DeletePlan {
     const paths = this._indexFindPaths(logicalPath);
     return { paths, releases: this._contentReleases(paths) };
   }
 
-  /** Apply a plan from {@link _planDelete}, which must be from the current state */
+  /**
+   * Apply a plan from {@link _planDelete}, which must be from the current state
+   * @internal
+   */
   _applyDelete({ paths, releases }: DeletePlan) {
     const count = this.#delist(paths);
     this.#applyContentReleases(releases);
@@ -785,7 +804,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     return count;
   }
 
-  reinstate(logicalPath: string, versionName: string) {
+  reinstate(logicalPath: string, versionName: string): number {
     const names = this._indexFindPaths(logicalPath, versionName);
     let count = 0;
     for (const lp of names) {

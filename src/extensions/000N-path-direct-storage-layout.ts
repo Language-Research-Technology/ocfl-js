@@ -1,15 +1,18 @@
 import path from 'node:path';
 import { OcflError } from '../error.ts';
-import { BuiltInLayout } from '../extension.ts';
-import type { OcflExtensionConfig } from '../types.ts';
+import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 
-const DefaultConfig = {
-  omitScheme: false,
-  replace: [] as [string | RegExp, string][],
-  suffix: '/__object__',
+export type PathDirectStorageLayoutConfig = {
+  omitScheme?: boolean;
+  replace?: [string | RegExp, string][];
+  suffix?: string;
 };
 
-export type PathDirectStorageLayoutConfig = Partial<typeof DefaultConfig>;
+const DefaultConfig: Required<PathDirectStorageLayoutConfig> = {
+  omitScheme: false,
+  replace: [],
+  suffix: '/__object__',
+};
 
 class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   readonly name = '000N-path-direct-storage-layout';

@@ -10,8 +10,15 @@ pre-commit:
     - name: types
       run: pnpm run lint:types
 
-    - name: consumer
-      run: pnpm run lint:consumer
+    # Sequential: both write dist/
+    - name: build
+      group:
+        jobs:
+          - name: consumer
+            run: pnpm run lint:consumer
+
+          - name: api
+            run: pnpm run lint:api
 
 commit-msg:
   jobs:

@@ -15,10 +15,14 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
+    // Exports must state their types, so a function body can't silently change a published signature
+    "isolatedDeclarations": true,
     // Maps point into src/, which is published alongside dist/
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    // Members tagged @internal are shared between classes, not public
+    "stripInternal": true,
     // TS 7 requires rootDir when emitting
     "rootDir": "${configDir}/src",
     "outDir": "${configDir}/dist"

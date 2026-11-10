@@ -21,19 +21,19 @@ async function createParents(filePath: string) {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
 }
 
-export async function createWritable(filePath: string, options?: unknown) {
+export async function createWritable(filePath: string, options?: unknown): Promise<WritableStream> {
   await createParents(filePath);
   return Writable.toWeb(fs.createWriteStream(filePath, options as Parameters<typeof fs.createWriteStream>[1]));
 }
 
-export async function writeFile(filePath: string, data: WriteFileData, options?: object | string) {
+export async function writeFile(filePath: string, data: WriteFileData, options?: object | string): Promise<void> {
   await createParents(filePath);
   // Readable.from, not fromWeb: fromWeb reads eagerly, so a source failure before writeFile attaches would be uncaught
   const content = data instanceof ReadableStream ? Readable.from(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data;
   await fs.promises.writeFile(filePath, content, options as Parameters<typeof fs.promises.writeFile>[2]);
 }
 
-export async function copyFile(source: string, target: string) {
+export async function copyFile(source: string, target: string): Promise<void> {
   await createParents(target);
   await fs.promises.copyFile(source, target);
 }
@@ -75,7 +75,7 @@ export async function* listFiles(dirPath: string): AsyncGenerator<ListedFile> {
   }
 }
 
-export async function move(source: string, target: string) {
+export async function move(source: string, target: string): Promise<void> {
   await createParents(target);
   try {
     await fs.promises.rename(source, target);
@@ -99,7 +99,7 @@ export async function move(source: string, target: string) {
 }
 
 /** A missing directory is not an error */
-export async function removeIfEmpty(dirPath: string) {
+export async function removeIfEmpty(dirPath: string): Promise<void> {
   try {
     await fs.promises.rmdir(dirPath);
   } catch (error) {
