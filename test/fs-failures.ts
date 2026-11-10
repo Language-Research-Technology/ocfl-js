@@ -3,7 +3,7 @@ import path from 'node:path';
 import { mock } from 'node:test';
 import { isErrnoException } from '../src/utils.ts';
 
-type FsMethod = 'rename' | 'copyFile' | 'writeFile' | 'rmdir' | 'rm' | 'opendir';
+type FsMethod = 'rename' | 'copyFile' | 'writeFile' | 'readFile' | 'readdir' | 'rmdir' | 'rm' | 'opendir' | 'stat';
 type Fails = (source: string, target: string) => boolean;
 
 export function fsError(code: string) {
@@ -31,9 +31,9 @@ export function mountSeparately(dir: string) {
   return failRename('EXDEV', (from, to) => inside(from) !== inside(to));
 }
 
-export async function withFsFailure<T>(method: FsMethod, failing: string | Fails, fn: () => Promise<T>) {
+export async function withFsFailure<T>(method: FsMethod, failing: string | Fails, fn: () => Promise<T>, code?: string) {
   const fails = typeof failing === 'string' ? (source: string, target: string) => source === failing || target === failing : failing;
-  const spy = failFsMethod(method, fails);
+  const spy = failFsMethod(method, fails, code);
   try {
     return await fn();
   } finally {

@@ -126,6 +126,28 @@ describe('iterating a storage root', () => {
     assert.ok(opened.length > 1);
     assert.deepStrictEqual(await stillOpen(opened), []);
   });
+
+  it('closes every directory it opened and rethrows when an object declaration cannot be read', async () => {
+    const storage = await ocfl.storage({ root }).load();
+    const objectRoot = storage.object('http://example.org/a').root;
+    const opened = await trackOpendir(() =>
+      withFsFailure(
+        'readFile',
+        (filePath) => path.dirname(filePath) === objectRoot,
+        () =>
+          assert.rejects(
+            async () => {
+              for await (const _o of storage) {
+              }
+            },
+            { code: 'EACCES' },
+          ),
+        'EACCES',
+      ),
+    );
+    assert.ok(opened.length > 1);
+    assert.deepStrictEqual(await stillOpen(opened), []);
+  });
 });
 
 describe('checking whether a storage root exists', () => {
@@ -137,19 +159,49 @@ describe('checking whether a storage root exists', () => {
     await fs.promises.rm(tempdir, { recursive: true, force: true });
   });
 
-  it('closes the directory it opened when reading it fails', async () => {
+  it('rethrows and closes the directory it opened when reading it fails', async () => {
     const storage = ocfl.storage({ root: tempdir, layout: '0004-hashed-n-tuple-storage-layout' });
     const opened = await trackOpendir(async () => {
       const read = mock.method(fs.Dir.prototype, 'read', async () => {
         throw fsError('EIO');
       });
       try {
-        await storage.exists();
+        await assert.rejects(storage.exists(), { code: 'EIO' });
       } finally {
         read.mock.restore();
       }
     });
     assert.strictEqual(opened.length, 1);
     assert.deepStrictEqual(await stillOpen(opened), []);
+  });
+
+  it('rethrows when the root cannot be opened', async () => {
+    const storage = ocfl.storage({ root: tempdir, layout: '0004-hashed-n-tuple-storage-layout' });
+    await withFsFailure('opendir', tempdir, () => assert.rejects(storage.exists(), { code: 'EIO' }));
+  });
+
+  it('is true when the root is a file', async () => {
+    const root = path.join(tempdir, 'a-file');
+    await fs.promises.writeFile(root, 'x');
+    assert.strictEqual(await ocfl.storage({ root, layout: '0004-hashed-n-tuple-storage-layout' }).exists(), true);
+  });
+
+  it('is false when the root does not exist', async () => {
+    const root = path.join(tempdir, 'missing');
+    assert.strictEqual(await ocfl.storage({ root, layout: '0004-hashed-n-tuple-storage-layout' }).exists(), false);
+  });
+
+  it('is false when a parent of the root is a file', async () => {
+    const parent = path.join(tempdir, 'parent-file');
+    await fs.promises.writeFile(parent, 'x');
+    const root = path.join(parent, 'root');
+    assert.strictEqual(await ocfl.storage({ root, layout: '0004-hashed-n-tuple-storage-layout' }).exists(), false);
+  });
+
+  it('rethrows when the root is not a directory and cannot be inspected', async () => {
+    const root = path.join(tempdir, 'uninspectable');
+    await fs.promises.writeFile(root, 'x');
+    const storage = ocfl.storage({ root, layout: '0004-hashed-n-tuple-storage-layout' });
+    await withFsFailure('stat', root, () => assert.rejects(storage.exists(), { code: 'EACCES' }), 'EACCES');
   });
 });

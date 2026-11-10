@@ -154,12 +154,7 @@ class OcflObject {
     if (nv) {
       return;
     }
-    // namaste not found, check if object root is not empty
-    let files: string[] | undefined;
-    try {
-      files = await fs.promises.readdir(this.root);
-    } catch (_error) {}
-    if (files && files.length > 0) {
+    if (!(await isDirEmpty(this.root))) {
       throw new OcflError('DIRECTORY_NOT_EMPTY', 'Cannot create an OCFL Object in a non-empty directory');
     }
     //create the namaste file

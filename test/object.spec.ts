@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import ocfl, { type Inventory, ObjectNotFoundError, ObjectNotLoadedError, type OcflVersion } from '../src/index.ts';
+import { withFsFailure } from './fs-failures.ts';
 import { ocflError } from './ocfl-error.ts';
 
 async function writeInventory(inventoryPath: string, data: string) {
@@ -158,6 +159,35 @@ describe('OcflObject with a malformed or missing inventory', () => {
       ocfl.object({ id: 'not-empty', root }).update(async (t) => t.write('a.txt', 'a')),
       ocflError('DIRECTORY_NOT_EMPTY'),
     );
+  });
+
+  it('rejects creating an object when its root cannot be read, writing nothing', async () => {
+    const root = path.join(tempdir, 'unreadable');
+    await fs.promises.mkdir(root);
+    const unreadable = (dirPath: string) => dirPath === root;
+    await withFsFailure(
+      'readdir',
+      unreadable,
+      () =>
+        withFsFailure(
+          'opendir',
+          unreadable,
+          () =>
+            assert.rejects(
+              ocfl.object({ id: 'unreadable', root }).update(async (t) => t.write('a.txt', 'a')),
+              { code: 'EACCES' },
+            ),
+          'EACCES',
+        ),
+      'EACCES',
+    );
+    assert.deepStrictEqual(await fs.promises.readdir(root), []);
+  });
+
+  it('rethrows from exists() when its root cannot be opened', async () => {
+    const root = path.join(tempdir, 'unopenable');
+    await fs.promises.mkdir(root);
+    await withFsFailure('opendir', root, () => assert.rejects(ocfl.object({ root }).exists(), { code: 'EACCES' }), 'EACCES');
   });
 
   it('rejects a logical path that is absolute or leaves the object', async () => {
