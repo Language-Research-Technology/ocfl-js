@@ -145,6 +145,12 @@ interface DeletePlan {
   releases: ContentRelease[];
 }
 
+interface ReinstatePlan extends DeletePlan {
+  files: { logicalPath: string; digest: string; digests: Digests }[];
+  /** Paths found in the earlier version, including those already the same in the head */
+  count: number;
+}
+
 /**
  * An OCFL object's inventory. Only a transaction changes it, while it builds a new version.
  */
@@ -822,18 +828,40 @@ class OcflObjectInventory {
 
   /** @internal */
   _reinstate(logicalPath: string, versionName: string): number {
-    const names = this.#indexFindPaths(logicalPath, versionName);
+    return this._applyReinstate(this._planReinstate(logicalPath, versionName));
+  }
+
+  /**
+   * Resolve a reinstate to the files it lists, the paths they replace and what happens to the
+   * replaced paths' content, changing nothing
+   * @internal
+   */
+  _planReinstate(logicalPath: string, versionName: string): ReinstatePlan {
+    const files: ReinstatePlan['files'] = [];
     let count = 0;
-    for (const lp of names) {
+    for (const lp of this.#indexFindPaths(logicalPath, versionName)) {
       const digests = this.#indexGet(lp, versionName);
       const digest = digests?.[this.digestAlgorithm];
       if (digests && digest) {
         if (this.getDigest(lp) !== digest) {
-          this.#delist(this.#indexFindPaths(lp));
-          this.#list(lp, digest, digests);
+          files.push({ logicalPath: lp, digest, digests });
         }
         count++;
       }
+    }
+    const paths = [...new Set(files.flatMap((file) => this.#indexFindPaths(file.logicalPath)))];
+    return { files, paths, releases: this._contentReleases(paths), count };
+  }
+
+  /**
+   * Apply a plan from {@link _planReinstate}, which must be from the current state
+   * @internal
+   */
+  _applyReinstate({ files, paths, releases, count }: ReinstatePlan) {
+    this.#delist(paths);
+    this.#applyContentReleases(releases);
+    for (const { logicalPath, digest, digests } of files) {
+      this.#list(logicalPath, digest, digests);
     }
     return count;
   }
