@@ -199,12 +199,6 @@ export class OcflError extends Error {
 // @public (undocumented)
 export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'LAYOUT_MISMATCH' | ValidationErrorCode;
 
-// @public (undocumented)
-export type OcflExtensionConfig = {
-    extensionName?: string;
-    [key: string]: unknown;
-};
-
 // @public
 export type OcflLayoutConfig = ({
     extensionName: '000N-path-direct-storage-layout';

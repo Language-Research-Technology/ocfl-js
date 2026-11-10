@@ -1,5 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
-import type { OcflExtensionConfig } from './types.ts';
+
+/** A layout's config as callers and config.json give it, before any checking */
+type OcflExtensionConfig = { extensionName?: string; [key: string]: unknown };
 
 abstract class BuiltInLayout<C extends object = object> implements OcflStorageLayout {
   /** Official extension name */
@@ -69,4 +71,4 @@ function differingParameters(extension: BuiltInLayout, reference: BuiltInLayout)
   return names;
 }
 
-export { BuiltInLayout, differingParameters, type OcflStorageLayout };
+export { BuiltInLayout, differingParameters, type OcflExtensionConfig, type OcflStorageLayout };

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { Hashing } from '../digest.ts';
-import { BuiltInLayout } from '../extension.ts';
+import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 
 const MAX_ENCODED_ID_LENGTH = 100;
 
@@ -31,7 +31,7 @@ class HashAndIdNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     ' which are used to create nested paths under the OCFL storage root.' +
     ' Finally, the OCFL object identifier is percent-encoded to create a directory name for the OCFL object root.';
 
-  constructor(config?: HashAndIdNTupleStorageLayoutConfig) {
+  constructor(config?: OcflExtensionConfig) {
     super(config, DefaultConfig);
     const c = this.parameters;
     const digestLength = Hashing.getHexDigestLength(c.digestAlgorithm);

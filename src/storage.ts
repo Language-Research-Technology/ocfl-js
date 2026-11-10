@@ -4,7 +4,7 @@ import path from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import { ObjectNotFoundError, OcflError } from './error.ts';
-import { type BuiltInLayout, differingParameters } from './extension.ts';
+import { type BuiltInLayout, differingParameters, type OcflExtensionConfig } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { createLayout, supportedLayoutClass } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
@@ -16,7 +16,7 @@ const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONF
 
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 
-import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
+import type { OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
 
 const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1.1': 'ocfl_1.1.md' };
 

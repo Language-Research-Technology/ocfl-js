@@ -338,7 +338,6 @@ import ocflFs, {
   ObjectNotLoadedError,
   OcflError,
   type OcflErrorCode,
-  type OcflExtensionConfig,
   type OcflLayoutConfig,
   type OcflLayoutName,
   type OcflObject,

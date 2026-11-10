@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { Hashing } from '../digest.ts';
-import { BuiltInLayout } from '../extension.ts';
+import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 import type { HashAndIdNTupleStorageLayoutConfig } from './0003-hash-and-id-n-tuple-storage-layout.ts';
 
 export type HashedNTupleStorageLayoutConfig = HashAndIdNTupleStorageLayoutConfig & {
@@ -21,7 +21,7 @@ class HashedNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     ' These digests are then divided into N n-tuple segments,' +
     ' which are used to create nested paths under the OCFL storage root.';
 
-  constructor(config?: HashedNTupleStorageLayoutConfig) {
+  constructor(config?: OcflExtensionConfig) {
     super(config, DefaultConfig);
     const c = this.parameters;
     const digestLength = Hashing.getHexDigestLength(c.digestAlgorithm);

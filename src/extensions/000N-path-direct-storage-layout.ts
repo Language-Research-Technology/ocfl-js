@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { OcflError } from '../error.ts';
-import { BuiltInLayout } from '../extension.ts';
+import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 
 export type PathDirectStorageLayoutConfig = {
   omitScheme?: boolean;
@@ -18,7 +18,7 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   readonly name = '000N-path-direct-storage-layout';
   readonly description: string = 'OCFL object identifiers are used directly as the path.';
 
-  constructor(config?: PathDirectStorageLayoutConfig) {
+  constructor(config?: OcflExtensionConfig) {
     super(config, DefaultConfig);
   }
 

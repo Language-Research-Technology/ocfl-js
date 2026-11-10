@@ -61,8 +61,6 @@ export type WriteFileData = string | Uint8Array | DataView | ArrayBuffer | Reada
 
 export type OcflVersion = '1.0' | '1.1';
 
-export type OcflExtensionConfig = { extensionName?: string; [key: string]: unknown };
-
 /** The official extension name of a layout this library implements. */
 export type OcflLayoutName =
   | '000N-path-direct-storage-layout'
