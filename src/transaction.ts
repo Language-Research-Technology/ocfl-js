@@ -81,8 +81,7 @@ class OcflObjectTransaction {
   #committed = false;
   #commitBlocker: Error | undefined;
 
-  /** @internal */
-  constructor(
+  private constructor(
     ocflObject: OcflObject,
     inventory: OcflObjectInventoryMut,
     versionPath: string,
