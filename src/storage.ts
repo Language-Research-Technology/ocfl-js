@@ -304,7 +304,8 @@ class OcflStorage {
   }
 
   /**
-   * Delete an object and any parent directories it leaves empty, up to but not including the storage root.
+   * Delete an object and any version a failed update left in its workspace.
+   * Parent directories left empty are removed too, up to but not including the storage root.
    * Not guarded against a concurrent update of the object.
    * @param id - Identifier of the object
    * @throws {@link ObjectNotFoundError} If the object does not exist.
@@ -329,11 +330,12 @@ class OcflStorage {
     if (inventory?.id !== id) {
       throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `"${objectRoot}" holds the object <${inventory?.id}>, not <${id}>, so nothing was deleted.`);
     }
+    // Workspace first, so if it can't be removed the object survives and remove can be retried
+    await fs.promises.rm(object._workspace, { recursive: true, force: true });
     await fs.promises.rm(objectRoot, { recursive: true, force: true });
-    try {
-      await store.removeEmptyAncestors(path.dirname(objectRoot), this.root);
-    } catch (_error) {
-      // The object is gone, so a retry would throw ObjectNotFoundError; a leftover empty directory is harmless
+    // The object is gone, so a retry would throw ObjectNotFoundError; a leftover empty directory is harmless
+    for (const dir of [object._workspace, objectRoot]) {
+      await store.removeEmptyAncestors(path.dirname(dir), this.root).catch(() => {});
     }
   }
 
