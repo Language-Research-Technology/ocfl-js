@@ -142,6 +142,10 @@ for await (let f of await object.files()) {
 }
 ```
 
+### Symbolic links
+
+The library does not resolve symbolic links: a link inside a storage root or object is followed. OCFL forbids links in objects (E090), so keep write access to the storage root limited to trusted processes.
+
 ## Extensions
 
 This library implements these storage layouts from the [OCFL Community Extensions](https://github.com/OCFL/extensions):
