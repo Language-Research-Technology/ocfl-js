@@ -105,11 +105,15 @@ class OcflObjectInventory {
 
   metadata: { [contentPath: string]: { size: number; lastModified: number } } | undefined;
 
-  /** Digest of this inventory's bytes in storage, as recorded in its sidecar */
+  /**
+   * Digest of this inventory's bytes in storage, as recorded in its sidecar
+   * @internal
+   */
   _digest: string | undefined;
 
   /**
    * Helper function to find the digest by logical file path and cached it by indexing
+   * @internal
    */
   _indexGet(logicalPath: string, versionName?: string, onlyUsecache?: boolean): Digests | undefined {
     const version = this.#resolveVersion(versionName);
@@ -135,20 +139,26 @@ class OcflObjectInventory {
     return digests;
   }
 
+  /** @internal */
   _indexAdd(logicalPath: string, version: string, digests: Digests) {
     this.#fileIndex[version] ??= {};
     this.#fileIndex[version][logicalPath] = digests;
   }
 
+  /** @internal */
   _indexRemove(logicalPath: string) {
     delete this.#fileIndex[this.head]?.[logicalPath];
   }
 
+  /** @internal */
   _indexGetFixity(contentPath: string): Digests {
     return this.#fixityIndex.get(contentPath) ?? {};
   }
 
-  /** A digest's file index entry, with the fixity of all its content paths */
+  /**
+   * A digest's file index entry, with the fixity of all its content paths
+   * @internal
+   */
   _indexDigests(digest: string): Digests {
     const digests: Digests = { [this.digestAlgorithm]: digest };
     for (const cp of this.#requireContentPaths(digest)) {
@@ -157,6 +167,7 @@ class OcflObjectInventory {
     return digests;
   }
 
+  /** @internal */
   _indexAddFixity(contentPath: string, algorithm: string, value: string) {
     let digests = this.#fixityIndex.get(contentPath);
     if (!digests) {
@@ -166,10 +177,12 @@ class OcflObjectInventory {
     digests[algorithm] = value;
   }
 
+  /** @internal */
   _indexRemoveFixity(contentPath: string) {
     this.#fixityIndex.delete(contentPath);
   }
 
+  /** @internal */
   _indexBuild() {
     this.#fixityIndex.clear();
     for (const [algorithm, digestBlock] of Object.entries(this.fixity ?? {})) {
@@ -194,6 +207,7 @@ class OcflObjectInventory {
     }
   }
 
+  /** @internal */
   _indexFindPaths(prefix: string, versionName?: string) {
     const res: string[] = [];
     const index = this.#fileIndex[this.#resolveVersion(versionName)];
@@ -567,7 +581,10 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     return `${this.head}/${this.contentDirectory}/${logicalPath}`;
   }
 
-  /** What happens to the content of logical paths once they all stop using it, for content this version stored */
+  /**
+   * What happens to the content of logical paths once they all stop using it, for content this version stored
+   * @internal
+   */
   _contentReleases(logicalPaths: string[]): ContentRelease[] {
     const leaving = new Set(logicalPaths);
     const ownPaths = new Set(logicalPaths.map((logicalPath) => this.#ownContentPath(logicalPath)));
@@ -722,6 +739,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * Resolve a rename to its transfers and the content it moves, changing nothing. Only files this
    * version stored at a source's own content path move.
    * @throws OcflError FILE_NOT_FOUND if the source is missing, FILE_EXISTS if the target exists
+   * @internal
    */
   _planRename(srcLogicalPath: string, destLogicalPath: string): RenamePlan {
     const transfers = this.#planTransfer(srcLogicalPath, destLogicalPath);
@@ -732,7 +750,10 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     return { transfers, releases };
   }
 
-  /** Apply a plan from {@link _planRename}, which must be from the current head state */
+  /**
+   * Apply a plan from {@link _planRename}, which must be from the current head state
+   * @internal
+   */
   _applyRename({ transfers, releases }: RenamePlan) {
     this.#applyContentReleases(releases);
     for (const { src, dest, digest, digests } of transfers) {
@@ -759,13 +780,19 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     return this._applyDelete(this._planDelete(logicalPath));
   }
 
-  /** Resolve a delete to the paths it unlists and what happens to their content, changing nothing */
+  /**
+   * Resolve a delete to the paths it unlists and what happens to their content, changing nothing
+   * @internal
+   */
   _planDelete(logicalPath: string): DeletePlan {
     const paths = this._indexFindPaths(logicalPath);
     return { paths, releases: this._contentReleases(paths) };
   }
 
-  /** Apply a plan from {@link _planDelete}, which must be from the current state */
+  /**
+   * Apply a plan from {@link _planDelete}, which must be from the current state
+   * @internal
+   */
   _applyDelete({ paths, releases }: DeletePlan) {
     const count = this.#delist(paths);
     this.#applyContentReleases(releases);

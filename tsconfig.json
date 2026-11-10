@@ -19,6 +19,8 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    // Members tagged @internal are shared between classes, not public
+    "stripInternal": true,
     // TS 7 requires rootDir when emitting
     "rootDir": "${configDir}/src",
     "outDir": "${configDir}/dist"

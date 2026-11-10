@@ -81,6 +81,7 @@ class OcflObjectTransaction {
   #committed = false;
   #commitBlocker: Error | undefined;
 
+  /** @internal */
   constructor(
     ocflObject: OcflObject,
     inventory: OcflObjectInventoryMut,
@@ -100,6 +101,7 @@ class OcflObjectTransaction {
 
   /**
    * Create a new transaction instance.
+   * @internal
    */
   static async create(ocflObject: OcflObject, inventory: OcflObjectInventoryMut, workspacePath: string) {
     const rootExisted = await fs.promises.stat(ocflObject.root).then(

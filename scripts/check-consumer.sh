@@ -95,6 +95,28 @@ transaction._queue;
 transaction._inventory;
 export { object, transaction };
 EOF
+# Typechecked but never run: each @ts-expect-error names a member that is @internal
+cat >"$consumer/internal-members.ts" <<'EOF'
+import type { OcflObject, OcflObjectInventory, OcflObjectTransaction } from '@ocfl/ocfl-fs';
+declare const object: OcflObject;
+declare const inventory: OcflObjectInventory;
+declare const transactionClass: typeof OcflObjectTransaction;
+// @ts-expect-error _setInventory is @internal
+object._setInventory(inventory);
+// @ts-expect-error _ensureNamaste is @internal
+object._ensureNamaste();
+// @ts-expect-error _requireInventory is @internal
+object._requireInventory();
+// @ts-expect-error _validateObjectPath is @internal
+object._validateObjectPath();
+// @ts-expect-error _digest is @internal
+inventory._digest;
+// @ts-expect-error _indexGet is @internal
+inventory._indexGet('a');
+// @ts-expect-error create is @internal
+transactionClass.create(object, inventory as never, '');
+export { inventory, object, transactionClass };
+EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'
 import type { OcflObject, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl-fs';

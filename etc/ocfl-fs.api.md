@@ -227,8 +227,6 @@ export class OcflObject {
     // (undocumented)
     createReadable(filePath: string, options?: unknown): Promise<ReadableStream>;
     get digestAlgorithm(): ContentAlgorithm;
-    // (undocumented)
-    _ensureNamaste(): Promise<string | undefined>;
     exists(): Promise<boolean>;
     files(version?: string): Promise<Generator<OcflObjectFile, void, unknown>>;
     fixityAlgorithms: string[] | undefined;
@@ -248,10 +246,7 @@ export class OcflObject {
     // (undocumented)
     readFile(relPath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array>;
     refresh(): Promise<void>;
-    // (undocumented)
-    _requireInventory(): Promise<OcflObjectInventory>;
     get root(): string;
-    _setInventory(inventory: OcflObjectInventory, version?: string): void;
     stat(relPath: string): Promise<fs.Stats>;
     // (undocumented)
     toJSON(): {
@@ -261,8 +256,6 @@ export class OcflObject {
     // (undocumented)
     toString(): string;
     update(updater?: (transaction: OcflObjectTransaction) => Promise<unknown>, mode_?: UpdateMode): Promise<OcflObjectTransaction | undefined>;
-    // (undocumented)
-    _validateObjectPath(): Promise<void>;
     get versions(): VersionNumber[];
     get workspace(): string | undefined;
 }
@@ -309,7 +302,6 @@ export class OcflObjectInventory {
     // (undocumented)
     get created(): string;
     diffState(version0: string, version1: string): [InventoryDigests, InventoryDigests];
-    _digest: string | undefined;
     // (undocumented)
     get digestAlgorithm(): ContentAlgorithm;
     // (undocumented)
@@ -330,22 +322,6 @@ export class OcflObjectInventory {
     get head(): string;
     // (undocumented)
     get id(): string;
-    // (undocumented)
-    _indexAdd(logicalPath: string, version: string, digests: Digests): void;
-    // (undocumented)
-    _indexAddFixity(contentPath: string, algorithm: string, value: string): void;
-    // (undocumented)
-    _indexBuild(): void;
-    _indexDigests(digest: string): Digests;
-    // (undocumented)
-    _indexFindPaths(prefix: string, versionName?: string): string[];
-    _indexGet(logicalPath: string, versionName?: string, onlyUsecache?: boolean): Digests | undefined;
-    // (undocumented)
-    _indexGetFixity(contentPath: string): Digests;
-    // (undocumented)
-    _indexRemove(logicalPath: string): void;
-    // (undocumented)
-    _indexRemoveFixity(contentPath: string): void;
     // (undocumented)
     get manifest(): DeepReadonly<InventoryDigests>;
     // (undocumented)
@@ -375,11 +351,8 @@ export class OcflObjectInventory {
 
 // @public
 export class OcflObjectTransaction {
-    // Warning: (ae-forgotten-export) The symbol "OcflObjectInventoryMut" needs to be exported by the entry point index.d.ts
-    constructor(ocflObject: OcflObject, inventory: OcflObjectInventoryMut, versionPath: string, workspace: string | undefined, rootExisted: boolean, createdNamaste: string | undefined);
     commit(options?: CommitOptions): Promise<void>;
     copy(source: string, target: string): Promise<void>;
-    static create(ocflObject: OcflObject, inventory: OcflObjectInventoryMut, workspacePath: string): Promise<OcflObjectTransaction>;
     createWritable(logicalPath: string, options?: unknown): Promise<WritableStream>;
     import(source: string, target?: string): Promise<void>;
     reinstate(logicalPath: string, versionName: string): Promise<number>;

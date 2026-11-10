@@ -518,6 +518,8 @@ Loading a storage root that declares either of them, or any other layout this li
 
 Members used only inside their own class, such as `object._inventory`, `object._readInventory()`, `transaction._commit()` and `transaction._queue`, are now JavaScript private fields. They're gone from the published types and can't be reached at runtime. `Object.keys()` and `console.log()` or `util.inspect()` of an object or transaction no longer show them, and `JSON.stringify()` of a transaction now gives `{}`. Because a `Proxy` can't reach private fields, calling a method on an object or transaction wrapped in one, such as Vue's `reactive()` or a MobX observable, now throws a `TypeError`. Keep them out of reactive state, for example with Vue's `markRaw()`.
 
+The remaining `_` members, such as `object._setInventory()`, `object._requireInventory()` and `inventory._digest`, are shared between the library's classes. They're no longer in the published types, and neither are the `OcflObjectTransaction` constructor and its static `create()`. They still exist at runtime, but they aren't part of the API and can change in any release.
+
 ## Other behaviour changes
 
 - Looking up a file in a version that doesn't exist returns `undefined` (or `0` from `count()`) instead of throwing.

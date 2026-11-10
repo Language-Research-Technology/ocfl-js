@@ -136,7 +136,10 @@ class OcflObject {
     return (declared as OcflVersion | undefined) ?? this.#configuredOcflVersion;
   }
 
-  /** @returns The path of the declaration file, if this call wrote one */
+  /**
+   * @returns The path of the declaration file, if this call wrote one
+   * @internal
+   */
   async _ensureNamaste(): Promise<string | undefined> {
     const prefix = NAMASTE_PREFIX_OBJECT;
     const nv = await findNamasteVersion(prefix, this.root);
@@ -199,6 +202,7 @@ class OcflObject {
 
   /**
    * Set the latest version of inventory in the cache
+   * @internal
    */
   _setInventory(inventory: OcflObjectInventory, version = 'latest') {
     this.#inventories[version] = inventory;
@@ -207,7 +211,10 @@ class OcflObject {
     }
   }
 
-  // all the parent directories cannot be an ocfl object
+  /**
+   * Rejects an object root inside another OCFL object
+   * @internal
+   */
   async _validateObjectPath() {
     var p = this.root;
     while (p !== '.' && p !== '/') {
@@ -237,6 +244,7 @@ class OcflObject {
     return this.#inventories[version];
   }
 
+  /** @internal */
   async _requireInventory(): Promise<OcflObjectInventory> {
     const inv = await this.getInventory();
     if (!inv) {
