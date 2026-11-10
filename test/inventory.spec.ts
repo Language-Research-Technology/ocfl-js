@@ -429,6 +429,55 @@ describe('OcflObjectInventory class', () => {
       assertHeadStateValid(inv);
     });
 
+    for (const [name, logicalPath] of [
+      ['inside a file', 'a/b'],
+      ['deep inside a file', 'a/b/c'],
+      ['onto a directory', 'd'],
+      ['onto a dot-prefixed form of a directory', './d'],
+      ['onto a doubled-slash form of a path inside a file', 'a//b'],
+    ] as const) {
+      it(`throws FILE_EXISTS adding a file ${name}, changing nothing`, () => {
+        const inv = OcflObjectInventory.newVersion(data);
+        inv._add('a', 'd1');
+        inv._add('d/x', 'd2');
+        const before = inv.toJSON();
+        assert.throws(() => inv._add(logicalPath, 'd3'), { name: 'OcflError', code: 'FILE_EXISTS' });
+        assert.deepStrictEqual(inv.toJSON(), before);
+        assertHeadStateValid(inv);
+      });
+    }
+
+    it('adds a file where a directory was once every file under it has gone', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv._add('d/x', 'd1');
+      inv._add('d/sub/y', 'd2');
+      inv._add('d/sub/z', 'd3');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv._delete('d/x');
+      inv._rename('d/sub/y', 'y');
+      assert.throws(() => inv._add('d/sub', 'd4'), { name: 'OcflError', code: 'FILE_EXISTS' });
+      assert.throws(() => inv._add('d', 'd4'), { name: 'OcflError', code: 'FILE_EXISTS' });
+      inv._delete('d/sub/z');
+      inv._add('d', 'd4');
+      assert.deepStrictEqual(inv.state, { d2: ['y'], d4: ['d'] });
+      assertHeadStateValid(inv);
+    });
+
+    for (const logicalPath of ['d/x', 'd']) {
+      it(`throws FILE_EXISTS reinstating ${logicalPath} when it puts a file inside a file, changing nothing`, () => {
+        let inv = OcflObjectInventory.newVersion(data);
+        inv._add('d/x', 'd1');
+        inv._add('d/y', 'd2');
+        inv = OcflObjectInventory.newVersion(inv);
+        inv._delete('d');
+        inv._add('d', 'd3');
+        const before = inv.toJSON();
+        assert.throws(() => inv._reinstate(logicalPath, 'v1'), { name: 'OcflError', code: 'FILE_EXISTS' });
+        assert.deepStrictEqual(inv.toJSON(), before);
+        assertHeadStateValid(inv);
+      });
+    }
+
     it('reinstates a file over a directory, replacing the paths under it', () => {
       let inv = OcflObjectInventory.newVersion(data);
       inv._add('x', 'd1');

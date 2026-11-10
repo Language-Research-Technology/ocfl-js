@@ -346,6 +346,14 @@ describe('OcflObject with a malformed or missing inventory', () => {
     );
   });
 
+  async function assertFiles(o: ReturnType<typeof testObject>, expected: Record<string, string>) {
+    const paths = Array.from(await o.files(), (f) => f.logicalPath).sort();
+    assert.deepStrictEqual(paths, Object.keys(expected).sort());
+    for (const [logicalPath, content] of Object.entries(expected)) {
+      assert.strictEqual(await o.getFile(logicalPath)?.text(), content);
+    }
+  }
+
   for (const op of ['copy', 'rename'] as const) {
     describe(`${op}() onto an occupied target`, () => {
       const files = { 'a.txt': 'a', 'b.txt': 'b', 'same.txt': 'a', 'dir/c.txt': 'c', 'other/d.txt': 'd' };
@@ -368,11 +376,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
             }
             await assert.rejects(t[op](source, target), ocflError('FILE_EXISTS'));
           });
-          const paths = Array.from(await o.files(), (f) => f.logicalPath).sort();
-          assert.deepStrictEqual(paths, Object.keys(files).sort());
-          for (const [logicalPath, content] of Object.entries(files)) {
-            assert.strictEqual(await o.getFile(logicalPath)?.text(), content);
-          }
+          await assertFiles(o, files);
         });
       });
 
@@ -400,6 +404,147 @@ describe('OcflObject with a malformed or missing inventory', () => {
       });
     });
   }
+
+  describe('a logical path that would be both a file and a directory', () => {
+    const files = { a: 'a', 'd/x': 'x' };
+
+    async function objectWithFiles(name: string) {
+      const o = testObject({ id: name, root: path.join(tempdir, name) });
+      await o.update(async (t) => {
+        for (const [logicalPath, content] of Object.entries(files)) {
+          await t.write(logicalPath, content);
+        }
+      });
+      return o;
+    }
+
+    const writes = [
+      ['inside a file of an earlier version', 'a/b'],
+      ['deep inside a file of an earlier version', 'a/b/c'],
+      ['onto a directory of an earlier version', 'd'],
+      ['onto a doubled-slash form of a directory', './/d'],
+    ] as const;
+
+    writes.forEach(([name, target], index) => {
+      it(`write() throws FILE_EXISTS ${name}, creating no version`, async () => {
+        const o = await objectWithFiles(`conflict-write-${index}`);
+        await o.update(async (t) => {
+          await assert.rejects(t.write(target, 'new'), ocflError('FILE_EXISTS'));
+        });
+        assert.strictEqual(o.inventory?.head, 'v1');
+        await assertFiles(o, files);
+      });
+    });
+
+    it('write() throws FILE_EXISTS onto a directory written in the same update, keeping its files', async () => {
+      const o = testObject({ id: 'conflict-same-update', root: path.join(tempdir, 'conflict-same-update') });
+      await o.update(async (t) => {
+        await t.write('d/x', 'x');
+        await assert.rejects(t.write('d', 'new'), ocflError('FILE_EXISTS'));
+        await assert.rejects(t.write('d/x/y', 'new'), ocflError('FILE_EXISTS'));
+      });
+      await assertFiles(o, { 'd/x': 'x' });
+    });
+
+    it('a stream from createWritable() fails with FILE_EXISTS when closed onto a directory', async () => {
+      const o = await objectWithFiles('conflict-writable');
+      await o.update(async (t) => {
+        const writer = (await t.createWritable('d')).getWriter();
+        await writer.write('new');
+        await assert.rejects(writer.close(), ocflError('FILE_EXISTS'));
+      });
+      assert.strictEqual(o.inventory?.head, 'v1');
+      await assertFiles(o, files);
+    });
+
+    it('import() throws FILE_EXISTS for a file inside an existing file, importing nothing', async () => {
+      const source = path.join(tempdir, 'conflict-import-source');
+      await fs.promises.mkdir(path.join(source, 'a'), { recursive: true });
+      await fs.promises.writeFile(path.join(source, 'a', 'inner.txt'), 'inner');
+      await fs.promises.writeFile(path.join(source, 'ok.txt'), 'ok');
+      const o = await objectWithFiles('conflict-import');
+      await o.update(async (t) => {
+        await assert.rejects(t.import(source), ocflError('FILE_EXISTS'));
+      });
+      assert.strictEqual(o.inventory?.head, 'v1');
+      await assertFiles(o, files);
+    });
+
+    it('import() throws FILE_EXISTS for a file onto a directory, creating no version', async () => {
+      const source = path.join(tempdir, 'conflict-import-source.txt');
+      await fs.promises.writeFile(source, 'new');
+      const o = await objectWithFiles('conflict-import-file');
+      await assert.rejects(o.import([{ source, target: 'd' }]), ocflError('FILE_EXISTS'));
+      assert.strictEqual(o.inventory?.head, 'v1');
+      await assertFiles(o, files);
+    });
+
+    it('write() and createWritable() store a logical path in its normalised form', async () => {
+      const o = testObject({ id: 'conflict-normalised', root: path.join(tempdir, 'conflict-normalised') });
+      await o.update(async (t) => {
+        await t.write('./d//x', 'x');
+        const writer = (await t.createWritable('./e/./y/')).getWriter();
+        await writer.write('y');
+        await writer.close();
+        await assert.rejects(t.write('d', 'new'), ocflError('FILE_EXISTS'));
+        await assert.rejects(t.write('e/y/z', 'new'), ocflError('FILE_EXISTS'));
+        await t.write('d/x', 'replaced');
+      });
+      await assertFiles(o, { 'd/x': 'replaced', 'e/y': 'y' });
+    });
+
+    for (const logicalPath of ['', '.', './']) {
+      it(`write() and createWritable() reject the empty logical path "${logicalPath}"`, async () => {
+        const o = await objectWithFiles(`conflict-empty-${logicalPath.length}`);
+        await o.update(async (t) => {
+          await assert.rejects(t.write(logicalPath, 'new'), ocflError('INVALID_LOGICAL_PATH'));
+          await assert.rejects(t.createWritable(logicalPath), ocflError('INVALID_LOGICAL_PATH'));
+        });
+        assert.strictEqual(o.inventory?.head, 'v1');
+        await assertFiles(o, files);
+      });
+    }
+
+    it('write() replaces an existing file', async () => {
+      const o = await objectWithFiles('conflict-replace');
+      await o.update(async (t) => t.write('d/x', 'changed'));
+      await assertFiles(o, { a: 'a', 'd/x': 'changed' });
+    });
+
+    it('write() replaces a directory removed first in the same update', async () => {
+      const o = await objectWithFiles('conflict-removed');
+      await o.update(async (t) => {
+        await t.remove('d');
+        await t.write('d', 'file');
+      });
+      await assertFiles(o, { a: 'a', d: 'file' });
+    });
+
+    it('reinstate() throws FILE_EXISTS for a path inside a file, changing nothing', async () => {
+      const o = await objectWithFiles('conflict-reinstate');
+      await o.update(async (t) => {
+        await t.remove('d');
+        await t.write('d', 'file');
+        await assert.rejects(t.reinstate('d/x', 'v1'), ocflError('FILE_EXISTS'));
+        await assert.rejects(t.reinstate('d', 'v1'), ocflError('FILE_EXISTS'));
+      });
+      assert.strictEqual(o.inventory?.head, 'v2');
+      await assertFiles(o, { a: 'a', d: 'file' });
+    });
+
+    it('reinstate() replaces a directory with the file an earlier version had there', async () => {
+      const o = testObject({ id: 'conflict-reinstate-file', root: path.join(tempdir, 'conflict-reinstate-file') });
+      await o.update(async (t) => t.write('x', 'file'));
+      await o.update(async (t) => {
+        await t.remove('x');
+        await t.write('x/y', 'y');
+      });
+      await o.update(async (t) => {
+        assert.strictEqual(await t.reinstate('x', 'v1'), 1);
+      });
+      await assertFiles(o, { x: 'file' });
+    });
+  });
 
   it('rejects an import target outside the object before reading any source', async () => {
     const source = path.join(tempdir, 'import-source.txt');

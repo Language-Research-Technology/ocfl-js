@@ -46,6 +46,20 @@ async function readIfExists(file: string): Promise<string | undefined> {
   }
 }
 
+/** The form a logical path takes on disk, so two spellings of one path are the same path */
+function normaliseLogicalPath(logicalPath: string): string {
+  return path.posix.normalize(logicalPath).replace(/\/$/, '');
+}
+
+/** The directories a logical path is inside, outermost first */
+function parentDirectories(logicalPath: string): string[] {
+  const directories: string[] = [];
+  for (let end = logicalPath.indexOf('/'); end !== -1; end = logicalPath.indexOf('/', end + 1)) {
+    directories.push(logicalPath.slice(0, end));
+  }
+  return directories;
+}
+
 /** `content` parsed as a JSON object, or `undefined` if it isn't one */
 function parseJsonObject(content: string): Record<string, unknown> | undefined {
   try {
@@ -147,6 +161,8 @@ export {
   isDirEmpty,
   isErrnoException,
   isNotFound,
+  normaliseLogicalPath,
+  parentDirectories,
   parseJsonObject,
   pathExists,
   readIfExists,

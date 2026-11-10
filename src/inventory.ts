@@ -1,6 +1,6 @@
-import path from 'node:path';
 import { OcflError } from './error.ts';
 import type { ContentAlgorithm, DeepReadonly, Digests, Inventory, InventoryDigests, InventoryVersion } from './types.ts';
+import { normaliseLogicalPath, parentDirectories } from './utils.ts';
 import { createError } from './validation.ts';
 
 export interface InventoryFile {
@@ -158,6 +158,8 @@ class OcflObjectInventory {
   #data: Inventory;
   #fileIndex: { [version: string]: { [logicalPath: string]: Digests } } = {};
   #fixityIndex = new Map<string, Digests>();
+  /** How many files each directory of the head state contains, at any depth */
+  #headDirectories = new Map<string, number>();
 
   metadata: { [contentPath: string]: { size: number; lastModified: number } } | undefined;
 
@@ -186,9 +188,8 @@ class OcflObjectInventory {
         }
       }
       if (digestArr.length > 0) {
-        this.#fileIndex[version] ??= {};
         digests = Object.fromEntries(digestArr);
-        this.#fileIndex[version][logicalPath] = digests;
+        this.#indexAdd(logicalPath, version, digests);
       }
     }
     return digests;
@@ -196,11 +197,30 @@ class OcflObjectInventory {
 
   #indexAdd(logicalPath: string, version: string, digests: Digests) {
     this.#fileIndex[version] ??= {};
-    this.#fileIndex[version][logicalPath] = digests;
+    const index = this.#fileIndex[version];
+    if (version === this.head && !index[logicalPath]) {
+      this.#adjustDirectoryCounts(logicalPath, 1);
+    }
+    index[logicalPath] = digests;
   }
 
   #indexRemove(logicalPath: string) {
-    delete this.#fileIndex[this.head]?.[logicalPath];
+    const index = this.#fileIndex[this.head];
+    if (index?.[logicalPath]) {
+      this.#adjustDirectoryCounts(logicalPath, -1);
+      delete index[logicalPath];
+    }
+  }
+
+  #adjustDirectoryCounts(logicalPath: string, change: number) {
+    for (const directory of parentDirectories(logicalPath)) {
+      const count = (this.#headDirectories.get(directory) ?? 0) + change;
+      if (count > 0) {
+        this.#headDirectories.set(directory, count);
+      } else {
+        this.#headDirectories.delete(directory);
+      }
+    }
   }
 
   #indexGetFixity(contentPath: string): Digests {
@@ -242,14 +262,13 @@ class OcflObjectInventory {
     }
     // index logicalPaths
     // { v1: { 'dir/file.txt': { sha512: 'abcdef' } } }
-    const index: { [version: string]: { [logicalPath: string]: Digests } } = {};
-    this.#fileIndex = index;
+    this.#fileIndex = {};
+    this.#headDirectories.clear();
     for (const [verName, ver] of Object.entries(this.versions)) {
-      const indexVer: { [logicalPath: string]: Digests } = {};
-      index[verName] = indexVer;
+      this.#fileIndex[verName] = {};
       for (const [digest, lps] of Object.entries(ver.state)) {
         for (const lp of lps) {
-          indexVer[lp] = this.#indexDigests(digest);
+          this.#indexAdd(lp, verName, this.#indexDigests(digest));
         }
       }
     }
@@ -574,9 +593,11 @@ class OcflObjectInventory {
   /**
    * Add a new file to the inventory or update the digest of an existing file
    * @returns true if the state is changed
+   * @throws {@link OcflError} `FILE_EXISTS` if the path is a directory, or is inside a file
    * @internal
    */
   _add(logicalPath: string, digest: string, fixity?: { [x: string]: string }): boolean {
+    this._checkFilePath(logicalPath);
     if (this.getDigest(logicalPath) !== digest) {
       const releases = this._contentReleases([logicalPath]);
       this.#unlist(logicalPath);
@@ -702,13 +723,34 @@ class OcflObjectInventory {
     this.#indexAddFixity(contentPath, digestName, digestValue);
   }
 
+  /** True if the path is inside a file in the head state */
+  #isInsideFile(logicalPath: string) {
+    return parentDirectories(logicalPath).some((directory) => this.getDigest(directory));
+  }
+
+  /** @throws {@link OcflError} `FILE_EXISTS` if the path is inside a file in the head state */
+  #checkNotInsideFile(logicalPath: string) {
+    if (this.#isInsideFile(logicalPath)) {
+      throw new OcflError('FILE_EXISTS', `Logical path "${logicalPath}" is inside an existing file in object [${this.id}]`);
+    }
+  }
+
   /** True if a file or directory occupies the path, or the path is inside a file, in the head state */
   #isOccupied(logicalPath: string) {
-    if (this.#indexFindPaths(logicalPath).length > 0) {
-      return true;
+    return this.getDigest(logicalPath) !== undefined || this.#headDirectories.has(logicalPath) || this.#isInsideFile(logicalPath);
+  }
+
+  /**
+   * Check a file can be listed at the path, replacing any file already there
+   * @throws {@link OcflError} `FILE_EXISTS` if the path is a directory, or is inside a file, in the head state
+   * @internal
+   */
+  _checkFilePath(logicalPath: string) {
+    const target = normaliseLogicalPath(logicalPath);
+    this.#checkNotInsideFile(target);
+    if (this.#headDirectories.has(target)) {
+      throw new OcflError('FILE_EXISTS', `Logical path "${logicalPath}" is an existing directory in object [${this.id}]`);
     }
-    const segments = logicalPath.split('/');
-    return segments.some((_, depth) => depth > 0 && this.getDigest(segments.slice(0, depth).join('/')));
   }
 
   /**
@@ -717,7 +759,7 @@ class OcflObjectInventory {
    */
   #planTransfer(srcLogicalPath: string, destLogicalPath: string): Transfer[] {
     // Filesystem paths are normalised, so the check and the state must use the same form as the file on disk
-    const target = path.posix.normalize(destLogicalPath).replace(/\/$/, '');
+    const target = normaliseLogicalPath(destLogicalPath);
     const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
     const srcList = this.#indexFindPaths(srcPrefix);
     const pairs = srcList.map((src): [string, string] => [src, `${target}/${src.slice(srcPrefix.length)}`]);
@@ -834,6 +876,7 @@ class OcflObjectInventory {
   /**
    * Resolve a reinstate to the files it lists, the paths they replace and what happens to the
    * replaced paths' content, changing nothing
+   * @throws {@link OcflError} `FILE_EXISTS` if a file it lists is inside a file in the head state
    * @internal
    */
   _planReinstate(logicalPath: string, versionName: string): ReinstatePlan {
@@ -844,6 +887,7 @@ class OcflObjectInventory {
       const digest = digests?.[this.digestAlgorithm];
       if (digests && digest) {
         if (this.getDigest(lp) !== digest) {
+          this.#checkNotInsideFile(lp);
           files.push({ logicalPath: lp, digest, digests });
         }
         count++;
