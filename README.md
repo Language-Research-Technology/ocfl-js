@@ -13,6 +13,8 @@ pnpm add @ocfl/ocfl-fs
 
 The package is an ES module with bundled TypeScript types and requires Node.js 22.12 or later.
 
+The library runs on Linux and macOS. Windows isn't supported, but WSL is, because it runs Linux.
+
 Upgrading from 0.4? See [Migrating from 0.4](docs/migrating-from-0.4.md).
 
 ## Usage
