@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { inspect } from 'node:util';
 import { OcflError } from '../error.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 
@@ -20,6 +21,14 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
 
   constructor(config?: OcflExtensionConfig) {
     super(config, DefaultConfig);
+    for (const pair of this.parameters.replace as unknown[]) {
+      if (!Array.isArray(pair) || pair.length !== 2 || !(typeof pair[0] === 'string' || pair[0] instanceof RegExp) || typeof pair[1] !== 'string') {
+        throw new OcflError(
+          'INVALID_LAYOUT_CONFIG',
+          `Layout parameter replace must hold [pattern, replacement] pairs of a string or RegExp and a string, not ${inspect(pair)}.`,
+        );
+      }
+    }
   }
 
   map(id: string): string {

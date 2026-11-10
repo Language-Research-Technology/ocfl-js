@@ -81,6 +81,16 @@ describe('the 000N path direct layout', () => {
     }
   });
 
+  it('applies RegExp and string replacements in order', () => {
+    const layout = configured({
+      replace: [
+        [/a/g, 'b'],
+        ['c', 'd'],
+      ],
+    });
+    assert.strictEqual(layout.map('aac'), 'bbd/__object__');
+  });
+
   it('can use custom suffix', () => {
     const layout = configured({ suffix: '' });
     const cases: [string, string][] = [

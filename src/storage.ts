@@ -4,7 +4,7 @@ import path from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import { ObjectNotFoundError, OcflError } from './error.ts';
-import { type BuiltInLayout, differingParameters, type OcflExtensionConfig } from './extension.ts';
+import type { BuiltInLayout, OcflExtensionConfig } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { createLayout, supportedLayoutClass } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
@@ -87,18 +87,19 @@ class OcflStorage {
     if (configured && configured.name !== rootName) {
       throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's layout "${rootName}".`);
     }
-    const rootLayout = new rootLayoutClass(rootLayoutConfig);
     if (!configured) {
-      return rootLayout;
+      return new rootLayoutClass(rootLayoutConfig);
     }
-    const differences = differingParameters(configured, rootLayout).map(
-      (name) =>
-        `configured ${name}: ${inspect((configured.parameters as OcflExtensionConfig)[name])}, root ${name}: ${inspect((rootLayout.parameters as OcflExtensionConfig)[name])}`,
+    // config.json can't hold a RegExp, so the configured layout is compared with it as stored rather than rebuilt from it
+    const differences = configured.differencesFromStored(rootLayoutConfig);
+    if (differences.length === 0) {
+      return configured;
+    }
+    const rootParameters = new rootLayoutClass(rootLayoutConfig).parameters as OcflExtensionConfig;
+    const mismatches = differences.map(
+      (name) => `configured ${name}: ${inspect((configured.parameters as OcflExtensionConfig)[name])}, root ${name}: ${inspect(rootParameters[name])}`,
     );
-    if (differences.length) {
-      throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's: ${differences.join('; ')}.`);
-    }
-    return configured;
+    throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's: ${mismatches.join('; ')}.`);
   }
 
   /**
@@ -194,15 +195,24 @@ class OcflStorage {
     const layout = layoutRead.value;
     const layoutName = layout === undefined ? undefined : declaredLayoutName(layoutPath, layout);
     let layoutConfig: OcflExtensionConfig | undefined;
+    let configPath: string | undefined;
     if (layoutName !== undefined) {
       supportedLayoutClass(layoutName);
-      const configPath = path.join(this.root, EXTENSIONS_DIR, layoutName, EXTENSION_CONFIG);
+      configPath = path.join(this.root, EXTENSIONS_DIR, layoutName, EXTENSION_CONFIG);
       const content = await readIfExists(configPath);
       if (content !== undefined) {
         layoutConfig = parseLayoutConfig(configPath, content);
       }
     }
-    this.#layout = this.#resolveLayout(layoutName, layoutConfig);
+    try {
+      this.#layout = this.#resolveLayout(layoutName, layoutConfig);
+    } catch (error) {
+      // the configured layout was checked when the storage was constructed, so the root's config.json is at fault
+      if (layoutConfig && error instanceof OcflError && error.code === 'INVALID_LAYOUT_CONFIG') {
+        throw new OcflError('INVALID_LAYOUT_CONFIG', `The layout config ${configPath} is invalid: ${error.message}`);
+      }
+      throw error;
+    }
 
     return this;
   }

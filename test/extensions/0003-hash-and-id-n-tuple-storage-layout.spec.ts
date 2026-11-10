@@ -68,11 +68,11 @@ describe('the 0003 hash and id n-tuple layout', () => {
   });
 
   it('rejects a digestAlgorithm that is not lowercase', () => {
-    assert.throws(() => configured({ digestAlgorithm: 'MD5' }), { message: 'Invalid digestAlgorithm' });
+    assert.throws(() => configured({ digestAlgorithm: 'MD5' }), { code: 'INVALID_LAYOUT_CONFIG', message: /digestAlgorithm .*'MD5'/ });
   });
 
   it('rejects an unknown digestAlgorithm', () => {
-    assert.throws(() => configured({ digestAlgorithm: 'sha3' }), { message: 'Invalid digestAlgorithm' });
+    assert.throws(() => configured({ digestAlgorithm: 'sha3' }), { code: 'INVALID_LAYOUT_CONFIG', message: /digestAlgorithm .*'sha3'/ });
   });
 
   it('can map valid id with tupleSize=0 and numberOfTuples=0', () => {

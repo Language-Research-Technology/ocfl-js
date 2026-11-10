@@ -27,7 +27,11 @@ function supportedLayoutClass(name: unknown): LayoutClass {
   return BUILT_IN_LAYOUTS[name as OcflLayoutName];
 }
 
-/** Create the layout chosen by an official extension name or `{ extensionName, ...params }` */
+/**
+ * Create the layout chosen by an official extension name or `{ extensionName, ...params }`
+ * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if the layout isn't one the library implements
+ * @throws {@link OcflError} `INVALID_LAYOUT_CONFIG` if the layout rejects its parameters
+ */
 function createLayout(selection: OcflLayoutName | OcflLayoutConfig): BuiltInLayout {
   const name = typeof selection === 'string' ? selection : selection?.extensionName;
   if (typeof name !== 'string') {

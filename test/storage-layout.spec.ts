@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { inspect } from 'node:util';
 import ocfl, { type OcflLayoutConfig, type OcflLayoutName } from '../src/index.ts';
 import { ocflError } from './ocfl-error.ts';
 
@@ -150,17 +151,50 @@ describe('choosing a layout with invalid parameters', () => {
   const invalidParameters: [string, OcflLayoutConfig][] = [
     ['an unknown digestAlgorithm for 0003', { extensionName: '0003-hash-and-id-n-tuple-storage-layout', digestAlgorithm: 'nope' }],
     ['an unknown digestAlgorithm for 0004', { extensionName: '0004-hashed-n-tuple-storage-layout', digestAlgorithm: 'nope' }],
-    ['tuples longer than the digest for 0003', { extensionName: '0003-hash-and-id-n-tuple-storage-layout', tupleSize: 33, numberOfTuples: 2 }],
-    ['tuples longer than the digest for 0004', { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 33, numberOfTuples: 2 }],
+    ['tuples longer than the digest for 0003', { extensionName: '0003-hash-and-id-n-tuple-storage-layout', tupleSize: 32, numberOfTuples: 3 }],
+    ['tuples longer than the digest for 0004', { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 32, numberOfTuples: 3 }],
     [
       'shortObjectRoot with tuples using the whole digest for 0004',
       { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 32, numberOfTuples: 2, shortObjectRoot: true },
     ],
   ];
+  for (const extensionName of ['0003-hash-and-id-n-tuple-storage-layout', '0004-hashed-n-tuple-storage-layout']) {
+    for (const parameters of [
+      { tupleSize: '3' },
+      { numberOfTuples: 'x' },
+      { tupleSize: -1 },
+      { tupleSize: 2.5 },
+      { tupleSize: Number.NaN },
+      { tupleSize: 0, numberOfTuples: 3 },
+      { tupleSize: 3, numberOfTuples: 0 },
+      { tupleSize: 33 },
+      { numberOfTuples: 33 },
+      { digestAlgorithm: 5 },
+      { digestAlgorithm: '' },
+    ]) {
+      invalidParameters.push([`${inspect(parameters)} for ${extensionName.slice(0, 4)}`, { extensionName, ...parameters } as OcflLayoutConfig]);
+    }
+  }
+  invalidParameters.push(["{ shortObjectRoot: 'yes' } for 0004", { extensionName: '0004-hashed-n-tuple-storage-layout', shortObjectRoot: 'yes' } as never]);
+  for (const parameters of [
+    { omitScheme: 'yes' },
+    { suffix: 5 },
+    { replace: 'abc' },
+    { replace: [['a']] },
+    { replace: [[1, 'b']] },
+    { replace: [['a', 2]] },
+    { replace: [['a', 'b', 'c']] },
+    { replace: ['ab'] },
+  ]) {
+    invalidParameters.push([`${inspect(parameters)} for 000N`, { extensionName: '000N-path-direct-storage-layout', ...parameters } as never]);
+  }
   for (const [entryPoint, choose] of invalidLayoutEntryPoints) {
     for (const [problem, layout] of invalidParameters) {
-      it(`rejects ${problem} through ${entryPoint}`, () => {
-        assert.throws(() => choose(layout as never), ocflError('INVALID_LAYOUT_CONFIG'));
+      it(`rejects ${problem} through ${entryPoint} without naming a config file`, () => {
+        assert.throws(
+          () => choose(layout as never),
+          (error: unknown) => ocflError('INVALID_LAYOUT_CONFIG')(error) && !(error as Error).message.includes('config.json'),
+        );
       });
     }
   }
@@ -175,6 +209,14 @@ describe('storageLayout without a loaded storage', () => {
     const layout = ocfl.storageLayout(HASHED);
     assert.strictEqual(layout.name, HASHED);
     assert.deepStrictEqual(layout.parameters, HASHED_DEFAULTS);
+  });
+
+  it('uses the default of a parameter set to undefined', () => {
+    assert.deepStrictEqual(ocfl.storageLayout({ extensionName: HASHED, tupleSize: undefined } as unknown as OcflLayoutConfig).parameters, HASHED_DEFAULTS);
+  });
+
+  it('ignores keys named after Object.prototype members', () => {
+    assert.deepStrictEqual(ocfl.storageLayout({ extensionName: HASHED, toString: 'x', constructor: 'y' } as OcflLayoutConfig).parameters, HASHED_DEFAULTS);
   });
 
   it('has the configured parameters and the defaults of the rest', () => {
