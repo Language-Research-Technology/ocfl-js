@@ -150,6 +150,22 @@ describe('iterating a storage root', () => {
   });
 });
 
+describe('loading a storage root whose declaration cannot be read', () => {
+  let root: string;
+  before(async () => {
+    root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-fs-storage-load-'));
+    await ocfl.storage({ root }).create();
+  });
+  after(async () => {
+    await fs.promises.rm(root, { recursive: true, force: true });
+  });
+
+  it('rejects with the file system error, not E069', async () => {
+    const declaration = (filePath: string) => path.basename(filePath).startsWith('0=ocfl_');
+    await withFsFailure('readFile', declaration, () => assert.rejects(ocfl.storage({ root }).load(), { code: 'EACCES' }), 'EACCES');
+  });
+});
+
 describe('checking whether a storage root exists', () => {
   let tempdir: string;
   before(async () => {

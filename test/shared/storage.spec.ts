@@ -641,6 +641,11 @@ describe('spec violations', () => {
     await assert.rejects(ocfl.storage({ root: tempdir }).load(), { code: 'E069', path: tempdir });
   });
 
+  it('reports E069 when the root does not exist', async () => {
+    const root = path.join(tempdir, 'missing');
+    await assert.rejects(ocfl.storage({ root }).load(), { code: 'E069', path: root });
+  });
+
   it('reports E080 when the version declaration has the wrong contents', async () => {
     const root = path.join(tempdir, 'bad-namaste');
     await fs.promises.mkdir(root);
