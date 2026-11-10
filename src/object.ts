@@ -8,7 +8,7 @@ import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
 import { type InventoryFile, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber } from './inventory.ts';
 import * as store from './store.ts';
-import { type OcflObjectTransaction, OcflObjectTransactionImpl } from './transaction.ts';
+import { OcflObjectTransaction } from './transaction.ts';
 import type { BinaryOptions, EncodingOptions, Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
 import { findNamasteVersion, isDirEmpty, isNotFound, parallelize } from './utils.ts';
 import { createError } from './validation.ts';
@@ -270,7 +270,7 @@ class OcflObject {
     const inv = (await this.getInventory()) ?? this._baseInventory();
     const newInv = OcflObjectInventoryMut.newVersion(inv, mode_ === 'REPLACE');
     await this._validateObjectPath();
-    const t = await OcflObjectTransactionImpl.create(this, newInv, this.workspace || this.root);
+    const t = await OcflObjectTransaction.create(this, newInv, this.workspace || this.root);
     if (typeof updater === 'function') {
       try {
         await updater(t);

@@ -2,10 +2,10 @@ import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { describe, it } from 'node:test';
-import { Hashing, OcflDigest } from '../src/digest.ts';
-import type { CommonHasher } from '../src/types.ts';
+import { Hashing } from '../src/digest.ts';
+import { DIGESTS_OF_ABC } from './shared/digests-of-abc.ts';
 
-describe('OcflDigest', () => {
+describe('Hashing', () => {
   const inputData =
     'This Oxford Common File Layout (OCFL) specification describes an application-independent approach to the storage of digital objects in a structured, transparent, and predictable manner. It is designed to promote long-term access and management of digital objects within digital repositories';
   const controlDigest = createHash('sha512').update(inputData).digest('hex');
@@ -31,21 +31,21 @@ describe('OcflDigest', () => {
 
   describe('createStream', async () => {
     it('can be used as stream', async () => {
-      const hs = await Hashing.createStream('sha512');
+      const hs = Hashing.createStream('sha512');
       const w = hs.getWriter();
-      w.write(inputData);
-      w.close();
+      await w.write(inputData);
+      await w.close();
       assert.strictEqual(hs.digest(), controlDigest);
     });
     it('can be piped from readable stream', async () => {
       const r = createReadable();
-      const hs = await Hashing.createStream('sha512');
+      const hs = Hashing.createStream('sha512');
       await r.pipeTo(hs);
       assert.strictEqual(hs.digest(), controlDigest);
     });
     it('can be digest multiple algorithms', async () => {
       const r = createReadable();
-      const hs = await Hashing.createStream(['sha512']);
+      const hs = Hashing.createStream(['sha512']);
       await r.pipeTo(hs);
       assert.strictEqual(hs.digest().sha512, controlDigest);
     });
@@ -54,7 +54,7 @@ describe('OcflDigest', () => {
   describe('createStreamThrough', async () => {
     it('can be piped from readable stream with string chunk', async () => {
       const r = createReadable('utf8');
-      const hs = await Hashing.createStreamThrough('sha512');
+      const hs = Hashing.createStreamThrough('sha512');
       const rs = r.pipeThrough(hs);
       let outputData = '';
       for await (const chunk of rs) {
@@ -65,7 +65,7 @@ describe('OcflDigest', () => {
     });
     it('can be piped from readable stream with buffer chunk', async () => {
       const r = createReadable();
-      const hs = await Hashing.createStreamThrough('sha512');
+      const hs = Hashing.createStreamThrough('sha512');
       const rs = r.pipeThrough(hs);
       const buffers = [];
       for await (const chunk of rs) {
@@ -78,48 +78,29 @@ describe('OcflDigest', () => {
   });
 
   describe('digestSync', () => {
-    const SHA256_OF_ABC = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
-
-    function fixedHasherFactory(digest: string): () => Promise<CommonHasher> {
-      return async () => {
-        const hasher = { digestSize: 1, init: () => hasher, update: () => hasher, digest: () => digest } as unknown as CommonHasher;
-        return hasher;
-      };
+    for (const [algorithm, expected] of Object.entries(DIGESTS_OF_ABC)) {
+      it(`digests with ${algorithm} repeatedly`, () => {
+        assert.strictEqual(Hashing.digestSync(algorithm, 'abc'), expected);
+        assert.strictEqual(Hashing.digestSync(algorithm, 'abc'), expected);
+      });
     }
 
-    it('digests with a built-in algorithm repeatedly without initSync', () => {
-      assert.strictEqual(Hashing.digestSync('sha256', 'abc'), SHA256_OF_ABC);
-      assert.strictEqual(Hashing.digestSync('sha256', 'abc'), SHA256_OF_ABC);
-    });
-
-    it('still accepts initSync for a built-in algorithm', async () => {
-      await Hashing.initSync('sha256');
-      assert.strictEqual(Hashing.digestSync('sha256', 'abc'), SHA256_OF_ABC);
-    });
-
-    it('requires initSync for a registered algorithm', async () => {
-      OcflDigest.registerHasherFactory('custom', fixedHasherFactory('custom-digest'));
-      assert.throws(() => Hashing.digestSync('custom', 'abc'), /is not initialized/);
-      await Hashing.initSync('custom');
-      assert.strictEqual(Hashing.digestSync('custom', 'abc'), 'custom-digest');
-    });
-
-    it('requires initSync for a factory that replaces a built-in algorithm already used', async () => {
-      Hashing.digestSync('sha1', 'abc');
-      OcflDigest.registerHasherFactory('sha1', fixedHasherFactory('replaced-digest'));
-      assert.throws(() => Hashing.digestSync('sha1', 'abc'), /is not initialized/);
-      await Hashing.initSync('sha1');
-      assert.strictEqual(Hashing.digestSync('sha1', 'abc'), 'replaced-digest');
-    });
-
-    it('keeps the hasher from initSync when its factory is replaced afterwards', async () => {
-      await Hashing.initSync('md5');
-      OcflDigest.registerHasherFactory('md5', fixedHasherFactory('replaced-digest'));
-      assert.strictEqual(Hashing.digestSync('md5', 'abc'), '900150983cd24fb0d6963f7d28e17f72');
+    it('rejects unsupported algorithms', () => {
+      assert.throws(() => Hashing.digestSync('blake2b-256', 'abc'), /Unsupported digest algorithm/);
     });
   });
 
   describe('digest algorithms', async () => {
+    for (const [algorithm, expected] of Object.entries(DIGESTS_OF_ABC)) {
+      it(`calculates ${algorithm}`, async () => {
+        assert.strictEqual(await Hashing.digest(algorithm, 'abc'), expected);
+      });
+    }
+    for (const name of ['constructor', '__proto__', 'toString']) {
+      it(`rejects ${name}, a property every object inherits`, async () => {
+        await assert.rejects(Hashing.digest(name, inputData), /Unsupported digest algorithm/);
+      });
+    }
     it('can correctly calculate BLAKE2b512', async () => {
       const hash = await Hashing.digest('blake2b-512', inputData);
       const hash2 = createHash('BLAKE2b512').update(inputData).digest('hex');

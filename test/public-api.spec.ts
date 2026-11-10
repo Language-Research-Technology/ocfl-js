@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import * as entryPoint from '../src/index.ts';
-import ocfl, { createStorage, extensions, loadStorage, OCFL_VERSIONS, OcflStorageLayout, object, storage, storageLayout } from '../src/index.ts';
+import ocfl, { createStorage, loadStorage, OCFL_VERSIONS, object, storage, storageLayout } from '../src/index.ts';
 
 describe('the public entry point', () => {
   let dir: string;
@@ -23,15 +23,20 @@ describe('the public entry point', () => {
     }
   });
 
+  it('offers no way to add or reach layout classes', () => {
+    for (const name of ['extensions', 'OcflExtension', 'OcflStorageLayout']) {
+      assert.ok(!(name in entryPoint), `${name} is exported`);
+    }
+  });
+
   it('has a default export holding the same API as the named exports', () => {
-    assert.deepStrictEqual(Object.keys(ocfl).sort(), ['OCFL_VERSIONS', 'createStorage', 'extensions', 'loadStorage', 'object', 'storage', 'storageLayout']);
+    assert.deepStrictEqual(Object.keys(ocfl).sort(), ['OCFL_VERSIONS', 'createStorage', 'loadStorage', 'object', 'storage', 'storageLayout']);
     assert.strictEqual(ocfl.storage, storage);
     assert.strictEqual(ocfl.object, object);
     assert.strictEqual(ocfl.createStorage, createStorage);
     assert.strictEqual(ocfl.loadStorage, loadStorage);
     assert.strictEqual(ocfl.storageLayout, storageLayout);
     assert.strictEqual(ocfl.OCFL_VERSIONS, OCFL_VERSIONS);
-    assert.strictEqual(ocfl.extensions, extensions);
   });
 
   it('lists the supported OCFL versions', () => {
@@ -39,10 +44,8 @@ describe('the public entry point', () => {
   });
 
   it('builds a storage layout from a name or a config', () => {
-    assert.ok(storageLayout('FlatDirectStorageLayout') instanceof extensions.FlatDirectStorageLayout);
-    const layout = storageLayout({ extensionName: '0002-flat-direct-storage-layout' });
-    assert.ok(layout instanceof OcflStorageLayout);
-    assert.strictEqual(layout.map('abc'), 'abc');
+    assert.strictEqual(storageLayout('0002-flat-direct-storage-layout').map('abc'), 'abc');
+    assert.strictEqual(storageLayout({ extensionName: '0002-flat-direct-storage-layout' }).map('abc'), 'abc');
   });
 
   it('creates a storage root on disk with createStorage', async () => {
@@ -54,7 +57,7 @@ describe('the public entry point', () => {
 
   it('loads an existing storage root with loadStorage', async () => {
     const root = path.join(dir, 'root');
-    await createStorage({ root, layout: 'FlatDirectStorageLayout' });
+    await createStorage({ root, layout: '0002-flat-direct-storage-layout' });
     const loaded = await loadStorage({ root });
     assert.strictEqual(loaded.objectRoot('abc'), 'abc');
   });

@@ -15,12 +15,6 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
     await fs.promises.rm(tempdir, { recursive: true, force: true });
   });
 
-  it('rejects an unsupported layout in the config', () => {
-    assert.throws(() => ocfl.storage({ root: path.join(tempdir, 'config'), layout: 'no-such-layout' }), {
-      message: 'Layout "no-such-layout" is not supported.',
-    });
-  });
-
   it('rejects an unsupported layout in ocfl_layout.json when loading', async () => {
     const root = path.join(tempdir, 'layout-file');
     await fs.promises.mkdir(root);
@@ -51,12 +45,6 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
     await assert.rejects(ocfl.storage({ root }).load(), ocflError('UNSUPPORTED_LAYOUT'));
   });
 
-  it('rejects creating a layout with an unsupported extension name', () => {
-    assert.throws(() => ocfl.extensions.HashedNTupleStorageLayout.create({ extensionName: 'no-such-extension' }), {
-      message: 'Extension "no-such-extension" is not supported.',
-    });
-  });
-
   it('creates a layout from a config object naming the extension', () => {
     const storage = ocfl.storage({
       root: path.join(tempdir, 'layout-config'),
@@ -67,7 +55,7 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
   });
 
   it('rejects an object reference with neither id nor root', () => {
-    const storage = ocfl.storage({ root: path.join(tempdir, 'object-ref'), layout: 'HashedNTupleStorageLayout' });
+    const storage = ocfl.storage({ root: path.join(tempdir, 'object-ref'), layout: '0004-hashed-n-tuple-storage-layout' });
     assert.throws(() => storage.object({}), { name: 'TypeError', message: '[OcflStorage] object id or root is required.' });
   });
 
@@ -75,6 +63,6 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
     const root = path.join(tempdir, 'not-empty');
     await fs.promises.mkdir(root);
     await fs.promises.writeFile(path.join(root, 'stray.txt'), 'x');
-    await assert.rejects(ocfl.createStorage({ root, layout: 'HashedNTupleStorageLayout' }), ocflError('DIRECTORY_NOT_EMPTY'));
+    await assert.rejects(ocfl.createStorage({ root, layout: '0004-hashed-n-tuple-storage-layout' }), ocflError('DIRECTORY_NOT_EMPTY'));
   });
 });

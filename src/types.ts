@@ -46,18 +46,6 @@ export interface Inventory {
   contentDirectory?: string;
 }
 
-export type IDataType = string | ArrayBufferLike | Uint8Array | Uint16Array | Uint32Array;
-
-export interface CommonHasher {
-  init: () => CommonHasher;
-  update: (data: IDataType) => CommonHasher;
-  digest: {
-    (outputType: 'binary'): Uint8Array;
-    (outputType?: 'hex'): string;
-  };
-  digestSize: number;
-}
-
 export type EncodingOptions = BufferEncoding | { encoding: BufferEncoding; [key: string]: unknown };
 export type BinaryOptions = { encoding?: null | undefined; [key: string]: unknown };
 
@@ -66,7 +54,16 @@ export type WriteFileData = string | Uint8Array | DataView | ArrayBuffer | Reada
 export type OcflVersion = '1.0' | '1.1';
 
 export type OcflExtensionConfig = { extensionName?: string; [key: string]: unknown };
-type OcflStorageLayout = import('./extension.ts').OcflStorageLayout;
+
+/** The official extension name of a layout this library implements. */
+export type OcflLayoutName =
+  | '000N-path-direct-storage-layout'
+  | '0002-flat-direct-storage-layout'
+  | '0003-hash-and-id-n-tuple-storage-layout'
+  | '0004-hashed-n-tuple-storage-layout';
+
+/** An official layout name along with that layout's parameters. */
+export type OcflLayoutConfig = { extensionName: OcflLayoutName; [key: string]: unknown };
 
 /** Configuration options for an OCFL Object. */
 export type OcflStorageConfig = {
@@ -75,11 +72,13 @@ export type OcflStorageConfig = {
   /** Absolute path to storage workspace directory. Each object works in its own subdirectory; use it for one storage root at a time. */
   workspace?: string | undefined;
   /**
-   * A layout that identifies an arrangement of directories and OCFL objects under the storage root.
+   * A layout that identifies an arrangement of directories and OCFL objects under the storage root,
+   * as an official extension name or `{ extensionName, ...params }`. Anything else throws `UNSUPPORTED_LAYOUT`.
    * Loading a root that declares a supported layout with a different name or parameters throws `LAYOUT_MISMATCH`,
+   * loading one that declares a layout this library doesn't implement throws `UNSUPPORTED_LAYOUT`,
    * and loading one whose `ocfl_layout.json` has no readable `extension` throws `E070`.
    */
-  layout?: OcflStorageLayout | OcflExtensionConfig | string | undefined;
+  layout?: OcflLayoutName | OcflLayoutConfig | undefined;
   /** A default list of digest algorithm names to be added to the fixity block of objects under this storage. */
   fixityAlgorithms?: string[] | undefined;
   /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */

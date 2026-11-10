@@ -44,13 +44,13 @@ try {
 // Do something with the storage here
 ```
 
-To choose a different storage layout, pass the layout name, config, or instance:
+To choose a different storage layout, pass its official extension name, or a config object to set its parameters:
 
 ```js
-// Use class name
-storage = ocfl.createStorage({ root: '/var/data/myocfl', layout: 'FlatDirectStorageLayout' });
+// Use the official extension name
+storage = ocfl.createStorage({ root: '/var/data/myocfl', layout: '0002-flat-direct-storage-layout' });
 
-// Use official extension name and specify parameters
+// Use the official extension name and specify parameters
 storage = ocfl.createStorage({
   root: '/var/data/myocfl',
   layout: {
@@ -58,10 +58,6 @@ storage = ocfl.createStorage({
     tupleSize: 1,
   },
 });
-
-// Instantiate the class directly
-let layout = new ocfl.extensions.PathDirectStorageLayout({ omitScheme: true });
-storage = ocfl.createStorage({ root: '/var/data/myocfl', layout });
 ```
 
 To include a human-readable copy of the OCFL spec in a new storage root, pass `ocflSpecText` to `create`:
@@ -143,30 +139,15 @@ for await (let f of await object.files()) {
 
 ## Extensions
 
-This library by default includes all the community extensions defined in the [OCFL Community Extensions page](https://github.com/OCFL/extensions).
+This library implements these storage layouts from the [OCFL Community Extensions](https://github.com/OCFL/extensions):
 
-To implement a local extension, first follow the description in that page, then extend `OcflExtension` (or `OcflStorageLayout` for a storage layout) and register it. For example, a storage layout:
+- `0002-flat-direct-storage-layout`
+- `0003-hash-and-id-n-tuple-storage-layout`
+- `0004-hashed-n-tuple-storage-layout`
 
-```ts
-import { OcflStorageLayout, storage } from '@ocfl/ocfl-fs';
+It also includes `000N-path-direct-storage-layout`, which isn't a community extension. Loading a storage root that declares any other layout throws `UNSUPPORTED_LAYOUT`.
 
-class UppercaseLayout extends OcflStorageLayout {
-  static get NAME() {
-    return '9999-uppercase-layout';
-  }
-  static get DESCRIPTION() {
-    return 'Maps an object id to an uppercase directory name';
-  }
-
-  map(id: string): string {
-    return id.toUpperCase();
-  }
-}
-
-UppercaseLayout.register();
-
-const s = storage({ root: '/var/data/ocfl', layout: '9999-uppercase-layout' });
-```
+Storage layouts and digest algorithms are a fixed, built-in set, and there's no plugin API. If you need another one, send a pull request to this repository. [ADR 0001](docs/adr/0001-one-filesystem-only-package-with-no-extension-points.md) explains why.
 
 ## Development
 

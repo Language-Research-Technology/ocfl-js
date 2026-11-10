@@ -1,63 +1,11 @@
 import { isDeepStrictEqual } from 'node:util';
-import { NotImplementedError } from './error.ts';
 import type { OcflExtensionConfig } from './types.ts';
 
-/** Index by Registered extension name */
-const extensionByName: { [name: string]: typeof OcflExtension } = {};
-/** Index by extension class name */
-const extensionByClassName: { [name: string]: typeof OcflExtension } = {};
-
-const storageLayout: { [className: string]: typeof OcflStorageLayout } = {};
-
-type ExtensionConstructor<T> = new (config?: OcflExtensionConfig) => T;
-
-class OcflExtension<C extends object = object> {
+abstract class BuiltInLayout<C extends object = object> {
+  /** Official extension name */
+  abstract readonly name: string;
+  abstract readonly description: string;
   parameters: C;
-
-  /** List all registered extension classes */
-  static get classes(): (typeof OcflExtension)[] {
-    return Object.values(extensionByName);
-  }
-
-  /**
-   * Find a registered extension with the specified name
-   * @param name - extension class name or registered extension name
-   * @returns the extension class
-   */
-  static class(name: string): typeof OcflExtension | undefined {
-    return extensionByName[name] || extensionByClassName[name];
-  }
-
-  /**
-   * Register an extension
-   */
-  // biome-ignore lint/complexity/noThisInStatic: defaults to the subclass register() is called on
-  static register(extensionClass: typeof OcflExtension = this) {
-    const name = extensionClass.NAME;
-    extensionByName[name] = extensionClass;
-    extensionByClassName[extensionClass.name] = extensionClass;
-    import('./index.ts').then((ocfl) => extensionClass.setup(ocfl));
-  }
-
-  /**
-   * Create an instance of the extension
-   */
-  static create<T extends OcflExtension>(this: ExtensionConstructor<T>, config?: OcflExtensionConfig): T {
-    const name = config?.extensionName;
-    // biome-ignore lint/complexity/noThisInStatic: must be the subclass create() is called on, or it recurses
-    if (!name || (this as unknown as typeof OcflExtension).NAME === name) {
-      return new this(config);
-    }
-    return createByName(OcflExtension, 'Extension', name, config) as T;
-  }
-
-  static get NAME() {
-    return '0000-example-extension';
-  }
-  static get DESCRIPTION() {
-    return 'Example extension';
-  }
-  static async setup(_ocfl: typeof import('./index.ts')): Promise<void> {}
 
   constructor(config?: OcflExtensionConfig, defaultConfig?: C) {
     this.parameters = typeof defaultConfig === 'object' ? Object.create(defaultConfig) : {};
@@ -83,17 +31,6 @@ class OcflExtension<C extends object = object> {
     return params;
   }
 
-  /** Extension registered name */
-  get name(): string {
-    return (this.constructor as typeof OcflExtension).NAME;
-  }
-  get description(): string {
-    return (this.constructor as typeof OcflExtension).DESCRIPTION;
-  }
-  get version() {
-    return '1.0';
-  }
-
   /**
    * Get the specified parameter value
    * @param param - The extension parameter name
@@ -104,76 +41,28 @@ class OcflExtension<C extends object = object> {
   }
 
   /**
-   * Set the specified parameter value
-   * @param param - The extension parameter name
-   * @param value - The extension parameter value
-   */
-  set(param: string, value: unknown) {
-    if (param in this.parameters) {
-      (this.parameters as OcflExtensionConfig)[param] = value;
-    }
-  }
-}
-
-class OcflStorageLayout<C extends object = object> extends OcflExtension<C> {
-  static class(name: string): typeof OcflStorageLayout | undefined {
-    const c = OcflExtension.class(name);
-    if (c && c.prototype instanceof OcflStorageLayout) {
-      return c as typeof OcflStorageLayout;
-    }
-  }
-
-  static get classes(): (typeof OcflStorageLayout)[] {
-    return Object.values(storageLayout);
-  }
-
-  /**
-   * Register a storage layout extension
-   */
-  // biome-ignore lint/complexity/noThisInStatic: defaults to the subclass register() is called on
-  static register(extensionClass: typeof OcflStorageLayout = this) {
-    OcflExtension.register(extensionClass);
-    storageLayout[extensionClass.name] = extensionClass;
-  }
-
-  /**
    * Map an object identifier to a path
    * @param id - The identifier of the OCFL Object
    */
-  map(_id: string): string {
-    throw new NotImplementedError();
-  }
+  abstract map(id: string): string;
 }
 
-type ExtensionRegistry<T> = { class(name: string): { create(config?: OcflExtensionConfig): T } | undefined };
-
-/** Create an instance of the extension registered as `name`, or throw if `registry` has none */
-function createByName<T extends OcflExtension>(
-  registry: ExtensionRegistry<T>,
-  kind: 'Extension' | 'Layout',
-  name: string | undefined,
-  config?: OcflExtensionConfig,
-): T {
-  const cls = name ? registry.class(name) : undefined;
-  if (!cls) {
-    throw new Error(`${kind} "${name}" is not supported.`);
-  }
-  return cls.create(config);
-}
+/** Maps object identifiers to paths, with or without a storage root. */
+type OcflStorageLayout = Pick<BuiltInLayout, 'get' | 'map'>;
 
 /** Parameter values as config.json stores them, which can't represent a RegExp */
 const asStored = (value: unknown) => JSON.parse(JSON.stringify({ value }));
 
 /** Names of the parameters of `reference` whose effective values, defaults included, differ in `extension` */
-function differingParameters(extension: OcflExtension, reference: OcflExtension) {
+function differingParameters(extension: BuiltInLayout, reference: BuiltInLayout) {
   const names: string[] = [];
   // for...in includes the defaults inherited from the parameters prototype
   for (const name in reference.parameters) {
-    if (name !== 'extensionName' && !isDeepStrictEqual(asStored(extension.get(name)), asStored(reference.get(name)))) {
+    if (!isDeepStrictEqual(asStored(extension.get(name)), asStored(reference.get(name)))) {
       names.push(name);
     }
   }
   return names;
 }
 
-export { createByName, differingParameters, OcflExtension, OcflStorageLayout };
+export { BuiltInLayout, differingParameters, type OcflStorageLayout };

@@ -78,8 +78,20 @@ cat >"$consumer/tsconfig.json" <<'EOF'
 EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'
-import type { OcflExtension, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl-fs';
-import { extensions, OcflDigest, OcflObject } from '@ocfl/ocfl-fs';
+import type { OcflObject, OcflObjectConfig, OcflObjectInventory, OcflObjectTransaction, OcflStorage, OcflStorageLayout } from '@ocfl/ocfl-fs';
+import * as api from '@ocfl/ocfl-fs';
+// @ts-expect-error OcflDigest is gone, digest algorithms are a fixed table
+import { OcflDigest } from '@ocfl/ocfl-fs';
+// @ts-expect-error registerHasherFactory is gone, digest algorithms are a fixed table
+import { registerHasherFactory } from '@ocfl/ocfl-fs';
+// @ts-expect-error hasAlgorithm is gone, digest algorithms are a fixed table
+import { hasAlgorithm } from '@ocfl/ocfl-fs';
+// @ts-expect-error CommonHasher is gone along with hasher registration
+import type { CommonHasher } from '@ocfl/ocfl-fs';
+// @ts-expect-error MultiHasher is gone along with hasher registration
+import type { MultiHasher } from '@ocfl/ocfl-fs';
+// @ts-expect-error IDataType is gone along with hasher registration
+import type { IDataType } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflStorageImpl is not exported
 import { OcflStorageImpl } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflObjectTransactionImpl is not exported
@@ -90,10 +102,30 @@ import type { RemoveOptions } from '@ocfl/ocfl-fs';
 import type { OcflObjectInventoryMut } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflConstants is not exported
 import { OcflConstants } from '@ocfl/ocfl-fs';
-// @ts-expect-error the StorageLayout type is gone, use extensions
+// @ts-expect-error the StorageLayout type is gone, use OcflStorageLayout
 import type { StorageLayout } from '@ocfl/ocfl-fs';
-// @ts-expect-error the StorageLayout export is gone, use extensions
+// @ts-expect-error the StorageLayout export is gone, use storageLayout()
 import { StorageLayout as FsStorageLayout } from '@ocfl/ocfl-fs';
+// @ts-expect-error extensions is gone, use storageLayout()
+import { extensions } from '@ocfl/ocfl-fs';
+// @ts-expect-error OcflExtension is gone, layouts are a fixed table
+import { OcflExtension } from '@ocfl/ocfl-fs';
+// @ts-expect-error the OcflExtension type is gone, layouts are a fixed table
+import type { OcflExtension as OcflExtensionType } from '@ocfl/ocfl-fs';
+// @ts-expect-error ExtensionConstructor is gone along with registration
+import type { ExtensionConstructor } from '@ocfl/ocfl-fs';
+// @ts-expect-error register is gone, layouts are a fixed table
+import { register } from '@ocfl/ocfl-fs';
+// @ts-expect-error setup is gone, layouts are a fixed table
+import { setup } from '@ocfl/ocfl-fs';
+// @ts-expect-error create is gone, use storageLayout()
+import { create } from '@ocfl/ocfl-fs';
+// @ts-expect-error class is gone, use storageLayout()
+import { class as layoutClass } from '@ocfl/ocfl-fs';
+// @ts-expect-error classes is gone, the built-in layouts are listed in OcflLayoutName
+import { classes } from '@ocfl/ocfl-fs';
+// @ts-expect-error the layout classes are gone, use storageLayout()
+import { HashedNTupleStorageLayout } from '@ocfl/ocfl-fs';
 // @ts-expect-error OcflStore is gone, the library always uses node:fs
 import { OcflStore } from '@ocfl/ocfl-fs';
 // @ts-expect-error implementOcfl is gone, use storage, object, createStorage or loadStorage
@@ -112,10 +144,8 @@ declare const storage: OcflStorage;
 declare const object: OcflObject;
 declare const inventory: OcflObjectInventory;
 declare const transaction: OcflObjectTransaction;
-declare const extension: OcflExtension;
-declare const extensionClass: typeof OcflExtension;
-declare const layoutClass: typeof OcflStorageLayout;
 declare const inventoryClass: typeof OcflObjectInventory;
+declare const layout: OcflStorageLayout;
 
 // @ts-expect-error OcflObject.add is gone, use import
 await object.add('/tmp/source');
@@ -127,38 +157,16 @@ await transaction.delete('a.txt');
 storage.objects();
 // @ts-expect-error OcflStorage.objectRootAbs is gone, use storage.object(id).root
 storage.objectRootAbs('id');
-// @ts-expect-error OcflExtension.p is gone, use parameters
-extension.p;
 // @ts-expect-error OcflStorage.delete is gone
 storage.delete('id');
 // @ts-expect-error OcflStorage.purge is gone
 storage.purge('id');
-// @ts-expect-error OcflDigest.digest is gone
-OcflDigest.digest('sha256', 'a');
-// @ts-expect-error OcflDigest.digestSync is gone
-OcflDigest.digestSync('sha256', 'a');
-// @ts-expect-error OcflDigest.createStream is gone
-OcflDigest.createStream('sha256');
-// @ts-expect-error OcflDigest.CONTENT is gone
-OcflDigest.CONTENT;
 // @ts-expect-error OcflObject.fileByLogicalPath is gone, use load then getFile
 await object.fileByLogicalPath('a.txt');
 // @ts-expect-error OcflObject.fileByDigest is gone, use load then getFile
 await object.fileByDigest('abc');
 // @ts-expect-error OcflObject.fileByContentPath is gone, use load then getFile
 await object.fileByContentPath('v1/content/a.txt');
-// @ts-expect-error OcflExtension.object is gone, use class
-extensionClass.object('name');
-// @ts-expect-error OcflExtension.storage is gone, use class
-extensionClass.storage('name');
-// @ts-expect-error OcflExtension.forObject is gone
-extensionClass.forObject;
-// @ts-expect-error OcflExtension.forStorage is gone
-extensionClass.forStorage;
-// @ts-expect-error OcflStorageLayout.forStorage is gone
-layoutClass.forStorage;
-// @ts-expect-error OcflExtension.minOcflVersion is gone
-extension.minOcflVersion;
 // @ts-expect-error OcflObjectConfig.extensions is gone
 const objectConfig: OcflObjectConfig = { root: '/tmp/object', extensions: [] };
 // @ts-expect-error OcflObject.digestAlgorithm has no setter, configure it when creating the object
@@ -175,7 +183,7 @@ await transaction.commit({ force: true });
 inventoryClass.newVersion({});
 // @ts-expect-error OcflObjectInventory.isChanged is gone, use diffState
 inventory.isChanged;
-// @ts-expect-error OcflObjectInventory.clone is gone, use new OcflObjectInventory(inv.toJSON())
+// @ts-expect-error OcflObjectInventory.clone is gone, use inv.toJSON()
 inventory.clone();
 // @ts-expect-error the created setter is gone
 inventory.created = '2026-01-01T00:00:00Z';
@@ -205,12 +213,24 @@ inventory.versionState('v1')!.d = [];
 inventory.user!.name = 'x';
 // @ts-expect-error OcflObject.export is gone
 object.export;
-// @ts-expect-error extensions.DigestAlgorithm is gone
-extensions.DigestAlgorithm;
-// @ts-expect-error OcflStorageLayout.layout is gone, use extensions
-layoutClass.layout;
-// @ts-expect-error StorageLayout is gone from the default API, use extensions
+// @ts-expect-error StorageLayout is gone from the default API, use storageLayout()
 ocflFs.StorageLayout;
+// @ts-expect-error extensions is gone from the default API, use storageLayout()
+ocflFs.extensions;
+// @ts-expect-error OcflStorageLayout is a type, use storageLayout()
+api.OcflStorageLayout;
+// @ts-expect-error OcflStorageLayout exposes only map and get
+layout.parameters;
+// @ts-expect-error OcflStorageLayout exposes only map and get
+layout.config;
+// @ts-expect-error OcflStorageLayout exposes only map and get
+layout.name;
+// @ts-expect-error OcflStorageLayout exposes only map and get
+layout.description;
+// @ts-expect-error OcflStorageLayout exposes only map and get
+layout.version;
+// @ts-expect-error OcflStorageLayout exposes only map and get
+layout.set('tupleSize', 2);
 // @ts-expect-error storage takes one argument
 ocflFs.storage({ root: '/tmp/storage' }, {});
 // @ts-expect-error object takes one argument
@@ -219,10 +239,33 @@ ocflFs.object({ root: '/tmp/object' }, {});
 await ocflFs.createStorage({ root: '/tmp/storage' }, {});
 // @ts-expect-error loadStorage takes one argument
 await ocflFs.loadStorage({ root: '/tmp/storage' }, {});
-// @ts-expect-error the OcflObject constructor takes one argument
-new OcflObject({ root: '/tmp/object' }, {});
+// Through the namespace and with valid arguments, so that only a type-only export can make these fail
+// @ts-expect-error OcflStorage is a type, use storage(), createStorage() or loadStorage()
+new api.OcflStorage({ root: '/tmp/storage' });
+// @ts-expect-error OcflStorage can't be subclassed
+class SubclassedStorage extends api.OcflStorage {}
+// @ts-expect-error OcflObject is a type, use object() or storage.object()
+api.OcflObject;
+// @ts-expect-error OcflObjectTransaction is a type, use object.update()
+api.OcflObjectTransaction;
+// @ts-expect-error OcflObjectInventory is a type, use object.getInventory()
+api.OcflObjectInventory;
+// @ts-expect-error OcflObjectFile is a type, use object.getFile() or object.files()
+api.OcflObjectFile;
+// @ts-expect-error class names aren't accepted, use the official extension name
+ocflFs.storage({ root: '/tmp/storage', layout: 'FlatDirectStorageLayout' });
+// @ts-expect-error class names aren't accepted in a config object either
+ocflFs.storage({ root: '/tmp/storage', layout: { extensionName: 'FlatDirectStorageLayout' } });
+// @ts-expect-error layout objects aren't accepted, even one from storageLayout()
+ocflFs.storage({ root: '/tmp/storage', layout: ocflFs.storageLayout('0002-flat-direct-storage-layout') });
+// @ts-expect-error a config object has to name its layout
+ocflFs.storage({ root: '/tmp/storage', layout: { tupleSize: 2 } });
+// @ts-expect-error class names aren't accepted by storageLayout()
+ocflFs.storageLayout('FlatDirectStorageLayout');
+// @ts-expect-error a config object has to name its layout
+ocflFs.storageLayout({ tupleSize: 2 });
 
-export { extension, inventory, inventoryClass, object, storage, transaction };
+export { SubclassedStorage, inventory, inventoryClass, layout, object, storage, transaction };
 EOF
 cat >"$consumer/consumer.ts" <<'EOF'
 import { join } from 'node:path';
@@ -230,15 +273,12 @@ import { join } from 'node:path';
 import ocflFs, {
   type BinaryOptions,
   type CommitOptions,
-  type CommonHasher,
   createStorage,
   type DeepReadonly,
   type EncodingOptions,
-  extensions,
   type FileRef,
   type FileStat,
   type HashedNTupleStorageLayoutConfig,
-  type IDataType,
   type Inventory,
   type InventoryDigests,
   type InventoryFile,
@@ -248,19 +288,19 @@ import ocflFs, {
   OCFL_VERSIONS,
   ObjectNotFoundError,
   ObjectNotLoadedError,
-  OcflDigest,
   OcflError,
   type OcflErrorCode,
-  OcflExtension,
   type OcflExtensionConfig,
-  OcflObject,
+  type OcflLayoutConfig,
+  type OcflLayoutName,
+  type OcflObject,
   type OcflObjectConfig,
   type OcflObjectFile,
-  OcflObjectInventory,
-  OcflObjectTransaction,
-  OcflStorage,
+  type OcflObjectInventory,
+  type OcflObjectTransaction,
+  type OcflStorage,
   type OcflStorageConfig,
-  OcflStorageLayout,
+  type OcflStorageLayout,
   type OcflVersion,
   type PathDirectStorageLayoutConfig,
   storage as openStorage,
@@ -271,7 +311,10 @@ import ocflFs, {
   type WriteFileData,
 } from '@ocfl/ocfl-fs';
 
-const storage: OcflStorage = await createStorage({ root: join(import.meta.dirname, 'storage'), layout: 'HashedNTupleStorageLayout' });
+const layoutName: OcflLayoutName = '0004-hashed-n-tuple-storage-layout';
+const storage: OcflStorage = await createStorage({ root: join(import.meta.dirname, 'storage'), layout: layoutName });
+const layoutConfig: OcflLayoutConfig = { extensionName: '000N-path-direct-storage-layout', suffix: '/obj' };
+const configuredStorage = ocflFs.storage({ root: join(import.meta.dirname, 'configured'), layout: layoutConfig });
 
 // @ts-expect-error OcflErrorCode is a closed union
 const _unknownCode: OcflErrorCode = 'NO_SUCH_CODE';
@@ -282,20 +325,12 @@ for (const ocflVersion of ocflFs.OCFL_VERSIONS) {
   await ocflFs.storage({ root: join(import.meta.dirname, `spec-${ocflVersion}`), ocflVersion }).create({ ocflSpecText: true });
 }
 
-const written = object({ root: join(import.meta.dirname, 'object'), id: 'written-object' });
-await written.update(async (t) => t.write('a.txt', 'written to the filesystem'));
+const written: OcflObject = object({ root: join(import.meta.dirname, 'object'), id: 'written-object' });
+await written.update(async (t: OcflObjectTransaction) => t.write('a.txt', 'written to the filesystem'));
+const writtenInventory: OcflObjectInventory | undefined = await written.getInventory();
+const writtenFile: OcflObjectFile | undefined = written.getFile('a.txt');
 
-OcflDigest.registerHasherFactory('consumer-digest', async (): Promise<CommonHasher> => {
-  throw new Error('only registered, never used');
-});
-
-class PrefixedLayout extends extensions.FlatDirectStorageLayout {
-  map(id: string) {
-    return `prefix-${super.map(id)}`;
-  }
-}
-const layoutInstance: extensions.PathDirectStorageLayout = new ocflFs.extensions.PathDirectStorageLayout();
-const prefixedStorage = ocflFs.storage({ root: join(import.meta.dirname, 'prefixed'), layout: new PrefixedLayout() });
+const layout: OcflStorageLayout = storageLayout(layoutName);
 
 if (
   createStorage !== ocflFs.createStorage ||
@@ -305,11 +340,11 @@ if (
   storageLayout !== ocflFs.storageLayout ||
   OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
   !OCFL_VERSIONS.includes('1.1') ||
-  extensions !== ocflFs.extensions ||
-  !(layoutInstance instanceof extensions.PathDirectStorageLayout) ||
-  prefixedStorage.objectRoot('abc') !== 'prefix-abc' ||
-  (await written.getFile('a.txt')?.text()) !== 'written to the filesystem' ||
-  !OcflDigest.hasAlgorithm('consumer-digest') ||
+  configuredStorage.objectRoot('abc') !== 'abc/obj' ||
+  layout.get('tupleSize') !== 3 ||
+  layout.map('object-01') !== '3c0/ff4/240/3c0ff4240c1e116dba14c7627f2319b58aa3d77606d0d90dfc6161608ac987d4' ||
+  writtenInventory?.head !== 'v1' ||
+  (await writtenFile?.text()) !== 'written to the filesystem' ||
   (await storage.has('missing')) ||
   missingCode !== 'OBJECT_NOT_FOUND' ||
   !(ValidationError.prototype instanceof OcflError)
