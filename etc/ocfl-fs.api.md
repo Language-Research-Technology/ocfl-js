@@ -99,7 +99,10 @@ export type HashAndIdNTupleStorageLayoutConfig = {
 };
 
 // @public (undocumented)
-export type HashedNTupleStorageLayoutConfig = HashAndIdNTupleStorageLayoutConfig & {
+export type HashedNTupleStorageLayoutConfig = {
+    digestAlgorithm?: string;
+    tupleSize?: number;
+    numberOfTuples?: number;
     shortObjectRoot?: boolean;
 };
 

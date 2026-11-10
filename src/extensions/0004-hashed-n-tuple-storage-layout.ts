@@ -1,9 +1,11 @@
 import path from 'node:path';
 import { Hashing } from '../digest.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
-import type { HashAndIdNTupleStorageLayoutConfig } from './0003-hash-and-id-n-tuple-storage-layout.ts';
 
-export type HashedNTupleStorageLayoutConfig = HashAndIdNTupleStorageLayoutConfig & {
+export type HashedNTupleStorageLayoutConfig = {
+  digestAlgorithm?: string;
+  tupleSize?: number;
+  numberOfTuples?: number;
   shortObjectRoot?: boolean;
 };
 
