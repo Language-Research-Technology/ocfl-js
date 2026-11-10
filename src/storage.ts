@@ -12,11 +12,32 @@ import * as store from './store.ts';
 import { findNamasteVersion, isDirEmpty, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
 import { createError } from './validation.ts';
 
-const { OCFL_VERSION, OCFL_VERSIONS, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, NAMASTE_PREFIX_STORAGE, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
+const {
+  OCFL_VERSION,
+  OCFL_VERSIONS,
+  OCFL_LAYOUT,
+  EXTENSIONS_DIR,
+  EXTENSION_CONFIG,
+  WORKSPACE_EXTENSION,
+  NAMASTE_PREFIX_STORAGE,
+  NAMASTE_PREFIX_OBJECT,
+  NAMASTE_T,
+} = OcflConstants;
 
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 
 import type { OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
+
+/** A local storage root extension, documented in the root as the OCFL spec (§4.5) allows */
+const WORKSPACE_EXTENSION_TEXT = `# ${WORKSPACE_EXTENSION}
+
+A local storage root extension used by the ocfl-js library (@ocfl/ocfl-fs).
+
+While an object is being updated, its new version is assembled in
+\`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<object path>/<version>\` and then moved into the object root.
+The directory exists only while an update is in progress. Anything left in it afterwards is
+from an update that was interrupted, and is not part of any OCFL object.
+`;
 
 const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1.1': 'ocfl_1.1.md' };
 
@@ -65,19 +86,16 @@ class OcflStorage {
   #workspace: string;
   #layout: BuiltInLayout | undefined;
   #configuredLayout: BuiltInLayout | undefined;
-  #objectConfig: Omit<OcflObjectConfig, 'root' | 'workspace' | 'id' | 'ocflVersion'>;
+  #objectConfig: Omit<OcflObjectConfig, 'root' | 'storageRoot' | 'workspace' | 'id' | 'ocflVersion'>;
   #configuredOcflVersion: OcflVersion | undefined;
 
   constructor(config: OcflStorageConfig) {
     if (!config.root) {
       throw new TypeError('[OcflStorage] config.root is required.');
     }
-    const { root, workspace, layout, ocflVersion, ...objectConfig } = config;
+    const { root, layout, ocflVersion, ...objectConfig } = config;
     this.#root = path.resolve(root);
-    this.#workspace = workspace ? path.resolve(workspace) : path.join(this.#root, 'extensions/workspace');
-    if (this.#workspace?.startsWith(this.#root + path.sep) && !this.#workspace.startsWith(`${this.#root + path.sep}extensions${path.sep}`)) {
-      throw new Error('[OcflStorage] config.workspace cannot be the same as or a subpath of config.root');
-    }
+    this.#workspace = path.join(this.#root, EXTENSIONS_DIR, WORKSPACE_EXTENSION);
     if (layout !== undefined) {
       this.#configuredLayout = createLayout(layout);
       this.#layout = this.#configuredLayout;
@@ -146,7 +164,8 @@ class OcflStorage {
    */
   #checkedObjectPath(relObjectRoot: string, label: string): string {
     const relative = relativeWithin(this.root, path.join(this.root, relObjectRoot));
-    if (!relative || relative.split(path.sep)[0] === EXTENSIONS_DIR) {
+    // Case-insensitive, so a case-insensitive filesystem can't map an object root into extensions/
+    if (!relative || relative.split(path.sep)[0]?.toLowerCase() === EXTENSIONS_DIR) {
       throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${label} maps to "${relObjectRoot}", which can't hold an object in this storage root.`);
     }
     return relative;
@@ -175,12 +194,12 @@ class OcflStorage {
       throw new TypeError('[OcflStorage] object id or root is required.');
     }
     return new OcflObject({
+      ...this.#objectConfig,
       id,
       root: path.join(this.root, relative),
-      // @todo:use extension workspace if not defined
-      workspace: this.#workspace ? path.join(this.#workspace, relative) : undefined,
+      storageRoot: this.root,
+      workspace: path.join(this.#workspace, relative),
       ocflVersion: this.ocflVersion,
-      ...this.#objectConfig,
     });
   }
 
@@ -277,6 +296,7 @@ class OcflStorage {
       await store.writeFile(path.join(this.root, EXTENSIONS_DIR, this.#layout.name, EXTENSION_CONFIG), JSON.stringify(this.#layout.config, null, 2));
     }
 
+    await store.writeFile(path.join(this.root, `${WORKSPACE_EXTENSION}.md`), WORKSPACE_EXTENSION_TEXT);
     if (specText) {
       await store.writeFile(path.join(this.root, specText.file), specText.content);
     }
@@ -311,9 +331,7 @@ class OcflStorage {
     }
     await fs.promises.rm(objectRoot, { recursive: true, force: true });
     try {
-      for (let dir = path.dirname(objectRoot); dir !== this.root; dir = path.dirname(dir)) {
-        await store.removeIfEmpty(dir);
-      }
+      await store.removeEmptyAncestors(path.dirname(objectRoot), this.root);
     } catch (_error) {
       // The object is gone, so a retry would throw ObjectNotFoundError; a leftover empty directory is harmless
     }
@@ -328,17 +346,18 @@ class OcflStorage {
 
   async *#objectsUnder(dirPath: string): AsyncGenerator<OcflObject> {
     for await (const dirent of await fs.promises.opendir(dirPath)) {
-      if (!dirent.isDirectory()) {
+      if (!dirent.isDirectory() || (dirPath === this.root && dirent.name === EXTENSIONS_DIR)) {
         continue;
       }
       const basePath = path.join(dirPath, dirent.name);
       const nv = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, basePath);
       if (nv) {
         yield new OcflObject({
-          root: basePath,
-          workspace: this.#workspace ? path.join(this.#workspace, path.relative(this.root, basePath)) : undefined,
-          ocflVersion: nv,
           ...this.#objectConfig,
+          root: basePath,
+          storageRoot: this.root,
+          workspace: path.join(this.#workspace, path.relative(this.root, basePath)),
+          ocflVersion: nv,
         });
       } else {
         yield* this.#objectsUnder(basePath);

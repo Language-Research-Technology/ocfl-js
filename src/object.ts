@@ -12,7 +12,7 @@ import type { BinaryOptions, ContentAlgorithm, EncodingOptions, Inventory, OcflO
 import { findNamasteVersion, isDirEmpty, isNotFound, pathExists, relativeWithin } from './utils.ts';
 import { createError } from './validation.ts';
 
-const { OCFL_VERSION, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T, EXTENSIONS_DIR } = OcflConstants;
+const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T, EXTENSIONS_DIR } = OcflConstants;
 const INVENTORY_TYPE = /^https:\/\/ocfl\.io\/([^/]+)\/spec\/#inventory$/;
 const MUTABLE_HEAD_INVENTORY = path.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
 
@@ -46,7 +46,8 @@ function isMidCommitRead(err: unknown) {
 class OcflObject {
   #configuredOcflVersion: OcflVersion;
   #root: string;
-  #workspace: string | undefined;
+  #storageRoot: string;
+  #workspace: string;
   #id: string | undefined;
   #digestAlgorithm: ContentAlgorithm;
   #contentDirectory: string;
@@ -59,19 +60,14 @@ class OcflObject {
 
   /** @internal */
   constructor(config: OcflObjectConfig) {
-    if (!config.root) {
-      throw new TypeError('[OcflObject] config.root is required.');
-    }
-    if (config.root === config.workspace) {
-      throw new Error('[OcflObject] config.root and config.workspace must be different.');
-    }
     this.#root = path.resolve(config.root);
-    this.#configuredOcflVersion = config.ocflVersion || OCFL_VERSION;
+    this.#storageRoot = path.resolve(config.storageRoot);
+    this.#workspace = path.resolve(config.workspace);
+    this.#configuredOcflVersion = config.ocflVersion;
     //this.contentVersion = null; // No content yet
     this.#id = config.id;
     //this.fixityDigest = config.fixityDigest ?? this.digestAlgorithm;
     this.#digestAlgorithm = contentDigestAlgorithm(config.digestAlgorithm);
-    this.#workspace = config.workspace ? path.resolve(config.workspace) : undefined;
     const { contentDirectory = 'content' } = config;
     if (contentDirectory.includes('/') || contentDirectory === '.' || contentDirectory === '..') {
       throw new TypeError(`[OcflObject] config.contentDirectory must be a directory name, not "${contentDirectory}".`);
@@ -128,10 +124,16 @@ class OcflObject {
   }
 
   /**
-   * The absolute path to the temporary workspace of this OCFL Object
+   * Where this object's updates are assembled, inside its storage root's workspace
+   * @internal
    */
-  get workspace(): string | undefined {
+  get _workspace(): string {
     return this.#workspace;
+  }
+
+  /** @internal */
+  get _storageRoot(): string {
+    return this.#storageRoot;
   }
 
   /**
@@ -292,7 +294,7 @@ class OcflObject {
         `OCFL Object "${this.#label}" has an active mutable head (extension 0005), which this library doesn't support; new versions can't be created until it is committed or removed`,
       );
     }
-    const t = await OcflObjectTransaction.create(this, newInv, this.workspace || this.root);
+    const t = await OcflObjectTransaction.create(this, newInv);
     if (typeof updater === 'function') {
       try {
         await updater(t);

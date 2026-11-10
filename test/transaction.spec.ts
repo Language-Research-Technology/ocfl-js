@@ -3,19 +3,16 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
-import ocfl from '../src/index.ts';
-import { OcflObject } from '../src/object.ts';
-import { failFsMethod, fsError, mountSeparately } from './fs-failures.ts';
+import ocfl, { type OcflStorage } from '../src/index.ts';
+import { mountSeparately } from './fs-failures.ts';
 
 describe('OcflObjectTransaction against a temporary directory', () => {
   let dir: string;
   let root: string;
-  let workspace: string;
 
   beforeEach(async () => {
     dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-transaction-'));
     root = path.join(dir, 'root');
-    workspace = path.join(dir, 'workspace');
   });
   afterEach(async () => {
     mock.restoreAll();
@@ -34,43 +31,38 @@ describe('OcflObjectTransaction against a temporary directory', () => {
     assert.strictEqual(fs.readFileSync(path.join(root, storage.objectRoot('an-object'), 'v1', 'content', 'data', 'a.txt'), 'utf8'), 'on disk');
   });
 
-  describe('with the workspace on another filesystem', () => {
-    const writeA = (object: OcflObject) => object.update(async (t) => t.write('a.txt', 'hello'));
-
-    beforeEach(() => {
-      mountSeparately(workspace);
+  describe('with the workspace on another filesystem from the object', () => {
+    let storage: OcflStorage;
+    beforeEach(async () => {
+      storage = await ocfl.createStorage({ root, layout: { extensionName: '0002-flat-direct-storage-layout' } });
     });
 
-    it('commits the version and leaves nothing behind', async () => {
-      const object = new OcflObject({ id: 'an-object', root, workspace });
+    it('fails a new object with CROSS_FILESYSTEM_MOVE and leaves nothing behind', async () => {
+      mountSeparately(path.join(root, 'extensions'));
 
-      await writeA(object);
+      await assert.rejects(
+        storage.object('an-object').update(async (t) => t.write('a.txt', 'hello')),
+        { code: 'CROSS_FILESYSTEM_MOVE' },
+      );
 
-      assert.strictEqual(fs.readFileSync(path.join(root, 'v1', 'content', 'a.txt'), 'utf8'), 'hello');
-      assert.deepStrictEqual(fs.readdirSync(root).sort(), ['0=ocfl_object_1.1', 'inventory.json', 'inventory.json.sha512', 'v1']);
-      assert.strictEqual(fs.existsSync(workspace), false);
+      assert.deepStrictEqual(fs.readdirSync(root).sort(), ['0=ocfl_1.1', 'ocfl-js-workspace.md', 'ocfl_layout.json']);
     });
 
-    it('leaves no partial version when the copy fails', async () => {
-      mock.method(fs.promises, 'cp', async (_from: string | URL, to: string | URL) => {
-        await fs.promises.mkdir(String(to), { recursive: true });
-        await fs.promises.writeFile(path.join(String(to), 'partial.txt'), 'partial');
-        throw fsError('EIO');
-      });
+    it('leaves an existing object at its previous version', async () => {
+      await storage.object('an-object').update(async (t) => t.write('a.txt', 'hello'));
+      mountSeparately(path.join(root, 'extensions'));
 
-      await assert.rejects(writeA(new OcflObject({ id: 'an-object', root, workspace })), { code: 'EIO' });
+      await assert.rejects(
+        storage.object('an-object').update(async (t) => t.write('b.txt', 'b')),
+        { code: 'CROSS_FILESYSTEM_MOVE' },
+      );
 
-      assert.strictEqual(fs.existsSync(root), false);
-    });
-
-    it('still commits when the workspace copy cannot be removed', async () => {
-      failFsMethod('rm', (target) => target.startsWith(workspace + path.sep), 'EBUSY');
-      const object = new OcflObject({ id: 'an-object', root, workspace });
-
-      await writeA(object);
-
-      assert.strictEqual(fs.readFileSync(path.join(root, 'v1', 'content', 'a.txt'), 'utf8'), 'hello');
-      assert.strictEqual(fs.existsSync(workspace), true);
+      mock.restoreAll();
+      const object = storage.object('an-object');
+      await object.load();
+      assert.strictEqual(object.headVersion?.toString(), 'v1');
+      assert.deepStrictEqual(fs.readdirSync(object.root).sort(), ['0=ocfl_object_1.1', 'inventory.json', 'inventory.json.sha512', 'v1']);
+      assert.strictEqual(fs.existsSync(path.join(root, 'extensions')), false);
     });
   });
 });

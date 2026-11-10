@@ -202,7 +202,7 @@ export class OcflError extends Error {
 }
 
 // @public (undocumented)
-export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'LAYOUT_MISMATCH' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | ValidationErrorCode;
+export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'LAYOUT_MISMATCH' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | 'CROSS_FILESYSTEM_MOVE' | ValidationErrorCode;
 
 // @public
 export type OcflLayoutConfig<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? {
@@ -263,7 +263,6 @@ export class OcflObject {
     toString(): string;
     update(updater?: (transaction: OcflObjectTransaction) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObjectTransaction | undefined>;
     get versions(): VersionNumber[];
-    get workspace(): string | undefined;
 }
 
 // @public
@@ -381,7 +380,6 @@ export class OcflStorage {
 // @public
 export type OcflStorageConfig = {
     root: string;
-    workspace?: string | undefined;
     layout?: OcflLayoutName | OcflLayoutConfig | undefined;
     fixityAlgorithms?: string[] | undefined;
     digestAlgorithm?: ContentAlgorithm | undefined;

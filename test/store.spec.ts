@@ -63,28 +63,14 @@ describe('store', () => {
       }
     }
 
-    it('keeps relative symlinks working when moving across filesystems', async () => {
-      await writeFiles(source, { 'a.txt': 'hello' });
-      await fs.promises.symlink('a.txt', path.join(source, 'link'));
+    it('does not copy across filesystems, leaving the source and target as they were', async () => {
+      await writeFiles(source, { 'new.txt': 'new' });
       mountSeparately(path.join(dir, 'src'));
 
-      await store.move(source, target);
+      await assert.rejects(store.move(source, target), { code: 'EXDEV' });
 
-      assert.equal(await fs.promises.readlink(path.join(target, 'link')), 'a.txt');
-      assert.equal(await fs.promises.readFile(path.join(target, 'link'), 'utf8'), 'hello');
-    });
-
-    it('moves a file across filesystems when rename fails with EXDEV, keeping its timestamps', async () => {
-      const mtime = new Date('2020-01-02T03:04:05Z');
-      await writeFiles(source, { 'a.txt': 'hello' });
-      await fs.promises.utimes(path.join(source, 'a.txt'), mtime, mtime);
-      mountSeparately(path.join(dir, 'src'));
-
-      await store.move(path.join(source, 'a.txt'), path.join(target, 'b.txt'));
-
-      assert.equal(await fs.promises.readFile(path.join(target, 'b.txt'), 'utf8'), 'hello');
-      assert.equal((await fs.promises.stat(path.join(target, 'b.txt'))).mtime.getTime(), mtime.getTime());
-      assert.equal(fs.existsSync(path.join(source, 'a.txt')), false);
+      assert.deepEqual(await fs.promises.readdir(source), ['new.txt']);
+      assert.equal(fs.existsSync(target), false);
     });
 
     it('rethrows rename errors other than EXDEV and leaves the source in place', async () => {
@@ -95,32 +81,6 @@ describe('store', () => {
 
       assert.equal(await fs.promises.readFile(path.join(source, 'a.txt'), 'utf8'), 'hello');
       assert.equal(fs.existsSync(target), false);
-    });
-
-    it('rejects a cross-filesystem move onto a non-empty directory instead of merging', async () => {
-      await writeFiles(source, { 'new.txt': 'new' });
-      await writeFiles(target, { 'old.txt': 'old' });
-      mountSeparately(path.join(dir, 'src'));
-
-      await assert.rejects(store.move(source, target), {
-        code: /^(ENOTEMPTY|EEXIST)$/,
-      });
-
-      assert.deepEqual(await fs.promises.readdir(target), ['old.txt']);
-      assert.deepEqual(await fs.promises.readdir(path.dirname(target)), ['v2']);
-      assert.deepEqual(await fs.promises.readdir(source), ['new.txt']);
-    });
-
-    it('replaces an existing file when moving a file across filesystems', async () => {
-      await writeFiles(source, { 'inventory.json.tmp': 'new' });
-      await writeFiles(target, { 'inventory.json': 'old' });
-      mountSeparately(path.join(dir, 'src'));
-
-      await store.move(path.join(source, 'inventory.json.tmp'), path.join(target, 'inventory.json'));
-
-      assert.equal(await fs.promises.readFile(path.join(target, 'inventory.json'), 'utf8'), 'new');
-      assert.deepEqual(await fs.promises.readdir(target), ['inventory.json']);
-      assert.deepEqual(await fs.promises.readdir(source), []);
     });
 
     it('moves a directory with rename on the same filesystem', async () => {
