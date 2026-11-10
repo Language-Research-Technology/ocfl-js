@@ -206,16 +206,16 @@ class OcflStorage {
     const prefix = NAMASTE_PREFIX_STORAGE;
     const filenamePrefix = NAMASTE_T + prefix;
     const filePath = path.join(this.root, filenamePrefix + this.ocflVersion);
-    await store.writeFile(filePath, `${prefix + this.ocflVersion}\n`, 'utf8');
+    await store.writeFile(filePath, `${prefix + this.ocflVersion}\n`);
 
     // create layout
     if (!this.#layout) {
       this.#layout = new DEFAULT_LAYOUT();
     }
     const layout = { extension: this.#layout.name, description: this.#layout.description };
-    await store.writeFile(path.join(this.root, OCFL_LAYOUT), JSON.stringify(layout, null, 2), 'utf8');
+    await store.writeFile(path.join(this.root, OCFL_LAYOUT), JSON.stringify(layout, null, 2));
     if (this.#layout.config) {
-      await store.writeFile(path.join(this.root, EXTENSIONS_DIR, this.#layout.name, EXTENSION_CONFIG), JSON.stringify(this.#layout.config, null, 2), 'utf8');
+      await store.writeFile(path.join(this.root, EXTENSIONS_DIR, this.#layout.name, EXTENSION_CONFIG), JSON.stringify(this.#layout.config, null, 2));
     }
 
     if (specText) {

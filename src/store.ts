@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import type { WriteFileData } from './types.ts';
 import { isErrnoException } from './utils.ts';
 
 interface ListedFile {
@@ -25,16 +24,15 @@ export function createReadable(filePath: string, options?: unknown): ReadableStr
   return Readable.toWeb(fs.createReadStream(filePath, options as Parameters<typeof fs.createReadStream>[1])) as ReadableStream;
 }
 
-export async function createWritable(filePath: string, options?: unknown): Promise<WritableStream> {
+export async function createWritable(filePath: string): Promise<WritableStream> {
   await createParents(filePath);
-  return Writable.toWeb(fs.createWriteStream(filePath, options as Parameters<typeof fs.createWriteStream>[1]));
+  return Writable.toWeb(fs.createWriteStream(filePath));
 }
 
-export async function writeFile(filePath: string, data: WriteFileData, options?: object | string): Promise<void> {
+/** A string is written as UTF-8 */
+export async function writeFile(filePath: string, data: string | Uint8Array | AsyncIterable<Uint8Array>): Promise<void> {
   await createParents(filePath);
-  // Readable.from, not fromWeb: fromWeb reads eagerly, so a source failure before writeFile attaches would be uncaught
-  const content = data instanceof ReadableStream ? Readable.from(data) : data instanceof ArrayBuffer ? new Uint8Array(data) : data;
-  await fs.promises.writeFile(filePath, content, options as Parameters<typeof fs.promises.writeFile>[2]);
+  await fs.promises.writeFile(filePath, data);
 }
 
 export async function copyFile(source: string, target: string): Promise<void> {

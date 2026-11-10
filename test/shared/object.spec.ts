@@ -13,6 +13,7 @@ import ocfl, {
   type OcflObjectConfig,
   type OcflObjectTransaction,
   type OcflVersion,
+  type WriteFileData,
 } from '../../src/index.ts';
 import { withFsFailure } from '../fs-failures.ts';
 
@@ -1040,6 +1041,146 @@ describe('update', () => {
 
       await assertManifestMatchesFiles(o);
       await assertReads(o, { ok: 'ok' });
+    });
+  });
+
+  describe('what write accepts', () => {
+    let scenario = 0;
+
+    const newObject = () => createObject(`accepts-${++scenario}`, false);
+
+    const inputs: [string, () => WriteFileData][] = [
+      ['a string', () => 'héllo'],
+      ['a Buffer', () => Buffer.from('héllo')],
+      ['a Uint16Array', () => new Uint16Array(encode('héllo!').buffer, 0, 3)],
+      ['a DataView over part of a larger buffer', () => new DataView(encode('XXhélloXX').buffer, 2, 6)],
+      ['an ArrayBuffer', () => encode('héllo').buffer],
+      ['a Blob', () => new Blob(['hé', encode('llo')])],
+      [
+        'a Node Readable',
+        () => {
+          const source = path.join(tempdir, `accepts-source-${scenario}`);
+          fs.writeFileSync(source, 'héllo');
+          return fs.createReadStream(source);
+        },
+      ],
+      ['a web ReadableStream', () => streamOf('héllo')],
+      [
+        'an async generator of strings and bytes',
+        async function* () {
+          yield 'hé';
+          yield encode('l');
+          yield Buffer.from('l');
+          yield encode('o').buffer;
+        },
+      ],
+    ];
+
+    for (const [name, data] of inputs) {
+      it(`stores the bytes of ${name} under their digest`, async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          await t.write('a', data());
+        });
+        await assertValid(o, 'v1', { a: 'héllo' });
+      });
+    }
+
+    const unsupported: [string, () => unknown, RegExp][] = [
+      ['a number', () => 42, /Unsupported data type: \[object Number\]/],
+      ['a plain object', () => ({ text: 'héllo' }), /Unsupported data type: \[object Object\]/],
+      ['an iterable yielding something other than bytes or strings', () => Readable.from([{ text: 'héllo' }]), /Unsupported data type: \[object Object\]/],
+    ];
+
+    for (const [name, data, message] of unsupported) {
+      it(`rejects ${name} and records nothing`, async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          await assert.rejects(t.write('bad', data() as never), (e) => e instanceof TypeError && message.test(e.message));
+          await t.write('ok', 'ok');
+        });
+        await assertManifestMatchesFiles(o);
+        await assertReads(o, { ok: 'ok' });
+      });
+    }
+
+    it('createWritable stores string, typed array, ArrayBuffer and DataView chunks as bytes', async () => {
+      const o = newObject();
+      await o.update(async (t) => {
+        const writer = (await t.createWritable('a')).getWriter();
+        await writer.write('h');
+        await writer.write(new Uint16Array(encode('éll').buffer, 0, 2));
+        await writer.write(encode('o').buffer);
+        await writer.write(new DataView(encode('X!X').buffer, 1, 1));
+        await writer.close();
+      });
+      await assertValid(o, 'v1', { a: 'héllo!' });
+    });
+
+    const failingPartway: [string, () => WriteFileData][] = [
+      [
+        'an async generator',
+        async function* () {
+          yield 'partial';
+          throw new Error('source failed');
+        },
+      ],
+      [
+        'a web ReadableStream',
+        () =>
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(encode('partial'));
+            },
+            pull(controller) {
+              controller.error(new Error('source failed'));
+            },
+          }),
+      ],
+      [
+        'a Node Readable',
+        () =>
+          new Readable({
+            read() {
+              this.push('partial');
+              this.destroy(new Error('source failed'));
+            },
+          }),
+      ],
+    ];
+
+    for (const [name, data] of failingPartway) {
+      it(`${name} that fails after its first chunk leaves nothing behind`, async () => {
+        const o = newObject();
+        await o.update(async (t) => {
+          await assert.rejects(t.write('broken', data()), /source failed/);
+          await t.write('ok', 'ok');
+        });
+        await assertValid(o, 'v1', { ok: 'ok' });
+      });
+    }
+
+    it('createWritable rejects a chunk that is not bytes or a string and records nothing', async () => {
+      const o = newObject();
+      await o.update(async (t) => {
+        const writer = (await t.createWritable('bad')).getWriter();
+        await assert.rejects(writer.write(42), (e) => e instanceof TypeError && /Unsupported data type: \[object Number\]/.test(e.message));
+        await t.write('ok', 'ok');
+      });
+      await assertManifestMatchesFiles(o);
+      await assertReads(o, { ok: 'ok' });
+    });
+
+    it('stores the same content written as different types once', async () => {
+      const o = newObject();
+      await o.update(async (t) => {
+        await t.write('a', 'héllo');
+        await t.write('b', new Blob(['héllo']));
+        await t.write('c', encode('héllo').buffer);
+      });
+      const inventory = await assertManifestMatchesFiles(o);
+      assert.deepStrictEqual(Object.keys(inventory.manifest), [sha512('héllo')]);
+      await assertReads(o, { a: 'héllo', b: 'héllo', c: 'héllo' });
     });
   });
 

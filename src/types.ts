@@ -57,7 +57,11 @@ export interface Inventory {
 export type EncodingOptions = BufferEncoding | { encoding: BufferEncoding; [key: string]: unknown };
 export type BinaryOptions = { encoding?: null | undefined; [key: string]: unknown };
 
-export type WriteFileData = string | Uint8Array | DataView | ArrayBuffer | ReadableStream;
+/**
+ * Content for a transaction's `write()`. An async iterable covers a Node `Readable`, a web `ReadableStream` and
+ * an async generator.
+ */
+export type WriteFileData = string | ArrayBufferView | ArrayBuffer | Blob | AsyncIterable<string | ArrayBufferView | ArrayBuffer>;
 
 export type OcflVersion = '1.0' | '1.1';
 

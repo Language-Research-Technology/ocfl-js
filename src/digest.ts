@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import zlib from 'node:zlib';
 import type { Digests } from './types.ts';
 
-type DataType = string | ArrayBufferLike | Uint8Array | Uint16Array | Uint32Array;
+type DataType = string | ArrayBufferView | ArrayBufferLike;
 
 interface Hasher {
   update: (data: DataType) => Hasher;
@@ -14,25 +14,30 @@ interface MultiHasher {
   digest: () => Digests;
 }
 
-type Digest = Hasher['digest'];
-type MultiDigest = MultiHasher['digest'];
-type WritableStreamHasher = WritableStream & { update(data: DataType): void; digest: Digest };
-type WritableStreamMultiHasher = WritableStream & { update(data: DataType): void; digest: MultiDigest };
-type StreamThroughHash = TransformStream & { digest: MultiDigest };
-type StreamThroughOptions = { writableStrategy?: QueuingStrategy; readableStrategy?: QueuingStrategy };
+const encoder = new TextEncoder();
 
-function toBytes(data: DataType): string | Uint8Array {
-  if (typeof data === 'string' || data instanceof Uint8Array) {
+/**
+ * A string becomes its UTF-8 bytes; a view or buffer is wrapped, not copied.
+ * @throws TypeError for anything else
+ */
+function toBytes(data: unknown): Uint8Array {
+  if (typeof data === 'string') {
+    return encoder.encode(data);
+  }
+  if (data instanceof Uint8Array) {
     return data;
   }
   if (ArrayBuffer.isView(data)) {
     return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
   }
-  return new Uint8Array(data);
+  if (data instanceof ArrayBuffer || data instanceof SharedArrayBuffer) {
+    return new Uint8Array(data);
+  }
+  throw new TypeError(`Unsupported data type: ${Object.prototype.toString.call(data)}`);
 }
 
 interface HashState {
-  update(data: string | Uint8Array): void;
+  update(data: Uint8Array): void;
   hex(): string;
 }
 
@@ -64,7 +69,7 @@ function sizeHash(): HashState {
   let size = 0;
   return {
     update: (d) => {
-      size += typeof d === 'string' ? Buffer.byteLength(d) : d.byteLength;
+      size += d.byteLength;
     },
     hex: () => `${size}`,
   };
@@ -107,8 +112,9 @@ function createMultiHasher(algorithms: string[]): MultiHasher {
   const hashers = algoNames.map((name) => [name, createHasher(name)] as const);
   const multiHasher: MultiHasher = {
     update(data) {
+      const bytes = toBytes(data);
       for (const [, hash] of hashers) {
-        hash.update(data);
+        hash.update(bytes);
       }
       return this;
     },
@@ -121,55 +127,18 @@ function createAnyHasher(algorithm: string | string[]): Hasher | MultiHasher {
   return Array.isArray(algorithm) ? createMultiHasher(algorithm) : createHasher(algorithm);
 }
 
-/**
- * Create a hash instance that implements WritableStream.
- * @param algorithm One or more digest algorithm names
- */
-function createStream(algorithm?: string): WritableStreamHasher;
-function createStream(algorithm: string[]): WritableStreamMultiHasher;
-function createStream(algorithm: string | string[] = 'sha512'): WritableStreamHasher | WritableStreamMultiHasher {
+async function digest(algorithm: string[], input: DataType | AsyncIterable<DataType>): Promise<Digests>;
+async function digest(algorithm: string, input: DataType | AsyncIterable<DataType>): Promise<string>;
+async function digest(algorithm: string | string[], input: DataType | AsyncIterable<DataType>): Promise<string | Digests> {
   const hash = createAnyHasher(algorithm);
-  const ws = new WritableStream({
-    write(chunk) {
+  if (typeof input === 'object' && Symbol.asyncIterator in input) {
+    for await (const chunk of input) {
       hash.update(chunk);
-    },
-  }) as WritableStreamHasher & WritableStreamMultiHasher;
-  ws.update = (data) => {
-    hash.update(data);
-  };
-  ws.digest = hash.digest as Digest & MultiDigest;
-  return ws;
-}
-
-/**
- * Create a pass through stream that pass data as it is and calculate the digest as data pass through.
- */
-function createStreamThrough(algorithm: string | string[] = 'sha512', options?: StreamThroughOptions): StreamThroughHash {
-  const hash = createAnyHasher(algorithm);
-  const { writableStrategy, readableStrategy } = options || {};
-  const ts = new TransformStream(
-    {
-      transform(chunk, controller) {
-        controller.enqueue(chunk);
-        hash.update(chunk);
-      },
-    },
-    writableStrategy,
-    readableStrategy,
-  ) as StreamThroughHash;
-  ts.digest = hash.digest as MultiDigest;
-  return ts;
-}
-
-async function digest(algorithm: string[], input: DataType | ReadableStream): Promise<Digests>;
-async function digest(algorithm: string, input: DataType | ReadableStream): Promise<string>;
-async function digest(algorithm: string | string[], input: DataType | ReadableStream): Promise<string | Digests> {
-  if (input instanceof ReadableStream) {
-    const hash = createStream(algorithm as string);
-    await input.pipeTo(hash);
-    return hash.digest();
+    }
+  } else {
+    hash.update(input);
   }
-  return createAnyHasher(algorithm).update(input).digest();
+  return hash.digest();
 }
 
 function digestSync(algorithm: string, input: DataType): string {
@@ -180,4 +149,4 @@ function getHexDigestLength(algorithm: string): number {
   return ALGORITHMS.get(algorithm)?.hexLength ?? 0;
 }
 
-export { createStream, createStreamThrough, digest, digestSync, getHexDigestLength };
+export { createMultiHasher, digest, digestSync, getHexDigestLength, toBytes };

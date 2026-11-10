@@ -164,7 +164,7 @@ class OcflObject {
     }
     //create the namaste file
     const filePath = path.join(this.root, NAMASTE_T + prefix + this.ocflVersion);
-    await store.writeFile(filePath, `${prefix + this.ocflVersion}\n`, 'utf8');
+    await store.writeFile(filePath, `${prefix + this.ocflVersion}\n`);
     return filePath;
   }
 
