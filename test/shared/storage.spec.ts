@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import ocfl, { type OcflError, type OcflStorage, type OcflStorageConfig, OcflStorageLayout, type OcflVersion } from '../../src/index.ts';
+import ocfl, { type OcflError, type OcflLayoutConfig, type OcflStorage, type OcflStorageConfig, OcflStorageLayout, type OcflVersion } from '../../src/index.ts';
 import { DIGESTS_OF_ABC } from './digests-of-abc.ts';
 
 describe('constructor', () => {
@@ -15,7 +15,7 @@ describe('constructor', () => {
     assert.equal(storage.root, '/data/storage-1');
 
     assert.throws(() => {
-      storage = ocfl.storage({ root: '/data/storage-1', layout: ocfl.storageLayout('test') });
+      storage = ocfl.storage({ root: '/data/storage-1', layout: ocfl.storageLayout('test' as never) as never });
     });
 
     assert.throws(() => {
@@ -47,21 +47,6 @@ describe('layout classes', () => {
     for (const layout of Object.values(ocfl.extensions)) {
       assert.ok(classes.includes(layout));
     }
-  });
-
-  it('accepts a layout by class name or by registered name', () => {
-    for (const layout of ['FlatDirectStorageLayout', '0002-flat-direct-storage-layout']) {
-      assert.strictEqual(ocfl.storage({ root: '/data/storage-1', layout }).objectRoot('abc'), 'abc');
-    }
-  });
-
-  it('accepts an instance of a subclass of a built-in layout', () => {
-    class PrefixedLayout extends ocfl.extensions.FlatDirectStorageLayout {
-      map(id: string) {
-        return `prefix-${super.map(id)}`;
-      }
-    }
-    assert.strictEqual(ocfl.storage({ root: '/data/storage-1', layout: new PrefixedLayout() }).objectRoot('abc'), 'prefix-abc');
   });
 });
 describe('access existing storage', () => {
@@ -235,7 +220,7 @@ describe('OCFL spec text', () => {
   }
 });
 describe('configured layout of a loaded storage root', () => {
-  const HASHED = '0004-hashed-n-tuple-storage-layout';
+  const HASHED = '0004-hashed-n-tuple-storage-layout' as const;
   const ABC_SHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
   let tempdir: string;
   let rootCount = 0;
@@ -262,7 +247,7 @@ describe('configured layout of a loaded storage root', () => {
 
   it('keeps the configured layout when the root has no ocfl_layout.json', async () => {
     const root = await createRoot();
-    const storage = ocfl.storage({ root, layout: 'FlatDirectStorageLayout' });
+    const storage = ocfl.storage({ root, layout: '0002-flat-direct-storage-layout' });
     assert.strictEqual(storage.objectRoot('abc'), 'abc');
     await storage.load();
     assert.strictEqual(storage.objectRoot('abc'), 'abc');
@@ -277,7 +262,10 @@ describe('configured layout of a loaded storage root', () => {
   ] as const) {
     it(`rejects a configured layout when ocfl_layout.json ${problem}`, async () => {
       const root = await createRoot({ layoutFile });
-      await assert.rejects(ocfl.storage({ root, layout: 'FlatDirectStorageLayout' }).load(), { code: 'E070', path: path.join(root, 'ocfl_layout.json') });
+      await assert.rejects(ocfl.storage({ root, layout: '0002-flat-direct-storage-layout' }).load(), {
+        code: 'E070',
+        path: path.join(root, 'ocfl_layout.json'),
+      });
     });
   }
 
@@ -287,21 +275,16 @@ describe('configured layout of a loaded storage root', () => {
     assert.throws(() => storage.objectRoot('abc'), /No layout defined/);
   });
 
-  it('reads a root naming an unsupported extension with a custom layout instance', async () => {
-    class UppercaseLayout extends OcflStorageLayout {
-      map(id: string) {
-        return id.toUpperCase();
-      }
-    }
+  it('reads a root naming an unsupported extension with a configured layout', async () => {
     const root = await createRoot({ layoutFile: declaring('9999-unimplemented-layout') });
-    const storage = await ocfl.storage({ root, layout: new UppercaseLayout() }).load();
-    assert.strictEqual(storage.objectRoot('abc'), 'ABC');
-    assert.strictEqual(storage.object('abc').root, path.join(root, 'ABC'));
+    const storage = await ocfl.storage({ root, layout: '0002-flat-direct-storage-layout' }).load();
+    assert.strictEqual(storage.objectRoot('abc'), 'abc');
+    assert.strictEqual(storage.object('abc').root, path.join(root, 'abc'));
   });
 
   it('rejects a configured layout that differs from the supported layout the root declares, naming both', async () => {
     const root = await createRoot({ layoutFile: declaring(HASHED) });
-    await assert.rejects(ocfl.storage({ root, layout: 'FlatDirectStorageLayout' }).load(), (error: OcflError) => {
+    await assert.rejects(ocfl.storage({ root, layout: '0002-flat-direct-storage-layout' }).load(), (error: OcflError) => {
       assert.strictEqual(error.code, 'LAYOUT_MISMATCH');
       assert.match(error.message, /0002-flat-direct-storage-layout/);
       assert.match(error.message, /0004-hashed-n-tuple-storage-layout/);
@@ -311,24 +294,13 @@ describe('configured layout of a loaded storage root', () => {
 
   it('reports a differing layout by name even when the root extension config is invalid', async () => {
     const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { digestAlgorithm: 'not-a-digest' } });
-    await assert.rejects(ocfl.storage({ root, layout: 'FlatDirectStorageLayout' }).load(), { code: 'LAYOUT_MISMATCH' });
+    await assert.rejects(ocfl.storage({ root, layout: '0002-flat-direct-storage-layout' }).load(), { code: 'LAYOUT_MISMATCH' });
   });
 
   it('keeps a configured layout matching the name and parameters the root declares', async () => {
     const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: HASHED, tupleSize: 2, numberOfTuples: 3 } });
     const storage = await ocfl.storage({ root, layout: { extensionName: HASHED, tupleSize: 2 } }).load();
     assert.strictEqual(storage.objectRoot('abc'), path.join('ba', '78', '16', ABC_SHA256));
-  });
-
-  it('keeps the configured instance when it matches the layout the root declares', async () => {
-    class CustomisedHashedLayout extends ocfl.extensions.HashedNTupleStorageLayout {
-      map() {
-        return 'customised';
-      }
-    }
-    const root = await createRoot({ layoutFile: declaring(HASHED) });
-    const storage = await ocfl.storage({ root, layout: new CustomisedHashedLayout() }).load();
-    assert.strictEqual(storage.objectRoot('abc'), 'customised');
   });
 
   it('rejects a configured layout whose parameters differ from the root extension config, naming them', async () => {
@@ -361,21 +333,16 @@ describe('configured layout of a loaded storage root', () => {
 
   it('compares a configured layout with ocfl_layout.json, not the extensionName in the extension config', async () => {
     const staleName = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: 'no-such-layout' } });
-    await assert.rejects(ocfl.storage({ root: staleName, layout: 'FlatDirectStorageLayout' }).load(), { code: 'LAYOUT_MISMATCH' });
+    await assert.rejects(ocfl.storage({ root: staleName, layout: '0002-flat-direct-storage-layout' }).load(), { code: 'LAYOUT_MISMATCH' });
 
     const otherName = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: '0002-flat-direct-storage-layout' } });
     await ocfl.storage({ root: otherName, layout: HASHED }).load();
   });
 
-  it('reads a root naming a registered layout that has no map() with a custom layout', async () => {
-    class UppercaseLayout extends OcflStorageLayout {
-      map(id: string) {
-        return id.toUpperCase();
-      }
-    }
+  it('reads a root naming a registered layout that has no map() with a configured layout', async () => {
     const root = await createRoot({ layoutFile: declaring('0006-flat-omit-prefix-storage-layout') });
-    const storage = await ocfl.storage({ root, layout: new UppercaseLayout() }).load();
-    assert.strictEqual(storage.objectRoot('abc'), 'ABC');
+    const storage = await ocfl.storage({ root, layout: '0002-flat-direct-storage-layout' }).load();
+    assert.strictEqual(storage.objectRoot('abc'), 'abc');
   });
 
   it('creates and reopens a root using a registered custom layout', async () => {
@@ -389,7 +356,7 @@ describe('configured layout of a loaded storage root', () => {
     }
     RegisteredUppercaseLayout.register();
     const root = path.join(tempdir, `root-${rootCount++}`);
-    const created = await ocfl.createStorage({ root, layout: '9999-registered-uppercase-layout' });
+    const created = await ocfl.createStorage({ root, layout: '9999-registered-uppercase-layout' as never });
     await created.object('abc').update(async (t) => {
       await t.write('a.txt', 'content');
     });
@@ -403,21 +370,10 @@ describe('configured layout of a loaded storage root', () => {
 
   it('loads a root with the configured RegExp parameter that created it', async () => {
     const root = path.join(tempdir, `root-${rootCount++}`);
-    const layout = { extensionName: '000N-path-direct-storage-layout', replace: [[/x/g, 'y']] };
+    const layout: OcflLayoutConfig = { extensionName: '000N-path-direct-storage-layout', replace: [[/x/g, 'y']] };
     await ocfl.createStorage({ root, layout });
     const storage = await ocfl.storage({ root, layout }).load();
     assert.strictEqual(storage.objectRoot('xa'), path.join('ya', '__object__'));
-  });
-
-  it('ignores a parameter that only a configured subclass defines', async () => {
-    class SaltedHashedLayout extends ocfl.extensions.HashedNTupleStorageLayout {
-      constructor() {
-        super();
-        (this.parameters as unknown as { salt: string }).salt = 'x';
-      }
-    }
-    const root = await createRoot({ layoutFile: declaring(HASHED) });
-    await ocfl.storage({ root, layout: new SaltedHashedLayout() }).load();
   });
 
   for (const [digestAlgorithm, digest] of Object.entries(DIGESTS_OF_ABC)) {
@@ -444,7 +400,7 @@ describe('configured layout of a loaded storage root', () => {
   });
 });
 describe('removing an object', () => {
-  const PATH_DIRECT = { extensionName: '000N-path-direct-storage-layout' };
+  const PATH_DIRECT: OcflLayoutConfig = { extensionName: '000N-path-direct-storage-layout' };
   const ID = 'http://example.org/object';
   let tempdir: string;
   let rootCount = 0;
@@ -508,13 +464,13 @@ describe('removing an object', () => {
   });
 
   it('throws ObjectNotFoundError for an empty directory at the object root', async () => {
-    const storage = await createRoot('FlatDirectStorageLayout');
+    const storage = await createRoot('0002-flat-direct-storage-layout');
     await fs.promises.mkdir(path.join(storage.root, 'empty'));
     await assert.rejects(storage.remove('empty'), { name: 'ObjectNotFoundError', code: 'OBJECT_NOT_FOUND' });
   });
 
   it('deletes nothing when the directory has no OCFL object declaration', async () => {
-    const storage = await createRoot('FlatDirectStorageLayout');
+    const storage = await createRoot('0002-flat-direct-storage-layout');
     const stray = path.join(storage.root, 'not-an-object', 'stray.txt');
     await fs.promises.mkdir(path.dirname(stray));
     await fs.promises.writeFile(stray, 'keep me');
@@ -523,7 +479,7 @@ describe('removing an object', () => {
   });
 
   it('deletes nothing when the object root is a file', async () => {
-    const storage = await createRoot('FlatDirectStorageLayout');
+    const storage = await createRoot('0002-flat-direct-storage-layout');
     const stray = path.join(storage.root, 'stray.txt');
     await fs.promises.writeFile(stray, 'keep me');
     await assert.rejects(storage.remove('stray.txt'), { name: 'OcflError', code: 'NOT_AN_OBJECT' });
@@ -531,7 +487,7 @@ describe('removing an object', () => {
   });
 
   it('deletes nothing when the object declaration has the wrong contents', async () => {
-    const storage = await createRoot('FlatDirectStorageLayout');
+    const storage = await createRoot('0002-flat-direct-storage-layout');
     const declaration = path.join(storage.root, 'bad-declaration', '0=ocfl_object_1.1');
     await fs.promises.mkdir(path.dirname(declaration));
     await fs.promises.writeFile(declaration, 'wrong\n');
@@ -545,7 +501,7 @@ describe('removing an object', () => {
   ] as const) {
     it(`deletes nothing when the layout maps the id to ${where}`, async () => {
       const parent = path.join(tempdir, `root-${rootCount++}`);
-      const storage = await ocfl.storage({ root: path.join(parent, 'storage'), layout: 'FlatDirectStorageLayout' }).create();
+      const storage = await ocfl.storage({ root: path.join(parent, 'storage'), layout: '0002-flat-direct-storage-layout' }).create();
       await fs.promises.writeFile(path.join(storage.root, declared, '0=ocfl_object_1.1'), 'ocfl_object_1.1\n');
       await assert.rejects(storage.remove(id), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
       assert.strictEqual(fs.existsSync(path.join(storage.root, '0=ocfl_1.1')), true);
@@ -560,7 +516,7 @@ describe('removing an object', () => {
   });
 
   it('deletes nothing when the object has no inventory to confirm its id', async () => {
-    const storage = await createRoot('FlatDirectStorageLayout');
+    const storage = await createRoot('0002-flat-direct-storage-layout');
     const declaration = path.join(storage.root, 'no-inventory', '0=ocfl_object_1.1');
     await fs.promises.mkdir(path.dirname(declaration));
     await fs.promises.writeFile(declaration, 'ocfl_object_1.1\n');

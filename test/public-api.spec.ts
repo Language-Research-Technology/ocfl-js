@@ -39,7 +39,7 @@ describe('the public entry point', () => {
   });
 
   it('builds a storage layout from a name or a config', () => {
-    assert.ok(storageLayout('FlatDirectStorageLayout') instanceof extensions.FlatDirectStorageLayout);
+    assert.ok(storageLayout('0002-flat-direct-storage-layout') instanceof extensions.FlatDirectStorageLayout);
     const layout = storageLayout({ extensionName: '0002-flat-direct-storage-layout' });
     assert.ok(layout instanceof OcflStorageLayout);
     assert.strictEqual(layout.map('abc'), 'abc');
@@ -54,7 +54,7 @@ describe('the public entry point', () => {
 
   it('loads an existing storage root with loadStorage', async () => {
     const root = path.join(dir, 'root');
-    await createStorage({ root, layout: 'FlatDirectStorageLayout' });
+    await createStorage({ root, layout: '0002-flat-direct-storage-layout' });
     const loaded = await loadStorage({ root });
     assert.strictEqual(loaded.objectRoot('abc'), 'abc');
   });

@@ -237,6 +237,20 @@ api.OcflObjectTransaction;
 api.OcflObjectInventory;
 // @ts-expect-error OcflObjectFile is a type, use object.getFile() or object.files()
 api.OcflObjectFile;
+// @ts-expect-error class names aren't accepted, use the official extension name
+ocflFs.storage({ root: '/tmp/storage', layout: 'FlatDirectStorageLayout' });
+// @ts-expect-error class names aren't accepted in a config object either
+ocflFs.storage({ root: '/tmp/storage', layout: { extensionName: 'FlatDirectStorageLayout' } });
+// @ts-expect-error layout objects aren't accepted, use the official extension name or a config object
+ocflFs.storage({ root: '/tmp/storage', layout: new extensions.FlatDirectStorageLayout() });
+// @ts-expect-error layout objects aren't accepted, even one from storageLayout()
+ocflFs.storage({ root: '/tmp/storage', layout: ocflFs.storageLayout('0002-flat-direct-storage-layout') });
+// @ts-expect-error a config object has to name its layout
+ocflFs.storage({ root: '/tmp/storage', layout: { tupleSize: 2 } });
+// @ts-expect-error class names aren't accepted by storageLayout()
+ocflFs.storageLayout('FlatDirectStorageLayout');
+// @ts-expect-error a config object has to name its layout
+ocflFs.storageLayout({ tupleSize: 2 });
 
 export { SubclassedStorage, extension, inventory, inventoryClass, object, storage, transaction };
 EOF
@@ -266,6 +280,8 @@ import ocflFs, {
   type OcflErrorCode,
   OcflExtension,
   type OcflExtensionConfig,
+  type OcflLayoutConfig,
+  type OcflLayoutName,
   type OcflObject,
   type OcflObjectConfig,
   type OcflObjectFile,
@@ -284,7 +300,10 @@ import ocflFs, {
   type WriteFileData,
 } from '@ocfl/ocfl-fs';
 
-const storage: OcflStorage = await createStorage({ root: join(import.meta.dirname, 'storage'), layout: 'HashedNTupleStorageLayout' });
+const layoutName: OcflLayoutName = '0004-hashed-n-tuple-storage-layout';
+const storage: OcflStorage = await createStorage({ root: join(import.meta.dirname, 'storage'), layout: layoutName });
+const layoutConfig: OcflLayoutConfig = { extensionName: '000N-path-direct-storage-layout', suffix: '/obj' };
+const configuredStorage = ocflFs.storage({ root: join(import.meta.dirname, 'configured'), layout: layoutConfig });
 
 // @ts-expect-error OcflErrorCode is a closed union
 const _unknownCode: OcflErrorCode = 'NO_SUCH_CODE';
@@ -300,13 +319,7 @@ await written.update(async (t: OcflObjectTransaction) => t.write('a.txt', 'writt
 const writtenInventory: OcflObjectInventory | undefined = await written.getInventory();
 const writtenFile: OcflObjectFile | undefined = written.getFile('a.txt');
 
-class PrefixedLayout extends extensions.FlatDirectStorageLayout {
-  map(id: string) {
-    return `prefix-${super.map(id)}`;
-  }
-}
 const layoutInstance: extensions.PathDirectStorageLayout = new ocflFs.extensions.PathDirectStorageLayout();
-const prefixedStorage = ocflFs.storage({ root: join(import.meta.dirname, 'prefixed'), layout: new PrefixedLayout() });
 
 if (
   createStorage !== ocflFs.createStorage ||
@@ -318,7 +331,8 @@ if (
   !OCFL_VERSIONS.includes('1.1') ||
   extensions !== ocflFs.extensions ||
   !(layoutInstance instanceof extensions.PathDirectStorageLayout) ||
-  prefixedStorage.objectRoot('abc') !== 'prefix-abc' ||
+  configuredStorage.objectRoot('abc') !== 'abc/obj' ||
+  storageLayout(layoutName).map('object-01') !== '3c0/ff4/240/3c0ff4240c1e116dba14c7627f2319b58aa3d77606d0d90dfc6161608ac987d4' ||
   writtenInventory?.head !== 'v1' ||
   (await writtenFile?.text()) !== 'written to the filesystem' ||
   (await storage.has('missing')) ||

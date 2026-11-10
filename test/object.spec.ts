@@ -350,7 +350,7 @@ describe('OcflObject.ocflVersion', () => {
 
   it('reports the version of a 1.0 object in a 1.1 storage root', async () => {
     const root = path.join(tempdir, 'mixed-root');
-    const created = ocfl.storage({ root, ocflVersion: '1.0', layout: 'HashedNTupleStorageLayout' });
+    const created = ocfl.storage({ root, ocflVersion: '1.0', layout: '0004-hashed-n-tuple-storage-layout' });
     await created.create();
     await created.object('a').update(async (t) => t.write('a.txt', 'a'));
     await fs.promises.rm(path.join(root, '0=ocfl_1.0'));

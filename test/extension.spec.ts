@@ -60,9 +60,9 @@ describe('OcflExtension class', () => {
     }
     PrefixLayout.register();
 
-    it('is found by registered name and by class name', () => {
+    it('is found by registered name and not by class name', () => {
       assert.strictEqual(OcflStorageLayout.class('9999-prefix-layout'), PrefixLayout);
-      assert.strictEqual(OcflStorageLayout.class('PrefixLayout'), PrefixLayout);
+      assert.strictEqual(OcflStorageLayout.class('PrefixLayout'), undefined);
       assert.ok(OcflStorageLayout.classes.some((c) => c.NAME === '9999-prefix-layout'));
       assert.ok(OcflExtension.classes.some((c) => c.NAME === '9999-prefix-layout'));
     });

@@ -1,9 +1,9 @@
 import { OcflConstants } from './constants.ts';
-import { createByName, OcflStorageLayout } from './extension.ts';
+import { createLayout, type OcflStorageLayout } from './extension.ts';
 import * as extensions from './extensions/index.ts';
 import { OcflObject } from './object.ts';
 import { OcflStorage } from './storage.ts';
-import type { OcflExtensionConfig, OcflObjectConfig, OcflStorageConfig } from './types.ts';
+import type { OcflLayoutConfig, OcflLayoutName, OcflObjectConfig, OcflStorageConfig } from './types.ts';
 
 export type { OcflErrorCode } from './error.ts';
 export { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
@@ -22,19 +22,12 @@ export { extensions };
 export const OCFL_VERSIONS = OcflConstants.OCFL_VERSIONS;
 
 /**
- * Instantiate a storage layout from extension name or config
- * @param config - Layout name or config
+ * Instantiate a storage layout from its official extension name or a config object
+ * @param config - Official extension name or `{ extensionName, ...params }`
+ * @throws {OcflError} `UNSUPPORTED_LAYOUT` if anything else is given
  */
-export function storageLayout(config: string | OcflExtensionConfig): OcflStorageLayout {
-  let name: string | undefined;
-  let c: OcflExtensionConfig | undefined;
-  if (typeof config === 'string') {
-    name = config;
-  } else {
-    name = config.extensionName;
-    c = config;
-  }
-  return createByName<OcflStorageLayout>(OcflStorageLayout, 'Layout', name, c);
+export function storageLayout(config: OcflLayoutName | OcflLayoutConfig): OcflStorageLayout {
+  return createLayout(config);
 }
 
 /**

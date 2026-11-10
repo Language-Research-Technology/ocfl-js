@@ -4,7 +4,7 @@ import path from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import { ObjectNotFoundError, OcflError } from './error.ts';
-import { createByName, differingParameters, OcflStorageLayout } from './extension.ts';
+import { createLayout, differingParameters, OcflStorageLayout } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { OcflObject } from './object.ts';
 import * as store from './store.ts';
@@ -47,8 +47,8 @@ class OcflStorage {
     if (this.#workspace?.startsWith(this.#root + path.sep) && !this.#workspace.startsWith(`${this.#root + path.sep}extensions${path.sep}`)) {
       throw new Error('[OcflStorage] config.workspace cannot be the same as or a subpath of config.root');
     }
-    if (layout) {
-      this.#configuredLayout = layout instanceof OcflStorageLayout ? layout : this.#createLayout(layout);
+    if (layout !== undefined && layout !== null) {
+      this.#configuredLayout = createLayout(layout);
       this.#layout = this.#configuredLayout;
     }
     if (ocflVersion) {
@@ -56,17 +56,6 @@ class OcflStorage {
     }
     this.#configuredOcflVersion = ocflVersion;
     this.#objectConfig = objectConfig;
-  }
-
-  #createLayout(option: OcflExtensionConfig | string) {
-    const name = typeof option === 'string' ? option : option.extensionName;
-    const config = typeof option === 'object' ? option : undefined;
-    if (name) {
-      return createByName<OcflStorageLayout>(OcflStorageLayout, 'Layout', name, config);
-    }
-    // else if (useDefault) {
-    //   return DEFAULT_LAYOUT.create(config);
-    // }
   }
 
   #resolveLayout(declaredName: string | undefined, rootLayoutConfig: OcflExtensionConfig | undefined) {

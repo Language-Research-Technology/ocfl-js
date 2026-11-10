@@ -1,11 +1,9 @@
 import { isDeepStrictEqual } from 'node:util';
-import { NotImplementedError } from './error.ts';
+import { NotImplementedError, OcflError } from './error.ts';
 import type { OcflExtensionConfig } from './types.ts';
 
 /** Index by Registered extension name */
 const extensionByName: { [name: string]: typeof OcflExtension } = {};
-/** Index by extension class name */
-const extensionByClassName: { [name: string]: typeof OcflExtension } = {};
 
 const storageLayout: { [className: string]: typeof OcflStorageLayout } = {};
 
@@ -21,11 +19,11 @@ class OcflExtension<C extends object = object> {
 
   /**
    * Find a registered extension with the specified name
-   * @param name - extension class name or registered extension name
+   * @param name - registered extension name
    * @returns the extension class
    */
   static class(name: string): typeof OcflExtension | undefined {
-    return extensionByName[name] || extensionByClassName[name];
+    return extensionByName[name];
   }
 
   /**
@@ -35,7 +33,6 @@ class OcflExtension<C extends object = object> {
   static register(extensionClass: typeof OcflExtension = this) {
     const name = extensionClass.NAME;
     extensionByName[name] = extensionClass;
-    extensionByClassName[extensionClass.name] = extensionClass;
     import('./index.ts').then((ocfl) => extensionClass.setup(ocfl));
   }
 
@@ -48,7 +45,11 @@ class OcflExtension<C extends object = object> {
     if (!name || (this as unknown as typeof OcflExtension).NAME === name) {
       return new this(config);
     }
-    return createByName(OcflExtension, 'Extension', name, config) as T;
+    const extensionClass = OcflExtension.class(name);
+    if (!extensionClass) {
+      throw new Error(`Extension "${name}" is not supported.`);
+    }
+    return extensionClass.create(config) as T;
   }
 
   static get NAME() {
@@ -145,20 +146,17 @@ class OcflStorageLayout<C extends object = object> extends OcflExtension<C> {
   }
 }
 
-type ExtensionRegistry<T> = { class(name: string): { create(config?: OcflExtensionConfig): T } | undefined };
-
-/** Create an instance of the extension registered as `name`, or throw if `registry` has none */
-function createByName<T extends OcflExtension>(
-  registry: ExtensionRegistry<T>,
-  kind: 'Extension' | 'Layout',
-  name: string | undefined,
-  config?: OcflExtensionConfig,
-): T {
-  const cls = name ? registry.class(name) : undefined;
-  if (!cls) {
-    throw new Error(`${kind} "${name}" is not supported.`);
+/** Create the layout chosen by an official extension name or `{ extensionName, ...params }` */
+function createLayout(selection: string | OcflExtensionConfig): OcflStorageLayout {
+  const name = typeof selection === 'string' ? selection : selection?.extensionName;
+  if (typeof name !== 'string') {
+    throw new OcflError('UNSUPPORTED_LAYOUT', 'A layout must be an official extension name or a config object with an extensionName.');
   }
-  return cls.create(config);
+  const layoutClass = OcflStorageLayout.class(name);
+  if (!layoutClass) {
+    throw new OcflError('UNSUPPORTED_LAYOUT', `Layout "${name}" is not supported.`);
+  }
+  return layoutClass.create(typeof selection === 'string' ? undefined : selection);
 }
 
 /** Parameter values as config.json stores them, which can't represent a RegExp */
@@ -176,4 +174,4 @@ function differingParameters(extension: OcflExtension, reference: OcflExtension)
   return names;
 }
 
-export { createByName, differingParameters, OcflExtension, OcflStorageLayout };
+export { createLayout, differingParameters, OcflExtension, OcflStorageLayout };

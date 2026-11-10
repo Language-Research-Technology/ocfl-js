@@ -105,7 +105,7 @@ try {
 | `UPDATE_IN_PROGRESS`          | An update finds uncommitted changes, because another process is updating the object or an earlier update failed              |
 | `DIRECTORY_NOT_EMPTY`         | An object or storage root is created in a non-empty directory                                                                |
 | `ID_INCOMPATIBLE_WITH_LAYOUT` | The storage layout can't map the object id                                                                                   |
-| `UNSUPPORTED_LAYOUT`          | A storage root's `ocfl_layout.json` names a layout this library doesn't support, and no layout is configured                 |
+| `UNSUPPORTED_LAYOUT`          | `layout` isn't a supported name or config, or a root's `ocfl_layout.json` names an unsupported layout with none configured   |
 | `LAYOUT_MISMATCH`             | A configured layout's name or parameters differ from the layout the storage root declares                                    |
 | `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`                                                 |
 | `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain               |
@@ -113,7 +113,7 @@ try {
 | `NOT_AN_OBJECT`               | `storage.remove()` finds something with no OCFL object declaration at the object's path, and deletes nothing                 |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                |
 
-Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`. That includes an unsupported layout named in your own config.
+Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`.
 
 When `object.import()` fails for one or more sources, it throws an `AggregateError`. Its `errors` holds the error for each failed source, with its `code` where it has one. A failed directory source is itself an `AggregateError` of the errors for its files.
 
@@ -287,6 +287,7 @@ Each public member now corresponds to something the OCFL specification or the li
 | `OcflStorage.purge(id)`                                                                                  | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                        |
 | `OcflStorageImpl`                                                                                        | `OcflStorage`, from `storage()`, `createStorage()` or `loadStorage()`                                                      |
 | `OcflObjectTransactionImpl`                                                                              | `OcflObjectTransaction`, from `object.update()`                                                                            |
+| A class name or layout object as `layout` or in `storageLayout()`                                        | The official extension name or `{ extensionName, ...params }`; see [Choosing a layout](#choosing-a-layout)                 |
 | Constructing, subclassing or `instanceof` on the public classes                                          | The functions that return them, and the classes as types; see [Public classes are types](#public-classes-are-types)        |
 | `OcflDigest.digest()`, `digestSync()`, `createStream()`, `createStreamThrough()`, `getHexDigestLength()` | `createHash()` from `node:crypto`, or `crc32()` from `node:zlib`                                                           |
 | `OcflDigest.initSync()`                                                                                  | Nothing: the built-in digest algorithms need no initialisation                                                             |
@@ -450,7 +451,34 @@ import { extensions } from '@ocfl/ocfl-fs';
 class MyLayout extends extensions.HashedNTupleStorageLayout {}
 ```
 
-`extensions` holds only the built-in layouts. `StorageLayout` also listed any custom layout you had registered: to find one of those, call `OcflStorageLayout.class(name)`, or use `OcflStorageLayout.classes` to list them all. Choosing a layout by class name or registered name in the storage config works as before.
+`extensions` holds only the built-in layouts. `StorageLayout` also listed any custom layout you had registered: to find one of those, call `OcflStorageLayout.class(name)`, or use `OcflStorageLayout.classes` to list them all.
+
+### Choosing a layout
+
+The `layout` option and `storageLayout()` accept an official extension name, or `{ extensionName, ...params }` to set a layout's parameters. Anything else, including a class name, a layout object, or a config object with no `extensionName`, throws an `OcflError` with code `UNSUPPORTED_LAYOUT`, and TypeScript rejects it. Previously a config object with no `extensionName` silently left the storage root with no layout.
+
+Replace each class name with its official name:
+
+| Class name                     | Official name                               |
+| ------------------------------ | ------------------------------------------- |
+| `PathDirectStorageLayout`      | `'000N-path-direct-storage-layout'`         |
+| `FlatDirectStorageLayout`      | `'0002-flat-direct-storage-layout'`         |
+| `HashAndIdNTupleStorageLayout` | `'0003-hash-and-id-n-tuple-storage-layout'` |
+| `HashedNTupleStorageLayout`    | `'0004-hashed-n-tuple-storage-layout'`      |
+
+```diff
+- ocfl.storage({ root, layout: 'HashedNTupleStorageLayout' });
++ ocfl.storage({ root, layout: '0004-hashed-n-tuple-storage-layout' });
+```
+
+If you passed a layout object, pass its name and parameters instead. Those were previously the constructor's arguments:
+
+```diff
+- ocfl.storage({ root, layout: new ocfl.extensions.PathDirectStorageLayout({ omitScheme: true }) });
++ ocfl.storage({ root, layout: { extensionName: '000N-path-direct-storage-layout', omitScheme: true } });
+```
+
+The names are typed as `OcflLayoutName`, so a value typed `string` no longer compiles: type it as `OcflLayoutName`, or a config object as `OcflLayoutConfig`.
 
 ### Public classes are types
 
@@ -479,4 +507,4 @@ class MyLayout extends extensions.HashedNTupleStorageLayout {}
 - When a storage root's layout extension `config.json` has no `extensionName`, the layout named in `ocfl_layout.json` is used. Previously the storage loaded with no layout.
 - Once an existing object's root inventory has been read, by `load()`, `refresh()`, `update()` or any other method that reads it, `object.ocflVersion` is the version that object declares. It used to report the configured version or the library default, so a 1.0 object in a 1.1 storage root reported 1.1. A configured version only applies when an object is created, and one that differs from an existing object is ignored without an error.
 - Once an existing object's root inventory has been read, `object.digestAlgorithm` and `object.contentDirectory` are the values in that inventory. They used to report the configured values or the library defaults, so a `sha256` object with content directory `data`, loaded with default config, reported `sha512` and `content`. Until the inventory has been read, and for an object that doesn't exist yet, they still report the configured value or default. As with `ocflVersion`, the configured values only apply when an object is created.
-- `load()` keeps a layout passed in the storage config, instead of always replacing it with the root's. The configured layout is used when the root has no `ocfl_layout.json` or names a layout this library doesn't implement, so a custom `OcflStorageLayout` can read such a root. If the root names a supported layout with a different name or parameters, `load()` throws `LAYOUT_MISMATCH`. If the file exists but has no readable `extension`, the configured layout can't be checked, so `load()` throws `E070`.
+- `load()` keeps a layout passed in the storage config, instead of always replacing it with the root's. The configured layout is used when the root has no `ocfl_layout.json` or names a layout this library doesn't implement. If the root names a supported layout with a different name or parameters, `load()` throws `LAYOUT_MISMATCH`. If the file exists but has no readable `extension`, the configured layout can't be checked, so `load()` throws `E070`.
