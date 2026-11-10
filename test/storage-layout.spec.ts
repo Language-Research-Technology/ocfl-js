@@ -98,11 +98,6 @@ describe('choosing a built-in layout', () => {
       assert.match(description, /^OCFL object identifiers are /);
     }
   });
-
-  it('leaves a storage without a layout when the option is null', () => {
-    const storage = ocfl.storage({ root: path.join(dir, 'root'), layout: null as never });
-    assert.throws(() => storage.objectRoot('abc'), /No layout defined/);
-  });
 });
 
 describe('choosing a layout that is not supported', () => {
@@ -141,6 +136,10 @@ describe('choosing a layout that is not supported', () => {
 
     it(`rejects an empty name through ${entryPoint}`, () => {
       assert.throws(() => choose('' as never), ocflError('UNSUPPORTED_LAYOUT'));
+    });
+
+    it(`rejects null through ${entryPoint}`, () => {
+      assert.throws(() => choose(null as never), ocflError('UNSUPPORTED_LAYOUT'));
     });
   }
 });

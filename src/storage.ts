@@ -48,7 +48,7 @@ class OcflStorage {
     if (this.#workspace?.startsWith(this.#root + path.sep) && !this.#workspace.startsWith(`${this.#root + path.sep}extensions${path.sep}`)) {
       throw new Error('[OcflStorage] config.workspace cannot be the same as or a subpath of config.root');
     }
-    if (layout !== undefined && layout !== null) {
+    if (layout !== undefined) {
       this.#configuredLayout = createLayout(layout);
       this.#layout = this.#configuredLayout;
     }
