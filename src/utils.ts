@@ -46,15 +46,15 @@ async function parallelize<T, R>(inputStack: T[], asyncFn: (input: T) => Promise
 }
 
 async function isDirEmpty(dirPath: string): Promise<boolean> {
-  let de: unknown;
+  let dir: fs.Dir | undefined;
   try {
-    const dir = await fs.promises.opendir(dirPath);
-    de = await dir.read();
-    await dir.close();
+    dir = await fs.promises.opendir(dirPath);
+    return !(await dir.read());
   } catch (error) {
     return isNotFound(error);
+  } finally {
+    await dir?.close().catch(() => {});
   }
-  return !de;
 }
 
 /**
