@@ -1,8 +1,6 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { extensions } from '../../src/index.ts';
-
-const { HashAndIdNTupleStorageLayout, HashedNTupleStorageLayout } = extensions;
+import { storageLayout } from '../../src/index.ts';
 
 const DIGESTS_OF_OBJECT_01 = {
   md5: 'ff75534492485eabb39f86356728884e',
@@ -20,11 +18,11 @@ describe('hashed storage layouts without a loaded storage', () => {
     const config = { digestAlgorithm, tupleSize: digest.length, numberOfTuples: 1 };
 
     it(`0003 maps an id with ${digestAlgorithm}`, () => {
-      assert.strictEqual(new HashAndIdNTupleStorageLayout(config).map('object-01'), `${digest}/object-01`);
+      assert.strictEqual(storageLayout({ extensionName: '0003-hash-and-id-n-tuple-storage-layout', ...config }).map('object-01'), `${digest}/object-01`);
     });
 
     it(`0004 maps an id with ${digestAlgorithm}`, () => {
-      assert.strictEqual(new HashedNTupleStorageLayout(config).map('object-01'), `${digest}/${digest}`);
+      assert.strictEqual(storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', ...config }).map('object-01'), `${digest}/${digest}`);
     });
   }
 });

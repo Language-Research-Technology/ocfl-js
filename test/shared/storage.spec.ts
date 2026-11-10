@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import ocfl, { type OcflError, type OcflLayoutConfig, type OcflStorage, type OcflStorageConfig, OcflStorageLayout, type OcflVersion } from '../../src/index.ts';
+import ocfl, { type OcflError, type OcflLayoutConfig, type OcflStorage, type OcflStorageConfig, type OcflVersion } from '../../src/index.ts';
 import { DIGESTS_OF_ABC } from './digests-of-abc.ts';
 
 describe('constructor', () => {
@@ -21,30 +21,6 @@ describe('constructor', () => {
     assert.throws(() => {
       storage = ocfl.storage({ root: '/data/storage-1', workspace: '/data/storage-1/temp' });
     });
-  });
-});
-describe('layout classes', () => {
-  const LAYOUTS = {
-    PathDirectStorageLayout: '000N-path-direct-storage-layout',
-    FlatDirectStorageLayout: '0002-flat-direct-storage-layout',
-    HashAndIdNTupleStorageLayout: '0003-hash-and-id-n-tuple-storage-layout',
-    HashedNTupleStorageLayout: '0004-hashed-n-tuple-storage-layout',
-  };
-
-  it('exposes the built-in layouts as extensions', () => {
-    assert.deepStrictEqual(Object.keys(ocfl.extensions).sort(), Object.keys(LAYOUTS).sort());
-    for (const [className, registeredName] of Object.entries(LAYOUTS)) {
-      const layout = ocfl.extensions[className as keyof typeof ocfl.extensions];
-      assert.ok(layout.prototype instanceof OcflStorageLayout);
-      assert.strictEqual(layout.NAME, registeredName);
-    }
-  });
-
-  it('lists the built-in layouts in OcflStorageLayout.classes', () => {
-    const classes: unknown[] = OcflStorageLayout.classes;
-    for (const layout of Object.values(ocfl.extensions)) {
-      assert.ok(classes.includes(layout));
-    }
   });
 });
 describe('access existing storage', () => {
@@ -273,7 +249,7 @@ describe('configured layout of a loaded storage root', () => {
     assert.throws(() => storage.objectRoot('abc'), /No layout defined/);
   });
 
-  for (const extension of ['0006-flat-omit-prefix-storage-layout', '0007-n-tuple-omit-prefix-storage-layout', '9999-unimplemented-layout']) {
+  for (const extension of ['0006-flat-omit-prefix-storage-layout', '0007-n-tuple-omit-prefix-storage-layout', '9999-unimplemented-layout', 'constructor']) {
     it(`rejects a root declaring ${extension} with no layout configured`, async () => {
       const root = await createRoot({ layoutFile: declaring(extension) });
       await assert.rejects(ocfl.storage({ root }).load(), { code: 'UNSUPPORTED_LAYOUT', message: new RegExp(extension) });
@@ -297,6 +273,16 @@ describe('configured layout of a loaded storage root', () => {
       await assert.rejects(ocfl.storage({ root }).load(), { code: 'UNSUPPORTED_LAYOUT', message: new RegExp(extension) });
     });
   }
+
+  it('rejects a root whose ocfl_layout.json extension is a non-string holding a supported name', async () => {
+    const root = await createRoot({ layoutFile: JSON.stringify({ extension: ['0002-flat-direct-storage-layout'] }) });
+    await assert.rejects(ocfl.storage({ root }).load(), { code: 'UNSUPPORTED_LAYOUT' });
+  });
+
+  it('rejects a root whose extension config extensionName is a non-string holding a supported name', async () => {
+    const root = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: ['0002-flat-direct-storage-layout'] } });
+    await assert.rejects(ocfl.storage({ root }).load(), { code: 'UNSUPPORTED_LAYOUT' });
+  });
 
   it('rejects a configured layout that differs from the supported layout the root declares, naming both', async () => {
     const root = await createRoot({ layoutFile: declaring(HASHED) });
@@ -353,29 +339,6 @@ describe('configured layout of a loaded storage root', () => {
 
     const otherName = await createRoot({ layoutFile: declaring(HASHED), extensionConfig: { extensionName: '0002-flat-direct-storage-layout' } });
     await ocfl.storage({ root: otherName, layout: HASHED }).load();
-  });
-
-  it('creates and reopens a root using a registered custom layout', async () => {
-    class RegisteredUppercaseLayout extends OcflStorageLayout {
-      static get NAME() {
-        return '9999-registered-uppercase-layout';
-      }
-      map(id: string) {
-        return id.toUpperCase();
-      }
-    }
-    RegisteredUppercaseLayout.register();
-    const root = path.join(tempdir, `root-${rootCount++}`);
-    const created = await ocfl.createStorage({ root, layout: '9999-registered-uppercase-layout' as never });
-    await created.object('abc').update(async (t) => {
-      await t.write('a.txt', 'content');
-    });
-
-    const reopened = await ocfl.storage({ root }).load();
-    const object = reopened.object('abc');
-    assert.strictEqual(object.root, path.join(root, 'ABC'));
-    await object.load();
-    assert.strictEqual(await object.getFile('a.txt')?.text(), 'content');
   });
 
   it('loads a root with the configured RegExp parameter that created it', async () => {

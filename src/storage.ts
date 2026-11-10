@@ -4,8 +4,9 @@ import path from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import { ObjectNotFoundError, OcflError } from './error.ts';
-import { createLayout, differingParameters, OcflStorageLayout } from './extension.ts';
+import { type BuiltInLayout, differingParameters } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
+import { createLayout, supportedLayoutClass } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
 import * as store from './store.ts';
 import { findNamasteVersion, isDirEmpty } from './utils.ts';
@@ -24,14 +25,6 @@ async function readSpecText(ocflVersion: OcflVersion) {
   return { file, content: await fs.promises.readFile(new URL(`../resources/${file}`, import.meta.url)) };
 }
 
-function supportedLayoutClass(name: string) {
-  const layoutClass = OcflStorageLayout.class(name);
-  if (!layoutClass) {
-    throw new OcflError('UNSUPPORTED_LAYOUT', `Layout "${name}" is not supported.`);
-  }
-  return layoutClass;
-}
-
 /**
  * An abstraction to represent the OCFL Storage Root, which is
  * a base directory used to store OCFL Objects, identified by a [NAMASTE] file “0=ocfl_1.1”.
@@ -40,8 +33,8 @@ class OcflStorage {
   ocflVersion: OcflVersion = OCFL_VERSION;
   #root: string;
   #workspace: string;
-  #layout: OcflStorageLayout | undefined;
-  #configuredLayout: OcflStorageLayout | undefined;
+  #layout: BuiltInLayout | undefined;
+  #configuredLayout: BuiltInLayout | undefined;
   #objectConfig: Omit<OcflObjectConfig, 'root' | 'workspace' | 'id' | 'ocflVersion'>;
   #configuredOcflVersion: OcflVersion | undefined;
 
@@ -72,11 +65,12 @@ class OcflStorage {
       return configured;
     }
     supportedLayoutClass(declaredName);
-    const rootLayoutClass = supportedLayoutClass(configured ? declaredName : (rootLayoutConfig?.extensionName ?? declaredName));
-    if (configured && configured.name !== rootLayoutClass.NAME) {
-      throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's layout "${rootLayoutClass.NAME}".`);
+    const rootName = configured ? declaredName : (rootLayoutConfig?.extensionName ?? declaredName);
+    const rootLayoutClass = supportedLayoutClass(rootName);
+    if (configured && configured.name !== rootName) {
+      throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's layout "${rootName}".`);
     }
-    const rootLayout = rootLayoutClass.create({ ...rootLayoutConfig, extensionName: rootLayoutClass.NAME });
+    const rootLayout = new rootLayoutClass({ ...rootLayoutConfig, extensionName: rootName });
     if (!configured) {
       return rootLayout;
     }

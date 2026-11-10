@@ -1947,6 +1947,3 @@ describe('spec violations', () => {
     await fs.promises.rm(tempdir, { recursive: true, force: true });
   });
 });
-
-//ocfl.OcflExtension.register(require('ocfl-extensions'));
-//import d from 'ocfl-extension-dummy';

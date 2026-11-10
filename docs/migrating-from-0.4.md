@@ -6,7 +6,7 @@ This release converts `@ocfl/ocfl-fs` to TypeScript, ships it as an ES module wi
 
 `@ocfl/ocfl-fs` is now the only package you need, and every value and type `@ocfl/ocfl` exported is now exported by `@ocfl/ocfl-fs`.
 
-You must remove `@ocfl/ocfl` from your dependencies. `@ocfl/ocfl-fs` no longer depends on it, so keeping it installs a second, separate copy of the library, and nothing warns you. Classes from the two copies are different: `instanceof OcflError` is false for an error thrown by `@ocfl/ocfl-fs` if `OcflError` came from `@ocfl/ocfl`, and a layout registered on the `@ocfl/ocfl` classes can't be found by `@ocfl/ocfl-fs`.
+You must remove `@ocfl/ocfl` from your dependencies. `@ocfl/ocfl-fs` no longer depends on it, so keeping it installs a second, separate copy of the library, and nothing warns you. Classes from the two copies are different: `instanceof OcflError` is false for an error thrown by `@ocfl/ocfl-fs` if `OcflError` came from `@ocfl/ocfl`.
 
 After removing it, change the package name in your imports:
 
@@ -34,7 +34,7 @@ The package is ESM-only and publishes compiled code from `dist/`.
 
   ```diff
   - import ocfl from '@ocfl/ocfl';
-  + import { OcflStorageLayout, storage } from '@ocfl/ocfl-fs';
+  + import { object, storage } from '@ocfl/ocfl-fs';
   + // or
   + import * as ocfl from '@ocfl/ocfl-fs';
   ```
@@ -148,7 +148,7 @@ The library reads and writes OCFL objects and storage roots, but it isn't a vali
 These stub methods have been removed:
 
 - `OcflObject.validate()` and `OcflObject.verify()`, which only ever threw `Not Implemented`
-- `OcflStorageLayout.validate()`, which did nothing. Custom layouts that override it or call `super.validate()` should drop that code.
+- `OcflStorageLayout.validate()`, which did nothing
 
 To check an object or storage root against the spec, use a dedicated OCFL validator.
 
@@ -275,59 +275,69 @@ Renaming or removing a file from an earlier version still changes only the logic
 
 Each public member now corresponds to something the OCFL specification or the library's role as an OCFL client calls for, with one name per operation.
 
-| Removed                                                                                                  | Use instead                                                                                                                |
-| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `OcflObject.add()`                                                                                       | `import()`                                                                                                                 |
-| `OcflObjectTransaction.move()`                                                                           | `rename()`                                                                                                                 |
-| `OcflObjectTransaction.delete()`                                                                         | `remove()`                                                                                                                 |
-| `OcflStorage.objects()`                                                                                  | `for await (const object of storage)`                                                                                      |
-| `OcflStorage.objectRootAbs(id)`                                                                          | `storage.object(id).root`                                                                                                  |
-| `OcflExtension.p`                                                                                        | `parameters`                                                                                                               |
-| `OcflStorage.delete(id)`                                                                                 | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                        |
-| `OcflStorage.purge(id)`                                                                                  | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                        |
-| `OcflStorageImpl`                                                                                        | `OcflStorage`, from `storage()`, `createStorage()` or `loadStorage()`                                                      |
-| `OcflObjectTransactionImpl`                                                                              | `OcflObjectTransaction`, from `object.update()`                                                                            |
-| A class name or layout object as `layout` or in `storageLayout()`                                        | The official extension name or `{ extensionName, ...params }`; see [Choosing a layout](#choosing-a-layout)                 |
-| Constructing, subclassing or `instanceof` on the public classes                                          | The functions that return them, and the classes as types; see [Public classes are types](#public-classes-are-types)        |
-| `OcflDigest.digest()`, `digestSync()`, `createStream()`, `createStreamThrough()`, `getHexDigestLength()` | `createHash()` from `node:crypto`, or `crc32()` from `node:zlib`                                                           |
-| `OcflDigest.initSync()`                                                                                  | Nothing: the built-in digest algorithms need no initialisation                                                             |
-| `OcflDigest.CONTENT`                                                                                     | The values `'sha256'` and `'sha512'`                                                                                       |
-| `OcflDigest.registerHasherFactory()`                                                                     | Nothing: digest algorithms are a fixed set; to add one, send a pull request to this library                                |
-| `OcflDigest.hasAlgorithm()`                                                                              | Nothing: the supported algorithms are listed in [Option values](#option-values-are-matched-exactly)                        |
-| `OcflDigest`                                                                                             | Nothing: all its members have gone; see the rows above                                                                     |
-| The `CommonHasher` and `IDataType` types                                                                 | Nothing: they only described hashers passed to `registerHasherFactory()`                                                   |
-| `OcflObject.fileByLogicalPath(path, version)`                                                            | `await object.load()` once, then `object.getFile(path, version)`                                                           |
-| `OcflObject.fileByDigest(digest, version)`                                                               | `await object.load()` once, then `object.getFile({ digest, version })`                                                     |
-| `OcflObject.fileByContentPath(path, version)`                                                            | `await object.load()` once, then `object.getFile({ contentPath: path, version })`                                          |
-| `OcflExtension.object()`, `OcflExtension.storage()`                                                      | `OcflExtension.class()`                                                                                                    |
-| `OcflExtension.forObject`, `OcflExtension.forStorage`, `OcflStorageLayout.forStorage`                    | `OcflStorageLayout.class(name)`, which finds only layouts                                                                  |
-| `OcflExtension.minOcflVersion`                                                                           | Nothing: the library never read it, so drop any override                                                                   |
-| `OcflObjectConfig.extensions`                                                                            | Nothing: the library never read it, so drop the option                                                                     |
-| The `OcflObject.digestAlgorithm` setter                                                                  | `digestAlgorithm` in the config of a new object                                                                            |
-| Assigning to `OcflObject.contentDirectory`                                                               | `contentDirectory` in the config of a new object                                                                           |
-| `OcflObjectTransaction.purge()`                                                                          | A new object without the file; see [Removing a file from all versions](#removing-a-file-from-all-versions)                 |
-| `remove(path, { purge: true })`                                                                          | A new object without the file; see [Removing a file from all versions](#removing-a-file-from-all-versions)                 |
-| `RemoveOptions`                                                                                          | Nothing: `remove()` takes only a logical path                                                                              |
-| `CommitOptions.force`                                                                                    | Nothing: a commit with no changes rolls back                                                                               |
-| `OcflObjectInventory.newVersion()`                                                                       | `object.update()`, which creates each new version                                                                          |
-| `inventory.isChanged`                                                                                    | `inventory.diffState(version0, version1)`; see [Read-only inventories](#read-only-inventories)                             |
-| `inventory.clone()`                                                                                      | `inventory.toJSON()`, which gives a plain copy of the inventory data                                                       |
-| The `inventory.created`, `message` and `user` setters                                                    | `transaction.commit({ message, user })`; `created` is set when a version is committed                                      |
-| The `inventory.fixity` setter                                                                            | The `fixityAlgorithms` option of an object or storage                                                                      |
-| The `OcflObjectInventoryMut` type                                                                        | `OcflObjectInventory`                                                                                                      |
-| `OcflObject.export()`                                                                                    | `object.files(version)` and `file.stream()`; see [Writing a version out](#writing-a-version-out)                           |
-| `extensions.DigestAlgorithm`                                                                             | Nothing to replace: to add an algorithm from extension 0009, send a pull request to this library                           |
-| `ocfl.StorageLayout`, and the `StorageLayout` export of `@ocfl/ocfl-fs`                                  | `extensions`, on the default API and as a named export of `@ocfl/ocfl-fs`; see [Layout classes](#layout-classes)           |
-| The `StorageLayout` type                                                                                 | `typeof extensions`, or `extensions.PathDirectStorageLayout` and the other classes as types                                |
-| `OcflStorageLayout.layout`                                                                               | `extensions`, or `OcflStorageLayout.class(name)` to find a registered custom layout; see [Layout classes](#layout-classes) |
-| `OcflConstants`                                                                                          | `OCFL_VERSIONS`, on the default API and as a named export of `@ocfl/ocfl-fs`. The other values were internal               |
-| The `MultiHasher` type                                                                                   | Nothing: no public signature used it                                                                                       |
-| `OcflStore`, including `createReadStream()` and `createWriteStream()`                                    | Nothing: the library always uses `node:fs`; see [Filesystem only](#filesystem-only)                                        |
-| `OcflFsStore`                                                                                            | Nothing: `storage()`, `object()`, `createStorage()` and `loadStorage()` use the filesystem directly                        |
-| `OcflFsStoreConfig`                                                                                      | Nothing: the only option was `fs`; see [Filesystem only](#filesystem-only)                                                 |
-| `implementOcfl`                                                                                          | `storage()`, `object()`, `createStorage()`, `loadStorage()`, `storageLayout()`, `OCFL_VERSIONS` and `extensions`           |
-| The `ListedFile` and `ListOptions` types                                                                 | Nothing: they only described `OcflStore.list()`                                                                            |
-| The second argument to `storage()`, `object()`, `createStorage()` and `loadStorage()`                    | Nothing: put the data in a real directory; see [Filesystem only](#filesystem-only)                                         |
+| Removed                                                                                                  | Use instead                                                                                                         |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `OcflObject.add()`                                                                                       | `import()`                                                                                                          |
+| `OcflObjectTransaction.move()`                                                                           | `rename()`                                                                                                          |
+| `OcflObjectTransaction.delete()`                                                                         | `remove()`                                                                                                          |
+| `OcflStorage.objects()`                                                                                  | `for await (const object of storage)`                                                                               |
+| `OcflStorage.objectRootAbs(id)`                                                                          | `storage.object(id).root`                                                                                           |
+| `OcflExtension.p`                                                                                        | `get(name)` on the layout from `storageLayout()`                                                                    |
+| `OcflStorage.delete(id)`                                                                                 | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                 |
+| `OcflStorage.purge(id)`                                                                                  | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                 |
+| `OcflStorageImpl`                                                                                        | `OcflStorage`, from `storage()`, `createStorage()` or `loadStorage()`                                               |
+| `OcflObjectTransactionImpl`                                                                              | `OcflObjectTransaction`, from `object.update()`                                                                     |
+| A class name or layout object as `layout` or in `storageLayout()`                                        | The official extension name or `{ extensionName, ...params }`; see [Choosing a layout](#choosing-a-layout)          |
+| Constructing, subclassing or `instanceof` on the public classes                                          | The functions that return them, and the classes as types; see [Public classes are types](#public-classes-are-types) |
+| `OcflDigest.digest()`, `digestSync()`, `createStream()`, `createStreamThrough()`, `getHexDigestLength()` | `createHash()` from `node:crypto`, or `crc32()` from `node:zlib`                                                    |
+| `OcflDigest.initSync()`                                                                                  | Nothing: the built-in digest algorithms need no initialisation                                                      |
+| `OcflDigest.CONTENT`                                                                                     | The values `'sha256'` and `'sha512'`                                                                                |
+| `OcflDigest.registerHasherFactory()`                                                                     | Nothing: digest algorithms are a fixed set; to add one, send a pull request to this library                         |
+| `OcflDigest.hasAlgorithm()`                                                                              | Nothing: the supported algorithms are listed in [Option values](#option-values-are-matched-exactly)                 |
+| `OcflDigest`                                                                                             | Nothing: all its members have gone; see the rows above                                                              |
+| The `CommonHasher` and `IDataType` types                                                                 | Nothing: they only described hashers passed to `registerHasherFactory()`                                            |
+| `OcflObject.fileByLogicalPath(path, version)`                                                            | `await object.load()` once, then `object.getFile(path, version)`                                                    |
+| `OcflObject.fileByDigest(digest, version)`                                                               | `await object.load()` once, then `object.getFile({ digest, version })`                                              |
+| `OcflObject.fileByContentPath(path, version)`                                                            | `await object.load()` once, then `object.getFile({ contentPath: path, version })`                                   |
+| `OcflExtension.object()`, `OcflExtension.storage()`                                                      | `storageLayout(name)`; see [Layout classes](#layout-classes)                                                        |
+| `OcflExtension.forObject`, `OcflExtension.forStorage`, `OcflStorageLayout.forStorage`                    | `storageLayout(name)`; see [Layout classes](#layout-classes)                                                        |
+| `OcflExtension.minOcflVersion`                                                                           | Nothing: the library never read it                                                                                  |
+| `OcflObjectConfig.extensions`                                                                            | Nothing: the library never read it, so drop the option                                                              |
+| The `OcflObject.digestAlgorithm` setter                                                                  | `digestAlgorithm` in the config of a new object                                                                     |
+| Assigning to `OcflObject.contentDirectory`                                                               | `contentDirectory` in the config of a new object                                                                    |
+| `OcflObjectTransaction.purge()`                                                                          | A new object without the file; see [Removing a file from all versions](#removing-a-file-from-all-versions)          |
+| `remove(path, { purge: true })`                                                                          | A new object without the file; see [Removing a file from all versions](#removing-a-file-from-all-versions)          |
+| `RemoveOptions`                                                                                          | Nothing: `remove()` takes only a logical path                                                                       |
+| `CommitOptions.force`                                                                                    | Nothing: a commit with no changes rolls back                                                                        |
+| `OcflObjectInventory.newVersion()`                                                                       | `object.update()`, which creates each new version                                                                   |
+| `inventory.isChanged`                                                                                    | `inventory.diffState(version0, version1)`; see [Read-only inventories](#read-only-inventories)                      |
+| `inventory.clone()`                                                                                      | `inventory.toJSON()`, which gives a plain copy of the inventory data                                                |
+| The `inventory.created`, `message` and `user` setters                                                    | `transaction.commit({ message, user })`; `created` is set when a version is committed                               |
+| The `inventory.fixity` setter                                                                            | The `fixityAlgorithms` option of an object or storage                                                               |
+| The `OcflObjectInventoryMut` type                                                                        | `OcflObjectInventory`                                                                                               |
+| `OcflObject.export()`                                                                                    | `object.files(version)` and `file.stream()`; see [Writing a version out](#writing-a-version-out)                    |
+| `extensions.DigestAlgorithm`                                                                             | Nothing to replace: to add an algorithm from extension 0009, send a pull request to this library                    |
+| The `extensions` namespace, named and on the default export                                              | `storageLayout()`; see [Layout classes](#layout-classes)                                                            |
+| `new extensions.HashedNTupleStorageLayout()` and the other layout classes                                | `storageLayout(name)` or `storageLayout({ extensionName, ...params })`; see [Layout classes](#layout-classes)       |
+| `OcflExtension`, as a value and as a type                                                                | Nothing: layouts are a fixed set; to add one, send a pull request to this library                                   |
+| `OcflStorageLayout` as a value                                                                           | The `OcflStorageLayout` type, from `storageLayout()`; see [Layout classes](#layout-classes)                         |
+| `OcflExtension.register()`, `OcflStorageLayout.register()`, `setup()`                                    | Nothing: layouts are a fixed set; to add one, send a pull request to this library                                   |
+| `OcflExtension.create()`, `OcflStorageLayout.create()`                                                   | `storageLayout()`, which takes the same config                                                                      |
+| `OcflExtension.class()`, `OcflStorageLayout.class()`                                                     | `storageLayout(name)`, which throws `UNSUPPORTED_LAYOUT` for a layout this library doesn't implement                |
+| `OcflExtension.classes`, `OcflStorageLayout.classes`                                                     | The `OcflLayoutName` type, which lists the built-in layouts                                                         |
+| A layout object's `name`, `description`, `version`, `parameters`, `config` and `set()`                   | The `extensionName` and parameters you passed to `storageLayout()`, and `get(name)` to read a parameter             |
+| The `ExtensionConstructor` type                                                                          | Nothing: it only described layout subclasses                                                                        |
+| `ocfl.StorageLayout`, and the `StorageLayout` export of `@ocfl/ocfl-fs`                                  | `storageLayout()`; see [Layout classes](#layout-classes)                                                            |
+| The `StorageLayout` type                                                                                 | The `OcflStorageLayout` type, which has only `map` and `get`                                                        |
+| `OcflStorageLayout.layout`                                                                               | `storageLayout()`; see [Layout classes](#layout-classes)                                                            |
+| `OcflConstants`                                                                                          | `OCFL_VERSIONS`, on the default API and as a named export of `@ocfl/ocfl-fs`. The other values were internal        |
+| The `MultiHasher` type                                                                                   | Nothing: no public signature used it                                                                                |
+| `OcflStore`, including `createReadStream()` and `createWriteStream()`                                    | Nothing: the library always uses `node:fs`; see [Filesystem only](#filesystem-only)                                 |
+| `OcflFsStore`                                                                                            | Nothing: `storage()`, `object()`, `createStorage()` and `loadStorage()` use the filesystem directly                 |
+| `OcflFsStoreConfig`                                                                                      | Nothing: the only option was `fs`; see [Filesystem only](#filesystem-only)                                          |
+| `implementOcfl`                                                                                          | `storage()`, `object()`, `createStorage()`, `loadStorage()`, `storageLayout()` and `OCFL_VERSIONS`                  |
+| The `ListedFile` and `ListOptions` types                                                                 | Nothing: they only described `OcflStore.list()`                                                                     |
+| The second argument to `storage()`, `object()`, `createStorage()` and `loadStorage()`                    | Nothing: put the data in a real directory; see [Filesystem only](#filesystem-only)                                  |
 
 ### Filesystem only
 
@@ -436,22 +446,19 @@ async function writeVersion(object: OcflObject, targetDir: string, version: stri
 
 ### Layout classes
 
-The built-in layout classes now have one name, `extensions`, and it's available from `@ocfl/ocfl-fs`:
+The layout classes, the `extensions` namespace and the extension registry have gone. Layouts are a fixed, built-in set, so a layout can't be subclassed or registered. To add one, send a pull request to this library.
+
+To map identifiers to paths without a storage root, use `storageLayout()` with the layout's official name, or a config object to set its parameters:
 
 ```diff
+- const layout = new ocfl.extensions.HashedNTupleStorageLayout();
++ const layout = ocfl.storageLayout('0004-hashed-n-tuple-storage-layout');
+
 - const layout = new ocfl.StorageLayout.PathDirectStorageLayout({ omitScheme: true });
-+ const layout = new ocfl.extensions.PathDirectStorageLayout({ omitScheme: true });
++ const layout = ocfl.storageLayout({ extensionName: '000N-path-direct-storage-layout', omitScheme: true });
 ```
 
-`extensions` is also a named export, so a layout can be subclassed directly:
-
-```ts
-import { extensions } from '@ocfl/ocfl-fs';
-
-class MyLayout extends extensions.HashedNTupleStorageLayout {}
-```
-
-`extensions` holds only the built-in layouts. `StorageLayout` also listed any custom layout you had registered: to find one of those, call `OcflStorageLayout.class(name)`, or use `OcflStorageLayout.classes` to list them all.
+It returns an `OcflStorageLayout`, which has only `map(id)` and `get(name)`. The class names and their official names are listed under [Choosing a layout](#choosing-a-layout).
 
 ### Choosing a layout
 

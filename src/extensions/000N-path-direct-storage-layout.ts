@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { OcflError } from '../error.ts';
-import { OcflStorageLayout } from '../extension.ts';
+import { BuiltInLayout } from '../extension.ts';
 
 const DefaultConfig = {
   extensionName: '000N-path-direct-storage-layout',
@@ -11,13 +11,9 @@ const DefaultConfig = {
 
 export type PathDirectStorageLayoutConfig = Partial<typeof DefaultConfig>;
 
-class PathDirectStorageLayout extends OcflStorageLayout<typeof DefaultConfig> {
-  static get NAME() {
-    return DefaultConfig.extensionName;
-  }
-  static get DESCRIPTION() {
-    return 'OCFL object identifiers are used directly as the path.';
-  }
+class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
+  readonly name = DefaultConfig.extensionName;
+  readonly description = 'OCFL object identifiers are used directly as the path.';
 
   constructor(config?: PathDirectStorageLayoutConfig) {
     super(config, DefaultConfig);

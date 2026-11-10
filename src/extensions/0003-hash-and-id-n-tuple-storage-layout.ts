@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { Hashing } from '../digest.ts';
-import { OcflStorageLayout } from '../extension.ts';
+import { BuiltInLayout } from '../extension.ts';
 
 const MAX_ENCODED_ID_LENGTH = 100;
 
@@ -18,18 +18,13 @@ const DefaultConfig = {
   numberOfTuples: 3,
 };
 
-class HashAndIdNTupleStorageLayout extends OcflStorageLayout<typeof DefaultConfig> {
-  static get NAME() {
-    return DefaultConfig.extensionName;
-  }
-  static get DESCRIPTION() {
-    return (
-      'OCFL object identifiers are hashed and encoded as lowercase hex strings.' +
-      ' These digests are then divided into N n-tuple segments,' +
-      ' which are used to create nested paths under the OCFL storage root.' +
-      ' Finally, the OCFL object identifier is percent-encoded to create a directory name for the OCFL object root.'
-    );
-  }
+class HashAndIdNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
+  readonly name = DefaultConfig.extensionName;
+  readonly description =
+    'OCFL object identifiers are hashed and encoded as lowercase hex strings.' +
+    ' These digests are then divided into N n-tuple segments,' +
+    ' which are used to create nested paths under the OCFL storage root.' +
+    ' Finally, the OCFL object identifier is percent-encoded to create a directory name for the OCFL object root.';
 
   constructor(config?: Partial<typeof DefaultConfig>) {
     super(config, DefaultConfig);

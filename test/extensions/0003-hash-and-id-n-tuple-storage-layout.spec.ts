@@ -1,12 +1,13 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { extensions } from '../../src/index.ts';
+import { storageLayout } from '../../src/index.ts';
 
-const { HashAndIdNTupleStorageLayout } = extensions;
+const NAME = '0003-hash-and-id-n-tuple-storage-layout';
+const configured = (params: Record<string, unknown>) => storageLayout({ extensionName: NAME, ...params });
 
-describe('HashAndIdNTupleStorageLayout class', () => {
+describe('the 0003 hash and id n-tuple layout', () => {
   it('can map valid id with default config', () => {
-    const layout = new HashAndIdNTupleStorageLayout();
+    const layout = storageLayout(NAME);
     const ids: [string, string][] = [
       ['object-01', '3c0/ff4/240/object-01'],
       ['..hor/rib:le-$id', '487/326/d8c/%2e%2ehor%2frib%3ale-%24id'],
@@ -17,7 +18,7 @@ describe('HashAndIdNTupleStorageLayout class', () => {
   });
 
   it('can map valid id with tupleSize=2 and numberOfTuples=0', () => {
-    const layout = new HashAndIdNTupleStorageLayout({ digestAlgorithm: 'md5', tupleSize: 2, numberOfTuples: 15 });
+    const layout = configured({ digestAlgorithm: 'md5', tupleSize: 2, numberOfTuples: 15 });
     const ids: [string, string][] = [
       ['object-01', 'ff/75/53/44/92/48/5e/ab/b3/9f/86/35/67/28/88/object-01'],
       ['..hor/rib:le-$id', '08/31/97/66/fb/6c/29/35/dd/17/5b/94/26/77/17/%2e%2ehor%2frib%3ale-%24id'],
@@ -28,8 +29,7 @@ describe('HashAndIdNTupleStorageLayout class', () => {
   });
 
   describe('encapsulation directory', () => {
-    const encapsulationDirectory = (id: string, digestAlgorithm = 'sha256') =>
-      new HashAndIdNTupleStorageLayout({ digestAlgorithm, tupleSize: 0, numberOfTuples: 0 }).map(id);
+    const encapsulationDirectory = (id: string, digestAlgorithm = 'sha256') => configured({ digestAlgorithm, tupleSize: 0, numberOfTuples: 0 }).map(id);
 
     it("keeps the identifier's own letter case and lower-cases the percent-encoding", () => {
       assert.strictEqual(encapsulationDirectory('..Hor/rib:lè-$id'), '%2e%2eHor%2frib%3al%c3%a8-%24id');
@@ -62,21 +62,21 @@ describe('HashAndIdNTupleStorageLayout class', () => {
     });
 
     it('still prefixes a truncated directory with the digest tuples', () => {
-      const layout = new HashAndIdNTupleStorageLayout();
+      const layout = storageLayout(NAME);
       assert.strictEqual(layout.map(id101Chars), `5cc/73e/648/${first100Chars}-${id101CharsSha256}`);
     });
   });
 
   it('rejects a digestAlgorithm that is not lowercase', () => {
-    assert.throws(() => new HashAndIdNTupleStorageLayout({ digestAlgorithm: 'MD5' }), { message: 'Invalid digestAlgorithm' });
+    assert.throws(() => configured({ digestAlgorithm: 'MD5' }), { message: 'Invalid digestAlgorithm' });
   });
 
   it('rejects an unknown digestAlgorithm', () => {
-    assert.throws(() => new HashAndIdNTupleStorageLayout({ digestAlgorithm: 'sha3' }), { message: 'Invalid digestAlgorithm' });
+    assert.throws(() => configured({ digestAlgorithm: 'sha3' }), { message: 'Invalid digestAlgorithm' });
   });
 
   it('can map valid id with tupleSize=0 and numberOfTuples=0', () => {
-    const layout = new HashAndIdNTupleStorageLayout({ digestAlgorithm: 'sha256', tupleSize: 0, numberOfTuples: 0 });
+    const layout = configured({ digestAlgorithm: 'sha256', tupleSize: 0, numberOfTuples: 0 });
     const ids: [string, string][] = [
       ['object-01', 'object-01'],
       ['..hor/rib:le-$id', '%2e%2ehor%2frib%3ale-%24id'],

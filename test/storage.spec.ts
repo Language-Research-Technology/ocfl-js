@@ -45,12 +45,6 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
     await assert.rejects(ocfl.storage({ root }).load(), ocflError('UNSUPPORTED_LAYOUT'));
   });
 
-  it('rejects creating a layout with an unsupported extension name', () => {
-    assert.throws(() => ocfl.extensions.HashedNTupleStorageLayout.create({ extensionName: 'no-such-extension' }), {
-      message: 'Extension "no-such-extension" is not supported.',
-    });
-  });
-
   it('creates a layout from a config object naming the extension', () => {
     const storage = ocfl.storage({
       root: path.join(tempdir, 'layout-config'),

@@ -139,7 +139,13 @@ for await (let f of await object.files()) {
 
 ## Extensions
 
-This library by default includes all the community extensions defined in the [OCFL Community Extensions page](https://github.com/OCFL/extensions).
+This library implements these storage layouts from the [OCFL Community Extensions](https://github.com/OCFL/extensions):
+
+- `0002-flat-direct-storage-layout`
+- `0003-hash-and-id-n-tuple-storage-layout`
+- `0004-hashed-n-tuple-storage-layout`
+
+It also includes `000N-path-direct-storage-layout`, which isn't a community extension. Loading a storage root that declares any other layout throws `UNSUPPORTED_LAYOUT`.
 
 ## Development
 

@@ -1,13 +1,13 @@
 import { OcflConstants } from './constants.ts';
-import { createLayout, type OcflStorageLayout } from './extension.ts';
-import * as extensions from './extensions/index.ts';
+import type { OcflStorageLayout } from './extension.ts';
+import { createLayout } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
 import { OcflStorage } from './storage.ts';
 import type { OcflLayoutConfig, OcflLayoutName, OcflObjectConfig, OcflStorageConfig } from './types.ts';
 
 export type { OcflErrorCode } from './error.ts';
 export { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
-export { OcflExtension, OcflStorageLayout } from './extension.ts';
+export type { OcflStorageLayout } from './extension.ts';
 export type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direct-storage-layout.ts';
 export type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 export type { FileRef, FileStat, OcflObjectFile } from './file.ts';
@@ -17,7 +17,6 @@ export type { OcflStorage } from './storage.ts';
 export type { CommitOptions, OcflObjectTransaction } from './transaction.ts';
 export type * from './types.ts';
 export { ValidationError } from './validation.ts';
-export { extensions };
 
 export const OCFL_VERSIONS = OcflConstants.OCFL_VERSIONS;
 
@@ -58,8 +57,4 @@ export async function loadStorage(config: OcflStorageConfig): Promise<OcflStorag
   return new OcflStorage(config).load();
 }
 
-for (const ext of Object.values(extensions)) {
-  ext.register();
-}
-
-export default { OCFL_VERSIONS, createStorage, extensions, loadStorage, object, storage, storageLayout };
+export default { OCFL_VERSIONS, createStorage, loadStorage, object, storage, storageLayout };

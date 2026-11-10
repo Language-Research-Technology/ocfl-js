@@ -25,14 +25,6 @@ class OcflError extends Error {
   }
 }
 
-class NotImplementedError extends Error {
-  constructor(methodName?: string) {
-    const msg = methodName ? `Method ${methodName} has not been implemented` : '';
-    super(msg);
-    this.name = 'NotImplementedError';
-  }
-}
-
 class ObjectNotLoadedError extends OcflError {
   declare readonly code: 'OBJECT_NOT_LOADED';
 
@@ -52,4 +44,4 @@ class ObjectNotFoundError extends OcflError {
 }
 
 export type { OcflErrorCode };
-export { NotImplementedError, ObjectNotFoundError, ObjectNotLoadedError, OcflError };
+export { ObjectNotFoundError, ObjectNotLoadedError, OcflError };

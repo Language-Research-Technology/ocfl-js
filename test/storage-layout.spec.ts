@@ -65,6 +65,40 @@ describe('choosing a built-in layout', () => {
     });
   }
 
+  const declaredLayout = async (root: string, name: string) => JSON.parse(await fs.promises.readFile(path.join(root, name), 'utf8'));
+
+  it('records only the layout name in a root created by name', async () => {
+    const root = path.join(dir, 'root');
+    await ocfl.createStorage({ root, layout: '0004-hashed-n-tuple-storage-layout' });
+    assert.strictEqual((await declaredLayout(root, 'ocfl_layout.json')).extension, '0004-hashed-n-tuple-storage-layout');
+    assert.ok(!fs.existsSync(path.join(root, 'extensions/0004-hashed-n-tuple-storage-layout/config.json')));
+  });
+
+  it('records the configured parameters in a root created by config', async () => {
+    const root = path.join(dir, 'root');
+    await ocfl.createStorage({ root, layout: { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 2 } });
+    assert.deepStrictEqual(await declaredLayout(root, 'extensions/0004-hashed-n-tuple-storage-layout/config.json'), {
+      extensionName: '0004-hashed-n-tuple-storage-layout',
+      tupleSize: 2,
+    });
+  });
+
+  it('records no parameters for the 0002 layout', async () => {
+    const root = path.join(dir, 'root');
+    await ocfl.createStorage({ root, layout: { extensionName: '0002-flat-direct-storage-layout' } });
+    assert.ok(!fs.existsSync(path.join(root, 'extensions/0002-flat-direct-storage-layout/config.json')));
+  });
+
+  it('describes each built-in layout in ocfl_layout.json', async () => {
+    for (const { name } of builtInLayouts) {
+      const root = path.join(dir, name);
+      await ocfl.createStorage({ root, layout: name });
+      const { extension, description } = await declaredLayout(root, 'ocfl_layout.json');
+      assert.strictEqual(extension, name);
+      assert.match(description, /^OCFL object identifiers are /);
+    }
+  });
+
   it('leaves a storage without a layout when the option is null', () => {
     const storage = ocfl.storage({ root: path.join(dir, 'root'), layout: null as never });
     assert.throws(() => storage.objectRoot('abc'), /No layout defined/);
@@ -84,8 +118,15 @@ describe('choosing a layout that is not supported', () => {
       assert.throws(() => choose('no-such-layout' as never), ocflError('UNSUPPORTED_LAYOUT'));
     });
 
-    for (const name of ['0006-flat-omit-prefix-storage-layout', '0007-n-tuple-omit-prefix-storage-layout']) {
+    for (const name of ['0006-flat-omit-prefix-storage-layout', '0007-n-tuple-omit-prefix-storage-layout', '0009-digest-algorithms']) {
       it(`rejects ${name} through ${entryPoint}`, () => {
+        assert.throws(() => choose(name as never), ocflError('UNSUPPORTED_LAYOUT'));
+        assert.throws(() => choose({ extensionName: name } as never), ocflError('UNSUPPORTED_LAYOUT'));
+      });
+    }
+
+    for (const name of ['constructor', '__proto__', 'toString']) {
+      it(`rejects ${name}, a property every object inherits, through ${entryPoint}`, () => {
         assert.throws(() => choose(name as never), ocflError('UNSUPPORTED_LAYOUT'));
         assert.throws(() => choose({ extensionName: name } as never), ocflError('UNSUPPORTED_LAYOUT'));
       });
@@ -112,6 +153,30 @@ describe('choosing a layout that is not supported', () => {
 });
 
 describe('storageLayout without a loaded storage', () => {
+  const HASHED = '0004-hashed-n-tuple-storage-layout';
+
+  it('reads a parameter default when chosen by name', () => {
+    const layout = ocfl.storageLayout(HASHED);
+    assert.strictEqual(layout.get('digestAlgorithm'), 'sha256');
+    assert.strictEqual(layout.get('tupleSize'), 3);
+    assert.strictEqual(layout.get('numberOfTuples'), 3);
+    assert.strictEqual(layout.get('shortObjectRoot'), false);
+  });
+
+  it('reads configured parameters and keeps the defaults of the rest', () => {
+    const layout = ocfl.storageLayout({ extensionName: HASHED, tupleSize: 2 });
+    assert.strictEqual(layout.get('tupleSize'), 2);
+    assert.strictEqual(layout.get('numberOfTuples'), 3);
+  });
+
+  it('ignores a parameter the layout does not declare', () => {
+    assert.strictEqual(ocfl.storageLayout({ extensionName: HASHED, undeclared: 'ignored' }).get('undeclared'), undefined);
+  });
+
+  it('has no parameters for the 0002 layout', () => {
+    assert.strictEqual(ocfl.storageLayout({ extensionName: '0002-flat-direct-storage-layout', tupleSize: 2 }).get('tupleSize'), undefined);
+  });
+
   it('maps an id with the 0003 layout', () => {
     assert.strictEqual(ocfl.storageLayout('0003-hash-and-id-n-tuple-storage-layout').map('object-01'), '3c0/ff4/240/object-01');
   });
