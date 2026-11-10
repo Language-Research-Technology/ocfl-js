@@ -4,7 +4,7 @@ import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { OcflError } from './error.ts';
-import { type ContentRelease, OcflObjectInventory, type OcflObjectInventoryMut } from './inventory.ts';
+import type { ContentRelease, OcflObjectInventory } from './inventory.ts';
 import type { OcflObject } from './object.ts';
 import * as store from './store.ts';
 import type { Digests, WriteFileData } from './types.ts';
@@ -151,7 +151,7 @@ class OcflObjectTransaction {
   #versionPath: string;
   #contentRoot: string;
   #object: OcflObject;
-  #inventory: OcflObjectInventoryMut;
+  #inventory: OcflObjectInventory;
   #rootExisted: boolean;
   #createdNamaste: string | undefined;
   #rootInventoryStaged = false;
@@ -165,7 +165,7 @@ class OcflObjectTransaction {
   #commitBlocker: Error | undefined;
   #limit = createLimiter(IMPORT_CONCURRENCY);
 
-  private constructor(ocflObject: OcflObject, inventory: OcflObjectInventoryMut, versionPath: string, rootExisted: boolean) {
+  private constructor(ocflObject: OcflObject, inventory: OcflObjectInventory, versionPath: string, rootExisted: boolean) {
     this.#versionPath = versionPath;
     this.#contentRoot = path.join(versionPath, inventory.contentDirectory);
     this.#object = ocflObject;
@@ -177,7 +177,7 @@ class OcflObjectTransaction {
    * Create a new transaction instance.
    * @internal
    */
-  static async create(ocflObject: OcflObject, inventory: OcflObjectInventoryMut) {
+  static async create(ocflObject: OcflObject, inventory: OcflObjectInventory) {
     const rootExisted = await fs.promises.stat(ocflObject.root).then(
       () => true,
       () => false,
@@ -244,7 +244,7 @@ class OcflObjectTransaction {
         throw this.#commitBlocker;
       }
       // if there is no changes, abort commit
-      if (!this.#inventory.isChanged) {
+      if (!this.#inventory._isChanged) {
         return await this.rollback();
       }
       try {
@@ -253,9 +253,7 @@ class OcflObjectTransaction {
         await this.rollback();
         throw error;
       }
-      const committed = new OcflObjectInventory(this.#inventory.toJSON());
-      committed._digest = this.#inventory._digest;
-      this.#object._setInventory(committed);
+      this.#object._setInventory(this.#inventory);
       this.#committed = true;
       await this.#removeEmptyAncestors(this.#object._workspace);
     }
@@ -304,14 +302,7 @@ class OcflObjectTransaction {
   async #commit(options: CommitOptions = {}) {
     const inventory = this.#inventory;
     const digestAlgorithm = inventory.digestAlgorithm;
-    // set commit info
-    inventory.created = new Date().toISOString();
-    if (options.message) {
-      inventory.message = options.message;
-    }
-    if (options.user) {
-      inventory.user = options.user;
-    }
+    inventory._stamp(new Date().toISOString(), options.message, options.user);
 
     const objectVersionPath = path.join(this.#object.root, inventory.head);
     /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json */
@@ -390,7 +381,7 @@ class OcflObjectTransaction {
         }
       });
     });
-    inventory.add(logicalPath, digest, fixity);
+    inventory._add(logicalPath, digest, fixity);
   }
 
   /**
@@ -589,7 +580,7 @@ class OcflObjectTransaction {
   async copy(source: string, target: string): Promise<void> {
     return this.#transact(async () => {
       checkLogicalPath(target);
-      this.#inventory.copy(source, target);
+      this.#inventory._copy(source, target);
     });
   }
 
@@ -616,7 +607,7 @@ class OcflObjectTransaction {
    * Makes content from a version earlier than the previous version available in the current version of an OCFL Object.
    */
   async reinstate(logicalPath: string, versionName: string): Promise<number> {
-    return this.#transact(async () => this.#inventory.reinstate(logicalPath, versionName));
+    return this.#transact(async () => this.#inventory._reinstate(logicalPath, versionName));
   }
 
   /**

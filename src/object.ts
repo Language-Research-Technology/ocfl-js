@@ -5,7 +5,7 @@ import * as Hashing from './digest.ts';
 import { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
-import { type InventoryFile, isVersionName, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber, validateStoredInventory } from './inventory.ts';
+import { type InventoryFile, isVersionName, OcflObjectInventory, VersionNumber, validateStoredInventory } from './inventory.ts';
 import * as store from './store.ts';
 import { type CommitOptions, type ImportSource, OcflObjectTransaction } from './transaction.ts';
 import type { BinaryOptions, ContentAlgorithm, EncodingOptions, Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
@@ -286,7 +286,7 @@ class OcflObject {
       throw new TypeError('Without an updater, pass the message and user to commit()');
     }
     const inv = (await this.getInventory()) ?? this.#baseInventory();
-    const newInv = OcflObjectInventoryMut.newVersion(inv, mode === 'REPLACE');
+    const newInv = OcflObjectInventory.newVersion(inv, mode === 'REPLACE');
     await this._validateObjectPath();
     if (await pathExists(path.join(this.root, MUTABLE_HEAD_INVENTORY))) {
       throw new OcflError(
