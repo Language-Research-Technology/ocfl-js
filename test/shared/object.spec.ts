@@ -15,7 +15,7 @@ import ocfl, {
 } from '../../src/index.ts';
 import type { OcflObject } from '../../src/object.ts';
 import { emptyDirectoriesUnder } from '../empty-directories.ts';
-import { withFsFailure } from '../fs-failures.ts';
+import { withFileWriteFailure, withFsFailure, withSlowOpens } from '../fs-failures.ts';
 import { testObject } from '../test-object.ts';
 
 let objcount = 0;
@@ -983,6 +983,71 @@ describe('update', () => {
         const writer = (await t.createWritable('aborted')).getWriter();
         await writer.write(encode('partial'));
         await writer.abort(new Error('changed my mind'));
+        await t.write('ok', 'ok');
+      });
+
+      await assertManifestMatchesFiles(o);
+      await assertReads(o, { ok: 'ok' });
+    });
+
+    /** The staged file's open completes 50ms from now, well after an abort's cleanup would otherwise have run */
+    const withSlowStagedOpen = (fn: (opened: Promise<void>) => Promise<void>) =>
+      withSlowOpens((filePath) => path.basename(filePath).startsWith('.staged-'), 50, fn);
+
+    it('aborting a stream from createWritable whose file opens slowly leaves nothing behind', async () => {
+      const o = newObject();
+      await withSlowStagedOpen(async (opened) => {
+        await o.update(async (t) => {
+          const writer = (await t.createWritable('aborted')).getWriter();
+          await writer.write(encode('partial'));
+          await writer.abort(new Error('changed my mind'));
+          await opened;
+          await t.write('ok', 'ok');
+        });
+      });
+
+      await assertManifestMatchesFiles(o);
+      await assertReads(o, { ok: 'ok' });
+    });
+
+    it('an update that ends by aborting a stream from createWritable commits without it', async () => {
+      const o = newObject();
+      await o.update(async (t) => {
+        await t.write('ok', 'ok');
+        const writer = (await t.createWritable('aborted')).getWriter();
+        await writer.write(encode('partial'));
+        await writer.abort(new Error('changed my mind'));
+      });
+
+      await assertManifestMatchesFiles(o);
+      await assertReads(o, { ok: 'ok' });
+    });
+
+    it('rolling back with an unwritten stream from createWritable whose file opens slowly leaves nothing behind', async () => {
+      const o = newObject();
+      await withSlowStagedOpen(async (opened) => {
+        await assert.rejects(
+          o.update(async (t) => {
+            await t.createWritable('never-written');
+            throw new Error('gave up');
+          }),
+          /gave up/,
+        );
+        await opened;
+      });
+
+      await assert.rejects(fs.promises.access(o._workspace));
+      await assert.rejects(fs.promises.access(o.root));
+    });
+
+    it('a stream from createWritable whose disk write fails leaves nothing behind', async () => {
+      const o = newObject();
+      await o.update(async (t) => {
+        const writer = (await t.createWritable('broken')).getWriter();
+        await assert.rejects(
+          withFileWriteFailure(() => writer.write(encode('partial'))),
+          /injected failure/,
+        );
         await t.write('ok', 'ok');
       });
 
