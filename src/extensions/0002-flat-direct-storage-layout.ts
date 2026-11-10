@@ -16,6 +16,8 @@ class FlatDirectStorageLayout extends BuiltInLayout {
     let reason: string | undefined;
     if (path.basename(id) !== id) {
       reason = 'it contains the path separator character';
+    } else if (id === '.' || id === '..') {
+      reason = 'it is the storage root or its parent';
     } else if (id === EXTENSIONS_DIR) {
       reason = 'it conflicts with the extensions directory';
     } else if (id.length > 255) {

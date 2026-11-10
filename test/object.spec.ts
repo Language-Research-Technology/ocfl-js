@@ -73,6 +73,95 @@ describe('OcflObject with a malformed or missing inventory', () => {
     await assert.rejects(o.load(), { name: 'ValidationError', code: 'E050', detail: `digest "${digest}" is not in the manifest` });
   });
 
+  for (const [code, contentPath] of [
+    ['E099', '../../outside'],
+    ['E099', 'v1/content/../../../outside'],
+    ['E099', 'v1/./content/a.txt'],
+    ['E099', 'v1/content//a.txt'],
+    ['E100', '/etc/passwd'],
+    ['E100', 'v1/content/a.txt/'],
+  ] as const) {
+    it(`rejects loading an inventory with the content path ${contentPath} with ${code}`, async () => {
+      const o = await malformedObject(`content-path-${code}-${contentPath.replaceAll('/', '_')}`, (inv) => {
+        const [digest] = Object.keys(inv.manifest!);
+        inv.manifest = { [digest!]: [contentPath] };
+      });
+      await assert.rejects(o.load(), { name: 'ValidationError', code, detail: `content path "${contentPath}"` });
+    });
+  }
+
+  for (const [code, contentDirectory] of [
+    ['E017', 'a/b'],
+    ['E018', '.'],
+    ['E018', '..'],
+  ] as const) {
+    it(`rejects loading an inventory with the contentDirectory ${contentDirectory} with ${code}`, async () => {
+      const o = await malformedObject(`content-directory-${code}-${contentDirectory.replaceAll('/', '_')}`, (inv) => {
+        inv.contentDirectory = contentDirectory;
+      });
+      await assert.rejects(o.load(), { name: 'ValidationError', code, detail: `contentDirectory "${contentDirectory}"` });
+    });
+  }
+
+  for (const name of ['../v1', 'v0', 'v1a', '1']) {
+    it(`rejects loading an inventory with the version name ${name} with E104`, async () => {
+      const o = await malformedObject(`version-name-${name.replaceAll('/', '_')}`, (inv) => {
+        inv.versions = { [name]: inv.versions!.v1! };
+        inv.head = name;
+      });
+      await assert.rejects(o.load(), { name: 'ValidationError', code: 'E104', detail: `version "${name}"` });
+    });
+  }
+
+  it('rejects loading an inventory without versions', async () => {
+    const o = await malformedObject('no-versions', (inv) => {
+      delete inv.versions;
+    });
+    await assert.rejects(o.load(), { name: 'ValidationError', code: 'E040' });
+  });
+
+  it('rejects reading an earlier version inventory with an unsafe content path', async () => {
+    const root = path.join(tempdir, 'earlier-version-content-path');
+    await new OcflObject({ id: 'earlier', root }).update(async (t) => t.write('a.txt', 'a'));
+    const earlier = path.join(root, 'v1', 'inventory.json');
+    const inv = JSON.parse(await fs.promises.readFile(earlier, 'utf8'));
+    const [digest] = Object.keys(inv.manifest);
+    inv.manifest = { [digest!]: ['../outside'] };
+    await writeInventory(earlier, JSON.stringify(inv));
+    await assert.rejects(new OcflObject({ root }).getInventory('v1'), { name: 'ValidationError', code: 'E099' });
+  });
+
+  it('finds no inventory for a version that is not a version name, without reading it', async () => {
+    const root = path.join(tempdir, 'inventory-version-name');
+    const o = new OcflObject({ id: 'inventory-version-name', root });
+    await o.update(async (t) => t.write('a.txt', 'a'));
+    const nested = path.join(root, 'v1', 'content', 'x');
+    await fs.promises.mkdir(nested, { recursive: true });
+    await fs.promises.copyFile(path.join(root, 'inventory.json'), path.join(nested, 'inventory.json'));
+    await fs.promises.copyFile(path.join(root, 'inventory.json.sha512'), path.join(nested, 'inventory.json.sha512'));
+    for (const version of ['v1/content/x', '', '.', '../inventory-version-name/v1']) {
+      assert.strictEqual(await o.getInventory(version), undefined, version);
+    }
+    assert.strictEqual((await o.getInventory('v1'))?.head, 'v1');
+  });
+
+  it('reads only inside the object root through its raw file methods', async () => {
+    const root = path.join(tempdir, 'raw-reads', 'object');
+    const o = new OcflObject({ id: 'raw-reads', root });
+    await o.update(async (t) => t.write('a.txt', 'a'));
+    await fs.promises.writeFile(path.join(tempdir, 'raw-reads', 'outside'), 'outside');
+    const rejected = { name: 'OcflError', code: 'INVALID_PATH' };
+    for (const p of ['../outside', 'v1/../../outside', path.join(root, 'v1/content/a.txt')]) {
+      await assert.rejects(o.readFile(p, 'utf8'), rejected, p);
+      await assert.rejects(o.stat(p), rejected, p);
+      await assert.rejects(o.createReadable(p), rejected, p);
+    }
+    assert.strictEqual(await o.readFile('v1/content/a.txt', 'utf8'), 'a');
+    assert.strictEqual((await o.stat('v1/content/a.txt')).size, 1);
+    assert.strictEqual((await o.stat('.')).isDirectory(), true);
+    assert.strictEqual(await new Response(await o.createReadable('v1/content/a.txt')).text(), 'a');
+  });
+
   it('finds no file in a version that does not exist', async () => {
     const root = path.join(tempdir, 'missing-version');
     const o = new OcflObject({ id: 'missing-version', root });
@@ -82,6 +171,12 @@ describe('OcflObject with a malformed or missing inventory', () => {
     assert.strictEqual(o.getFile({ digest: digest!, version: 'v9' }), undefined);
     assert.strictEqual(o.getFile('a.txt', 'v9'), undefined);
     assert.strictEqual(await o.count('v9'), 0);
+  });
+
+  it('rejects a configured contentDirectory that is not a single directory name', () => {
+    for (const contentDirectory of ['../../x', 'a/b', '.', '..']) {
+      assert.throws(() => new OcflObject({ id: 'x', root: path.join(tempdir, 'content-directory-config'), contentDirectory }), TypeError, contentDirectory);
+    }
   });
 
   it('rejects a digestAlgorithm that is not lowercase', () => {

@@ -23,4 +23,10 @@ describe('the 0002 flat direct layout', () => {
     assert.throws(() => layout.map(id2), expected);
     assert.throws(() => layout.map('extensions'), expected);
   });
+
+  it('rejects the ids . and .., which map to the storage root and its parent', () => {
+    for (const id of ['.', '..']) {
+      assert.throws(() => layout.map(id), { name: 'OcflError', code: 'ID_INCOMPATIBLE_WITH_LAYOUT' }, id);
+    }
+  });
 });

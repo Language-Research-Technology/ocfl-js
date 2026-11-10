@@ -83,6 +83,51 @@ function headVersion(data: Inventory): InventoryVersion {
   return version;
 }
 
+/** Whether `name` is a version directory name, such as `v1` or `v001` */
+function isVersionName(name: string): boolean {
+  return /^v(?:[1-9]\d*|0\d*[1-9]\d*)$/.test(name);
+}
+
+/**
+ * Checks an inventory read from storage, before its values are used as paths in the object root.
+ * The constructor checks that `head` is one of the versions.
+ * @param file - The inventory's path, for the error
+ * @throws `ValidationError` `E036` or `E040` for a missing or empty head, `E104` for a version name,
+ * `E017` or `E018` for the contentDirectory, or `E099` or `E100` for a content path
+ */
+function validateStoredInventory(data: Inventory, file: string): void {
+  if (data.head === undefined) {
+    throw createError('E036', file, 'missing head');
+  }
+  if (data.head === '') {
+    throw createError('E040', file, 'empty head');
+  }
+  for (const name of Object.keys(data.versions ?? {})) {
+    if (!isVersionName(name)) {
+      throw createError('E104', file, `version "${name}"`);
+    }
+  }
+  const { contentDirectory } = data;
+  if (typeof contentDirectory === 'string') {
+    if (contentDirectory.includes('/')) {
+      throw createError('E017', file, `contentDirectory "${contentDirectory}"`);
+    }
+    if (contentDirectory === '.' || contentDirectory === '..') {
+      throw createError('E018', file, `contentDirectory "${contentDirectory}"`);
+    }
+  }
+  for (const contentPaths of Object.values(data.manifest)) {
+    for (const contentPath of contentPaths) {
+      if (contentPath.startsWith('/') || contentPath.endsWith('/')) {
+        throw createError('E100', file, `content path "${contentPath}"`);
+      }
+      if (contentPath.split('/').some((element) => element === '' || element === '.' || element === '..')) {
+        throw createError('E099', file, `content path "${contentPath}"`);
+      }
+    }
+  }
+}
+
 /** Set by the read model's static block, so that only the write model can change an inventory's data */
 let writableData: (inventory: OcflObjectInventory) => Inventory;
 
@@ -822,4 +867,4 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   }
 }
 
-export { OcflObjectInventory, OcflObjectInventoryMut, VersionNumber };
+export { isVersionName, OcflObjectInventory, OcflObjectInventoryMut, VersionNumber, validateStoredInventory };

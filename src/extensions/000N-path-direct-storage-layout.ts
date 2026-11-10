@@ -18,6 +18,14 @@ const DefaultConfig: Required<PathDirectStorageLayoutConfig> = {
   suffix: '/__object__',
 };
 
+/** Whether `p` has a segment that `path.join` or the URL parser would resolve away, such as `..`, `%2e` or `.\t.` */
+function hasDotSegment(p: string): boolean {
+  return p
+    .replace(/[\t\n\r]/g, '')
+    .split(/[/\\]/)
+    .some((segment) => /^(\.|%2e){1,2}$/i.test(segment));
+}
+
 class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   readonly name = '000N-path-direct-storage-layout';
   readonly description = 'OCFL object identifiers are used directly as the path.';
@@ -31,6 +39,9 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
         `Each replace entry must be a [pattern, replacement] pair of a string or RegExp and a string, not ${inspect(invalid)}.`,
       );
     }
+    if (hasDotSegment(this.parameters.suffix)) {
+      throw new OcflError('INVALID_LAYOUT_CONFIG', `The suffix '${this.parameters.suffix}' has a . or .. segment.`);
+    }
   }
 
   map(id: string): string {
@@ -38,12 +49,15 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     if (suffix && id.endsWith(suffix)) {
       throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `Identifier cannot end with '${suffix}'`);
     }
-    var p = id ?? '';
+    let replaced = id ?? '';
     for (const r of this.parameters.replace) {
-      p = p.replace(r[0], r[1]);
+      replaced = replaced.replace(r[0], r[1]);
     }
-    try {
-      const u = new URL(p);
+    let p = replaced;
+    const u = URL.parse(replaced);
+    let afterScheme = replaced;
+    if (u) {
+      afterScheme = replaced.slice(u.protocol.length);
       const parts = [];
       if (!this.parameters.omitScheme && u.protocol !== 'file:') {
         parts.push(u.protocol.replace(':', ''));
@@ -51,9 +65,16 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
       if (u.hostname) {
         parts.push(u.hostname.replace(',', '_').replace(';', '/'));
       }
-      p = path.join(parts.join('_'), u.pathname + u.search + u.hash);
-    } catch (_error) {}
-    p = p.replace(/^\/+/, '').replace(/\/+$/, '');
+      p = `${parts.join('_')}/${u.pathname}${u.search}${u.hash}`;
+    }
+    // the URL parser resolves dot segments in the id, and rewriting the hostname can add one
+    if (hasDotSegment(afterScheme) || hasDotSegment(p)) {
+      throw new OcflError(
+        'ID_INCOMPATIBLE_WITH_LAYOUT',
+        `The object id <${id}> is incompatible with layout extension ${this.name} because it has a . or .. segment.`,
+      );
+    }
+    p = path.join(p).replace(/^\/+/, '').replace(/\/+$/, '');
     return path.join(p, this.parameters.suffix);
     //if (/^\w+:/.test(id)) {
   }

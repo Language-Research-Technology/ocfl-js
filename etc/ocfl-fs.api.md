@@ -202,7 +202,7 @@ export class OcflError extends Error {
 }
 
 // @public (undocumented)
-export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'LAYOUT_MISMATCH' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | ValidationErrorCode;
+export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'LAYOUT_MISMATCH' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | ValidationErrorCode;
 
 // @public
 export type OcflLayoutConfig<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? {
@@ -434,7 +434,7 @@ export class ValidationError extends OcflError {
 }
 
 // @public (undocumented)
-export type ValidationErrorCode = 'E007' | 'E036' | 'E040' | 'E050' | 'E060' | 'E069' | 'E070' | 'E080' | 'E081' | 'E082';
+export type ValidationErrorCode = 'E007' | 'E017' | 'E018' | 'E036' | 'E040' | 'E050' | 'E060' | 'E069' | 'E070' | 'E080' | 'E081' | 'E082' | 'E099' | 'E100' | 'E104';
 
 // @public (undocumented)
 export interface ValidationErrorOptions {
