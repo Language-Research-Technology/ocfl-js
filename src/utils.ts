@@ -16,6 +16,10 @@ function isNotFound(error: unknown): boolean {
   return isErrnoException(error) && error.code === 'ENOENT';
 }
 
+function isNotDir(error: unknown): boolean {
+  return isErrnoException(error) && error.code === 'ENOTDIR';
+}
+
 type Limiter = <T>(fn: () => Promise<T>) => Promise<T>;
 
 /** @returns a function that runs the functions given to it, at most `count` at once */
@@ -42,14 +46,35 @@ function createLimiter(count: number): Limiter {
 }
 
 async function isDirEmpty(dirPath: string): Promise<boolean> {
-  let dir: fs.Dir | undefined;
+  let dir: fs.Dir;
   try {
     dir = await fs.promises.opendir(dirPath);
-    return !(await dir.read());
   } catch (error) {
-    return isNotFound(error);
+    if (isNotFound(error)) {
+      return true;
+    }
+    // ENOTDIR: either the path is a file, or one of its parents is and the path doesn't exist
+    if (isNotDir(error)) {
+      return !(await pathExists(dirPath));
+    }
+    throw error;
+  }
+  try {
+    return !(await dir.read());
   } finally {
-    await dir?.close().catch(() => {});
+    await dir.close().catch(() => {});
+  }
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.promises.stat(filePath);
+    return true;
+  } catch (error) {
+    if (isNotFound(error) || isNotDir(error)) {
+      return false;
+    }
+    throw error;
   }
 }
 
@@ -66,9 +91,13 @@ async function findNamasteVersion(prefix: string, rootPath: string): Promise<Ocf
       return '';
     }
   } catch (error) {
-    // ENOTDIR: the root is a file, which can't hold a declaration
-    if (!(error instanceof AggregateError) || error.errors.some((e) => !isNotFound(e) && !(isErrnoException(e) && e.code === 'ENOTDIR'))) {
+    if (!(error instanceof AggregateError)) {
       throw error;
+    }
+    // ENOTDIR: the root is a file, which can't hold a declaration
+    const failure = error.errors.find((e) => !isNotFound(e) && !isNotDir(e));
+    if (failure) {
+      throw failure;
     }
   }
   return version ?? undefined;

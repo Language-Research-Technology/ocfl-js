@@ -278,10 +278,7 @@ class OcflStorage {
         continue;
       }
       const basePath = path.join(dirPath, dirent.name);
-      let nv: OcflVersion | '' | undefined;
-      try {
-        nv = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, basePath);
-      } catch (_err) {}
+      const nv = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, basePath);
       if (nv) {
         yield new OcflObject({
           root: basePath,
