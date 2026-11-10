@@ -1540,6 +1540,53 @@ describe('update', () => {
       assert.deepStrictEqual(inventory.manifest[sha512('BBB')], ['v2/content/c']);
     });
 
+    it('reinstating a file over content this version wrote removes that content', async () => {
+      const { o, inventory: v1 } = await committed({ a: 'AAA' });
+      await o.update(async (t) => {
+        await t.write('a', 'NEW');
+        await t.write('b', 'BBB');
+        await t.reinstate('a', 'v1');
+      });
+      const inventory = await assertValid(o, 'v2', { a: 'AAA', b: 'BBB' });
+      assert.deepStrictEqual(await contentFiles(o, 'v2'), ['v2/content/b']);
+      assert.deepStrictEqual(inventory.manifest[sha512('AAA')], v1.manifest[sha512('AAA')]);
+    });
+
+    it('reinstating a file moves content this version wrote to its remaining copy', async () => {
+      const { o } = await committed({ a: 'AAA' });
+      await o.update(async (t) => {
+        await t.write('a', 'NEW');
+        await t.copy('a', 'c');
+        await t.reinstate('a', 'v1');
+      });
+      const inventory = await assertValid(o, 'v2', { a: 'AAA', c: 'NEW' });
+      assert.deepStrictEqual(inventory.manifest[sha512('NEW')], ['v2/content/c']);
+    });
+
+    it('reinstating a file over a directory this version wrote removes its content', async () => {
+      const { o } = await committed({ a: 'AAA' });
+      await o.update(async (t) => {
+        await t.remove('a');
+        await t.write('a/x', 'XXX');
+        await t.write('b', 'BBB');
+        await t.reinstate('a', 'v1');
+      });
+      await assertValid(o, 'v2', { a: 'AAA', b: 'BBB' });
+      assert.deepStrictEqual(await contentFiles(o, 'v2'), ['v2/content/b']);
+    });
+
+    it('writes a file again after reinstating over content this version wrote', async () => {
+      const { o } = await committed({ a: 'AAA' });
+      await o.update(async (t) => {
+        await t.write('a', 'NEW');
+        await t.reinstate('a', 'v1');
+        await t.remove('a');
+        await t.write('a', 'THREE');
+      });
+      const inventory = await assertValid(o, 'v2', { a: 'THREE' });
+      assert.deepStrictEqual(inventory.manifest[sha512('THREE')], ['v2/content/a']);
+    });
+
     it('writing and removing a file in a later version creates no new version', async () => {
       const { o } = await committed({ a: 'AAA' });
       await o.update(async (t) => {

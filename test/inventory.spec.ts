@@ -21,6 +21,10 @@ function assertHeadStateValid(inv: OcflObjectInventory) {
       assert.ok(!seen.has(segments.slice(0, depth).join('/')), `logical path ${path} is under a file`);
     }
   }
+  const usedDigests = new Set(Object.values(inv.versions).flatMap((v) => Object.keys(v.state)));
+  for (const digest of Object.keys(inv.manifest)) {
+    assert.ok(usedDigests.has(digest), `digest ${digest} is in the manifest but no version state uses it`);
+  }
   const manifestPaths = Object.values(inv.manifest).flat();
   for (const [algorithm, block] of Object.entries(inv.fixity ?? {})) {
     for (const contentPath of Object.values(block).flat()) {
@@ -516,6 +520,43 @@ describe('OcflObjectInventory class', () => {
       inv._rename('a', 'b');
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
       assert.deepStrictEqual(inv.fixity?.md5, { m1: ['v1/content/a'] });
+      assertHeadStateValid(inv);
+    });
+  });
+
+  describe('reinstating over a logical path within the version being built', () => {
+    function committedA() {
+      const inv = OcflObjectInventory.newVersion(data);
+      inv._add('a', 'd1', { md5: 'm1' });
+      return OcflObjectInventory.newVersion(inv);
+    }
+
+    it('drops the manifest and fixity entries of content nothing else uses', () => {
+      const inv = committedA();
+      inv._add('a', 'd2', { md5: 'm2' });
+      assert.strictEqual(inv._reinstate('a', 'v1'), 1);
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
+      assert.deepStrictEqual(inv.fixity, { md5: { m1: ['v1/content/a'] } });
+      assertHeadStateValid(inv);
+    });
+
+    it('moves shared content to a remaining path, with its fixity', () => {
+      const inv = committedA();
+      inv._add('a', 'd2', { md5: 'm2' });
+      inv._copy('a', 'b');
+      inv._reinstate('a', 'v1');
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d2: ['v2/content/b'] });
+      assert.deepStrictEqual(inv.fixity, { md5: { m1: ['v1/content/a'], m2: ['v2/content/b'] } });
+      assertHeadStateValid(inv);
+    });
+
+    it('drops content stored under a directory the reinstated file replaces', () => {
+      const inv = committedA();
+      inv._delete('a');
+      inv._add('a/x', 'd2');
+      inv._add('a/y', 'd3');
+      inv._reinstate('a', 'v1');
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
       assertHeadStateValid(inv);
     });
   });

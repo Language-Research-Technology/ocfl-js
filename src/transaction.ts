@@ -611,7 +611,11 @@ class OcflObjectTransaction {
    * Makes content from a version earlier than the previous version available in the current version of an OCFL Object.
    */
   async reinstate(logicalPath: string, versionName: string): Promise<number> {
-    return this.#transact(async () => this.#inventory._reinstate(logicalPath, versionName));
+    return this.#transact(async () => {
+      const plan = this.#inventory._planReinstate(logicalPath, versionName);
+      await this.#applyContentReleases(plan.releases);
+      return this.#inventory._applyReinstate(plan);
+    });
   }
 
   /**
