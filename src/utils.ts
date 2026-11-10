@@ -125,4 +125,4 @@ async function findNamasteVersion(prefix: string, rootPath: string): Promise<Ocf
   return version ?? undefined;
 }
 
-export { createLimiter, findNamasteVersion, isAlreadyExists, isDirEmpty, isErrnoException, isNotFound, parseJsonObject, readIfExists };
+export { createLimiter, findNamasteVersion, isAlreadyExists, isDirEmpty, isErrnoException, isNotFound, parseJsonObject, pathExists, readIfExists };

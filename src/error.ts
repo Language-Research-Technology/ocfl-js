@@ -15,6 +15,7 @@ type OcflErrorCode =
   | 'INVALID_LAYOUT_CONFIG'
   | 'UNSUPPORTED_FILE_TYPE'
   | 'SOURCE_CHANGED'
+  | 'MUTABLE_HEAD_ACTIVE'
   | ValidationErrorCode;
 
 /** Base class for errors a client can handle by their `code`. The message isn't part of the contract. */

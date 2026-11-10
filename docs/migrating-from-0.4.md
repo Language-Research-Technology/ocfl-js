@@ -128,6 +128,7 @@ try {
 | `FILE_EXISTS`                 | Two sources of one `object.import()` produce the same logical path, or one inside a file                                      |
 | `UNSUPPORTED_FILE_TYPE`       | An import source is, or contains, something other than a regular file or directory, such as a symlink                         |
 | `SOURCE_CHANGED`              | A file changed while it was being imported                                                                                    |
+| `MUTABLE_HEAD_ACTIVE`         | An update or import finds an active mutable head (extension 0005); see [Other behaviour changes](#other-behaviour-changes)    |
 | `NOT_AN_OBJECT`               | `storage.remove()` finds something with no OCFL object declaration at the object's path, and deletes nothing                  |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                 |
 
@@ -612,6 +613,7 @@ The remaining `_` members, such as `object._setInventory()`, `object._requireInv
 - Importing a directory fails if any of its files fails. Previously the other files were committed and the failures were dropped.
 - An update that leaves a stream from `createWritable()` open now rolls back and rejects with "Unfinished operations detected" instead of never settling.
 - When an `update()` callback throws after one of its operations failed, the update now rolls back fully and rethrows the callback's error. Previously it rethrew the operation's error and left the workspace behind, so the next update of that object failed with `UPDATE_IN_PROGRESS`.
+- `update()` and `import()` throw `MUTABLE_HEAD_ACTIVE` and write nothing when the object has an active mutable head. Previously they created a new version, which extension 0005 forbids. See [Mutable head](../README.md#mutable-head-extension-0005).
 - `rename()` throws `FILE_NOT_FOUND` when the source doesn't exist, instead of doing nothing.
 - **Breaking:** `rename()` and `copy()` throw `FILE_EXISTS` when the target exists, even with identical content or when the target is the source. A target exists if it's a file, if it's a directory with anything in it (directories are never merged), or if it's inside a file. When they throw, nothing has changed. `rename()` used to replace the target, and `copy()` onto an existing target wrote an invalid object. To replace a target, remove it first in the same update, then copy or rename onto it.
 - A logical path with a `..` segment, such as `a/../b`, is rejected instead of being normalised. A name that only starts with two dots, such as `..notes.txt`, is now accepted.
