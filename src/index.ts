@@ -1,13 +1,11 @@
 import { OcflConstants } from './constants.ts';
-import type { OcflStorageLayout } from './extension.ts';
 import { createLayout } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
 import { OcflStorage } from './storage.ts';
-import type { OcflLayoutConfig, OcflLayoutName, OcflObjectConfig, OcflStorageConfig } from './types.ts';
+import type { OcflLayoutConfig, OcflLayoutName, OcflObjectConfig, OcflStorageConfig, OcflStorageLayout } from './types.ts';
 
 export type { OcflErrorCode } from './error.ts';
 export { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
-export type { OcflStorageLayout } from './extension.ts';
 export type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direct-storage-layout.ts';
 export type { HashAndIdNTupleStorageLayoutConfig } from './extensions/0003-hash-and-id-n-tuple-storage-layout.ts';
 export type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
@@ -27,8 +25,8 @@ export const OCFL_VERSIONS: readonly ['1.1', '1.0'] = OcflConstants.OCFL_VERSION
  * @param config - Official extension name or `{ extensionName, ...params }`
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if anything else is given
  */
-export function storageLayout(config: OcflLayoutName | OcflLayoutConfig): OcflStorageLayout {
-  return createLayout(config);
+export function storageLayout<N extends OcflLayoutName>(config: N | OcflLayoutConfig<N>): OcflStorageLayout<N> {
+  return createLayout(config) as unknown as OcflStorageLayout<N>;
 }
 
 /**

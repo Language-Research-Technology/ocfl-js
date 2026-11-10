@@ -149,28 +149,31 @@ describe('choosing a layout that is not supported', () => {
 describe('storageLayout without a loaded storage', () => {
   const HASHED = '0004-hashed-n-tuple-storage-layout';
 
-  it('reads a parameter default when chosen by name', () => {
+  const HASHED_DEFAULTS = { digestAlgorithm: 'sha256', tupleSize: 3, numberOfTuples: 3, shortObjectRoot: false };
+
+  it('has the parameter defaults when chosen by name', () => {
     const layout = ocfl.storageLayout(HASHED);
-    assert.strictEqual(layout.get('digestAlgorithm'), 'sha256');
-    assert.strictEqual(layout.get('tupleSize'), 3);
-    assert.strictEqual(layout.get('numberOfTuples'), 3);
-    assert.strictEqual(layout.get('shortObjectRoot'), false);
+    assert.strictEqual(layout.name, HASHED);
+    assert.deepStrictEqual(layout.parameters, HASHED_DEFAULTS);
   });
 
-  it('reads configured parameters and keeps the defaults of the rest', () => {
-    const layout = ocfl.storageLayout({ extensionName: HASHED, tupleSize: 2 });
-    assert.strictEqual(layout.get('tupleSize'), 2);
-    assert.strictEqual(layout.get('numberOfTuples'), 3);
+  it('has the configured parameters and the defaults of the rest', () => {
+    assert.deepStrictEqual(ocfl.storageLayout({ extensionName: HASHED, tupleSize: 2 }).parameters, { ...HASHED_DEFAULTS, tupleSize: 2 });
+  });
+
+  it('cannot have its parameters changed', () => {
+    const { parameters } = ocfl.storageLayout(HASHED);
+    assert.ok(Object.isFrozen(parameters));
   });
 
   it('ignores a parameter the layout does not declare', () => {
     // @ts-expect-error untyped callers can still pass it
-    assert.strictEqual(ocfl.storageLayout({ extensionName: HASHED, undeclared: 'ignored' }).get('undeclared'), undefined);
+    assert.deepStrictEqual(ocfl.storageLayout({ extensionName: HASHED, undeclared: 'ignored' }).parameters, HASHED_DEFAULTS);
   });
 
   it('has no parameters for the 0002 layout', () => {
     // @ts-expect-error untyped callers can still pass it
-    assert.strictEqual(ocfl.storageLayout({ extensionName: '0002-flat-direct-storage-layout', tupleSize: 2 }).get('tupleSize'), undefined);
+    assert.deepStrictEqual(ocfl.storageLayout({ extensionName: '0002-flat-direct-storage-layout', tupleSize: 2 }).parameters, {});
   });
 
   it('maps an id with the 0003 layout', () => {

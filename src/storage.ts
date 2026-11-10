@@ -75,7 +75,8 @@ class OcflStorage {
       return rootLayout;
     }
     const differences = differingParameters(configured, rootLayout).map(
-      (name) => `configured ${name}: ${inspect(configured.get(name))}, root ${name}: ${inspect(rootLayout.get(name))}`,
+      (name) =>
+        `configured ${name}: ${inspect((configured.parameters as OcflExtensionConfig)[name])}, root ${name}: ${inspect((rootLayout.parameters as OcflExtensionConfig)[name])}`,
     );
     if (differences.length) {
       throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's: ${differences.join('; ')}.`);

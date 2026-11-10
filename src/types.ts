@@ -61,19 +61,32 @@ export type WriteFileData = string | Uint8Array | DataView | ArrayBuffer | Reada
 
 export type OcflVersion = '1.0' | '1.1';
 
-/** The official extension name of a layout this library implements. */
-export type OcflLayoutName =
-  | '000N-path-direct-storage-layout'
-  | '0002-flat-direct-storage-layout'
-  | '0003-hash-and-id-n-tuple-storage-layout'
-  | '0004-hashed-n-tuple-storage-layout';
+/** The parameters of each layout this library implements, by official extension name. */
+export interface OcflLayoutParameters {
+  '000N-path-direct-storage-layout': PathDirectStorageLayoutConfig;
+  '0002-flat-direct-storage-layout': Record<never, never>;
+  '0003-hash-and-id-n-tuple-storage-layout': HashAndIdNTupleStorageLayoutConfig;
+  '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayoutConfig;
+}
 
-/** An official layout name along with that layout's parameters. */
-export type OcflLayoutConfig =
-  | ({ extensionName: '000N-path-direct-storage-layout' } & PathDirectStorageLayoutConfig)
-  | { extensionName: '0002-flat-direct-storage-layout' }
-  | ({ extensionName: '0003-hash-and-id-n-tuple-storage-layout' } & HashAndIdNTupleStorageLayoutConfig)
-  | ({ extensionName: '0004-hashed-n-tuple-storage-layout' } & HashedNTupleStorageLayoutConfig);
+/** The official extension name of a layout this library implements. */
+export type OcflLayoutName = keyof OcflLayoutParameters;
+
+/** An official layout name along with that layout's parameters; a union over every layout by default. */
+export type OcflLayoutConfig<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? { extensionName: N } & OcflLayoutParameters[N] : never;
+
+/** A storage layout: its official name, its effective parameters (defaults included), and its mapping; a union over every layout by default, narrowed by `name`. */
+export type OcflStorageLayout<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName
+  ? {
+      readonly name: N;
+      readonly parameters: Readonly<Required<OcflLayoutParameters[N]>>;
+      /**
+       * Map an object identifier to a path
+       * @param id - The identifier of the OCFL Object
+       */
+      map(id: string): string;
+    }
+  : never;
 
 /** Configuration options for an OCFL Object. */
 export type OcflStorageConfig = {

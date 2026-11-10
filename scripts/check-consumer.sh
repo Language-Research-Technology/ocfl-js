@@ -260,17 +260,15 @@ ocflFs.StorageLayout;
 ocflFs.extensions;
 // @ts-expect-error OcflStorageLayout is a type, use storageLayout()
 api.OcflStorageLayout;
-// @ts-expect-error OcflStorageLayout exposes only map and get
-layout.parameters;
-// @ts-expect-error OcflStorageLayout exposes only map and get
+// @ts-expect-error OcflStorageLayout exposes only name, parameters and map
 layout.config;
-// @ts-expect-error OcflStorageLayout exposes only map and get
-layout.name;
-// @ts-expect-error OcflStorageLayout exposes only map and get
+// @ts-expect-error OcflStorageLayout exposes only name, parameters and map
 layout.description;
-// @ts-expect-error OcflStorageLayout exposes only map and get
+// @ts-expect-error OcflStorageLayout exposes only name, parameters and map
+layout.get('tupleSize');
+// @ts-expect-error OcflStorageLayout exposes only name, parameters and map
 layout.version;
-// @ts-expect-error OcflStorageLayout exposes only map and get
+// @ts-expect-error OcflStorageLayout exposes only name, parameters and map
 layout.set('tupleSize', 2);
 // @ts-expect-error storage takes one argument
 ocflFs.storage({ root: '/tmp/storage' }, {});
@@ -391,16 +389,28 @@ const refs = [byPath, byDigest, byContent].map((ref) => written.getFile(ref)?.lo
 const pathDirect: PathDirectStorageLayoutConfig = { suffix: '/obj' };
 const hashAndId: HashAndIdNTupleStorageLayoutConfig = { tupleSize: 2, numberOfTuples: 2 };
 const hashed: HashedNTupleStorageLayoutConfig = { shortObjectRoot: true };
-const configuredLayouts = [
-  storageLayout({ extensionName: '000N-path-direct-storage-layout', ...pathDirect }),
-  storageLayout({ extensionName: '0003-hash-and-id-n-tuple-storage-layout', ...hashAndId }),
-  storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', ...hashed }),
-];
+const pathDirectLayout = storageLayout({ extensionName: '000N-path-direct-storage-layout', ...pathDirect });
+const hashAndIdLayout = storageLayout({ extensionName: '0003-hash-and-id-n-tuple-storage-layout', ...hashAndId });
+const hashedLayout = storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', ...hashed });
 const validationCode: ValidationErrorCode = 'E060';
 const validationOptions: ValidationErrorOptions = { code: validationCode, description: 'Bad sidecar.', path: 'inventory.json.sha512' };
 const validationError = new ValidationError(validationOptions);
 
-const layout: OcflStorageLayout = storageLayout(layoutName);
+const layout: OcflStorageLayout<'0004-hashed-n-tuple-storage-layout'> = storageLayout('0004-hashed-n-tuple-storage-layout');
+const tupleSize: number = layout.parameters.tupleSize;
+const declaredLayout = (): OcflLayoutName => layoutName;
+const anyLayout: OcflStorageLayout = storageLayout(declaredLayout());
+const _typeOnly = () => {
+  // @ts-expect-error parameters are read-only
+  layout.parameters.tupleSize = 2;
+  // @ts-expect-error a misspelt parameter doesn't typecheck
+  layout.parameters.tupleSze;
+  // @ts-expect-error parameters are read through `parameters`, not get()
+  layout.get('tupleSize');
+  // @ts-expect-error a layout of unknown kind is narrowed by name before reading its parameters
+  anyLayout.parameters.tupleSize;
+};
+const anyTupleSize = anyLayout.name === '0004-hashed-n-tuple-storage-layout' ? anyLayout.parameters.tupleSize : undefined;
 
 if (
   createStorage !== ocflFs.createStorage ||
@@ -411,15 +421,16 @@ if (
   OCFL_VERSIONS !== ocflFs.OCFL_VERSIONS ||
   !OCFL_VERSIONS.includes('1.1') ||
   configuredStorage.objectRoot('abc') !== 'abc/obj' ||
-  layout.get('tupleSize') !== 3 ||
+  tupleSize !== 3 ||
+  anyTupleSize !== 3 ||
   layout.map('object-01') !== '3c0/ff4/240/3c0ff4240c1e116dba14c7627f2319b58aa3d77606d0d90dfc6161608ac987d4' ||
   writtenInventory?.head !== 'v1' ||
   algorithm !== 'sha512' ||
   fixity === undefined ||
   refs.some((logicalPath) => logicalPath !== 'a.txt') ||
-  configuredLayouts[0]?.map('abc') !== 'abc/obj' ||
-  configuredLayouts[1]?.get('tupleSize') !== 2 ||
-  configuredLayouts[2]?.get('shortObjectRoot') !== true ||
+  pathDirectLayout.map('abc') !== 'abc/obj' ||
+  hashAndIdLayout.parameters.tupleSize !== 2 ||
+  hashedLayout.parameters.shortObjectRoot !== true ||
   validationError.code !== 'E060' ||
   (await writtenFile?.text()) !== 'written to the filesystem' ||
   (await storage.has('missing')) ||

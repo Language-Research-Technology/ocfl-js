@@ -203,18 +203,24 @@ export class OcflError extends Error {
 export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'LAYOUT_MISMATCH' | ValidationErrorCode;
 
 // @public
-export type OcflLayoutConfig = ({
-    extensionName: '000N-path-direct-storage-layout';
-} & PathDirectStorageLayoutConfig) | {
-    extensionName: '0002-flat-direct-storage-layout';
-} | ({
-    extensionName: '0003-hash-and-id-n-tuple-storage-layout';
-} & HashAndIdNTupleStorageLayoutConfig) | ({
-    extensionName: '0004-hashed-n-tuple-storage-layout';
-} & HashedNTupleStorageLayoutConfig);
+export type OcflLayoutConfig<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? {
+    extensionName: N;
+} & OcflLayoutParameters[N] : never;
 
 // @public
-export type OcflLayoutName = '000N-path-direct-storage-layout' | '0002-flat-direct-storage-layout' | '0003-hash-and-id-n-tuple-storage-layout' | '0004-hashed-n-tuple-storage-layout';
+export type OcflLayoutName = keyof OcflLayoutParameters;
+
+// @public
+export interface OcflLayoutParameters {
+    // (undocumented)
+    '0002-flat-direct-storage-layout': Record<never, never>;
+    // (undocumented)
+    '0003-hash-and-id-n-tuple-storage-layout': HashAndIdNTupleStorageLayoutConfig;
+    // (undocumented)
+    '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayoutConfig;
+    // (undocumented)
+    '000N-path-direct-storage-layout': PathDirectStorageLayoutConfig;
+}
 
 // @public
 export class OcflObject {
@@ -392,10 +398,11 @@ export type OcflStorageConfig = {
 };
 
 // @public
-export interface OcflStorageLayout {
-    get(param: string): any;
+export type OcflStorageLayout<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? {
+    readonly name: N;
+    readonly parameters: Readonly<Required<OcflLayoutParameters[N]>>;
     map(id: string): string;
-}
+} : never;
 
 // @public (undocumented)
 export type OcflVersion = '1.0' | '1.1';
@@ -411,7 +418,7 @@ export type PathDirectStorageLayoutConfig = {
 export function storage(config: OcflStorageConfig): OcflStorage;
 
 // @public
-export function storageLayout(config: OcflLayoutName | OcflLayoutConfig): OcflStorageLayout;
+export function storageLayout<N extends OcflLayoutName>(config: N | OcflLayoutConfig<N>): OcflStorageLayout<N>;
 
 // @public (undocumented)
 export type UpdateMode = 'MERGE' | 'REPLACE';
