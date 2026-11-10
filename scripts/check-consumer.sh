@@ -73,8 +73,27 @@ cat >"$consumer/tsconfig.json" <<'EOF'
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["consumer.ts", "removed-api.ts"]
+  "include": ["*.ts"]
 }
+EOF
+# Typechecked but never run: each @ts-expect-error names a member that is #private
+cat >"$consumer/private-members.ts" <<'EOF'
+import type { OcflObject, OcflObjectTransaction } from '@ocfl/ocfl-fs';
+declare const object: OcflObject;
+declare const transaction: OcflObjectTransaction;
+// @ts-expect-error _inventory is #private
+object._inventory;
+// @ts-expect-error _readInventory is #private
+object._readInventory();
+// @ts-expect-error _baseInventory is #private
+object._baseInventory();
+// @ts-expect-error _commit is #private
+transaction._commit();
+// @ts-expect-error _queue is #private
+transaction._queue;
+// @ts-expect-error _inventory is #private
+transaction._inventory;
+export { object, transaction };
 EOF
 # Typechecked but never run: each @ts-expect-error names something that must stay out of the public API
 cat >"$consumer/removed-api.ts" <<'EOF'

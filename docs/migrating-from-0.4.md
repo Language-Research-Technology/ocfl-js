@@ -339,6 +339,7 @@ Each public member now corresponds to something the OCFL specification or the li
 | `implementOcfl`                                                                                          | `storage()`, `object()`, `createStorage()`, `loadStorage()`, `storageLayout()` and `OCFL_VERSIONS`                  |
 | The `ListedFile` and `ListOptions` types                                                                 | Nothing: they only described `OcflStore.list()`                                                                     |
 | The second argument to `storage()`, `object()`, `createStorage()` and `loadStorage()`                    | Nothing: put the data in a real directory; see [Filesystem only](#filesystem-only)                                  |
+| Members whose names start with `_`, such as `object._inventory` and `transaction._commit()`              | Nothing: they were internal; see [Internal members](#internal-members)                                              |
 
 ### Filesystem only
 
@@ -512,6 +513,10 @@ Loading a storage root that declares either of them, or any other layout this li
 | `OcflObjectTransaction` | `object.update()`, which passes it to your callback |
 | `OcflObjectInventory`   | `object.getInventory()` or `object.inventory`       |
 | `OcflObjectFile`        | `object.getFile()` or `object.files()`              |
+
+### Internal members
+
+Members used only inside their own class, such as `object._inventory`, `object._readInventory()`, `transaction._commit()` and `transaction._queue`, are now JavaScript private fields. They're gone from the published types and can't be reached at runtime. `Object.keys()` and `console.log()` or `util.inspect()` of an object or transaction no longer show them, and `JSON.stringify()` of a transaction now gives `{}`. Because a `Proxy` can't reach private fields, calling a method on an object or transaction wrapped in one, such as Vue's `reactive()` or a MobX observable, now throws a `TypeError`. Keep them out of reactive state, for example with Vue's `markRaw()`.
 
 ## Other behaviour changes
 

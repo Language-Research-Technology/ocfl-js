@@ -29,7 +29,7 @@ function contentDigestAlgorithm(algorithm: string | undefined): ContentAlgorithm
   return name;
 }
 
-/** Failures of reading a root inventory that a writer has only partly replaced. `_readInventory` handles a missing inventory, so ENOENT means its sidecar. */
+/** Failures of reading a root inventory that a writer has only partly replaced. `#readInventory` handles a missing inventory, so ENOENT means its sidecar. */
 function isMidCommitRead(err: unknown) {
   return err instanceof SyntaxError || isNotFound(err) || (err instanceof OcflError && err.code === 'E060');
 }
@@ -48,7 +48,7 @@ class OcflObject {
    * A default list of digest algorithms to be calculated for each file in this object and added to the fixity block.
    */
   fixityAlgorithms: string[] | undefined;
-  _inventory: { [version: string]: OcflObjectInventory } = {};
+  #inventories: { [version: string]: OcflObjectInventory } = {};
   #latestRead = false;
 
   /**
@@ -69,7 +69,6 @@ class OcflObject {
     this.#digestAlgorithm = contentDigestAlgorithm(config.digestAlgorithm);
     this.#workspace = config.workspace ? path.resolve(config.workspace) : undefined;
     this.#contentDirectory = config.contentDirectory ?? 'content';
-    this._inventory = {};
     this.fixityAlgorithms = config.fixityAlgorithms;
   }
 
@@ -165,7 +164,7 @@ class OcflObject {
    * Read and parse the inventory.json file
    * @param version - Full name of the version, eg: v1, v2, v3
    */
-  async _readInventory(version: string = 'latest'): Promise<OcflObjectInventory | undefined> {
+  async #readInventory(version: string = 'latest'): Promise<OcflObjectInventory | undefined> {
     const invPath = version === 'latest' ? INVENTORY_NAME : path.join(version, INVENTORY_NAME);
     let datastr: string;
     try {
@@ -202,10 +201,9 @@ class OcflObject {
    * Set the latest version of inventory in the cache
    */
   _setInventory(inventory: OcflObjectInventory, version = 'latest') {
-    //this._inventory['latest'] = this._inventory[inventory.head] = inventory;
-    this._inventory[version] = inventory;
+    this.#inventories[version] = inventory;
     if (version === 'latest') {
-      this._inventory[inventory.head] = inventory;
+      this.#inventories[inventory.head] = inventory;
     }
   }
 
@@ -227,8 +225,8 @@ class OcflObject {
    * @param version - Full name of the version, eg: v1, v2, v3
    */
   async getInventory(version: string = 'latest'): Promise<OcflObjectInventory | undefined> {
-    if (!this._inventory[version]) {
-      const inv = await this._readInventory(version);
+    if (!this.#inventories[version]) {
+      const inv = await this.#readInventory(version);
       if (inv) {
         this._setInventory(inv, version);
       }
@@ -236,7 +234,7 @@ class OcflObject {
         this.#latestRead = true;
       }
     }
-    return this._inventory[version];
+    return this.#inventories[version];
   }
 
   async _requireInventory(): Promise<OcflObjectInventory> {
@@ -247,7 +245,7 @@ class OcflObject {
     return inv;
   }
 
-  _baseInventory() {
+  #baseInventory() {
     return {
       ...(this.id === undefined ? {} : { id: this.id }),
       digestAlgorithm: this.digestAlgorithm || 'sha512',
@@ -267,7 +265,7 @@ class OcflObject {
     if (mode_ !== 'MERGE' && mode_ !== 'REPLACE') {
       throw new TypeError(`Invalid mode '${mode_}'`);
     }
-    const inv = (await this.getInventory()) ?? this._baseInventory();
+    const inv = (await this.getInventory()) ?? this.#baseInventory();
     const newInv = OcflObjectInventoryMut.newVersion(inv, mode_ === 'REPLACE');
     await this._validateObjectPath();
     const t = await OcflObjectTransaction.create(this, newInv, this.workspace || this.root);
@@ -381,7 +379,7 @@ class OcflObject {
    * Return the latest version of the cached data from inventory.json which can be read using {@link OcflObject.getInventory}
    */
   get inventory() {
-    return this._inventory.latest;
+    return this.#inventories.latest;
   }
 
   /**
@@ -389,8 +387,8 @@ class OcflObject {
    * Optionally, preloads and reads all files metadata from the filesystem.
    */
   async load({ filesMetadata }: { filesMetadata?: boolean | undefined } = {}) {
-    const inv = await this._readInventory();
-    this._inventory = {};
+    const inv = await this.#readInventory();
+    this.#inventories = {};
     if (inv) {
       this._setInventory(inv);
     }
@@ -431,7 +429,7 @@ class OcflObject {
     }
     let inventory: OcflObjectInventory | undefined;
     try {
-      inventory = await this._readInventory();
+      inventory = await this.#readInventory();
     } catch (err) {
       if (isMidCommitRead(err)) {
         return;
@@ -445,7 +443,7 @@ class OcflObject {
     if (inventory) {
       this._setInventory(inventory);
     } else {
-      this._inventory = {};
+      this.#inventories = {};
     }
   }
 

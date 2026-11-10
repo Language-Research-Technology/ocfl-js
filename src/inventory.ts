@@ -602,7 +602,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     this.#forgetFixity(from);
     this.#writable.manifest[digest] = [to];
     for (const [algorithm, value] of fixity) {
-      this.addFixity(to, algorithm, value);
+      this.#addFixity(to, algorithm, value);
     }
   }
 
@@ -627,7 +627,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     const contentPath = this.#ownContentPath(logicalPath);
     this.#writable.manifest[digest] = [contentPath];
     for (const [digestName, digestValue] of Object.entries(fixity)) {
-      this.addFixity(contentPath, digestName, digestValue);
+      this.#addFixity(contentPath, digestName, digestValue);
     }
     return { [this.digestAlgorithm]: digest, ...fixity };
   }
@@ -637,7 +637,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
     const recorded = this._indexGetFixity(contentPath);
     const missing = Object.entries(fixity).filter(([digestName]) => !recorded[digestName]);
     for (const [digestName, digestValue] of missing) {
-      this.addFixity(contentPath, digestName, digestValue);
+      this.#addFixity(contentPath, digestName, digestValue);
     }
     const digests = this._indexDigests(digest);
     if (missing.length > 0) {
@@ -653,7 +653,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
   /**
    * Low-level method to add a set of digest entries associated to file into the fixity block
    */
-  addFixity(contentPath: string, digestName: string, digestValue: string) {
+  #addFixity(contentPath: string, digestName: string, digestValue: string) {
     if (!digestValue || !digestName) {
       return;
     }
@@ -684,7 +684,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * Resolve a copy or rename to the files it transfers, changing nothing.
    * @throws OcflError FILE_NOT_FOUND if the source is missing, FILE_EXISTS if the target exists
    */
-  _planTransfer(srcLogicalPath: string, destLogicalPath: string): Transfer[] {
+  #planTransfer(srcLogicalPath: string, destLogicalPath: string): Transfer[] {
     // Filesystem paths are normalised, so the check and the state must use the same form as the file on disk
     const target = path.posix.normalize(destLogicalPath).replace(/\/$/, '');
     const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
@@ -724,7 +724,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * @throws OcflError FILE_NOT_FOUND if the source is missing, FILE_EXISTS if the target exists
    */
   _planRename(srcLogicalPath: string, destLogicalPath: string): RenamePlan {
-    const transfers = this._planTransfer(srcLogicalPath, destLogicalPath);
+    const transfers = this.#planTransfer(srcLogicalPath, destLogicalPath);
     const releases = transfers.flatMap(({ src, dest, digest }) => {
       const from = this.getContentPath(digest);
       return from === this.#ownContentPath(src) ? [{ digest, from, to: this.#ownContentPath(dest) }] : [];
@@ -746,7 +746,7 @@ class OcflObjectInventoryMut extends OcflObjectInventory {
    * @throws OcflError FILE_EXISTS if the target exists
    */
   copy(srcLogicalPath: string, destLogicalPath: string) {
-    for (const { dest, digest, digests } of this._planTransfer(srcLogicalPath, destLogicalPath)) {
+    for (const { dest, digest, digests } of this.#planTransfer(srcLogicalPath, destLogicalPath)) {
       this.#list(dest, digest, digests);
     }
   }

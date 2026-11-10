@@ -222,13 +222,6 @@ export type OcflLayoutName = '000N-path-direct-storage-layout' | '0002-flat-dire
 // @public
 export class OcflObject {
     constructor(config: OcflObjectConfig);
-    // (undocumented)
-    _baseInventory(): {
-        id?: string;
-        digestAlgorithm: ContentAlgorithm;
-        type: Inventory['type'];
-        contentDirectory: string;
-    };
     get contentDirectory(): string;
     count(version?: string): Promise<number>;
     // (undocumented)
@@ -245,10 +238,6 @@ export class OcflObject {
     get id(): string | undefined;
     import(content: string | string[] | string[][], mode?: UpdateMode): Promise<void>;
     get inventory(): OcflObjectInventory | undefined;
-    // (undocumented)
-    _inventory: {
-        [version: string]: OcflObjectInventory;
-    };
     load(input?: {
         filesMetadata?: boolean | undefined;
     }): Promise<void>;
@@ -258,7 +247,6 @@ export class OcflObject {
     readFile(relPath: string, options?: BinaryOptions): Promise<Uint8Array>;
     // (undocumented)
     readFile(relPath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array>;
-    _readInventory(version?: string): Promise<OcflObjectInventory | undefined>;
     refresh(): Promise<void>;
     // (undocumented)
     _requireInventory(): Promise<OcflObjectInventory>;
@@ -387,87 +375,18 @@ export class OcflObjectInventory {
 
 // @public
 export class OcflObjectTransaction {
+    // Warning: (ae-forgotten-export) The symbol "OcflObjectInventoryMut" needs to be exported by the entry point index.d.ts
     constructor(ocflObject: OcflObject, inventory: OcflObjectInventoryMut, versionPath: string, workspace: string | undefined, rootExisted: boolean, createdNamaste: string | undefined);
-    // Warning: (ae-forgotten-export) The symbol "Hashes" needs to be exported by the entry point index.d.ts
-    _addContent(logicalPath: string, input: Hashes, staging: string, stage?: () => Promise<void>): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "ContentRelease" needs to be exported by the entry point index.d.ts
-    _applyContentReleases(releases: ContentRelease[], placedAt?: string, place?: () => Promise<void>): Promise<void>;
-    _blockCommitOnFailure(change: () => Promise<void>): Promise<void>;
     commit(options?: CommitOptions): Promise<void>;
-    // (undocumented)
-    _commit(options?: CommitOptions): Promise<void>;
-    // (undocumented)
-    _commitBlocker: Error | undefined;
-    // (undocumented)
-    _committed: boolean;
-    // (undocumented)
-    _contentFilePath(contentPath: string): string;
-    // (undocumented)
-    _contentRoot: string;
     copy(source: string, target: string): Promise<void>;
     static create(ocflObject: OcflObject, inventory: OcflObjectInventoryMut, workspacePath: string): Promise<OcflObjectTransaction>;
-    // (undocumented)
-    _createdNamaste: string | undefined;
     createWritable(logicalPath: string, options?: unknown): Promise<WritableStream>;
-    // (undocumented)
-    get _digestAlgorithms(): string[];
-    // (undocumented)
-    _getRealPath(logicalPath: string): string;
     import(source: string, target?: string): Promise<void>;
-    _inTurn<T>(prepare: () => Promise<() => Promise<T>>): Promise<T>;
-    // Warning: (ae-forgotten-export) The symbol "OcflObjectInventoryMut" needs to be exported by the entry point index.d.ts
-    //
-    // (undocumented)
-    _inventory: OcflObjectInventoryMut;
-    // (undocumented)
-    _lastTurn: Promise<unknown>;
-    // (undocumented)
-    _object: OcflObject;
-    // (undocumented)
-    _prepareImport(source: string, dest: string): Promise<() => Promise<void>>;
-    // (undocumented)
-    _prepareImportFile(source: string, target: string): Promise<() => Promise<void>>;
-    // (undocumented)
-    _previousRootInventory: Uint8Array | undefined;
-    _pruneEmptyDirectories(start: string): Promise<void>;
-    // Warning: (ae-forgotten-export) The symbol "TrackedPromise" needs to be exported by the entry point index.d.ts
-    //
-    // (undocumented)
-    _queue: TrackedPromise<unknown>[];
     reinstate(logicalPath: string, versionName: string): Promise<number>;
     remove(logicalPath: string): Promise<void>;
-    // (undocumented)
-    _removeStagedOnFailure<T>(staging: string, step: () => Promise<T>): Promise<T>;
-    // (undocumented)
-    _removeWorkspaceIfEmpty(): Promise<void>;
     rename(source: string, target: string): Promise<void>;
     rollback(): Promise<void>;
-    // (undocumented)
-    _rootExisted: boolean;
-    // (undocumented)
-    get _rootInventoryPaths(): {
-        inventory: string;
-        digest: string;
-        inventoryTmp: string;
-        digestTmp: string;
-    };
-    // (undocumented)
-    _rootInventoryReplaced: boolean;
-    // (undocumented)
-    _rootInventoryStaged: boolean;
-    // (undocumented)
-    _stagedCount: number;
-    _stagingPath(): string;
-    _tidy(dirPath: string): Promise<void>;
-    _transact<T>(op: () => Promise<T>): Promise<T>;
-    _undo(): Promise<void>;
-    // (undocumented)
-    _versionPath: string;
-    // (undocumented)
-    _workspace: string | undefined;
     write(logicalPath: string, data: WriteFileData, options?: object | string): Promise<void>;
-    // (undocumented)
-    _writers: Set<WritableStreamDefaultWriter<any>>;
 }
 
 // @public
