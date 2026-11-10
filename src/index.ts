@@ -24,6 +24,7 @@ export const OCFL_VERSIONS: readonly ['1.1', '1.0'] = OcflConstants.OCFL_VERSION
  * Instantiate a storage layout from its official extension name or a config object
  * @param config - Official extension name or `{ extensionName, ...params }`
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if anything else is given
+ * @throws {@link OcflError} `INVALID_LAYOUT_CONFIG` if the layout rejects a parameter
  */
 export function storageLayout<N extends OcflLayoutName>(config: N | OcflLayoutConfig<N>): OcflStorageLayout<N> {
   return createLayout(config) as unknown as OcflStorageLayout<N>;

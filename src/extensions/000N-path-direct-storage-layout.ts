@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { inspect } from 'node:util';
 import { OcflError } from '../error.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 
@@ -7,6 +8,9 @@ export type PathDirectStorageLayoutConfig = {
   replace?: [string | RegExp, string][];
   suffix?: string;
 };
+
+const isReplacePair = (pair: unknown) =>
+  Array.isArray(pair) && pair.length === 2 && (typeof pair[0] === 'string' || pair[0] instanceof RegExp) && typeof pair[1] === 'string';
 
 const DefaultConfig: Required<PathDirectStorageLayoutConfig> = {
   omitScheme: false,
@@ -20,6 +24,13 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
 
   constructor(config?: OcflExtensionConfig) {
     super(config, DefaultConfig);
+    const invalid = this.parameters.replace.find((pair) => !isReplacePair(pair));
+    if (invalid !== undefined) {
+      throw new OcflError(
+        'INVALID_LAYOUT_CONFIG',
+        `Each replace entry must be a [pattern, replacement] pair of a string or RegExp and a string, not ${inspect(invalid)}.`,
+      );
+    }
   }
 
   map(id: string): string {

@@ -1,8 +1,24 @@
-import { isDeepStrictEqual } from 'node:util';
+import { inspect, isDeepStrictEqual } from 'node:util';
+import { OcflError } from './error.ts';
 import type { OcflLayoutName } from './types.ts';
 
 /** A layout's config as callers and config.json give it, before any checking */
 type OcflExtensionConfig = { extensionName?: string; [key: string]: unknown };
+
+const typeName = (value: unknown) => (Array.isArray(value) ? 'array' : typeof value);
+
+/** `defaults` with the parameters `config` sets, and the names of those parameters */
+function mergeParameters(defaults: object | undefined, config: OcflExtensionConfig = {}): { parameters: OcflExtensionConfig; setNames: string[] } {
+  const parameters: OcflExtensionConfig = { ...defaults };
+  const setNames: string[] = [];
+  for (const name of Object.keys(config)) {
+    if (Object.hasOwn(parameters, name)) {
+      parameters[name] = config[name];
+      setNames.push(name);
+    }
+  }
+  return { parameters, setNames };
+}
 
 abstract class BuiltInLayout<C extends object = object> {
   /** Official extension name */
@@ -11,19 +27,21 @@ abstract class BuiltInLayout<C extends object = object> {
   /** Effective parameters, defaults included */
   readonly parameters: Readonly<C>;
   /** Names of the parameters the caller or config.json set, which config.json records */
-  readonly #setNames: string[] = [];
+  readonly #setNames: string[];
 
   constructor(config?: OcflExtensionConfig, defaultConfig?: C) {
-    const parameters: OcflExtensionConfig = { ...defaultConfig };
-    if (typeof config === 'object' && defaultConfig) {
-      for (const k in config) {
-        if (k in defaultConfig) {
-          parameters[k] = config[k];
-          this.#setNames.push(k);
-        }
+    const { parameters, setNames } = mergeParameters(defaultConfig, config);
+    for (const name of setNames) {
+      const expected = typeName((defaultConfig as OcflExtensionConfig)[name]);
+      if (typeName(parameters[name]) !== expected) {
+        throw new OcflError(
+          'INVALID_LAYOUT_CONFIG',
+          `Layout parameter ${name} must be ${/^[aeiou]/.test(expected) ? 'an' : 'a'} ${expected}, not ${inspect(parameters[name])}.`,
+        );
       }
     }
     this.parameters = Object.freeze(parameters) as Readonly<C>;
+    this.#setNames = setNames;
   }
 
   /** The parameters to record in config.json, or `undefined` if none were set */
@@ -44,11 +62,9 @@ abstract class BuiltInLayout<C extends object = object> {
 /** Parameter values as config.json stores them, which can't represent a RegExp */
 const asStored = (value: unknown) => JSON.parse(JSON.stringify({ value }));
 
-/** Names of the parameters of `reference` whose effective values, defaults included, differ in `extension` */
-function differingParameters(extension: BuiltInLayout, reference: BuiltInLayout): string[] {
-  const actual = extension.parameters as OcflExtensionConfig;
-  const expected = reference.parameters as OcflExtensionConfig;
+/** Names of the parameters in `expected` whose values, as config.json stores them, differ in `actual` */
+function differingParameters(actual: OcflExtensionConfig, expected: OcflExtensionConfig): string[] {
   return Object.keys(expected).filter((name) => !isDeepStrictEqual(asStored(actual[name]), asStored(expected[name])));
 }
 
-export { BuiltInLayout, differingParameters, type OcflExtensionConfig };
+export { BuiltInLayout, differingParameters, mergeParameters, type OcflExtensionConfig };

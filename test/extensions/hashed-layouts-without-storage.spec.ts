@@ -15,14 +15,15 @@ const DIGESTS_OF_OBJECT_01 = {
 
 describe('hashed storage layouts without a loaded storage', () => {
   for (const [digestAlgorithm, digest] of Object.entries(DIGESTS_OF_OBJECT_01)) {
-    const config = { digestAlgorithm, tupleSize: digest.length, numberOfTuples: 1 };
+    const tuple = digest.slice(0, 32);
+    const config = { digestAlgorithm, tupleSize: tuple.length, numberOfTuples: 1 };
 
     it(`0003 maps an id with ${digestAlgorithm}`, () => {
-      assert.strictEqual(storageLayout({ extensionName: '0003-hash-and-id-n-tuple-storage-layout', ...config }).map('object-01'), `${digest}/object-01`);
+      assert.strictEqual(storageLayout({ extensionName: '0003-hash-and-id-n-tuple-storage-layout', ...config }).map('object-01'), `${tuple}/object-01`);
     });
 
     it(`0004 maps an id with ${digestAlgorithm}`, () => {
-      assert.strictEqual(storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', ...config }).map('object-01'), `${digest}/${digest}`);
+      assert.strictEqual(storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', ...config }).map('object-01'), `${tuple}/${digest}`);
     });
   }
 });
