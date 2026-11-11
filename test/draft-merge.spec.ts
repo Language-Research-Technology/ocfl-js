@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
 import type { Draft, StorageRoot } from '../src/index.ts';
-import { withFsFailure } from './fs-failures.ts';
+import { moving, withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
+  assertRefuses,
   assertWritesNothing,
   createObject,
   DETAILS,
@@ -39,14 +40,7 @@ describe('merging a directory into another in a draft', () => {
 
   /** Asserts that `operation` is refused with `code` in an update of an object holding `files`, and that the update writes nothing */
   async function assertRefused(files: Record<string, string>, operation: (draft: Draft) => Promise<void>, code: 'FILE_EXISTS' | 'INVALID_LOGICAL_PATH') {
-    const object = await createObject(root, newId(), files);
-    await assertWritesNothing(root, object, async () => {
-      const returned = await object.update(DETAILS, async (draft) => {
-        await assert.rejects(operation(draft), ocflError(code));
-      });
-      assert.strictEqual(returned, object);
-    });
-    await assertHolds(root, object, files);
+    await assertRefuses(root, await createObject(root, newId(), files), operation, code);
   }
 
   /** `files` without those at or below `directory`, if it is given */
@@ -253,7 +247,6 @@ describe('merging a directory into another in a draft', () => {
   }
 
   describe('when stored content cannot be moved or removed', () => {
-    const moving = (from: string, to: string) => (source: string, target: string) => source.endsWith(from) && target.endsWith(to);
     const files = { 'src/a': 'A', 'src/b': 'B', 'dst/a': 'old a', 'dst/b': 'old b', 'dst/keep': 'K' };
     const merged = { 'dst/a': 'A', 'dst/b': 'B', 'dst/keep': 'K' };
 

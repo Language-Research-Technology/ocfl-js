@@ -4,8 +4,19 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before } from 'node:test';
-import { createStorageRoot, type Inventory, type LayoutConfig, type OcflObject, type StorageRoot, type Version, type VersionDetails } from '../../src/index.ts';
+import {
+  createStorageRoot,
+  type Draft,
+  type Inventory,
+  type LayoutConfig,
+  type OcflErrorCode,
+  type OcflObject,
+  type StorageRoot,
+  type Version,
+  type VersionDetails,
+} from '../../src/index.ts';
 import { emptyDirectoriesUnder } from '../empty-directories.ts';
+import { ocflError } from '../ocfl-error.ts';
 
 /** With this layout an object root is `<root>/<id>`, and a new storage root has no `extensions` directory */
 export const FLAT: LayoutConfig = { extensionName: '0002-flat-direct-storage-layout' };
@@ -135,4 +146,16 @@ export async function assertWritesNothing(root: StorageRoot, object: OcflObject,
   assert.deepStrictEqual(await snapshot(objectRoot), before);
   assert.ok(!fs.existsSync(path.join(objectRoot, `v${object.head.number + 1}`)));
   assert.ok(!fs.existsSync(workspaceOf(root)));
+}
+
+/** Asserts that `operation` rejects with `code` in an update of `object`, which then writes nothing and leaves the object as it was */
+export async function assertRefuses(root: StorageRoot, object: OcflObject, operation: (draft: Draft) => Promise<void>, code: OcflErrorCode): Promise<void> {
+  const files = await textFiles(object.head);
+  await assertWritesNothing(root, object, async () => {
+    const returned = await object.update(DETAILS, async (draft) => {
+      await assert.rejects(operation(draft), ocflError(code));
+    });
+    assert.strictEqual(returned, object);
+  });
+  await assertHolds(root, object, files);
 }

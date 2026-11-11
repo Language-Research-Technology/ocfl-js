@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
 import type { Draft, StorageRoot } from '../src/index.ts';
-import { withFsFailure } from './fs-failures.ts';
+import { moving, withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
+  assertRefuses,
   assertWritesNothing,
   createObject,
   DETAILS,
@@ -37,14 +38,7 @@ describe('renaming in a draft', () => {
     operation: (draft: Draft) => Promise<void>,
     code: 'FILE_EXISTS' | 'FILE_NOT_FOUND' | 'INVALID_LOGICAL_PATH',
   ) {
-    const object = await createObject(root, newId(), files);
-    await assertWritesNothing(root, object, async () => {
-      const returned = await object.update(DETAILS, async (draft) => {
-        await assert.rejects(operation(draft), ocflError(code));
-      });
-      assert.strictEqual(returned, object);
-    });
-    await assertHolds(root, object, files);
+    await assertRefuses(root, await createObject(root, newId(), files), operation, code);
   }
 
   describe('a file', () => {
@@ -605,8 +599,6 @@ describe('renaming in a draft', () => {
   });
 
   describe('when stored content cannot be moved', () => {
-    const moving = (from: string, to: string) => (source: string, target: string) => source.endsWith(from) && target.endsWith(to);
-
     it('puts files back and keeps the source when renaming a directory fails part-way', async () => {
       const id = newId();
       const object = await root.create(id, DETAILS, async (draft) => {

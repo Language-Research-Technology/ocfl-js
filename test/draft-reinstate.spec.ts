@@ -4,6 +4,7 @@ import { before, describe, it } from 'node:test';
 import type { Draft, OcflObject, StorageRoot } from '../src/index.ts';
 import {
   assertHolds,
+  assertRefuses,
   assertVersionValid,
   assertWritesNothing,
   createObject,
@@ -42,14 +43,7 @@ describe('reinstating in a draft', () => {
 
   /** Asserts that `operation` is refused with `code` in an update of `object`, and that the update writes nothing */
   async function assertRefused(object: OcflObject, operation: Step, code: 'FILE_EXISTS' | 'FILE_NOT_FOUND' | 'INVALID_LOGICAL_PATH') {
-    const files = await textFiles(object.head);
-    await assertWritesNothing(root, object, async () => {
-      const returned = await object.update(DETAILS, async (draft) => {
-        await assert.rejects(operation(draft), ocflError(code));
-      });
-      assert.strictEqual(returned, object);
-    });
-    await assertHolds(root, object, files);
+    await assertRefuses(root, object, operation, code);
   }
 
   describe('a file', () => {

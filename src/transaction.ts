@@ -453,11 +453,12 @@ class OcflObjectTransaction {
     }));
     const targets = new Set(files.map(({ to }) => to));
     // A file a move would overwrite is set aside first, so it can still be moved on, or put back after a failure
-    const setAside = files.filter(({ from }) => targets.has(from)).map(({ from, to }) => ({ from, to: this.#stagingPath(), onward: to }));
-    const moves = [...setAside, ...setAside.map(({ to, onward }) => ({ from: to, to: onward })), ...files.filter(({ from }) => !targets.has(from))];
+    const setAside = files.filter(({ from }) => targets.has(from)).map(({ from }) => ({ from, to: this.#stagingPath() }));
+    const asideAt = new Map(setAside.map(({ from, to }) => [from, to]));
+    const remaining = files.map(({ from, to }) => ({ from: asideAt.get(from) ?? from, to }));
     const moved: { from: string; to: string }[] = [];
     try {
-      for (const { from, to } of moves) {
+      for (const { from, to } of [...setAside, ...remaining]) {
         if (to !== undefined) {
           await store.move(from, to);
           moved.push({ from, to });
@@ -476,13 +477,11 @@ class OcflObjectTransaction {
       throw error;
     }
     const vacated = files.filter(({ from }) => from !== placedAt);
-    const doomed = [
-      ...setAside.filter(({ onward }) => onward === undefined).map(({ to }) => to),
-      ...vacated.filter(({ from, to }) => to === undefined && !targets.has(from)).map(({ from }) => from),
-    ];
     await this.#blockCommitOnFailure(async () => {
-      for (const file of doomed) {
-        await fs.promises.rm(file, { recursive: true, force: true });
+      for (const { from, to } of remaining) {
+        if (to === undefined && from !== placedAt) {
+          await fs.promises.rm(from, { recursive: true, force: true });
+        }
       }
     });
     for (const dir of new Set(vacated.map(({ from }) => path.dirname(from)))) {
@@ -660,7 +659,7 @@ class OcflObjectTransaction {
     return this.#transact(async () => {
       const plan = this.#inventory._planCopy(fileLogicalPath(source), fileLogicalPath(target), options?.merge === true);
       await this.#applyContentReleases(plan.releases);
-      this.#inventory._applyCopy(plan);
+      this.#inventory._applyRelist(plan);
     });
   }
 
@@ -679,7 +678,7 @@ class OcflObjectTransaction {
     return this.#transact(async () => {
       const plan = this.#inventory._planRename(fileLogicalPath(source), fileLogicalPath(target), options?.merge === true);
       await this.#applyContentReleases(plan.releases);
-      this.#inventory._applyRename(plan);
+      this.#inventory._applyRelist(plan);
     });
   }
 
@@ -696,7 +695,7 @@ class OcflObjectTransaction {
     return this.#transact(async () => {
       const plan = this.#inventory._planReinstate(fileLogicalPath(logicalPath), version);
       await this.#applyContentReleases(plan.releases);
-      this.#inventory._applyReinstate(plan);
+      this.#inventory._applyRelist(plan);
     });
   }
 

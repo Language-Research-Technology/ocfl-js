@@ -45,9 +45,9 @@ function assertMatchesRebuilt(inv: OcflObjectInventory) {
   }
 }
 
-const copy = (inv: OcflObjectInventory, source: string, target: string, merge?: boolean) => inv._applyCopy(inv._planCopy(source, target, merge));
-const rename = (inv: OcflObjectInventory, source: string, target: string, merge?: boolean) => inv._applyRename(inv._planRename(source, target, merge));
-const reinstate = (inv: OcflObjectInventory, logicalPath: string, version: number) => inv._applyReinstate(inv._planReinstate(logicalPath, version));
+const copy = (inv: OcflObjectInventory, source: string, target: string, merge?: boolean) => inv._applyRelist(inv._planCopy(source, target, merge));
+const rename = (inv: OcflObjectInventory, source: string, target: string, merge?: boolean) => inv._applyRelist(inv._planRename(source, target, merge));
+const reinstate = (inv: OcflObjectInventory, logicalPath: string, version: number) => inv._applyRelist(inv._planReinstate(logicalPath, version));
 
 describe('OcflObjectInventory class', () => {
   let data: Inventory;

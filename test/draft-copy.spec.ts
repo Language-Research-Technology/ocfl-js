@@ -6,6 +6,7 @@ import type { Draft, OcflObject, StorageRoot } from '../src/index.ts';
 import { withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
+  assertRefuses,
   assertVersionValid,
   assertWritesNothing,
   createObject,
@@ -53,14 +54,7 @@ describe('copying in a draft', () => {
 
   /** Asserts that `operation` is refused with `code` in an update of an object holding `files`, and that the update writes nothing */
   async function assertRefused(files: Record<string, string>, operation: (draft: Draft) => Promise<void>, code: 'FILE_EXISTS' | 'FILE_NOT_FOUND') {
-    const object = await createObject(root, newId(), files);
-    await assertWritesNothing(root, object, async () => {
-      const returned = await object.update(DETAILS, async (draft) => {
-        await assert.rejects(operation(draft), ocflError(code));
-      });
-      assert.strictEqual(returned, object);
-    });
-    await assertHolds(root, object, files);
+    await assertRefuses(root, await createObject(root, newId(), files), operation, code);
   }
 
   describe('a file', () => {

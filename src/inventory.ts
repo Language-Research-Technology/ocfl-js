@@ -154,20 +154,13 @@ interface TransferPlan {
   replaced: string[];
 }
 
-interface CopyPlan extends TransferPlan {
-  releases: ContentRelease[];
-}
-
-interface RenamePlan extends TransferPlan {
-  releases: ContentRelease[];
-}
-
 export interface DeletePlan {
   paths: string[];
   releases: ContentRelease[];
 }
 
-interface ReinstatePlan extends DeletePlan {
+/** A copy, rename or reinstate: the paths it unlists, then the files it lists */
+interface RelistPlan extends DeletePlan {
   files: { logicalPath: string; digest: string; digests: Digests }[];
 }
 
@@ -677,17 +670,17 @@ class OcflObjectInventory {
 
   #applyContentReleases(releases: ContentRelease[]) {
     // Every `from` is read and forgotten first: a release can move content to a path another vacates
-    const fixities = releases.map(({ from }) => Object.entries(this.#indexGetFixity(from)));
-    for (const { from } of releases) {
+    const released = releases.map((release) => ({ ...release, fixity: Object.entries(this.#indexGetFixity(release.from)) }));
+    for (const { from } of released) {
       this.#forgetFixity(from);
     }
-    for (const [index, { digest, to }] of releases.entries()) {
+    for (const { digest, to, fixity } of released) {
       if (to === undefined) {
         delete this.#data.manifest[digest];
         continue;
       }
       this.#data.manifest[digest] = [to];
-      for (const [algorithm, value] of fixities[index] ?? []) {
+      for (const [algorithm, value] of fixity) {
         this.#addFixity(to, algorithm, value);
       }
     }
@@ -765,7 +758,7 @@ class OcflObjectInventory {
    * Resolve a copy or rename to the files it transfers and the files they replace, changing nothing.
    * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
    */
-  #planTransfer(source: string, target: string, merge = false): TransferPlan {
+  #planTransfer(source: string, target: string, merge: boolean): TransferPlan {
     const src = normaliseLogicalPath(source);
     const dest = normaliseLogicalPath(target);
     for (const logicalPath of [src, dest]) {
@@ -773,7 +766,8 @@ class OcflObjectInventory {
         throw new OcflError('INVALID_LOGICAL_PATH', "A logical path can't be empty");
       }
     }
-    const sources = this.#indexFindPaths(src);
+    const isFile = this.getDigest(src) !== undefined;
+    const sources = isFile ? [src] : this.#indexFindPaths(src);
     if (sources.length === 0) {
       throw new OcflError('FILE_NOT_FOUND', `Source logical path "${source}" does not exist in object [${this.id}]`);
     }
@@ -783,9 +777,7 @@ class OcflObjectInventory {
     if (dest.startsWith(`${src}/`)) {
       throw new OcflError('INVALID_LOGICAL_PATH', `Target logical path "${target}" is inside the source "${source}"`);
     }
-    if (this.getDigest(src) !== undefined) {
-      this._checkFilePath(dest);
-    } else {
+    if (!isFile) {
       this.#checkNotInsideFile(dest);
       if (this.getDigest(dest) !== undefined) {
         throw new OcflError('FILE_EXISTS', `Target logical path "${target}" is an existing file in object [${this.id}]`);
@@ -802,64 +794,59 @@ class OcflObjectInventory {
     for (const transfer of transfers) {
       this._checkFilePath(transfer.dest);
     }
-    const replaced = transfers.filter(({ dest, digest }) => (this.getDigest(dest) ?? digest) !== digest).map(({ dest }) => dest);
+    const replaced = transfers
+      .filter(({ dest, digest }) => {
+        const held = this.getDigest(dest);
+        return held !== undefined && held !== digest;
+      })
+      .map(({ dest }) => dest);
     return { transfers, replaced };
   }
 
   /**
-   * Resolve a rename to its transfers, the files they replace and what happens to stored content,
+   * @param unlisted - The paths the transfers unlist
+   * @returns The plan that unlists them, then lists each destination that doesn't still hold its content
+   */
+  #relistPlan(transfers: Transfer[], unlisted: string[]): RelistPlan {
+    const leaving = new Set(unlisted);
+    const paths = [...leaving];
+    const files = transfers
+      .filter(({ dest, digest }) => leaving.has(dest) || this.getDigest(dest) !== digest)
+      .map(({ dest, digest, digests }) => ({ logicalPath: dest, digest, digests }));
+    return { paths, files, releases: this._contentReleases(paths, transfers) };
+  }
+
+  /**
+   * Resolve a rename to the paths it unlists, the files it lists and what happens to stored content,
    * changing nothing. Only files this version stored at a source's or a replaced file's own content path move.
    * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
    * @internal
    */
-  _planRename(source: string, target: string, merge = false): RenamePlan {
-    const { transfers, replaced: occupied } = this.#planTransfer(source, target, merge);
-    const sources = new Set(transfers.map(({ src }) => src));
-    // A merge into the directory the source is in can land a file on another source, which is moved, not replaced
-    const replaced = occupied.filter((file) => !sources.has(file));
-    return { transfers, replaced, releases: this._contentReleases([...replaced, ...sources], transfers) };
+  _planRename(source: string, target: string, merge = false): RelistPlan {
+    const { transfers, replaced } = this.#planTransfer(source, target, merge);
+    return this.#relistPlan(transfers, [...replaced, ...transfers.map(({ src }) => src)]);
   }
 
   /**
-   * Apply a plan from {@link _planRename}, which must be from the current head state
-   * @internal
-   */
-  _applyRename({ transfers, replaced, releases }: RenamePlan): void {
-    this.#delist(replaced);
-    this.#applyContentReleases(releases);
-    for (const { src } of transfers) {
-      this.#unlist(src);
-    }
-    this.#listTransfers(transfers);
-  }
-
-  /**
-   * Resolve a copy to the files it lists, the files they replace and what happens to the replaced
+   * Resolve a copy to the files it replaces, the files it lists and what happens to the replaced
    * files' content, changing nothing
    * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
    * @internal
    */
-  _planCopy(source: string, target: string, merge = false): CopyPlan {
-    const plan = this.#planTransfer(source, target, merge);
-    return { ...plan, releases: this._contentReleases(plan.replaced, plan.transfers) };
+  _planCopy(source: string, target: string, merge = false): RelistPlan {
+    const { transfers, replaced } = this.#planTransfer(source, target, merge);
+    return this.#relistPlan(transfers, replaced);
   }
 
   /**
-   * Apply a plan from {@link _planCopy}, which must be from the current head state
+   * Apply a plan from {@link _planCopy}, {@link _planRename} or {@link _planReinstate}, which must be
+   * from the current head state
    * @internal
    */
-  _applyCopy({ transfers, replaced, releases }: CopyPlan): void {
-    this.#delist(replaced);
-    this.#applyContentReleases(releases);
-    this.#listTransfers(transfers);
-  }
-
-  /** List each transfer's destination, unless it already holds that content */
-  #listTransfers(transfers: Transfer[]) {
-    for (const { dest, digest, digests } of transfers) {
-      if (this.getDigest(dest) !== digest) {
-        this.#list(dest, digest, digests);
-      }
+  _applyRelist({ paths, files, releases }: RelistPlan): void {
+    this._applyDelete({ paths, releases });
+    for (const { logicalPath, digest, digests } of files) {
+      this.#list(logicalPath, digest, digests);
     }
   }
 
@@ -918,7 +905,7 @@ class OcflObjectInventory {
    * `FILE_EXISTS` if a file it lists is a directory or inside a file in the head state
    * @internal
    */
-  _planReinstate(logicalPath: string, version: number): ReinstatePlan {
+  _planReinstate(logicalPath: string, version: number): RelistPlan {
     const path = normaliseLogicalPath(logicalPath);
     const versionName = this.#committedVersionName(version);
     const found = versionName === undefined ? [] : this.#indexFindPaths(path, versionName);
@@ -936,18 +923,6 @@ class OcflObjectInventory {
     });
     const paths = files.map((file) => file.logicalPath).filter((lp) => this.getDigest(lp) !== undefined);
     return { files, paths, releases: this._contentReleases(paths) };
-  }
-
-  /**
-   * Apply a plan from {@link _planReinstate}, which must be from the current state
-   * @internal
-   */
-  _applyReinstate({ files, paths, releases }: ReinstatePlan): void {
-    this.#delist(paths);
-    this.#applyContentReleases(releases);
-    for (const { logicalPath, digest, digests } of files) {
-      this.#list(logicalPath, digest, digests);
-    }
   }
 }
 
