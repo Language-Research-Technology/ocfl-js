@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import ocfl, { type OcflObject } from '../src/index.ts';
+import ocfl, { type LegacyOcflObject as OcflObject } from '../src/index.ts';
 import { stillOpen, trackOpendir, withFsFailure } from './fs-failures.ts';
 
 describe('OcflStorage with an unsupported layout or object reference', () => {

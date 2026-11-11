@@ -1,4 +1,5 @@
 export const HASHED = '0004-hashed-n-tuple-storage-layout';
+export const PATH_DIRECT = '000N-path-direct-storage-layout';
 
 /** The 0004 layout as a storage root reports it when no parameter is set */
 export const HASHED_DEFAULTS: { extensionName: typeof HASHED; digestAlgorithm: string; tupleSize: number; numberOfTuples: number; shortObjectRoot: boolean } = {

@@ -52,6 +52,9 @@ const object = (await loadStorage({ root })).object('smoke');
 await object.update(async (transaction) => transaction.write('a.txt', 'written'));
 await object.getInventory();
 assert.equal(await object.getFile('a.txt')?.text(), 'written');
+
+const opened = await (await openStorageRoot(root)).open('smoke');
+assert.equal(await opened.head.files.get('a.txt')?.text(), 'written');
 EOF
 
 pnpm -C "$consumer" install --prefer-offline --silent || fail "installing the tarball failed"

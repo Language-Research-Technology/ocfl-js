@@ -4,7 +4,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import * as entryPoint from '../src/index.ts';
-import ocfl, { createStorage, createStorageRoot, loadStorage, OCFL_VERSIONS, type OcflObject, openStorageRoot, storage, storageLayout } from '../src/index.ts';
+import ocfl, {
+  createStorage,
+  createStorageRoot,
+  loadStorage,
+  OCFL_VERSIONS,
+  type LegacyOcflObject as OcflObject,
+  openStorageRoot,
+  storage,
+  storageLayout,
+} from '../src/index.ts';
 
 describe('the public entry point', () => {
   let dir: string;

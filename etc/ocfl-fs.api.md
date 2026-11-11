@@ -22,6 +22,12 @@ export type BinaryOptions = {
     [key: string]: unknown;
 };
 
+// @public
+export interface ByteRange {
+    readonly end?: number;
+    readonly start?: number;
+}
+
 // @public (undocumented)
 export interface CommitOptions {
     message?: string | undefined;
@@ -205,65 +211,7 @@ export type Layout = Readonly<Required<LayoutConfig>>;
 export type LayoutConfig = FlatDirectLayoutConfig | HashAndIdNTupleLayoutConfig | HashedNTupleLayoutConfig | PathDirectLayoutConfig;
 
 // @public
-export function loadStorage(config: OcflStorageConfig): Promise<OcflStorage>;
-
-// @public (undocumented)
-export type LogicalPath = string;
-
-// @public (undocumented)
-export class ObjectNotFoundError extends OcflError {
-    constructor(label: string);
-    // (undocumented)
-    readonly code: 'OBJECT_NOT_FOUND';
-}
-
-// @public (undocumented)
-export class ObjectNotLoadedError extends OcflError {
-    constructor(label: string);
-    // (undocumented)
-    readonly code: 'OBJECT_NOT_LOADED';
-}
-
-// @public (undocumented)
-export const OCFL_VERSIONS: readonly ['1.1', '1.0'];
-
-// @public
-export class OcflError extends Error {
-    constructor(code: OcflErrorCode, message: string, options?: {
-        ocflCode?: string | undefined;
-        lockedAt?: Date | undefined;
-        cause?: unknown;
-    });
-    readonly code: OcflErrorCode;
-    readonly lockedAt?: Date;
-    readonly ocflCode?: string;
-}
-
-// @public
-export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_OF_DATE' | 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'RECOVERY_NEEDED' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | 'CROSS_FILESYSTEM_MOVE' | ValidationErrorCode;
-
-// @public
-export type OcflLayoutConfig<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? {
-    extensionName: N;
-} & OcflLayoutParameters[N] : never;
-
-// @public
-export type OcflLayoutName = keyof OcflLayoutParameters;
-
-// @public
-export interface OcflLayoutParameters {
-    // (undocumented)
-    '0002-flat-direct-storage-layout': Record<never, never>;
-    // (undocumented)
-    '0003-hash-and-id-n-tuple-storage-layout': HashAndIdNTupleStorageLayoutConfig;
-    // (undocumented)
-    '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayoutConfig;
-    // (undocumented)
-    '000N-path-direct-storage-layout': PathDirectStorageLayoutConfig;
-}
-
-// @public
-export class OcflObject {
+export class LegacyOcflObject {
     get contentDirectory(): string;
     count(version?: string): Promise<number>;
     // (undocumented)
@@ -304,8 +252,85 @@ export class OcflObject {
 }
 
 // @public
+export function loadStorage(config: OcflStorageConfig): Promise<OcflStorage>;
+
+// @public (undocumented)
+export type LogicalPath = string;
+
+// @public (undocumented)
+export class ObjectNotFoundError extends OcflError {
+    constructor(label: string);
+    // (undocumented)
+    readonly code: 'OBJECT_NOT_FOUND';
+}
+
+// @public (undocumented)
+export class ObjectNotLoadedError extends OcflError {
+    constructor(label: string);
+    // (undocumented)
+    readonly code: 'OBJECT_NOT_LOADED';
+}
+
+// @public (undocumented)
+export const OCFL_VERSIONS: readonly ['1.1', '1.0'];
+
+// @public
+export class OcflError extends Error {
+    constructor(code: OcflErrorCode, message: string, options?: {
+        ocflCode?: string | undefined;
+        lockedAt?: Date | undefined;
+        cause?: unknown;
+    });
+    readonly code: OcflErrorCode;
+    readonly lockedAt?: Date;
+    readonly ocflCode?: string;
+}
+
+// @public
+export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_OF_DATE' | 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'RECOVERY_NEEDED' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | 'CROSS_FILESYSTEM_MOVE' | ValidationErrorCode;
+
+// @public
+export interface OcflFile {
+    bytes(): Promise<Uint8Array>;
+    readonly digest: string;
+    readonly path: string;
+    size(): Promise<number>;
+    stream(range?: ByteRange): ReadableStream<Uint8Array>;
+    text(): Promise<string>;
+}
+
+// @public
+export type OcflLayoutConfig<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? {
+    extensionName: N;
+} & OcflLayoutParameters[N] : never;
+
+// @public
+export type OcflLayoutName = keyof OcflLayoutParameters;
+
+// @public
+export interface OcflLayoutParameters {
+    // (undocumented)
+    '0002-flat-direct-storage-layout': Record<never, never>;
+    // (undocumented)
+    '0003-hash-and-id-n-tuple-storage-layout': HashAndIdNTupleStorageLayoutConfig;
+    // (undocumented)
+    '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayoutConfig;
+    // (undocumented)
+    '000N-path-direct-storage-layout': PathDirectStorageLayoutConfig;
+}
+
+// @public
+export interface OcflObject {
+    readonly digestAlgorithm: 'sha256' | 'sha512';
+    readonly head: Version;
+    readonly id: string;
+    readonly ocflVersion: '1.0' | '1.1';
+    readonly versions: ReadonlyMap<number, Version>;
+}
+
+// @public
 export class OcflObjectFile {
-    constructor(ocflObject: OcflObject, fileRef: FileRef);
+    constructor(ocflObject: LegacyOcflObject, fileRef: FileRef);
     buffer(options?: BinaryOptions): Promise<Uint8Array>;
     // (undocumented)
     contentPath?: string;
@@ -396,7 +421,7 @@ export class OcflObjectTransaction {
 
 // @public
 export class OcflStorage {
-    [Symbol.asyncIterator](): AsyncIterableIterator<OcflObject>;
+    [Symbol.asyncIterator](): AsyncIterableIterator<LegacyOcflObject>;
     constructor(config: OcflStorageConfig);
     create(options?: {
         ocflSpecText?: boolean | undefined;
@@ -407,7 +432,7 @@ export class OcflStorage {
     object(opt: string | {
         id?: string | undefined;
         root?: string | undefined;
-    }): OcflObject;
+    }): LegacyOcflObject;
     objectRoot(id: string): string;
     // (undocumented)
     ocflVersion: OcflVersion;
@@ -462,6 +487,7 @@ export function storageLayout<N extends OcflLayoutName>(config: N | OcflLayoutCo
 export interface StorageRoot {
     readonly layout: Layout;
     readonly ocflVersion: '1.0' | '1.1';
+    open(id: string): Promise<OcflObject>;
     readonly path: string;
 }
 
@@ -471,6 +497,12 @@ export type UpdateMode = 'MERGE' | 'REPLACE';
 // @public
 export interface UpdateOptions extends CommitOptions {
     mode?: UpdateMode | undefined;
+}
+
+// @public
+export interface User {
+    readonly address?: string;
+    readonly name: string;
 }
 
 // @public (undocumented)
@@ -499,6 +531,15 @@ export interface ValidationErrorOptions {
     detail?: string | undefined;
     // (undocumented)
     path: string;
+}
+
+// @public
+export interface Version {
+    readonly created: Date;
+    readonly files: ReadonlyMap<string, OcflFile>;
+    readonly message?: string;
+    readonly number: number;
+    readonly user?: User;
 }
 
 // @public (undocumented)

@@ -10,7 +10,9 @@ export type { HashAndIdNTupleStorageLayoutConfig } from './extensions/0003-hash-
 export type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 export type { FileRef, FileStat, OcflObjectFile } from './file.ts';
 export type { InventoryFile, OcflObjectInventory, VersionNumber } from './inventory.ts';
-export type { FileRefContent, FileRefDigest, FileRefLogical, LogicalPath, OcflObject, UpdateMode, UpdateOptions } from './object.ts';
+export type { FileRefContent, FileRefDigest, FileRefLogical, LogicalPath, OcflObject as LegacyOcflObject, UpdateMode, UpdateOptions } from './object.ts';
+export type { ByteRange, OcflFile } from './ocfl-file.ts';
+export type { OcflObject, User, Version } from './ocfl-object.ts';
 export type { OcflStorage } from './storage.ts';
 export type { StorageRoot } from './storage-root.ts';
 export { createStorageRoot, openStorageRoot } from './storage-root.ts';
