@@ -19,10 +19,18 @@ const WORKSPACE_EXTENSION_TEXT = `# ${WORKSPACE_EXTENSION}
 
 A local storage root extension used by the ocfl-js library (@ocfl/ocfl-fs).
 
-While an object is being updated, its new version is assembled in
-\`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<object path>/<version>\` and then moved into the object root.
-The directory exists only while an update is in progress. Anything left in it afterwards is
-from an update that was interrupted, and is not part of any OCFL object.
+Each object has one directory here, \`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<object path>/\`, where
+\`<object path>\` is the object root relative to the storage root. While the object is being created
+or updated, that directory holds:
+
+- \`lock\`: the object's lock, a file holding the time it was taken (ISO 8601, UTC). Only the writer
+  that created it may change the object. The library never waits for a lock, and never removes one
+  because of its age.
+- \`<version>/\`: the new version being assembled, which is then moved into the object root.
+
+The directories exist only while an update is in progress. Anything left in them afterwards is
+from an update that was interrupted, and is not part of any OCFL object. A lock left behind
+keeps the object from being updated.
 `;
 
 const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1.1': 'ocfl_1.1.md' };
@@ -154,7 +162,7 @@ interface StorageRoot {
    *
    * @throws {@link OcflError} `OBJECT_EXISTS` if an object with this id already exists.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds something else or is inside another object.
-   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object.
+   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object; `lockedAt` says since when.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws `TypeError` if the id, the message or the user's name is missing or empty.
    * @throws Whatever `build` or a draft operation throws.

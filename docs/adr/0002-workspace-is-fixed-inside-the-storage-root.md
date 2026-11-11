@@ -11,7 +11,9 @@ The OCFL spec lets a storage root have an `extensions` directory containing only
 ## Decision
 
 - **No `workspace` option.** `OcflStorageConfig` doesn't accept a workspace path.
-- **One workspace per storage root**, at `<storage root>/extensions/ocfl-js-workspace/`. Each object's in-flight version is built at `<workspace>/<object path>/vN`, where `<object path>` is the object root relative to the storage root.
+- **One workspace per storage root**, at `<storage root>/extensions/ocfl-js-workspace/`. Each object has one directory in it, `<workspace>/<object path>/`, where `<object path>` is the object root relative to the storage root.
+- **One lock per object**, the file `<workspace>/<object path>/lock`, created exclusively and holding the time it was taken. It doesn't depend on the version number. A writer takes it before anything else and holds it until its update is committed or discarded (ADR 0004).
+- **The new version is built beside the lock**, at `<workspace>/<object path>/vN`.
 - **The name is a local extension.** `ocfl-js-workspace` has no `NNNN-` prefix, so it can't collide with a registered extension. `create()` documents it with a plain-text file in the storage root (§4.5).
 - **No cross-filesystem moves.** If the rename into the object root fails with `EXDEV`, the update fails with an `OcflError` and nothing is copied.
 - **No empty directories are left behind.** The workspace directory, and `extensions/` when nothing else uses it, are removed once empty. So are an object root and its layout parents that a failed first version created.
@@ -23,5 +25,6 @@ The OCFL spec lets a storage root have an `extensions` directory containing only
 - A failed or interrupted update leaves debris only in the storage root's workspace. No object is left invalid.
 - A storage root with a workspace in use gets a W016 warning from validators, because `ocfl-js-workspace` isn't a registered extension name.
 - Part of the object hierarchy mounted from another filesystem can't be updated. Callers get an explicit error instead of a slow copy.
-- Every update made through this library reserves `vN` in its storage root's workspace with an exclusive `mkdir`, so concurrent updates of an object collide there before either writes content.
-- Removing an empty workspace can race another update creating it, so an update retries its reservation when the workspace vanishes between creating it and reserving `vN`.
+- Every create or update made through this library takes the object's lock first, so a second writer of an object is refused with `UPDATE_IN_PROGRESS` before either writes content, whichever version each believes is the head.
+- The lock is in the workspace, not the object root, so an object never holds a non-OCFL file, and an object that doesn't exist yet can be locked.
+- Removing an empty workspace can race another update creating it, so an update retries taking the lock when the workspace vanishes between creating it and creating the lock.

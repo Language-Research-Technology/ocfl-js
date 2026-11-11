@@ -3,7 +3,7 @@ import path from 'node:path';
 import { mock } from 'node:test';
 import { isErrnoException } from '../src/utils.ts';
 
-type FsMethod = 'mkdir' | 'rename' | 'copyFile' | 'writeFile' | 'readFile' | 'readdir' | 'rmdir' | 'rm' | 'opendir' | 'stat';
+type FsMethod = 'mkdir' | 'open' | 'rename' | 'copyFile' | 'writeFile' | 'readFile' | 'readdir' | 'rmdir' | 'rm' | 'opendir' | 'stat';
 type Fails = (source: string, target: string) => boolean;
 
 /** Matches a move from a path ending in `from` to one ending in `to` */

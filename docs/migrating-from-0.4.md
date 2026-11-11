@@ -118,7 +118,9 @@ try {
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `OBJECT_NOT_FOUND`            | The object doesn't exist; thrown as an `ObjectNotFoundError` (see [Errors for missing objects](#errors-for-missing-objects)) |
 | `OBJECT_NOT_LOADED`           | `getFile()` is called before the inventory has been read; thrown as an `ObjectNotLoadedError`                                |
-| `UPDATE_IN_PROGRESS`          | An update finds uncommitted changes, because another process is updating the object or an earlier update failed              |
+| `UPDATE_IN_PROGRESS`          | The object's lock is taken: another update of it is running, or one was interrupted; `lockedAt` is when it was taken         |
+| `OBJECT_OUT_OF_DATE`          | An update finds a later version committed since the object was loaded, at its start or when it commits                       |
+| `OBJECT_EXISTS`               | An update making an object's first version finds that another writer has created the object                                  |
 | `DIRECTORY_NOT_EMPTY`         | An object or storage root is created in a non-empty directory                                                                |
 | `ID_INCOMPATIBLE_WITH_LAYOUT` | The storage layout can't map the object id, or the id or `root` maps to the storage root, outside it, or into `extensions`   |
 | `UNSUPPORTED_LAYOUT`          | `layout` isn't a supported name or config, or a root's `ocfl_layout.json` names an unsupported layout                        |
@@ -266,7 +268,9 @@ An update now removes only what it created:
 - A failed first version also removes the conformance declaration it wrote, and the object root if the update created it.
 - A workspace directory is removed only when it's left empty, along with any of its parents, up to the storage root, that it leaves empty.
 
-Starting an update while another update of the same version is open now throws `UPDATE_IN_PROGRESS` straight away. Previously it was detected only once the first update had written a file.
+Each object has one lock, held from the start of an update until it is committed or rolled back. Starting an update while another update of the same object is open now throws `UPDATE_IN_PROGRESS` straight away, with the time the lock was taken as `lockedAt`. Previously it was detected only once the first update had written a file, and only between updates making the same version.
+
+An update of an object that another writer has since updated now throws `OBJECT_OUT_OF_DATE` before the updater runs. Previously it failed at commit with a raw `ENOTEMPTY`. Load the object again and retry.
 
 ## Concurrent operations in one update
 

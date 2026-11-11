@@ -422,8 +422,10 @@ describe('an update that fails or finishes early', () => {
             }),
           );
 
-          assert.strictEqual(assembling.length, 1);
-          assert.ok(assembling[0]!.endsWith(path.join('v1', 'content', 'dir', 'a.txt')), assembling[0]);
+          const [lock, assembled, ...others] = assembling.sort();
+          assert.deepStrictEqual(others, []);
+          assert.strictEqual(path.basename(lock!), 'lock');
+          assert.strictEqual(assembled, path.join(path.dirname(lock!), 'v1', 'content', 'dir', 'a.txt'));
           assert.ok(!fs.existsSync(workspace));
           assert.deepStrictEqual(await emptyDirectoriesUnder(root.path), []);
         });

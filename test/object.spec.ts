@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import ocfl, { type Inventory, ObjectNotFoundError, ObjectNotLoadedError, type OcflVersion } from '../src/index.ts';
+import ocfl, { type Inventory, ObjectNotFoundError, ObjectNotLoadedError, type OcflError, type OcflVersion } from '../src/index.ts';
 import type { OcflObject } from '../src/object.ts';
 import { withFsFailure } from './fs-failures.ts';
 import { writeStorageRoot } from './helpers/storage-roots.ts';
@@ -240,11 +240,17 @@ describe('OcflObject with a malformed or missing inventory', () => {
 
   it('rejects an update while another update of the same object is uncommitted', async () => {
     const o = testObject({ id: 'concurrent', root: path.join(tempdir, 'concurrent') });
+    const started = Date.now();
     await o.update(async (t) => {
       await t.write('a.txt', 'a');
       await assert.rejects(
         o.update(async (t2) => t2.write('b.txt', 'b')),
-        ocflError('UPDATE_IN_PROGRESS'),
+        (e) => {
+          assert.ok(ocflError('UPDATE_IN_PROGRESS')(e));
+          const lockedAt = (e as OcflError).lockedAt?.getTime();
+          assert.ok(lockedAt !== undefined && lockedAt >= started && lockedAt <= Date.now(), String(lockedAt));
+          return true;
+        },
       );
     });
   });

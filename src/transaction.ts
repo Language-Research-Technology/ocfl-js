@@ -6,18 +6,19 @@ import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { OcflError } from './error.ts';
 import type { ContentRelease, DeletePlan, OcflObjectInventory, RelistPlan } from './inventory.ts';
+import { releaseLock, takeLock } from './lock.ts';
 import * as store from './store.ts';
 import type { OcflVersion, WriteFileData } from './types.ts';
 import {
   createLimiter,
   findNamasteVersion,
   hasErrorCode,
-  isAlreadyExists,
   isDirEmpty,
-  isNotFound,
   normaliseLogicalPath,
   parentDirectories,
+  parseJsonObject,
   pathExists,
+  readIfExists,
   relativeWithin,
 } from './utils.ts';
 import { createError } from './validation.ts';
@@ -69,6 +70,35 @@ async function ensureObjectDeclaration(root: string, ocflVersion: OcflVersion): 
   const filePath = path.join(root, NAMASTE_T + declaration);
   await store.writeFile(filePath, `${declaration}\n`);
   return filePath;
+}
+
+/** The head the root inventory on disk names: `undefined` if there is no root inventory, `null` if it names none */
+async function headOnDisk(objectRoot: string): Promise<string | null | undefined> {
+  const content = await readIfExists(path.join(objectRoot, INVENTORY_NAME));
+  if (content === undefined) {
+    return undefined;
+  }
+  const head = parseJsonObject(content)?.head;
+  return typeof head === 'string' ? head : null;
+}
+
+/**
+ * Checks that the version before the head of `inventory` is still the head on disk.
+ * @param inventory - Already at its new version
+ * @throws {@link OcflError} `OBJECT_EXISTS` if `inventory` is at its first version and the object now has a root inventory
+ * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if the head on disk is any other version
+ */
+async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory): Promise<void> {
+  const expected = inventory.versionNumber.previous()?.toString();
+  const actual = await headOnDisk(objectRoot);
+  if (actual === expected) {
+    return;
+  }
+  if (expected === undefined) {
+    throw new OcflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}.`);
+  }
+  const found = actual === undefined ? 'no root inventory' : actual === null ? 'a root inventory with no head' : `the head ${actual}`;
+  throw new OcflError('OBJECT_OUT_OF_DATE', `The object at ${objectRoot} was opened at ${expected}, and now has ${found}. Open it again and retry.`);
 }
 
 function invalidLogicalPath(logicalPath: string) {
@@ -146,7 +176,6 @@ export interface ImportSource {
 
 /** Files imports read or copy at once, across all the imports in a transaction */
 const IMPORT_CONCURRENCY = 10;
-const MAX_RESERVE_ATTEMPTS = 3;
 
 interface ImportFile {
   source: string;
@@ -256,27 +285,14 @@ class OcflObjectTransaction {
       () => true,
       () => false,
     );
-    const versionPath = path.join(target.workspace, inventory.head);
-    for (let attempt = 1; ; attempt++) {
-      await fs.promises.mkdir(target.workspace, { recursive: true });
-      try {
-        // Exclusive, so of any overlapping updates only one reserves the version
-        await fs.promises.mkdir(versionPath);
-        break;
-      } catch (error) {
-        if (isAlreadyExists(error)) {
-          throw new OcflError(
-            'UPDATE_IN_PROGRESS',
-            'Uncommitted changes detected. Object is being updated by other process or there has been a failed update attempt',
-          );
-        }
-        // Another update's cleanup removed the empty workspace between the two mkdirs
-        if (!isNotFound(error) || attempt === MAX_RESERVE_ATTEMPTS) {
-          throw error;
-        }
-      }
+    await takeLock(target.workspace, target.storageRoot);
+    try {
+      await assertUpToDate(target.root, inventory);
+    } catch (error) {
+      await releaseLock(target.workspace, target.storageRoot);
+      throw error;
     }
-    return new OcflObjectTransaction(target, inventory, versionPath, rootExisted);
+    return new OcflObjectTransaction(target, inventory, path.join(target.workspace, inventory.head), rootExisted);
   }
 
   #getRealPath(logicalPath: string) {
@@ -333,7 +349,7 @@ class OcflObjectTransaction {
         throw error;
       }
       this.#committed = true;
-      await this.#removeEmptyAncestors(this.#target.workspace);
+      await this.#releaseLock();
       return this.#inventory;
     }
   }
@@ -361,7 +377,11 @@ class OcflObjectTransaction {
     if (!this.#rootExisted) {
       await this.#removeEmptyAncestors(root);
     }
-    await this.#removeEmptyAncestors(this.#target.workspace);
+    await this.#releaseLock();
+  }
+
+  async #releaseLock() {
+    await releaseLock(this.#target.workspace, this.#target.storageRoot);
   }
 
   /**
@@ -396,6 +416,8 @@ class OcflObjectTransaction {
     // write inventory.json to workspace
     await store.writeFile(invPath, inventoryContent);
     await store.writeFile(invDigestPath, digest);
+    // Before anything in the object root changes, so a moved head never surfaces as a failed rename
+    await assertUpToDate(this.#target.root, inventory);
     this.#createdNamaste = await ensureObjectDeclaration(this.#target.root, this.#target.ocflVersion);
     try {
       await store.move(this.#versionPath, objectVersionPath);

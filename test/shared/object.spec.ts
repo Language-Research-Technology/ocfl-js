@@ -714,7 +714,7 @@ describe('update', () => {
       await withFsFailure('rmdir', o._workspace, () => throwing(o));
     });
 
-    it('keeps its version reserved when its only file is removed', async () => {
+    it('keeps the object locked when the only file of the update is removed', async () => {
       const { root } = dirs();
       const o = testObject({ id: 'scoped', root });
 
@@ -725,7 +725,7 @@ describe('update', () => {
       await first.rollback();
     });
 
-    it('lets only one concurrent update reserve a version', async () => {
+    it('lets only one concurrent update take the lock', async () => {
       const { root } = dirs();
       const o = testObject({ id: 'scoped', root });
       await o.update(async (t) => t.write('a.txt', 'a'));
@@ -737,6 +737,19 @@ describe('update', () => {
         rejected.map((r) => r.reason.code),
         ['UPDATE_IN_PROGRESS'],
       );
+      const [holder] = results.filter((r) => r.status === 'fulfilled');
+      await holder!.value!.rollback();
+    });
+
+    it('refuses an out-of-date object with OBJECT_OUT_OF_DATE, leaving no lock', async () => {
+      const { root, extensions } = dirs();
+      const stale = testObject({ id: 'scoped', root });
+      await stale.update(async (t) => t.write('a.txt', 'a'));
+      await testObject({ id: 'scoped', root }).update(writeB);
+
+      await assert.rejects(stale.update(writeB), { code: 'OBJECT_OUT_OF_DATE' });
+
+      await assertGone(extensions);
     });
 
     it('resolves when the committed update cannot remove its empty workspace', async () => {

@@ -397,18 +397,18 @@ describe('workspace', () => {
     assert.ok(!fs.existsSync(scratch));
   });
 
-  it("reserves a version when another update's cleanup removes the empty workspace first", async () => {
+  it("takes the lock when another update's cleanup removes the empty workspace first", async () => {
     const storage = await ocfl.storage({ root: path.join(tempdir, 'race') }).create();
     const o = storage.object('object-1');
-    const reservation = path.join(o._workspace, 'v1');
-    const realMkdir = fs.promises.mkdir;
+    const lock = path.join(o._workspace, 'lock');
+    const realOpen = fs.promises.open;
     let raced = false;
-    const spy = mock.method(fs.promises, 'mkdir', async (...args: Parameters<typeof realMkdir>) => {
-      if (!raced && String(args[0]) === reservation) {
+    const spy = mock.method(fs.promises, 'open', async (...args: Parameters<typeof realOpen>) => {
+      if (!raced && String(args[0]) === lock) {
         raced = true;
         await fs.promises.rm(path.join(storage.root, 'extensions'), { recursive: true });
       }
-      return realMkdir.apply(fs.promises, args);
+      return realOpen.apply(fs.promises, args);
     });
     try {
       await o.update(async (t) => t.write('a.txt', 'a'));
@@ -419,16 +419,16 @@ describe('workspace', () => {
     assert.strictEqual(await o.getFile('a.txt')!.text(), 'a');
   });
 
-  it('reports any other failure to reserve a version, leaving nothing behind', async () => {
-    const storage = await ocfl.storage({ root: path.join(tempdir, 'reserve-fails') }).create();
+  it('reports any other failure to take the lock, leaving nothing behind', async () => {
+    const storage = await ocfl.storage({ root: path.join(tempdir, 'lock-fails') }).create();
     const o = storage.object('object-1');
-    const reservation = path.join(o._workspace, 'v1');
-    const realMkdir = fs.promises.mkdir;
-    const spy = mock.method(fs.promises, 'mkdir', async (...args: Parameters<typeof realMkdir>) => {
-      if (String(args[0]) === reservation) {
+    const lock = path.join(o._workspace, 'lock');
+    const realOpen = fs.promises.open;
+    const spy = mock.method(fs.promises, 'open', async (...args: Parameters<typeof realOpen>) => {
+      if (String(args[0]) === lock) {
         throw Object.assign(new Error('injected failure'), { code: 'EACCES' });
       }
-      return realMkdir.apply(fs.promises, args);
+      return realOpen.apply(fs.promises, args);
     });
     try {
       await assert.rejects(
@@ -439,6 +439,7 @@ describe('workspace', () => {
       spy.mock.restore();
     }
     assert.ok(!fs.existsSync(o.root));
+    assert.ok(!fs.existsSync(workspaceOf(storage.root)));
   });
 
   for (const layout of layouts) {
