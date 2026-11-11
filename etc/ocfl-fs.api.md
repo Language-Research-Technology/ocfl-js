@@ -301,7 +301,7 @@ export class OcflError extends Error {
 }
 
 // @public
-export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_OF_DATE' | 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'RECOVERY_NEEDED' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | 'CROSS_FILESYSTEM_MOVE' | 'VERSION_LIMIT_REACHED' | ValidationErrorCode;
+export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_OF_DATE' | 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT' | 'OBJECT_NOT_LOADED' | 'UPDATE_IN_PROGRESS' | 'RECOVERY_NEEDED' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | 'CROSS_FILESYSTEM_MOVE' | 'VERSION_LIMIT_REACHED' | ValidationErrorCode;
 
 // @public
 export interface OcflFile {
@@ -440,13 +440,11 @@ export class OcflObjectTransaction {
 
 // @public
 export class OcflStorage {
-    [Symbol.asyncIterator](): AsyncIterableIterator<LegacyOcflObject>;
     constructor(config: OcflStorageConfig);
     create(options?: {
         ocflSpecText?: boolean | undefined;
     }): Promise<OcflStorage>;
     exists(): Promise<boolean>;
-    has(id: string): Promise<boolean>;
     load(): Promise<OcflStorage>;
     object(opt: string | {
         id?: string | undefined;
@@ -455,7 +453,6 @@ export class OcflStorage {
     objectRoot(id: string): string;
     // (undocumented)
     ocflVersion: OcflVersion;
-    remove(id: string): Promise<void>;
     get root(): string;
 }
 
@@ -505,10 +502,12 @@ export function storageLayout<N extends OcflLayoutName>(config: N | OcflLayoutCo
 export interface StorageRoot {
     create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>): Promise<OcflObject>;
     readonly layout: Layout;
+    objects(): AsyncIterable<OcflObject | OcflError>;
     readonly ocflVersion: '1.0' | '1.1';
     open(id: string): Promise<OcflObject>;
     readonly path: string;
     recover(id: string): Promise<void>;
+    remove(id: string): Promise<void>;
 }
 
 // @public (undocumented)

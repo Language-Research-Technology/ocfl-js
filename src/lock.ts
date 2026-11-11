@@ -7,6 +7,8 @@ import { isAlreadyExists, isNotFound, pathExists, readIfExists } from './utils.t
 const LOCK_NAME = 'lock';
 /** The second line of a lock taken when the object root didn't exist, so whatever is there afterwards was made by the lock's writer */
 const NO_OBJECT_ROOT = 'no-object-root';
+/** The second line of a lock whose writer has begun deleting the object root, so recovery finishes deleting it */
+const REMOVING = 'removing';
 const MAX_LOCK_ATTEMPTS = 3;
 /** Longer than a time and {@link NO_OBJECT_ROOT} */
 const MAX_LOCK_LENGTH = 64;
@@ -16,6 +18,8 @@ interface Lock {
   lockedAt: Date | undefined;
   /** False only if the lock says its writer found no object root */
   objectRootExisted: boolean;
+  /** Whether the lock says its writer had begun deleting the object root */
+  removing: boolean;
 }
 
 /** The lock of the object whose directory in the workspace is `workspace`: a file holding what {@link formatLock} gives */
@@ -30,7 +34,7 @@ function formatLock(lockedAt: Date, objectRootExisted: boolean): string {
 function parseLock(content: string): Lock {
   const [time = '', second] = content.split('\n');
   const lockedAt = new Date(time);
-  return { lockedAt: Number.isNaN(lockedAt.getTime()) ? undefined : lockedAt, objectRootExisted: second !== NO_OBJECT_ROOT };
+  return { lockedAt: Number.isNaN(lockedAt.getTime()) ? undefined : lockedAt, objectRootExisted: second !== NO_OBJECT_ROOT, removing: second === REMOVING };
 }
 
 /** When the lock was taken, or `undefined` if it can't be read or has been released since */
@@ -110,17 +114,46 @@ async function releaseLock(workspace: string, storageRoot: string): Promise<void
   await store.removeEmptyAncestorsQuietly(workspace, storageRoot);
 }
 
+/**
+ * Records in the object's lock, which the caller holds, that the object root is about to be deleted.
+ * Nothing may be deleted before this returns: a lock left half-written doesn't say so.
+ */
+async function markRemoving(workspace: string): Promise<void> {
+  const lock = lockPath(workspace);
+  const [time = ''] = (await fs.promises.readFile(lock, 'utf8')).split('\n');
+  await fs.promises.writeFile(lock, `${time}\n${REMOVING}`);
+}
+
 /** What the object's lock records, or `undefined` if the object isn't locked */
 async function readLock(workspace: string): Promise<Lock | undefined> {
   const content = await readIfExists(lockPath(workspace));
   return content === undefined ? undefined : parseLock(content);
 }
 
+/**
+ * The `RECOVERY_NEEDED` for a writer that ended holding the object's lock.
+ * @param outcome - What became of it, as a sentence without its full stop
+ * @param advice - What recovering the object does, or what to do next, continuing "call recover() on its storage root, "
+ * @param cause - What the writer failed with
+ */
+function lockKept(outcome: string, advice: string, cause: unknown): OcflError {
+  return new OcflError(
+    'RECOVERY_NEEDED',
+    `${outcome}. The object stays locked until it is recovered: once no writer of it is alive, call recover() on its storage root, ${advice}.`,
+    { cause },
+  );
+}
+
 /** Whether `content` is exactly what {@link formatLock} gives */
 function isLockContent(content: string): boolean {
   const [time = '', second, ...rest] = content.split('\n');
   const lockedAt = new Date(time);
-  return !Number.isNaN(lockedAt.getTime()) && lockedAt.toISOString() === time && (second === undefined || second === NO_OBJECT_ROOT) && rest.length === 0;
+  return (
+    !Number.isNaN(lockedAt.getTime()) &&
+    lockedAt.toISOString() === time &&
+    (second === undefined || second === NO_OBJECT_ROOT || second === REMOVING) &&
+    rest.length === 0
+  );
 }
 
 /** Whether the file named as a lock was written as one, as a file of a version's content wouldn't be */
@@ -136,4 +169,4 @@ async function isLocked(workspace: string): Promise<boolean> {
   return pathExists(lockPath(workspace));
 }
 
-export { isLock, isLocked, LOCK_NAME, NO_OBJECT_ROOT, readLock, releaseLock, takeLock, updateInProgress };
+export { isLock, isLocked, LOCK_NAME, lockKept, markRemoving, NO_OBJECT_ROOT, REMOVING, readLock, releaseLock, takeLock, updateInProgress };

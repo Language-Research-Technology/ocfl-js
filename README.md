@@ -96,12 +96,22 @@ Each `import()` creates one version. The target is the logical path the source b
 
 A new version starts from the previous version's files in `'MERGE'` mode, the default, so anything not imported carries over. In `'REPLACE'` mode it starts empty, so it holds only what this update adds. Earlier versions, and the manifest of all the content they hold, are kept in both modes.
 
-OCFL objects inside the OCFL storage can be iterated with `for ... of` construct:
+List the objects in a storage root with `objects()`, and delete one with `remove(id)`, on the storage root from `openStorageRoot()`:
 
 ```js
-for await (const obj of repo) {
-  console.log(await obj.count());
+import { OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
+
+const root = await openStorageRoot('/var/data/myocfl');
+for await (const object of root.objects()) {
+  if (object instanceof OcflError) {
+    // an object that can't be opened; the listing carries on
+    console.warn(object.message);
+    continue;
+  }
+  console.log(object.id, object.head.files.size);
 }
+
+await root.remove('test-object');
 ```
 
 ### Object

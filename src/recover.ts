@@ -5,6 +5,7 @@ import { OcflError } from './error.ts';
 import { isStagedRootInventory, isVersionName, type OcflObjectInventory, rootInventoryPaths, sidecarContent, sidecarDigest } from './inventory.ts';
 import { isLock, LOCK_NAME, readLock, releaseLock } from './lock.ts';
 import { declarationWithoutInventory, enclosingObject, holdsAnotherObject, insideAnotherObject, nestedObject, readInventory } from './ocfl-object.ts';
+import { deleteObjectRoot } from './remove.ts';
 import * as store from './store.ts';
 import { objectWorkspace } from './transaction.ts';
 import { isNothingAtPath, readIfExists } from './utils.ts';
@@ -73,7 +74,7 @@ async function completeSidecar(objectRoot: string, inventory: OcflObjectInventor
 
 /**
  * Clears what a dead writer left of the object `id` that the storage root's layout places at `objectRoot`, and releases its lock.
- * What was left before the commit point is discarded, and a committed update is completed. The lock goes last, so a failure keeps the object locked.
+ * What was left before the commit point is discarded, a committed update is completed, and a remove that had begun deleting is finished. The lock goes last, so a failure keeps the object locked.
  *
  * Only what a dead writer can have left is removed from the object root: the version after the head, or with no root inventory
  * the declaration and first version of a create, which always leaves its lock.
@@ -83,9 +84,15 @@ async function completeSidecar(objectRoot: string, inventory: OcflObjectInventor
  */
 async function recoverObject(storageRoot: string, objectRoot: string, id: string): Promise<void> {
   const workspace = objectWorkspace(storageRoot, objectRoot);
-  const [inventory, lock, workspaceNames, rootNames, outer] = await Promise.all([
+  const lock = await readLock(workspace);
+  if (lock?.removing) {
+    await removeAll(workspace, await unfinishedVersions(workspace, await namesIn(workspace)));
+    await deleteObjectRoot(storageRoot, objectRoot);
+    await releaseLock(workspace, storageRoot);
+    return;
+  }
+  const [inventory, workspaceNames, rootNames, outer] = await Promise.all([
     readInventory(objectRoot),
-    readLock(workspace),
     namesIn(workspace),
     namesIn(objectRoot),
     enclosingObject(storageRoot, objectRoot),

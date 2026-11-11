@@ -6,9 +6,11 @@ import { checkedDetails, type Draft, type VersionDetails } from './draft.ts';
 import { OcflError } from './error.ts';
 import type { BuiltInLayout, OcflExtensionConfig } from './extension.ts';
 import { createLayout, type LayoutClass, supportedLayoutClass } from './extensions/index.ts';
-import { LOCK_NAME, NO_OBJECT_ROOT } from './lock.ts';
+import { listObjects } from './list.ts';
+import { LOCK_NAME, NO_OBJECT_ROOT, REMOVING } from './lock.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import { recoverObject } from './recover.ts';
+import { removeObject } from './remove.ts';
 import * as store from './store.ts';
 import type { Layout, LayoutConfig, OcflVersion } from './types.ts';
 import { deepFreeze, findNamasteVersion, isDirEmpty, isNonEmptyString, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
@@ -22,19 +24,20 @@ const WORKSPACE_EXTENSION_TEXT = `# ${WORKSPACE_EXTENSION}
 A local storage root extension used by the ocfl-js library (@ocfl/ocfl-fs).
 
 Each object has one directory here, \`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<object path>/\`, where
-\`<object path>\` is the object root relative to the storage root. While the object is being created
-or updated, that directory holds:
+\`<object path>\` is the object root relative to the storage root. While the object is being created,
+updated or removed, that directory holds:
 
 - \`${LOCK_NAME}\`: the object's lock, a file whose first line is the time it was taken (ISO 8601, UTC). A
-  second line, \`${NO_OBJECT_ROOT}\`, means the object root did not exist when the lock was taken. Only
-  the writer that created it may change the object. The library never waits for a lock, and never
-  removes one because of its age.
+  second line, \`${NO_OBJECT_ROOT}\`, means the object root did not exist when the lock was taken. A
+  second line, \`${REMOVING}\`, means the object is being removed. Only the writer that created the
+  lock may change the object. The library never waits for a lock, and never removes one because of
+  its age.
 - \`<version>/\`: the new version being assembled, which is then moved into the object root.
 
-The directories exist only while an update is in progress. Anything left in them afterwards is
-from an update that was interrupted, and is not part of any OCFL object. A lock or a version
-left behind keeps the object from being updated, until the library's \`recover\` is called for
-the object.
+The directories exist only while a create, update or remove is in progress. Anything left in them
+afterwards is from one that was interrupted, and is not part of any OCFL object. A lock or a
+version left behind keeps the object from being updated or removed, until the library's
+\`recover\` is called for the object.
 `;
 
 const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1.1': 'ocfl_1.1.md' };
@@ -181,12 +184,50 @@ interface StorageRoot {
   create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>): Promise<OcflObject>;
 
   /**
+   * Lists every object in the storage root, in no particular order. Each object is read when the listing reaches it.
+   * An object that can't be opened is yielded as an `INVALID_OBJECT` error whose message names its directory, and the listing carries on.
+   * A directory with an invalid object declaration is one of these: it isn't searched for objects.
+   *
+   * An object that another writer is creating and hasn't committed is left out, and so is the `extensions` directory.
+   * Leaving the loop early closes every directory the listing opened.
+   *
+   * @throws The file system error that stopped the listing.
+   * @example
+   * ```ts
+   * for await (const object of root.objects()) {
+   *   if (object instanceof OcflError) {
+   *     console.warn(object.message);
+   *     continue;
+   *   }
+   *   await index(object.id, object.head.files);
+   * }
+   * ```
+   */
+  objects(): AsyncIterable<OcflObject | OcflError>;
+
+  /**
+   * Deletes an object and all its versions, and the parent directories that leaves empty. The object's lock is held while it is deleted.
+   *
+   * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id.
+   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if the object is being updated or created, or a writer died doing so; `lockedAt` says since when. Nothing is deleted. After a dead writer, call {@link StorageRoot.recover} and then `remove` again.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the id's directory holds something that isn't an object, or an object whose inventory is missing, corrupt or inconsistent, so its id can't be confirmed; nothing is deleted.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds a different object; nothing is deleted.
+   * @throws `TypeError` if the id is missing or empty.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting the object failed part of the way through, or it was deleted and its lock couldn't be released; `cause` is the failure. The object stays locked, and may be partly deleted: call {@link StorageRoot.recover}, which finishes removing it.
+   * @example
+   * ```ts
+   * await root.remove('arcp://name,corpus/item/1');
+   * ```
+   */
+  remove(id: string): Promise<void>;
+
+  /**
    * Clears what a dead update or create left behind and releases the object's lock. Does nothing if there is nothing to clear.
    *
    * **Only call this when no writer of the object is alive: a live writer's update is destroyed**, and the library can't tell
    * a live writer from a dead one. `lockedAt` on `UPDATE_IN_PROGRESS` says when the lock was taken.
    *
-   * An update that wasn't committed is discarded: the unfinished version in the workspace, the directory of the version after the head
+   * A remove that had begun deleting the object is finished. An update that wasn't committed is discarded: the unfinished version in the workspace, the directory of the version after the head
    * in the object, and staged inventory files are removed. A create that wasn't committed is discarded while its lock is still there:
    * the declaration and first version of an object that never got an inventory, and its directory if the create made it. An update that
    * was committed is completed by writing the root inventory's sidecar. A version is never made the head by `recover`, and no other
@@ -255,6 +296,12 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
       const objectId = checkedId(id);
       const checked = checkedDetails(details);
       return createObject(root, objectRootOf(objectId), objectId, ocflVersion, checked, build);
+    },
+    objects() {
+      return listObjects(root);
+    },
+    async remove(id: string) {
+      await removeObject(root, objectRootOf(checkedId(id)), id);
     },
     async recover(id: string) {
       await recoverObject(root, objectRootOf(checkedId(id)), id);

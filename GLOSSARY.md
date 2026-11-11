@@ -25,7 +25,7 @@ The library's directory inside a storage root where a new version is assembled b
 _Avoid_: Staging area, temp directory, deposit directory
 
 **Lock**:
-The file in the workspace that marks an OCFL object as having a writer, held from the start of a create or update until it ends cleanly. A second writer is refused, never made to wait, and the library never removes a lock because of its age.
+The file in the workspace that marks an OCFL object as having a writer, held from the start of a create, update or remove until it ends cleanly. A second writer is refused, never made to wait, and the library never removes a lock because of its age.
 _Avoid_: Mutex, lease, lock file
 
 **Commit point**:
@@ -33,5 +33,5 @@ The rename that replaces an OCFL object's root inventory. Before it an update is
 _Avoid_: Publish, finalise
 
 **Recover**:
-To clear what a dead writer left of an OCFL object and release its lock, on the caller's word that no writer is alive: an update that wasn't committed is discarded, and one that was is completed.
+To clear what a dead writer left of an OCFL object and release its lock, on the caller's word that no writer is alive: an update that wasn't committed is discarded, one that was is completed, and a remove that had begun deleting is finished.
 _Avoid_: Repair, unlock, roll back

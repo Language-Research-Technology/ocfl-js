@@ -6,7 +6,7 @@ import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { OcflError } from './error.ts';
 import { type ContentRelease, type DeletePlan, type OcflObjectInventory, type RelistPlan, rootInventoryPaths, sidecarContent } from './inventory.ts';
-import { releaseLock, takeLock } from './lock.ts';
+import { lockKept, releaseLock, takeLock } from './lock.ts';
 import * as store from './store.ts';
 import type { OcflVersion, WriteFileData } from './types.ts';
 import {
@@ -81,9 +81,8 @@ async function ensureObjectDeclaration(root: string, ocflVersion: OcflVersion): 
   return filePath;
 }
 
-/** The head the root inventory on disk names: `undefined` if there is no root inventory, `null` if it names none */
-async function headOnDisk(objectRoot: string): Promise<string | null | undefined> {
-  const content = await readIfExists(path.join(objectRoot, INVENTORY_NAME));
+/** The head the root inventory `content` names: `undefined` if there is no root inventory, `null` if it names none */
+function headOf(content: string | undefined): string | null | undefined {
   if (content === undefined) {
     return undefined;
   }
@@ -91,17 +90,34 @@ async function headOnDisk(objectRoot: string): Promise<string | null | undefined
   return typeof head === 'string' ? head : null;
 }
 
+function readRootInventory(objectRoot: string): Promise<string | undefined> {
+  return readIfExists(path.join(objectRoot, INVENTORY_NAME));
+}
+
+/** The head the root inventory on disk names, as {@link headOf} gives it */
+async function headOnDisk(objectRoot: string): Promise<string | null | undefined> {
+  return headOf(await readRootInventory(objectRoot));
+}
+
 /**
- * Checks that the version before the head of `inventory` is still the head on disk.
+ * Checks that the version before the head of `inventory` is still the head on disk, in the root inventory it was made from.
  * @param inventory - Already at its new version
  * @throws {@link OcflError} `OBJECT_EXISTS` if `inventory` is at its first version and the object now has a root inventory
- * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if the head on disk is any other version
+ * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if the head on disk is any other version, or the root inventory has been replaced: the object removed and created again
  */
 async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory): Promise<void> {
   const expected = inventory.versionNumber.previous()?.toString();
-  const actual = await headOnDisk(objectRoot);
+  const content = await readRootInventory(objectRoot);
+  const actual = headOf(content);
   if (actual === expected) {
-    return;
+    const madeFrom = inventory._madeFrom;
+    if (content === undefined || madeFrom === undefined || (await Hashing.digest(inventory.digestAlgorithm, content)) === madeFrom) {
+      return;
+    }
+    throw new OcflError(
+      'OBJECT_OUT_OF_DATE',
+      `The object at ${objectRoot} was opened at ${expected}, and its root inventory has been replaced since. Open it again and retry.`,
+    );
   }
   if (expected === undefined) {
     throw new OcflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}.`);
@@ -115,11 +131,7 @@ async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory
  * @param cause - What the update failed with
  */
 function recoveryNeeded(objectRoot: string, state: string, cause: unknown) {
-  return new OcflError(
-    'RECOVERY_NEEDED',
-    `The update of the object at ${objectRoot} ${state}. The object stays locked until it is recovered: once no writer of it is alive, call recover() on its storage root, then open the object again before retrying.`,
-    { cause },
-  );
+  return lockKept(`The update of the object at ${objectRoot} ${state}`, 'then open the object again before retrying', cause);
 }
 
 /**
