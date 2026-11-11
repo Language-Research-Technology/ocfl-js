@@ -41,6 +41,15 @@ node -e '
     console.error(`lint:consumer: exports files missing from the tarball: ${missing.join(", ")}`);
     process.exit(1);
   }
+  const missingFields = ["homepage", "bugs"].filter((field) => !manifest[field]);
+  if (missingFields.length) {
+    console.error(`lint:consumer: package.json has no ${missingFields.join(" or ")}`);
+    process.exit(1);
+  }
+  if (manifest.sideEffects !== false) {
+    console.error("lint:consumer: package.json must declare sideEffects: false");
+    process.exit(1);
+  }
 ' "$dir"
 
 dev_dep() { node -p 'require(process.argv[1]).devDependencies[process.argv[2]]' "$root/package.json" "$1"; }
@@ -441,6 +450,16 @@ if (
 EOF
 
 pnpm -C "$consumer" install --prefer-offline --silent
+# sideEffects: false lets bundlers drop an unused import, so importing must not add globals
+(cd "$consumer" && node --input-type=module -e '
+  const before = new Set(Reflect.ownKeys(globalThis));
+  await import("@ocfl/ocfl-fs");
+  const added = Reflect.ownKeys(globalThis).filter((key) => !before.has(key));
+  if (added.length) {
+    console.error(`lint:consumer: importing the package added globals: ${added.map(String).join(", ")}`);
+    process.exit(1);
+  }
+')
 (cd "$consumer" && node consumer.ts) || fail "importing the packed package failed"
 for dir in "$consumer"/spec-*; do
   version=${dir##*/spec-}

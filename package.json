@@ -9,6 +9,10 @@
     "storage",
     "filesystem"
   ],
+  "homepage": "https://github.com/Language-Research-Technology/ocfl-js#readme",
+  "bugs": {
+    "url": "https://github.com/Language-Research-Technology/ocfl-js/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Language-Research-Technology/ocfl-js"
@@ -16,10 +20,12 @@
   "author": "Alvin Sebastian (https://orcid.org/0000-0002-9086-1722)",
   "contributors": [
     "Moises Sacal Bonequi (https://orcid.org/0000-0002-4438-2755)",
-    "Peter Sefton (https://orcid.org/0000-0002-3545-944X)"
+    "Peter Sefton (https://orcid.org/0000-0002-3545-944X)",
+    "John Ferlito (https://github.com/johnf)"
   ],
   "license": "GPL-3.0-or-later",
   "type": "module",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
