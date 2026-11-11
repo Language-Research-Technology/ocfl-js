@@ -45,6 +45,15 @@ interface Draft {
   import(source: string, target?: string): Promise<void>;
 
   /**
+   * Copies a file, or every file below a directory, to `target` within the draft.
+   *
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files; or if a path would become both a file and a directory.
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
+   */
+  copy(source: string, target: string): Promise<void>;
+
+  /**
    * Removes a file, or every file below a directory, from the draft. Earlier versions keep it.
    *
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `path` is not in the draft.
@@ -131,6 +140,10 @@ class ObjectDraft implements Draft {
 
   async import(source: string, target?: string): Promise<void> {
     return this.#open.import(source, target);
+  }
+
+  async copy(source: string, target: string): Promise<void> {
+    return this.#open.copy(source, target);
   }
 
   async remove(path: string): Promise<void> {

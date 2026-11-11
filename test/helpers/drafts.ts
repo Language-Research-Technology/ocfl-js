@@ -126,3 +126,13 @@ export async function snapshot(dir: string): Promise<Record<string, string>> {
   const files = entries.filter((e) => e.isFile()).map((e) => path.join(e.parentPath, e.name));
   return Object.fromEntries(await Promise.all(files.map(async (f) => [path.relative(dir, f), await fs.promises.readFile(f, 'utf8')])));
 }
+
+/** Asserts that `update` on `object` wrote nothing: no version, no workspace, the disk as it was */
+export async function assertWritesNothing(root: StorageRoot, object: OcflObject, update: () => Promise<unknown>): Promise<void> {
+  const objectRoot = objectRootOf(root, object.id);
+  const before = await snapshot(objectRoot);
+  await update();
+  assert.deepStrictEqual(await snapshot(objectRoot), before);
+  assert.ok(!fs.existsSync(path.join(objectRoot, `v${object.head.number + 1}`)));
+  assert.ok(!fs.existsSync(workspaceOf(root)));
+}

@@ -2,10 +2,11 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
-import type { Draft, OcflObject, StorageRoot } from '../src/index.ts';
+import type { Draft, StorageRoot } from '../src/index.ts';
 import { withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
+  assertWritesNothing,
   createObject,
   DETAILS,
   objectRootOf,
@@ -24,16 +25,6 @@ describe('removing from a draft', () => {
   let root: StorageRoot;
   let objectCount = 0;
   const newId = () => `object-${objectCount++}`;
-
-  /** Asserts that `update` on `object` wrote nothing: no version, no workspace, the disk as it was */
-  async function assertWritesNothing(object: OcflObject, update: () => Promise<unknown>) {
-    const objectRoot = objectRootOf(root, object.id);
-    const before = await snapshot(objectRoot);
-    await update();
-    assert.deepStrictEqual(await snapshot(objectRoot), before);
-    assert.ok(!fs.existsSync(path.join(objectRoot, `v${object.head.number + 1}`)));
-    assert.ok(!fs.existsSync(workspaceOf(root)));
-  }
 
   before(async () => {
     root = await temp.newRoot();
@@ -180,7 +171,7 @@ describe('removing from a draft', () => {
     ] as const) {
       it(`throws FILE_NOT_FOUND for ${name}, and the update writes nothing`, async () => {
         const object = await createObject(root, newId(), { a: 'a' });
-        await assertWritesNothing(object, async () => {
+        await assertWritesNothing(root, object, async () => {
           const returned = await object.update(DETAILS, async (draft) => {
             await draft.write('gone', 'gone');
             await draft.remove('gone');
@@ -194,7 +185,7 @@ describe('removing from a draft', () => {
 
     it('discards the update when FILE_NOT_FOUND is left to end it', async () => {
       const object = await createObject(root, newId(), { a: 'a' });
-      await assertWritesNothing(object, () =>
+      await assertWritesNothing(root, object, () =>
         assert.rejects(
           object.update(DETAILS, async (draft) => {
             await draft.write('b', 'b');
@@ -217,7 +208,7 @@ describe('removing from a draft', () => {
     ] as const) {
       it(`throws INVALID_LOGICAL_PATH for ${name}, removing nothing`, async () => {
         const object = await createObject(root, newId(), { a: 'a', 'd/x': 'x' });
-        await assertWritesNothing(object, async () => {
+        await assertWritesNothing(root, object, async () => {
           const returned = await object.update(DETAILS, async (draft) => {
             await assert.rejects(draft.remove(logicalPath), ocflError('INVALID_LOGICAL_PATH'));
           });
@@ -327,7 +318,7 @@ describe('removing from a draft', () => {
     ] as [string, (draft: Draft) => Promise<void>][]) {
       it(`writes no version after ${name}`, async () => {
         const object = await createObject(root, newId(), { a: 'AAA', 'd/x': 'XXX' });
-        await assertWritesNothing(object, async () => {
+        await assertWritesNothing(root, object, async () => {
           assert.strictEqual(await object.update(DETAILS, change), object);
         });
         assert.strictEqual((await readInventory(objectRootOf(root, object.id))).head, 'v1');
@@ -373,7 +364,7 @@ describe('removing from a draft', () => {
 
       it(`rejects an update that ends while ${name} is still pending, leaving the object as it was`, async () => {
         const object = await createObject(root, newId(), { a: 'a' });
-        await assertWritesNothing(object, () =>
+        await assertWritesNothing(root, object, () =>
           assert.rejects(
             object.update(DETAILS, async (draft) => {
               await draft.write('a', 'changed');

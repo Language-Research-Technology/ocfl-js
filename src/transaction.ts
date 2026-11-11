@@ -644,14 +644,16 @@ class OcflObjectTransaction {
    * Duplicate the logical path `source` as a different logical path `target`, both paths will then point
    * to the same content path and bitstreams. `source` can be a file or a directory.
    * @param source - The logical path to be copied
-   * @param target - The target logical path. To replace an existing target, remove it first.
+   * @param target - The target logical path. A file already there is replaced; the same path as `source` does nothing.
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws {@link OcflError} `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, or if a path would become both a file and a directory
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
    */
   async copy(source: string, target: string): Promise<void> {
     return this.#transact(async () => {
-      checkLogicalPath(target);
-      this.#inventory._copy(source, target);
+      const plan = this.#inventory._planCopy(fileLogicalPath(source), fileLogicalPath(target));
+      await this.#applyContentReleases(plan.releases);
+      this.#inventory._applyCopy(plan);
     });
   }
 

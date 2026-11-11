@@ -355,7 +355,7 @@ describe('OcflObject with a malformed or missing inventory', () => {
     }
   }
 
-  for (const op of ['copy', 'rename'] as const) {
+  for (const op of ['rename'] as const) {
     describe(`${op}() onto an occupied target`, () => {
       const files = { 'a.txt': 'a', 'b.txt': 'b', 'same.txt': 'a', 'dir/c.txt': 'c', 'other/d.txt': 'd' };
       const cases = [
