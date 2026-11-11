@@ -326,6 +326,19 @@ async function declaredVersion(storageRoot: string, objectRoot: string): Promise
   return ocflVersion;
 }
 
+/**
+ * The OCFL version declared by the object at `objectRoot`, whose root inventory is `inventory`, once it is known to be the object `id`.
+ * @throws {@link OcflError} `INVALID_OBJECT` as {@link declaredVersion} does
+ * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it is an object with another id
+ */
+async function confirmedVersion(storageRoot: string, objectRoot: string, inventory: OcflObjectInventory, id: string): Promise<OcflVersion> {
+  const ocflVersion = await declaredVersion(storageRoot, objectRoot);
+  if (inventory.id !== id) {
+    throw holdsAnotherObject(objectRoot, inventory.id, id);
+  }
+  return ocflVersion;
+}
+
 /** For an object at `objectRoot`, which is inside the object at `outer` */
 function nestedObject(objectRoot: string, outer: string): OcflError {
   return asInvalidObject(createError('E082', objectRoot, `nested under the object at ${outer}`));
@@ -334,6 +347,10 @@ function nestedObject(objectRoot: string, outer: string): OcflError {
 /** For an `objectRoot` that the layout gives to the object `id`, and that is inside the object at `outer` */
 function insideAnotherObject(objectRoot: string, id: string, outer: string): OcflError {
   return new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is inside the object at ${outer}.`);
+}
+
+function objectNotFound(storageRoot: string, id: string): OcflError {
+  return new OcflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}.`);
 }
 
 /** For an `objectRoot` with an object declaration and no inventory, which no writer is working on */
@@ -353,13 +370,36 @@ async function openObject(storageRoot: string, objectRoot: string, id: string): 
     if ((await hasObjectDeclaration(objectRoot)) && !(await isLocked(objectWorkspace(storageRoot, objectRoot)))) {
       throw declarationWithoutInventory(objectRoot);
     }
-    throw new OcflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}.`);
+    throw objectNotFound(storageRoot, id);
   }
-  const ocflVersion = await declaredVersion(storageRoot, objectRoot);
-  if (inventory.id !== id) {
-    throw holdsAnotherObject(objectRoot, inventory.id, id);
+  return new OpenedObject(storageRoot, objectRoot, await confirmedVersion(storageRoot, objectRoot, inventory, id), inventory);
+}
+
+/**
+ * Opens the object at `objectRoot`, a directory found with the object declaration `declared` and inside no other object.
+ * @param declared - As `findNamasteVersion` returns it for a declaration that exists
+ * @returns `undefined` if it has no inventory and its lock is held, a create that isn't committed; or if it has gone
+ * @throws {@link OcflError} `INVALID_OBJECT` if its declaration is invalid, or its inventory is missing or can't be used
+ */
+async function openDeclaredObject(storageRoot: string, objectRoot: string, declared: OcflVersion | ''): Promise<OcflObject | undefined> {
+  if (declared === '') {
+    throw asInvalidObject(createError('E007', objectRoot));
   }
-  return new OpenedObject(storageRoot, objectRoot, ocflVersion, inventory);
+  let inventory = await readInventory(objectRoot);
+  if (!inventory) {
+    if (await isLocked(objectWorkspace(storageRoot, objectRoot))) {
+      return undefined;
+    }
+    // Its writer may have finished between the two: a create by committing, a remove by deleting it
+    inventory = await readInventory(objectRoot);
+    if (!inventory) {
+      if (!(await hasObjectDeclaration(objectRoot))) {
+        return undefined;
+      }
+      throw declarationWithoutInventory(objectRoot);
+    }
+  }
+  return new OpenedObject(storageRoot, objectRoot, declared, inventory);
 }
 
 /**
@@ -407,13 +447,17 @@ async function createObject(
 }
 
 export {
+  confirmedVersion,
   createObject,
   declarationWithoutInventory,
   enclosingObject,
+  hasObjectDeclaration,
   holdsAnotherObject,
   insideAnotherObject,
   nestedObject,
   type OcflObject,
+  objectNotFound,
+  openDeclaredObject,
   openObject,
   readInventory,
   type User,

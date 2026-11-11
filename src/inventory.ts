@@ -209,6 +209,12 @@ class OcflObjectInventory {
   _digest: string | undefined;
 
   /**
+   * The {@link _digest} of the inventory this one is the next version of
+   * @internal
+   */
+  _madeFrom: string | undefined;
+
+  /**
    * Helper function to find the digest by logical file path and cached it by indexing
    */
   #indexGet(logicalPath: string, versionName?: string, onlyUsecache?: boolean): Digests | undefined {
@@ -545,6 +551,7 @@ class OcflObjectInventory {
    * @internal
    */
   static newVersion(data: Partial<Inventory> | OcflObjectInventory, cleanState?: boolean): OcflObjectInventory {
+    const madeFrom = data instanceof OcflObjectInventory ? data._digest : undefined;
     if (data instanceof OcflObjectInventory) {
       data = JSON.parse(JSON.stringify(data.#data)) as Inventory;
     }
@@ -570,7 +577,9 @@ class OcflObjectInventory {
       created: new Date().toISOString(),
       state,
     };
-    return new OcflObjectInventory(data as Inventory);
+    const next = new OcflObjectInventory(data as Inventory);
+    next._madeFrom = madeFrom;
+    return next;
   }
 
   /**

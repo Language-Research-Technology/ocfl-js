@@ -27,6 +27,6 @@ The OCFL spec lets a storage root have an `extensions` directory containing only
 - With a layout that nests object paths, one object's directory in the workspace can be below a version name in another's. Recovery tells them apart by the lock a live writer holds there (ADR 0004).
 - A storage root with a workspace in use gets a W016 warning from validators, because `ocfl-js-workspace` isn't a registered extension name.
 - Part of the object hierarchy mounted from another filesystem can't be updated. Callers get an explicit error instead of a slow copy.
-- Every create or update made through this library takes the object's lock first, so a second writer of an object is refused with `UPDATE_IN_PROGRESS` before either writes content, whichever version each believes is the head.
+- Every create, update or remove made through this library takes the object's lock first, so a second writer of an object is refused with `UPDATE_IN_PROGRESS` before either writes content, whichever version each believes is the head.
 - The lock is in the workspace, not the object root, so an object never holds a non-OCFL file, and an object that doesn't exist yet can be locked.
 - Removing an empty workspace can race another update creating it, so an update retries taking the lock when the workspace vanishes between creating it and creating the lock.

@@ -137,7 +137,6 @@ try {
 | `UNSUPPORTED_FILE_TYPE`       | An import source is, or contains, something other than a regular file or directory, such as a symlink                        |
 | `SOURCE_CHANGED`              | A file changed while it was being imported                                                                                   |
 | `MUTABLE_HEAD_ACTIVE`         | An update or import finds an active mutable head (extension 0005); see [Other behaviour changes](#other-behaviour-changes)   |
-| `NOT_AN_OBJECT`               | `storage.remove()` finds something with no OCFL object declaration at the object's path, and deletes nothing                 |
 | `CROSS_FILESYSTEM_MOVE`       | An update can't rename its new version into the object, because part of the storage root is on another filesystem            |
 | `VERSION_LIMIT_REACHED`       | An update or import finds zero-padded version names used up: the next must still start with a zero (E011), so `v09` is last  |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                |
@@ -293,7 +292,7 @@ const root = await openStorageRoot('/srv/ocfl');
 await root.recover(id);
 ```
 
-`recover` discards an update that wasn't committed, finishes one that was by writing the root inventory's sidecar, and releases the lock. With nothing to clear it does nothing, and it throws `OBJECT_NOT_FOUND` only when there is neither an object nor anything left of one.
+`recover` discards an update that wasn't committed, finishes one that was by writing the root inventory's sidecar, finishes a remove that had begun deleting the object, and releases the lock. With nothing to clear it does nothing, and it throws `OBJECT_NOT_FOUND` only when there is neither an object nor anything left of one.
 
 `recover` removes only what an interrupted update can have left: the unfinished version in the workspace, staged inventory files, and the directory of the version after the head. For an object that never got a root inventory it removes the declaration and first version, but only while the lock is still there. A declaration with no root inventory and no lock, or with any later version beside it, is treated as a damaged object: `recover` throws `INVALID_OBJECT` and changes nothing. It also changes nothing for an object root inside another object.
 
@@ -375,11 +374,14 @@ Each public member now corresponds to something the OCFL specification or the li
 | `OcflObject.add()`                                                                                       | `import()`                                                                                                          |
 | `OcflObjectTransaction.move()`                                                                           | `rename()`                                                                                                          |
 | `OcflObjectTransaction.delete()`                                                                         | `remove()`                                                                                                          |
-| `OcflStorage.objects()`                                                                                  | `for await (const object of storage)`                                                                               |
+| `OcflStorage.objects()`                                                                                  | `root.objects()`; see [Listing objects](#listing-objects)                                                           |
+| `for await (const object of storage)`                                                                    | `root.objects()`; see [Listing objects](#listing-objects)                                                           |
+| `OcflStorage.has(id)`                                                                                    | `root.open(id)`, catching `OBJECT_NOT_FOUND`                                                                        |
 | `OcflStorage.objectRootAbs(id)`                                                                          | `storage.object(id).root`                                                                                           |
 | `OcflExtension.p`                                                                                        | `parameters` on the layout from `storageLayout()`, defaults included                                                |
-| `OcflStorage.delete(id)`                                                                                 | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                 |
-| `OcflStorage.purge(id)`                                                                                  | `storage.remove(id)`; see [Deleting an object](#deleting-an-object)                                                 |
+| `OcflStorage.delete(id)`                                                                                 | `root.remove(id)`; see [Deleting an object](#deleting-an-object)                                                    |
+| `OcflStorage.purge(id)`                                                                                  | `root.remove(id)`; see [Deleting an object](#deleting-an-object)                                                    |
+| `OcflStorage.remove(id)`                                                                                 | `root.remove(id)`; see [Deleting an object](#deleting-an-object)                                                    |
 | `OcflStorageImpl`                                                                                        | `OcflStorage`, from `storage()`, `createStorage()` or `loadStorage()`                                               |
 | `OcflObjectTransactionImpl`                                                                              | `OcflObjectTransaction`, from `object.update()`                                                                     |
 | A class name or layout object as `layout` or in `storageLayout()`                                        | The official extension name or `{ extensionName, ...params }`; see [Choosing a layout](#choosing-a-layout)          |
@@ -502,19 +504,54 @@ const storage = await ocfl.createStorage({ root: path.join(dir, 'root') });
 await rm(dir, { recursive: true, force: true });
 ```
 
+### Listing objects
+
+Iterating an `OcflStorage` has been removed. List a storage root's objects with `objects()` on the storage root from `openStorageRoot()`:
+
+```ts
+import { OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
+
+const root = await openStorageRoot('/srv/ocfl');
+for await (const object of root.objects()) {
+  if (object instanceof OcflError) {
+    console.warn(object.message);
+    continue;
+  }
+  console.log(object.id, object.head.files.size);
+}
+```
+
+- Each object is yielded already opened, as it is when the listing reaches it. The old iterator yielded objects that still had to be loaded.
+- An object that can't be opened no longer ends the listing. It is yielded as an `OcflError` with the code `INVALID_OBJECT`, whose message names the object's directory, and the listing carries on.
+- A directory whose object declaration has the wrong contents is reported the same way. Previously it was searched for objects inside it.
+- An object that another writer is creating and hasn't committed is left out.
+- A file system error, such as `EACCES`, is thrown and ends the listing.
+
+`OcflStorage.has(id)` has been removed too. Open the object and catch `OBJECT_NOT_FOUND`, which can't be overtaken by another writer the way a check followed by an open can.
+
 ### Deleting an object
 
-`OcflStorage.remove`, `delete` and `purge` only ever threw. `storage.remove(id)` now deletes an object, without you needing to know the storage layout. It removes the object root and any version a failed update left in the workspace, so a recreated object can be updated. Parent directories left empty are removed too, up to but not including the storage root, so the storage root stays valid. It isn't guarded against a concurrent update of the same object.
+`OcflStorage.remove`, `delete` and `purge`, which only ever threw, have been removed. Delete an object with `remove(id)` on the storage root from `openStorageRoot()`, without needing to know the storage layout:
+
+```ts
+const root = await openStorageRoot('/srv/ocfl');
+await root.remove(id);
+```
+
+It deletes the object root with every version. Parent directories left empty are removed too, up to but not including the storage root.
+
+`remove` takes the object's lock, so it never deletes an object that is being updated, and it leaves the workspace alone, apart from its own lock. An object opened before it was removed is out of date: updating it throws `OBJECT_OUT_OF_DATE`, even once an object with the same id has been created.
 
 It throws, and deletes nothing, when:
 
-- the object doesn't exist (`ObjectNotFoundError`)
-- the path holds something with no OCFL object declaration (`NOT_AN_OBJECT`)
-- the object's declaration has the wrong contents (`E007`)
+- there is no object with this id (`OBJECT_NOT_FOUND`)
+- the object is being updated or created, or a writer died doing so (`UPDATE_IN_PROGRESS`). After a dead writer, call `root.recover(id)` and then `remove` again
+- the id's directory holds something that isn't an object, such as files with no OCFL object declaration (`INVALID_OBJECT`; previously `NOT_AN_OBJECT`)
+- the object's declaration has the wrong contents, it has no inventory, its inventory can't be used, or it is inside another object (`INVALID_OBJECT`, with the OCFL code as `ocflCode`). Such an object has to be deleted by hand
 - the layout maps the id to the storage root, outside it, or into its `extensions` directory (`ID_INCOMPATIBLE_WITH_LAYOUT`)
-- the object's inventory has a different id, or there is no inventory to confirm it, for example because an id such as `a/../b` resolves to another object's path (`ID_INCOMPATIBLE_WITH_LAYOUT`)
-- the object's inventory can't be read or is invalid: `storage.remove` rejects with the underlying error, such as a `SyntaxError` for a corrupt `inventory.json` or `ENOENT` for a missing sidecar, and deletes nothing. Such an object has to be deleted by hand
-- the object is nested inside another object (`E082`)
+- the object's inventory has a different id, for example because an id such as `a/../b` resolves to another object's path (`ID_INCOMPATIBLE_WITH_LAYOUT`)
+
+If deleting fails part of the way through, `remove` throws `RECOVERY_NEEDED` with the failure as its `cause`, and keeps the lock. Call `root.recover(id)`, which finishes removing the object. Until then the object may still open, with files of its versions missing.
 
 ### Looking up a file
 
@@ -546,7 +583,8 @@ await storage.object('new-id').update(async (transaction) => {
   }
 });
 
-await storage.remove('original-id');
+const root = await openStorageRoot(storage.root);
+await root.remove('original-id');
 ```
 
 The new object needs its own identifier, because a layout maps each identifier to one path.
@@ -687,7 +725,7 @@ The remaining `_` members, such as `object._setInventory()`, `object._requireInv
 - **Breaking:** `reinstate()` takes a version number instead of a version name, so `reinstate('a.txt', 1)` for `v1` or `v001`, and returns nothing instead of a count. A version that isn't a number, such as `'v1'`, throws a `TypeError`. It throws `FILE_NOT_FOUND` when the version doesn't exist or had nothing at the path, instead of doing nothing. Any committed version can be given, including the latest, which undoes the update's own change to that path; the version being written isn't one, and neither is `'latest'`. Its path is normalised first, and an empty path throws `INVALID_LOGICAL_PATH`. A directory puts back every file that was below it, replacing files at the same paths and keeping the rest.
 - `write()` stores a logical path in its normalised form, as `copy()`, `rename()` and `import()` do, so `./a//b.txt` is `a/b.txt`. An empty path, such as `''` or `.`, throws `INVALID_LOGICAL_PATH`.
 - A logical path with a `..` segment, such as `a/../b`, is rejected instead of being normalised. A name that only starts with two dots, such as `..notes.txt`, is now accepted.
-- **Breaking:** an object id or `root` that maps to the storage root, outside it, or into its `extensions` directory throws `ID_INCOMPATIBLE_WITH_LAYOUT` from `objectRoot()`, `object()`, `has()` and `remove()`, and nothing is written. Previously objects could be written outside the storage root.
+- **Breaking:** an object id or `root` that maps to the storage root, outside it, or into its `extensions` directory throws `ID_INCOMPATIBLE_WITH_LAYOUT` from `objectRoot()` and `object()`, and from `open()`, `create()`, `remove()` and `recover()` on a storage root, and nothing is written. Previously objects could be written outside the storage root.
 - **Breaking:** the path-direct layout rejects an id with a `.` or `..` segment, such as `a/./b`, `../x` or `https://h/a/../b`, with `ID_INCOMPATIBLE_WITH_LAYOUT` instead of normalising it. This includes the encoded forms a URL parser resolves, such as `%2e%2e`, and `\` as a separator. A layout `suffix` with such a segment throws `INVALID_LAYOUT_CONFIG`. The flat-direct layout rejects the ids `.` and `..`.
 - **Breaking:** `object.readFile()`, `stat()` and `createReadable()` throw `INVALID_PATH` for an absolute path or one that leaves the object root. Previously an absolute path was read relative to the object root.
 - `object.getInventory(version)` returns `undefined` for a version that isn't a version name, such as `v1/content/x` or `..`, without reading a file. Previously it read the `inventory.json` at that path.

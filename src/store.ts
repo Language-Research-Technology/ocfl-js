@@ -82,7 +82,8 @@ export async function removeIfEmpty(dirPath: string): Promise<boolean> {
     await fs.promises.rmdir(dirPath);
     return true;
   } catch (error) {
-    if (hasErrorCode(error, 'ENOENT')) {
+    // ENAMETOOLONG: nothing can be at a path with a name that long
+    if (hasErrorCode(error, 'ENOENT', 'ENAMETOOLONG')) {
       return true;
     }
     // POSIX allows EEXIST in place of ENOTEMPTY

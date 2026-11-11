@@ -73,6 +73,17 @@ export function lockOf(root: StorageRoot, id: string): string {
   return path.join(workspaceOf(root), id, 'lock');
 }
 
+/**
+ * Leaves `id`, in a storage root with the {@link FLAT} layout, as a writer that died straight after taking its lock would
+ * @returns The lock
+ */
+export async function lockObject(root: StorageRoot, id: string, lockedAt: Date = new Date()): Promise<string> {
+  const lock = lockOf(root, id);
+  await fs.promises.mkdir(path.dirname(lock), { recursive: true });
+  await fs.promises.writeFile(lock, lockedAt.toISOString());
+  return lock;
+}
+
 /** Where the object `id`, its directory in the workspace and its lock are, or would be, in a storage root with the {@link FLAT} layout */
 export function placesOf(root: StorageRoot, id: string): { objectRoot: string; workspace: string; lock: string } {
   return { objectRoot: objectRootOf(root, id), workspace: path.join(workspaceOf(root), id), lock: lockOf(root, id) };

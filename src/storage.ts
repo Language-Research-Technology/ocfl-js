@@ -1,19 +1,16 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
-import { ObjectNotFoundError, OcflError } from './error.ts';
+import { OcflError } from './error.ts';
 import type { BuiltInLayout } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { createLayout } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
 import { checkedObjectPath, mappedObjectPath, readSpecText, readStorageRoot, writeStorageRoot } from './storage-root.ts';
-import * as store from './store.ts';
 import { updateTarget } from './transaction.ts';
 import type { OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
-import { findNamasteVersion, isDirEmpty } from './utils.ts';
-import { createError } from './validation.ts';
+import { isDirEmpty } from './utils.ts';
 
-const { OCFL_VERSION, EXTENSIONS_DIR, NAMASTE_PREFIX_OBJECT } = OcflConstants;
+const { OCFL_VERSION } = OcflConstants;
 
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 
@@ -96,14 +93,6 @@ class OcflStorage {
   }
 
   /**
-   * Check if the storage has already the object with the given id.
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` as {@link OcflStorage.object} does
-   */
-  async has(id: string): Promise<boolean> {
-    return this.object(id).exists();
-  }
-
-  /**
    * Check if the storage root path points to an existing file or non-empty directory.
    * The existing directory may or may not be a valid OCFL Storage.
    */
@@ -142,67 +131,6 @@ class OcflStorage {
     this.#layout ??= new DEFAULT_LAYOUT();
     await writeStorageRoot(this.root, this.ocflVersion, this.#layout, specText);
     return this;
-  }
-
-  /**
-   * Delete an object and any version a failed update left in its workspace.
-   * Parent directories left empty are removed too, up to but not including the storage root.
-   * Not guarded against a concurrent update of the object.
-   * @param id - Identifier of the object
-   * @throws {@link ObjectNotFoundError} If the object does not exist.
-   * @throws {@link OcflError} `NOT_AN_OBJECT` if the path holds something with no OCFL object declaration; nothing is deleted.
-   */
-  async remove(id: string): Promise<void> {
-    const object = this.object(id);
-    const objectRoot = object.root;
-    if (!(await object.exists())) {
-      throw new ObjectNotFoundError(id);
-    }
-    const declaredVersion = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, objectRoot);
-    if (declaredVersion === '') {
-      throw createError('E007', objectRoot);
-    }
-    if (!declaredVersion) {
-      throw new OcflError('NOT_AN_OBJECT', `"${objectRoot}" has no OCFL object declaration, so nothing was deleted.`);
-    }
-    await object._validateObjectPath();
-    // A layout can map several ids to one path, such as path-direct with omitScheme mapping http: and https: ids together
-    const inventory = await object.getInventory();
-    if (inventory?.id !== id) {
-      throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `"${objectRoot}" holds the object <${inventory?.id}>, not <${id}>, so nothing was deleted.`);
-    }
-    // Workspace first, so if it can't be removed the object survives and remove can be retried
-    await fs.promises.rm(object._workspace, { recursive: true, force: true });
-    await fs.promises.rm(objectRoot, { recursive: true, force: true });
-    // The object is gone, so a retry would throw ObjectNotFoundError
-    for (const dir of [object._workspace, objectRoot]) {
-      await store.removeEmptyAncestorsQuietly(path.dirname(dir), this.root);
-    }
-  }
-
-  /**
-   * Allow async iteration over all OCFL objects in this storage.
-   */
-  [Symbol.asyncIterator](): AsyncIterableIterator<OcflObject> {
-    return this.#objectsUnder(this.root);
-  }
-
-  async *#objectsUnder(dirPath: string): AsyncGenerator<OcflObject> {
-    for await (const dirent of await fs.promises.opendir(dirPath)) {
-      if (!dirent.isDirectory() || (dirPath === this.root && dirent.name === EXTENSIONS_DIR)) {
-        continue;
-      }
-      const basePath = path.join(dirPath, dirent.name);
-      const nv = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, basePath);
-      if (nv) {
-        yield new OcflObject({
-          ...this.#objectConfig,
-          ...updateTarget(this.root, basePath, nv),
-        });
-      } else {
-        yield* this.#objectsUnder(basePath);
-      }
-    }
   }
 }
 

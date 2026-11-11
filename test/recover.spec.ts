@@ -10,7 +10,7 @@ import {
   assertNoWorkspace,
   createObject,
   DETAILS,
-  lockOf,
+  lockObject,
   objectAtV1,
   placesOf,
   sidecarMatches,
@@ -43,14 +43,6 @@ describe('root.recover', () => {
   async function emptyRoot() {
     const root = await newRoot();
     return { root, ...placesOf(root, ID), before: await snapshot(root.path) };
-  }
-
-  /** Leaves `id` as a writer that died straight after taking its lock would */
-  async function lockObject(root: StorageRoot, id = ID) {
-    const lock = lockOf(root, id);
-    await fs.promises.mkdir(path.dirname(lock), { recursive: true });
-    await fs.promises.writeFile(lock, new Date().toISOString());
-    return lock;
   }
 
   /** Asserts the object {@link ID} is unlocked, with no workspace left, and takes an update */
@@ -96,7 +88,7 @@ describe('root.recover', () => {
   describe('a lock with nothing else left', () => {
     it('is released, leaving the object as it was and updatable', async () => {
       const { root, before } = await existingObject();
-      await lockObject(root);
+      await lockObject(root, ID);
 
       await root.recover(ID);
 
@@ -122,7 +114,7 @@ describe('root.recover', () => {
 
     it('is released for an object that was never created, without throwing OBJECT_NOT_FOUND', async () => {
       const { root, before } = await emptyRoot();
-      await lockObject(root);
+      await lockObject(root, ID);
 
       await root.recover(ID);
 
@@ -134,7 +126,7 @@ describe('root.recover', () => {
     it("leaves another object's lock and leftovers untouched", async () => {
       const { root } = await existingObject();
       await createObject(root, 'other', { 'a.txt': 'a' });
-      await lockObject(root);
+      await lockObject(root, ID);
       const otherLock = await lockObject(root, 'other');
       const otherVersion = path.join(placesOf(root, 'other').workspace, 'v2', 'content', 'b.txt');
       await fs.promises.mkdir(path.dirname(otherVersion), { recursive: true });
@@ -183,7 +175,7 @@ describe('root.recover', () => {
 
     it('removes the unfinished version a dead writer left in the workspace', async () => {
       const { root, workspace, before } = await existingObject();
-      await lockObject(root);
+      await lockObject(root, ID);
       await writeFiles(path.join(workspace, 'v2'), {
         'content/b.txt': 'unfinished',
         'content/lock': 'content, not a lock',
@@ -309,7 +301,7 @@ describe('root.recover', () => {
 
     it('throws INVALID_OBJECT, changing nothing, when the root inventory matches neither its sidecar nor its head version', async () => {
       const { root, objectRoot, lock } = await existingObject();
-      await lockObject(root);
+      await lockObject(root, ID);
       const inventory = path.join(objectRoot, 'inventory.json');
       await fs.promises.writeFile(inventory, `${await fs.promises.readFile(inventory, 'utf8')}\n`);
       const damaged = await snapshot(root.path);
@@ -322,7 +314,7 @@ describe('root.recover', () => {
 
     it('throws ID_INCOMPATIBLE_WITH_LAYOUT, changing nothing, when the directory holds an object with another id', async () => {
       const { root, objectRoot, lock } = await existingObject();
-      await lockObject(root);
+      await lockObject(root, ID);
       await rewriteInventory(objectRoot, (inventory) => {
         inventory.id = 'another';
       });
@@ -411,7 +403,7 @@ describe('root.recover', () => {
       const { root, objectRoot, lock } = await emptyRoot();
       await writeFiles(path.join(objectRoot, 'v1'), { 'content/a.txt': 'a' });
       const held = await snapshot(objectRoot);
-      await lockObject(root);
+      await lockObject(root, ID);
 
       await root.recover(ID);
 
@@ -446,7 +438,7 @@ describe('root.recover', () => {
         const { root, objectRoot } = await objectAt(2);
         await fs.promises.rm(path.join(objectRoot, 'inventory.json'));
         if (locked) {
-          await lockObject(root);
+          await lockObject(root, ID);
         }
         const damaged = await snapshot(root.path);
 
@@ -459,7 +451,7 @@ describe('root.recover', () => {
 
     it('is kept when it is not the version after the head', async () => {
       const { root, objectRoot, lock } = await objectAt(3);
-      await lockObject(root);
+      await lockObject(root, ID);
       await writeFiles(path.join(objectRoot, 'v5'), { 'content/stray.txt': 'stray' });
       const held = await snapshot(objectRoot);
 
@@ -474,7 +466,7 @@ describe('root.recover', () => {
       it(`is removed when it is the version after the head, which the root inventory does not name, ${locked ? 'with a' : 'without a'} lock`, async () => {
         const { root, objectRoot, lock, committed } = await objectAt(3);
         if (locked) {
-          await lockObject(root);
+          await lockObject(root, ID);
         }
         await writeFiles(path.join(objectRoot, 'v4'), { 'content/unfinished.txt': 'unfinished' });
 
@@ -497,7 +489,7 @@ describe('root.recover', () => {
           Object.entries(inventory.manifest!).map(([digest, paths]) => [digest, paths.map((file) => file.replace('v1/', 'v09/'))]),
         );
       });
-      await lockObject(root);
+      await lockObject(root, ID);
       await writeFiles(path.join(objectRoot, 'v10'), { 'content/stray.txt': 'stray' });
       const held = await snapshot(objectRoot);
 
@@ -564,7 +556,7 @@ describe('root.recover', () => {
   describe('when it cannot read what is there', () => {
     it('throws the file system error for a directory it cannot list, and keeps the lock', async () => {
       const { root, objectRoot, lock } = await existingObject();
-      await lockObject(root);
+      await lockObject(root, ID);
 
       await assert.rejects(
         withFsFailure('readdir', objectRoot, () => root.recover(ID), 'EACCES'),
