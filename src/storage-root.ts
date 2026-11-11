@@ -7,6 +7,7 @@ import type { BuiltInLayout, OcflExtensionConfig } from './extension.ts';
 import { createLayout, type LayoutClass, supportedLayoutClass } from './extensions/index.ts';
 import { type OcflObject, openObject } from './ocfl-object.ts';
 import * as store from './store.ts';
+import type { UpdateTarget } from './transaction.ts';
 import type { Layout, LayoutConfig, OcflVersion } from './types.ts';
 import { deepFreeze, findNamasteVersion, isDirEmpty, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
 import { createError, ValidationError } from './validation.ts';
@@ -169,6 +170,16 @@ function mappedObjectPath(root: string, layout: BuiltInLayout, id: string): stri
   return checkedObjectPath(root, layout.map(id), `The object id <${id}>`);
 }
 
+/** @param objectRoot - Absolute, and inside the storage root at the absolute path `root` */
+function updateTarget(root: string, objectRoot: string, ocflVersion: OcflVersion): UpdateTarget {
+  return {
+    root: objectRoot,
+    workspace: nodePath.join(root, EXTENSIONS_DIR, WORKSPACE_EXTENSION, nodePath.relative(root, objectRoot)),
+    storageRoot: root,
+    ocflVersion,
+  };
+}
+
 function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayout): StorageRoot {
   return deepFreeze({
     path: root,
@@ -266,4 +277,14 @@ async function openStorageRoot(path: string): Promise<StorageRoot> {
   }
 }
 
-export { checkedObjectPath, createStorageRoot, mappedObjectPath, openStorageRoot, readSpecText, readStorageRoot, type StorageRoot, writeStorageRoot };
+export {
+  checkedObjectPath,
+  createStorageRoot,
+  mappedObjectPath,
+  openStorageRoot,
+  readSpecText,
+  readStorageRoot,
+  type StorageRoot,
+  updateTarget,
+  writeStorageRoot,
+};

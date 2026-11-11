@@ -12,7 +12,7 @@ import type { BinaryOptions, ContentAlgorithm, EncodingOptions, Inventory, OcflO
 import { findNamasteVersion, isDirEmpty, isNotFound, pathExists, relativeWithin } from './utils.ts';
 import { createError } from './validation.ts';
 
-const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T, EXTENSIONS_DIR } = OcflConstants;
+const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, EXTENSIONS_DIR } = OcflConstants;
 const INVENTORY_TYPE = /^https:\/\/ocfl\.io\/([^/]+)\/spec\/#inventory$/;
 const MUTABLE_HEAD_INVENTORY = path.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
 
@@ -147,28 +147,6 @@ class OcflObject {
   }
 
   /**
-   * @returns The path of the declaration file, if this call wrote one
-   * @internal
-   */
-  async _ensureNamaste(): Promise<string | undefined> {
-    const prefix = NAMASTE_PREFIX_OBJECT;
-    const nv = await findNamasteVersion(prefix, this.root);
-    if (nv === '') {
-      throw createError('E007', this.root);
-    }
-    if (nv) {
-      return;
-    }
-    if (!(await isDirEmpty(this.root))) {
-      throw new OcflError('DIRECTORY_NOT_EMPTY', 'Cannot create an OCFL Object in a non-empty directory');
-    }
-    //create the namaste file
-    const filePath = path.join(this.root, NAMASTE_T + prefix + this.ocflVersion);
-    await store.writeFile(filePath, `${prefix + this.ocflVersion}\n`);
-    return filePath;
-  }
-
-  /**
    * Read and parse the inventory.json file
    * @param version - Full name of the version, eg: v1, v2, v3
    */
@@ -294,7 +272,18 @@ class OcflObject {
         `OCFL Object "${this.#label}" has an active mutable head (extension 0005), which this library doesn't support; new versions can't be created until it is committed or removed`,
       );
     }
-    const t = await OcflObjectTransaction.create(this, newInv);
+    const t = await OcflObjectTransaction.create(
+      { root: this.root, workspace: this._workspace, storageRoot: this._storageRoot, ocflVersion: this.ocflVersion },
+      newInv,
+      this.fixityAlgorithms ?? [],
+    );
+    // The caller may be the one to commit, so the cache is updated from the transaction it holds
+    t.commit = async (options) => {
+      const committed = await t._commit(options);
+      if (committed) {
+        this._setInventory(committed);
+      }
+    };
     if (typeof updater === 'function') {
       try {
         await updater(t);
