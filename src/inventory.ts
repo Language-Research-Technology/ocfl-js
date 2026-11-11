@@ -643,43 +643,53 @@ class OcflObjectInventory {
   }
 
   /**
-   * What happens to the content of logical paths once they all stop using it, for content this version stored
+   * What happens to the content of logical paths once they all stop using it, for content this version stored.
+   * Content stored at a leaving path's own content path follows that path if it is transferred, or else moves
+   * to a path that still uses it. A release can move content to a path another release vacates.
+   * @param arriving - Transfers that list their destinations once `logicalPaths` are unlisted
    * @internal
    */
-  _contentReleases(logicalPaths: string[]): ContentRelease[] {
+  _contentReleases(logicalPaths: string[], arriving: Transfer[] = []): ContentRelease[] {
     const leaving = new Set(logicalPaths);
     const ownPaths = new Set(logicalPaths.map((logicalPath) => this.#ownContentPath(logicalPath)));
     const digests = new Set(logicalPaths.map((logicalPath) => this.getDigest(logicalPath)).filter((digest) => digest !== undefined));
+    const arrivalsOf = Map.groupBy(arriving, (transfer) => transfer.digest);
     return [...digests].flatMap((digest) => {
       const from = this.getContentPath(digest);
       if (!from?.startsWith(`${this.head}/`)) {
         return [];
       }
-      const heir = this.state[digest]?.find((file) => !leaving.has(file));
+      const arrivals = arrivalsOf.get(digest) ?? [];
+      const follows = arrivals.find(({ src }) => this.#ownContentPath(src) === from);
+      const heirs = [
+        ...(follows ? [follows.dest] : []),
+        ...(this.state[digest] ?? []).filter((file) => !leaving.has(file)),
+        ...arrivals.map(({ dest }) => dest),
+      ];
+      const [heir] = heirs;
       if (heir === undefined) {
         return [{ digest, from }];
       }
-      return ownPaths.has(from) ? [{ digest, from, to: this.#ownContentPath(heir) }] : [];
+      const stays = !ownPaths.has(from) || heirs.some((file) => this.#ownContentPath(file) === from);
+      return stays ? [] : [{ digest, from, to: this.#ownContentPath(heir) }];
     });
   }
 
   #applyContentReleases(releases: ContentRelease[]) {
-    for (const { digest, from, to } of releases) {
+    // Every `from` is read and forgotten first: a release can move content to a path another vacates
+    const fixities = releases.map(({ from }) => Object.entries(this.#indexGetFixity(from)));
+    for (const { from } of releases) {
+      this.#forgetFixity(from);
+    }
+    for (const [index, { digest, to }] of releases.entries()) {
       if (to === undefined) {
         delete this.#data.manifest[digest];
-        this.#forgetFixity(from);
-      } else {
-        this.#moveContent(digest, from, to);
+        continue;
       }
-    }
-  }
-
-  #moveContent(digest: string, from: string, to: string) {
-    const fixity = Object.entries(this.#indexGetFixity(from));
-    this.#forgetFixity(from);
-    this.#data.manifest[digest] = [to];
-    for (const [algorithm, value] of fixity) {
-      this.#addFixity(to, algorithm, value);
+      this.#data.manifest[digest] = [to];
+      for (const [algorithm, value] of fixities[index] ?? []) {
+        this.#addFixity(to, algorithm, value);
+      }
     }
   }
 
@@ -755,7 +765,7 @@ class OcflObjectInventory {
    * Resolve a copy or rename to the files it transfers and the files they replace, changing nothing.
    * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
    */
-  #planTransfer(source: string, target: string): TransferPlan {
+  #planTransfer(source: string, target: string, merge = false): TransferPlan {
     const src = normaliseLogicalPath(source);
     const dest = normaliseLogicalPath(target);
     for (const logicalPath of [src, dest]) {
@@ -780,7 +790,7 @@ class OcflObjectInventory {
       if (this.getDigest(dest) !== undefined) {
         throw new OcflError('FILE_EXISTS', `Target logical path "${target}" is an existing file in object [${this.id}]`);
       }
-      if (this.#headDirectories.has(dest)) {
+      if (!merge && this.#headDirectories.has(dest)) {
         throw new OcflError('FILE_EXISTS', `Target logical path "${target}" already has files in object [${this.id}]`);
       }
     }
@@ -789,24 +799,25 @@ class OcflObjectInventory {
       const digest = digests?.[this.digestAlgorithm];
       return digests && digest ? [{ src: file, dest: `${dest}${file.slice(src.length)}`, digest, digests }] : [];
     });
+    for (const transfer of transfers) {
+      this._checkFilePath(transfer.dest);
+    }
     const replaced = transfers.filter(({ dest, digest }) => (this.getDigest(dest) ?? digest) !== digest).map(({ dest }) => dest);
     return { transfers, replaced };
   }
 
   /**
    * Resolve a rename to its transfers, the files they replace and what happens to stored content,
-   * changing nothing. Only files this version stored at a source's own content path move.
+   * changing nothing. Only files this version stored at a source's or a replaced file's own content path move.
    * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
    * @internal
    */
-  _planRename(source: string, target: string): RenamePlan {
-    const plan = this.#planTransfer(source, target);
-    const moves = plan.transfers.flatMap(({ src, dest, digest }) => {
-      const from = this.getContentPath(digest);
-      return from === this.#ownContentPath(src) ? [{ digest, from, to: this.#ownContentPath(dest) }] : [];
-    });
-    // A replaced file's content has to leave its content path before renamed content takes it
-    return { ...plan, releases: [...this._contentReleases(plan.replaced), ...moves] };
+  _planRename(source: string, target: string, merge = false): RenamePlan {
+    const { transfers, replaced: occupied } = this.#planTransfer(source, target, merge);
+    const sources = new Set(transfers.map(({ src }) => src));
+    // A merge into the directory the source is in can land a file on another source, which is moved, not replaced
+    const replaced = occupied.filter((file) => !sources.has(file));
+    return { transfers, replaced, releases: this._contentReleases([...replaced, ...sources], transfers) };
   }
 
   /**
@@ -828,9 +839,9 @@ class OcflObjectInventory {
    * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
    * @internal
    */
-  _planCopy(source: string, target: string): CopyPlan {
-    const plan = this.#planTransfer(source, target);
-    return { ...plan, releases: this._contentReleases(plan.replaced) };
+  _planCopy(source: string, target: string, merge = false): CopyPlan {
+    const plan = this.#planTransfer(source, target, merge);
+    return { ...plan, releases: this._contentReleases(plan.replaced, plan.transfers) };
   }
 
   /**

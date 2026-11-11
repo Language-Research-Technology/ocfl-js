@@ -61,11 +61,15 @@ export type Digests = {
 // @public
 export interface Draft {
     clear(): Promise<void>;
-    copy(source: string, target: string): Promise<void>;
+    copy(source: string, target: string, options?: {
+        merge: boolean;
+    }): Promise<void>;
     import(source: string, target?: string): Promise<void>;
     reinstate(path: string, version: number): Promise<void>;
     remove(path: string): Promise<void>;
-    rename(source: string, target: string): Promise<void>;
+    rename(source: string, target: string, options?: {
+        merge: boolean;
+    }): Promise<void>;
     write(path: string, content: WriteContent): Promise<void>;
 }
 
@@ -421,11 +425,15 @@ export class OcflObjectInventory {
 export class OcflObjectTransaction {
     clear(): Promise<void>;
     commit(options?: CommitOptions): Promise<void>;
-    copy(source: string, target: string): Promise<void>;
+    copy(source: string, target: string, options?: {
+        merge: boolean;
+    }): Promise<void>;
     import(source: string, target?: string): Promise<void>;
     reinstate(logicalPath: string, version: number): Promise<void>;
     remove(logicalPath: string): Promise<void>;
-    rename(source: string, target: string): Promise<void>;
+    rename(source: string, target: string, options?: {
+        merge: boolean;
+    }): Promise<void>;
     rollback(): Promise<void>;
     write(logicalPath: string, data: WriteFileData): Promise<void>;
 }

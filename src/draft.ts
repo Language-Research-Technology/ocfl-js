@@ -46,29 +46,23 @@ interface Draft {
 
   /**
    * Copies a file, or every file below a directory, to `target` within the draft.
+   * With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay.
    *
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
-   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files; or if a path would become both a file and a directory.
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a path would become both a file and a directory.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
    */
-  copy(source: string, target: string): Promise<void>;
+  copy(source: string, target: string, options?: { merge: boolean }): Promise<void>;
 
   /**
    * Moves a file, or every file below a directory, to `target` within the draft.
+   * With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay.
    *
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
-   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files; or if a path would become both a file and a directory.
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a path would become both a file and a directory.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
    */
-  rename(source: string, target: string): Promise<void>;
-
-  /**
-   * Removes a file, or every file below a directory, from the draft. Earlier versions keep it.
-   *
-   * @throws {@link OcflError} `FILE_NOT_FOUND` if `path` is not in the draft.
-   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
-   */
-  remove(path: string): Promise<void>;
+  rename(source: string, target: string, options?: { merge: boolean }): Promise<void>;
 
   /**
    * Puts a file, or every file below a directory, back as it was in an earlier version, at the same path.
@@ -78,6 +72,14 @@ interface Draft {
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
    */
   reinstate(path: string, version: number): Promise<void>;
+
+  /**
+   * Removes a file, or every file below a directory, from the draft. Earlier versions keep it.
+   *
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if `path` is not in the draft.
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
+   */
+  remove(path: string): Promise<void>;
 
   /** Removes every file from the draft. */
   clear(): Promise<void>;
@@ -160,20 +162,20 @@ class ObjectDraft implements Draft {
     return this.#open.import(source, target);
   }
 
-  async copy(source: string, target: string): Promise<void> {
-    return this.#open.copy(source, target);
+  async copy(source: string, target: string, options?: { merge: boolean }): Promise<void> {
+    return this.#open.copy(source, target, options);
   }
 
-  async rename(source: string, target: string): Promise<void> {
-    return this.#open.rename(source, target);
-  }
-
-  async remove(path: string): Promise<void> {
-    return this.#open.remove(path);
+  async rename(source: string, target: string, options?: { merge: boolean }): Promise<void> {
+    return this.#open.rename(source, target, options);
   }
 
   async reinstate(path: string, version: number): Promise<void> {
     return this.#open.reinstate(path, version);
+  }
+
+  async remove(path: string): Promise<void> {
+    return this.#open.remove(path);
   }
 
   async clear(): Promise<void> {

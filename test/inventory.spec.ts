@@ -45,8 +45,8 @@ function assertMatchesRebuilt(inv: OcflObjectInventory) {
   }
 }
 
-const copy = (inv: OcflObjectInventory, source: string, target: string) => inv._applyCopy(inv._planCopy(source, target));
-const rename = (inv: OcflObjectInventory, source: string, target: string) => inv._applyRename(inv._planRename(source, target));
+const copy = (inv: OcflObjectInventory, source: string, target: string, merge?: boolean) => inv._applyCopy(inv._planCopy(source, target, merge));
+const rename = (inv: OcflObjectInventory, source: string, target: string, merge?: boolean) => inv._applyRename(inv._planRename(source, target, merge));
 const reinstate = (inv: OcflObjectInventory, logicalPath: string, version: number) => inv._applyReinstate(inv._planReinstate(logicalPath, version));
 
 describe('OcflObjectInventory class', () => {
@@ -300,6 +300,8 @@ describe('OcflObjectInventory class', () => {
       return inv;
     }
 
+    const sorted = <T>(record: Record<string, T>) => Object.fromEntries(Object.entries(record).sort());
+
     for (const [op, transfer] of [
       ['copy', copy],
       ['rename', rename],
@@ -381,6 +383,88 @@ describe('OcflObjectInventory class', () => {
           assert.strictEqual(inv.getDigest('b'), 'd1');
           assertHeadStateValid(inv);
         });
+
+        const refusedMerging: [string, Record<string, string>, string, string, string][] = [
+          ['a file where the target has a directory', { 'x/a': 'd1', 'x/b': 'd2', 'y/a/c': 'd3' }, 'x', 'y', 'FILE_EXISTS'],
+          ['a directory where the target has a file', { 'x/a/c': 'd1', 'x/b': 'd2', 'y/a': 'd3' }, 'x', 'y', 'FILE_EXISTS'],
+          ['a directory source onto a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b', 'FILE_EXISTS'],
+          ['a directory source inside a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b/c', 'FILE_EXISTS'],
+          ['a file source onto a directory', { a: 'd1', 'y/f': 'd2' }, 'a', 'y', 'FILE_EXISTS'],
+          ['a file onto the directory it is in', { 'y/a': 'd1' }, 'y/a', 'y', 'FILE_EXISTS'],
+          ['a directory source into itself', { 'x/a': 'd1', 'x/y/b': 'd2' }, 'x', 'x/y', 'INVALID_LOGICAL_PATH'],
+          ['a missing source', { 'y/a': 'd1' }, 'missing', 'y', 'FILE_NOT_FOUND'],
+        ];
+
+        for (const [name, files, source, target, code] of refusedMerging) {
+          it(`throws ${code} when merging ${name}, changing nothing`, () => {
+            const inv = inventoryWith(files);
+            const before = inv.toJSON();
+            assert.throws(() => transfer(inv, source, target, true), { name: 'OcflError', code });
+            assert.deepStrictEqual(inv.toJSON(), before);
+            assertHeadStateValid(inv);
+          });
+        }
+
+        it('throws FILE_EXISTS for a directory source onto a directory with content when merge is false', () => {
+          const inv = inventoryWith({ 'x/a': 'd1', 'y/a': 'd2' });
+          assert.throws(() => transfer(inv, 'x', 'y', false), { name: 'OcflError', code: 'FILE_EXISTS' });
+          assertHeadStateValid(inv);
+        });
+
+        const kept = (files: Record<string, string>) => (op === 'copy' ? files : {});
+        const merged: [string, Record<string, string>, string, string, Record<string, string>, Record<string, string>][] = [
+          [
+            'a directory into one with no clashing files',
+            { 'x/a': 'd1', 'x/s/b': 'd2', 'y/c': 'd3', 'y/s/d': 'd4' },
+            'x',
+            'y',
+            { ...kept({ 'x/a': 'd1', 'x/s/b': 'd2' }), 'y/a': 'd1', 'y/s/b': 'd2', 'y/c': 'd3', 'y/s/d': 'd4' },
+            op === 'copy' ? { d1: 'x/a', d2: 'x/s/b', d3: 'y/c', d4: 'y/s/d' } : { d1: 'y/a', d2: 'y/s/b', d3: 'y/c', d4: 'y/s/d' },
+          ],
+          [
+            'a directory into one with files at the same paths',
+            { 'x/a': 'd1', 'x/b': 'd2', 'y/a': 'd3', 'y/b': 'd2', 'y/c': 'd4' },
+            'x',
+            './y/',
+            { ...kept({ 'x/a': 'd1', 'x/b': 'd2' }), 'y/a': 'd1', 'y/b': 'd2', 'y/c': 'd4' },
+            op === 'copy' ? { d1: 'x/a', d2: 'x/b', d4: 'y/c' } : { d1: 'y/a', d2: 'y/b', d4: 'y/c' },
+          ],
+          [
+            'a directory whose file shares content stored at a file it replaces',
+            { 'y/a': 'd1', 'x/a': 'd2', 'x/b': 'd1' },
+            'x',
+            'y',
+            { ...kept({ 'x/a': 'd2', 'x/b': 'd1' }), 'y/a': 'd2', 'y/b': 'd1' },
+            op === 'copy' ? { d1: 'x/b', d2: 'x/a' } : { d1: 'y/b', d2: 'y/a' },
+          ],
+          [
+            'a directory into the directory it is in',
+            { 'y/x/a': 'd1', 'y/x/x/a': 'd2', 'y/a': 'd3' },
+            'y/x',
+            'y',
+            { ...kept({ 'y/x/x/a': 'd2' }), 'y/a': 'd1', 'y/x/a': 'd2' },
+            op === 'copy' ? { d1: 'y/a', d2: 'y/x/x/a' } : { d1: 'y/a', d2: 'y/x/a' },
+          ],
+          [
+            'a directory into one with no content',
+            { 'x/a': 'd1' },
+            'x',
+            'y/z',
+            { ...kept({ 'x/a': 'd1' }), 'y/z/a': 'd1' },
+            op === 'copy' ? { d1: 'x/a' } : { d1: 'y/z/a' },
+          ],
+          ['a file onto a file', { a: 'd1', b: 'd2' }, 'a', 'b', { ...kept({ a: 'd1' }), b: 'd1' }, op === 'copy' ? { d1: 'a' } : { d1: 'b' }],
+        ];
+
+        for (const [name, files, source, target, expected, manifest] of merged) {
+          it(`merges ${name}`, () => {
+            const inv = inventoryWith(files);
+            transfer(inv, source, target, true);
+            assert.deepStrictEqual(Object.fromEntries([...inv.files()].map((f) => [f.logicalPath, inv.getDigest(f.logicalPath)]).sort()), sorted(expected));
+            assert.deepStrictEqual(sorted(inv.manifest), sorted(Object.fromEntries(Object.entries(manifest).map(([d, p]) => [d, [`v1/content/${p}`]]))));
+            assertHeadStateValid(inv);
+          });
+        }
       });
     }
 
