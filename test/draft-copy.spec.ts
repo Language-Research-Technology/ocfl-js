@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
 import type { Draft, OcflObject, StorageRoot } from '../src/index.ts';
-import { withFsFailure } from './fs-failures.ts';
+import { moving, withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
   assertRefuses,
@@ -524,6 +524,25 @@ describe('copying in a draft', () => {
         await assertVersionValid(objectRootOf(root, concurrent.id), 'v2');
       });
     }
+  });
+
+  describe('when stored content cannot be moved', () => {
+    it('keeps the replaced file and leaves no directory behind when its content cannot move to its other path', async () => {
+      const id = newId();
+      const files = { shared: 'XXX', 'deep/er/twin': 'XXX', other: 'OOO' };
+      const object = await root.create(id, DETAILS, async (draft) => {
+        for (const [logicalPath, content] of Object.entries(files)) {
+          await draft.write(logicalPath, content);
+        }
+        const stored = await snapshot(path.join(workspaceOf(root), id));
+        await withFsFailure('rename', moving('/content/shared', '/content/deep/er/twin'), () =>
+          assert.rejects(draft.copy('other', 'shared'), /injected failure/),
+        );
+        assert.deepStrictEqual(await snapshot(path.join(workspaceOf(root), id)), stored);
+      });
+      const inventory = await assertHolds(root, object, files);
+      assert.deepStrictEqual(inventory.manifest, { [sha512('XXX')]: ['v1/content/shared'], [sha512('OOO')]: ['v1/content/other'] });
+    });
   });
 
   describe('when stored content cannot be removed', () => {

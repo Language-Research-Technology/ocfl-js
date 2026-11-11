@@ -443,7 +443,7 @@ class OcflObjectTransaction {
   }
 
   /**
-   * Make releases' changes to the stored files around `place`, undoing every move if a move or `place` fails.
+   * Make releases' changes to the stored files around `place`. If a move or `place` fails, every move is undone and no directory it made is left.
    * @param placedAt - The file `place` fills, if it stores any content
    */
   async #applyContentReleases(releases: ContentRelease[], placedAt?: string, place?: () => Promise<void>) {
@@ -457,16 +457,23 @@ class OcflObjectTransaction {
     const asideAt = new Map(setAside.map(({ from, to }) => [from, to]));
     const remaining = files.map(({ from, to }) => ({ from: asideAt.get(from) ?? from, to }));
     const moved: { from: string; to: string }[] = [];
+    // Where the step in progress puts a file, creating the directories above it
+    let filling: string | undefined;
     try {
       for (const { from, to } of [...setAside, ...remaining]) {
         if (to !== undefined) {
+          filling = to;
           await store.move(from, to);
           moved.push({ from, to });
         }
       }
+      filling = placedAt;
       await place?.();
     } catch (error) {
       try {
+        if (filling !== undefined) {
+          await this.#pruneEmptyDirectories(path.dirname(filling));
+        }
         for (const { from, to } of moved.reverse()) {
           await store.move(to, from);
           await this.#pruneEmptyDirectories(path.dirname(to));

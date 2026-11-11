@@ -651,6 +651,24 @@ describe('renaming in a draft', () => {
       assert.deepStrictEqual(inventory.manifest, { [sha512('AAA')]: ['v1/content/b'] });
     });
 
+    it('leaves no directory behind for a target the content could not be moved to', async () => {
+      const object = await root.create(newId(), DETAILS, async (draft) => {
+        await draft.write('a/a', 'XXX');
+        await withFsFailure('rename', moving('/content/a/a', '/content/b/a'), () => assert.rejects(draft.rename('a/a', 'b/a'), /injected failure/));
+      });
+      const inventory = await assertHolds(root, object, { 'a/a': 'XXX' });
+      assert.deepStrictEqual(inventory.manifest, { [sha512('XXX')]: ['v1/content/a/a'] });
+    });
+
+    it('can write a file where a failed rename would have made a directory', async () => {
+      const object = await root.create(newId(), DETAILS, async (draft) => {
+        await draft.write('b', 'XXX');
+        await withFsFailure('rename', moving('/content/b', '/content/a/a'), () => assert.rejects(draft.rename('b', 'a/a'), /injected failure/));
+        await draft.write('a', 'ZZZ');
+      });
+      await assertHolds(root, object, { a: 'ZZZ', b: 'XXX' });
+    });
+
     for (const [name, files, fails] of [
       [
         'a move',
