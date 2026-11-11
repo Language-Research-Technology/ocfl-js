@@ -136,7 +136,7 @@ interface StorageRoot {
    * Reads an object's inventory and returns the object as it is now. It does not change when later versions are committed.
    *
    * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id.
-   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is corrupt or inconsistent, or the object has no declaration.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is missing, corrupt or inconsistent, or the object has no declaration.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds another object.
    * @example
    * ```ts

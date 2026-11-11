@@ -250,6 +250,25 @@ describe('opening an object', () => {
       await assert.rejects(root.open('stray'), ocflError('OBJECT_NOT_FOUND'));
     });
 
+    it('throws INVALID_OBJECT with E063 for a directory with an object declaration but no inventory', async () => {
+      const root = await newRoot();
+      const objectRoot = await writeVersions(root.path, 'no-inventory', [{ 'a.txt': 'abc' }]);
+      await fs.promises.rm(path.join(objectRoot, 'inventory.json'));
+      await assert.rejects(root.open('no-inventory'), ocflError('INVALID_OBJECT', 'E063'));
+    });
+
+    it('passes on a file system error from looking for the object declaration', async () => {
+      const root = await newRoot();
+      const objectRoot = path.join(root.path, 'unreadable-declaration');
+      await fs.promises.mkdir(objectRoot);
+      await withFsFailure(
+        'readFile',
+        (file) => path.dirname(file) === objectRoot && path.basename(file).startsWith('0='),
+        () => assert.rejects(root.open('unreadable-declaration'), (error: NodeJS.ErrnoException) => error.code === 'EACCES' && error.name === 'Error'),
+        'EACCES',
+      );
+    });
+
     it('throws OBJECT_NOT_FOUND when the place of the id is a file, or below one', async () => {
       const root = await newRoot({ extensionName: PATH_DIRECT, suffix: '' });
       await writeFiles(root.path, { 'a-file': 'not an object' });

@@ -236,15 +236,30 @@ async function enclosingObject(storageRoot: string, objectRoot: string): Promise
   return ancestors.find((_dir, i) => declared[i]);
 }
 
+/** Whether `dir` has an object declaration file, whatever it holds */
+async function hasObjectDeclaration(dir: string): Promise<boolean> {
+  try {
+    return (await findNamasteVersion(NAMASTE_PREFIX_OBJECT, dir)) !== undefined;
+  } catch (error) {
+    if (hasErrorCode(error, 'ENAMETOOLONG')) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 /**
  * Opens the object `id` that the storage root's layout places at `objectRoot`.
- * @throws {@link OcflError} `OBJECT_NOT_FOUND` if `objectRoot` has no inventory
- * @throws {@link OcflError} `INVALID_OBJECT` if it has no object declaration, is inside another object, or its inventory can't be used
+ * @throws {@link OcflError} `OBJECT_NOT_FOUND` if `objectRoot` has neither an inventory nor an object declaration
+ * @throws {@link OcflError} `INVALID_OBJECT` if it has only one of them, is inside another object, or its inventory can't be used
  * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it holds an object with another id
  */
 async function openObject(storageRoot: string, objectRoot: string, id: string): Promise<OcflObject> {
   const inventory = await readInventory(objectRoot);
   if (!inventory) {
+    if (await hasObjectDeclaration(objectRoot)) {
+      throw invalidObject(`${objectRoot} has an OCFL object declaration but no inventory.`, { ocflCode: 'E063' });
+    }
     throw new OcflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}.`);
   }
   const [ocflVersion, outer] = await Promise.all([findNamasteVersion(NAMASTE_PREFIX_OBJECT, objectRoot), enclosingObject(storageRoot, objectRoot)]);
