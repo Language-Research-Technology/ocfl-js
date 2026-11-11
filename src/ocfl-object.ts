@@ -11,7 +11,8 @@ import type { ContentAlgorithm, Inventory, OcflVersion } from './types.ts';
 import { findNamasteVersion, hasErrorCode, isDirEmpty, pathExists } from './utils.ts';
 import { createError, ValidationError } from './validation.ts';
 
-const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
+const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
+const MUTABLE_HEAD_INVENTORY = nodePath.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
 
 /** The person or system responsible for a version. */
 interface User {
@@ -52,6 +53,9 @@ interface OcflObject {
    * Commits one new version made from the draft changed by `change`. If `change` throws, everything is discarded.
    * Returns the object with the new version, or this object if the draft ended the same as the head.
    *
+   * @throws {@link OcflError} `INVALID_OBJECT` if the object's declaration has been removed or damaged, or the object is now inside another object, since it was opened.
+   * @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE` if the object has an active mutable head (extension 0005).
+   * @throws {@link OcflError} `VERSION_LIMIT_REACHED` if the object's version names are zero-padded and the next one couldn't start with a zero, as OCFL requires (E011): `v01` to `v09` leaves none.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws `TypeError` if the message or the user's name is missing or empty.
    * @throws Whatever `change` or a draft operation throws.
@@ -103,6 +107,13 @@ class OpenedObject implements OcflObject {
 
   async update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject> {
     const checked = checkedDetails(details);
+    await declaredVersion(this.#storageRoot, this.#root);
+    if (await pathExists(nodePath.join(this.#root, MUTABLE_HEAD_INVENTORY))) {
+      throw new OcflError(
+        'MUTABLE_HEAD_ACTIVE',
+        `The object <${this.id}> has an active mutable head (extension 0005), which this library doesn't support; it can't be updated until the head is committed or removed.`,
+      );
+    }
     const inventory = OcflObjectInventory.newVersion(this.#inventory);
     const committed = await commitDraft(updateTarget(this.#storageRoot, this.#root, this.ocflVersion), inventory, checked, change);
     return committed ? new OpenedObject(this.#storageRoot, this.#root, this.ocflVersion, committed) : this;
@@ -276,6 +287,24 @@ async function hasObjectDeclaration(dir: string): Promise<boolean> {
 }
 
 /**
+ * The OCFL version declared by the object at `objectRoot`, which has an inventory.
+ * @throws {@link OcflError} `INVALID_OBJECT` if its declaration is missing or wrong, or it is inside another object
+ */
+async function declaredVersion(storageRoot: string, objectRoot: string): Promise<OcflVersion> {
+  const [ocflVersion, outer] = await Promise.all([findNamasteVersion(NAMASTE_PREFIX_OBJECT, objectRoot), enclosingObject(storageRoot, objectRoot)]);
+  if (ocflVersion === '') {
+    throw asInvalidObject(createError('E007', objectRoot));
+  }
+  if (!ocflVersion) {
+    throw invalidObject(`${objectRoot} has an inventory but no OCFL object declaration.`, { ocflCode: 'E003' });
+  }
+  if (outer !== undefined) {
+    throw asInvalidObject(createError('E082', objectRoot, `nested under the object at ${outer}`));
+  }
+  return ocflVersion;
+}
+
+/**
  * Opens the object `id` that the storage root's layout places at `objectRoot`.
  * @throws {@link OcflError} `OBJECT_NOT_FOUND` if `objectRoot` has neither an inventory nor an object declaration
  * @throws {@link OcflError} `INVALID_OBJECT` if it has only one of them, is inside another object, or its inventory can't be used
@@ -289,16 +318,7 @@ async function openObject(storageRoot: string, objectRoot: string, id: string): 
     }
     throw new OcflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}.`);
   }
-  const [ocflVersion, outer] = await Promise.all([findNamasteVersion(NAMASTE_PREFIX_OBJECT, objectRoot), enclosingObject(storageRoot, objectRoot)]);
-  if (ocflVersion === '') {
-    throw asInvalidObject(createError('E007', objectRoot));
-  }
-  if (!ocflVersion) {
-    throw invalidObject(`${objectRoot} has an inventory but no OCFL object declaration.`, { ocflCode: 'E003' });
-  }
-  if (outer !== undefined) {
-    throw asInvalidObject(createError('E082', objectRoot, `nested under the object at ${outer}`));
-  }
+  const ocflVersion = await declaredVersion(storageRoot, objectRoot);
   if (inventory.id !== id) {
     throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot} holds the object <${inventory.id}>, not <${id}>.`);
   }

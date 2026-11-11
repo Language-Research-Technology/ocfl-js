@@ -34,8 +34,16 @@ class VersionNumber {
   toString(): string {
     return `v${this.zeroPaddingLength ? `${this.value}`.padStart(this.zeroPaddingLength, '0') : this.value}`;
   }
+  /** @throws {@link OcflError} `VERSION_LIMIT_REACHED` if the next name, padded, wouldn't start with a zero (E011) */
   next(): VersionNumber {
-    return new VersionNumber(this.value + 1, this.zeroPaddingLength);
+    const next = new VersionNumber(this.value + 1, this.zeroPaddingLength);
+    if (this.zeroPaddingLength && `${next.value}`.length >= this.zeroPaddingLength) {
+      throw new OcflError(
+        'VERSION_LIMIT_REACHED',
+        `There can be no version after ${this}: a zero-padded version name must start with a zero (E011), and one of ${this.zeroPaddingLength} digits can't for ${next.value}.`,
+      );
+    }
+    return next;
   }
   previous(): VersionNumber | undefined {
     const n = this.value - 1;
@@ -53,9 +61,13 @@ class VersionNumber {
     return new VersionNumber(parseInt(label, 10), zeroPaddingLength);
   }
 
-  /** @internal */
-  static next(versionLabel: string): VersionNumber {
-    return VersionNumber.fromString(versionLabel).next();
+  /**
+   * The number of `versionLabel` among `versionNames`, which are padded to one width if any of them has a leading zero
+   * @internal
+   */
+  static _among(versionLabel: string, versionNames: string[]): VersionNumber {
+    const padded = versionNames.find((name) => name.startsWith('v0'));
+    return new VersionNumber(VersionNumber.fromString(versionLabel).value, padded ? padded.length - 1 : undefined);
   }
 }
 
@@ -313,7 +325,7 @@ class OcflObjectInventory {
   }
   /** The version number of the current head */
   get versionNumber(): VersionNumber {
-    return VersionNumber.fromString(this.head);
+    return VersionNumber._among(this.head, Object.keys(this.#data.versions));
   }
   get contentDirectory(): string {
     return this.#data.contentDirectory || 'content';
@@ -517,7 +529,7 @@ class OcflObjectInventory {
         }
         state = JSON.parse(JSON.stringify(prev.state));
       }
-      data.head = VersionNumber.next(data.head).toString();
+      data.head = VersionNumber._among(data.head, Object.keys(data.versions)).next().toString();
     } else {
       data.head = 'v1';
     }

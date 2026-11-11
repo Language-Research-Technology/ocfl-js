@@ -134,6 +134,7 @@ try {
 | `MUTABLE_HEAD_ACTIVE`         | An update or import finds an active mutable head (extension 0005); see [Other behaviour changes](#other-behaviour-changes)   |
 | `NOT_AN_OBJECT`               | `storage.remove()` finds something with no OCFL object declaration at the object's path, and deletes nothing                 |
 | `CROSS_FILESYSTEM_MOVE`       | An update can't rename its new version into the object, because part of the storage root is on another filesystem            |
+| `VERSION_LIMIT_REACHED`       | An update or import finds zero-padded version names used up: the next must still start with a zero (E011), so `v09` is last  |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                |
 
 Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`. Invalid layout parameters are the exception: they throw `INVALID_LAYOUT_CONFIG`, because a storage root's `config.json` can hold them too.
@@ -628,7 +629,7 @@ Loading a storage root that declares either of them, or any other layout this li
 
 Members used only inside their own class, such as `object._inventory`, `object._readInventory()`, `transaction._commit()` and `transaction._queue`, are now JavaScript private fields. They're gone from the published types and can't be reached at runtime. `Object.keys()` and `console.log()` or `util.inspect()` of an object or transaction no longer show them, and `JSON.stringify()` of a transaction now gives `{}`. Because a `Proxy` can't reach private fields, calling a method on an object or transaction wrapped in one, such as Vue's `reactive()` or a MobX observable, now throws a `TypeError`. Keep them out of reactive state, for example with Vue's `markRaw()`.
 
-The remaining `_` members, such as `object._setInventory()`, `object._requireInventory()` and `inventory._digest`, are shared between the library's classes. They're no longer in the published types, and neither are `OcflObjectTransaction.create()`, `VersionNumber.fromString()` and `VersionNumber.next()`. They still exist at runtime, but they aren't part of the API and can change in any release. The `OcflObjectTransaction` and `VersionNumber` constructors are private, and `VersionNumber.fromInt()` and the static `VersionNumber.previous()` have been removed.
+The remaining `_` members, such as `object._setInventory()`, `object._requireInventory()` and `inventory._digest`, are shared between the library's classes. They're no longer in the published types, and neither are `OcflObjectTransaction.create()` and `VersionNumber.fromString()`. They still exist at runtime, but they aren't part of the API and can change in any release. The `OcflObjectTransaction` and `VersionNumber` constructors are private, and `VersionNumber.fromInt()` and the static `VersionNumber.next()` and `VersionNumber.previous()` have been removed; the `next()` and `previous()` methods of a version number remain.
 
 ## Other behaviour changes
 
