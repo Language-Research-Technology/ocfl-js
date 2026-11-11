@@ -638,6 +638,7 @@ The remaining `_` members, such as `object._setInventory()`, `object._requireInv
 - `object.import()` no longer empties the array of sources passed to it.
 - Importing a directory fails if any of its files fails. Previously the other files were committed and the failures were dropped.
 - When an `update()` callback throws after one of its operations failed, the update now rolls back fully and rethrows the callback's error. Previously it rethrew the operation's error and left the workspace behind, so the next update of that object failed with `UPDATE_IN_PROGRESS`.
+- When an operation fails and its changes to the stored files can't be undone, `update()` throws that operation's own error once the callback returns, so `error.code` is the operation's. Previously it threw a plain `Error` with the operation's error as its `cause`.
 - `update()` and `import()` throw `MUTABLE_HEAD_ACTIVE` and write nothing when the object has an active mutable head. Previously they created a new version, which extension 0005 forbids. See [Mutable head](../README.md#mutable-head-extension-0005).
 - **Breaking:** `remove()` throws `FILE_NOT_FOUND` when nothing is at the path, instead of doing nothing, and `INVALID_LOGICAL_PATH` for an empty path. Its path is normalised first, so `./raw//1.wav` removes `raw/1.wav`.
 - `rename()` throws `FILE_NOT_FOUND` when the source doesn't exist, instead of doing nothing.

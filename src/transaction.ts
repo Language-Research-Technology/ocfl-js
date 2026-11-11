@@ -188,7 +188,7 @@ type TrackedPromise<T> = Promise<T> & { done?: boolean };
  * them one after another in the order they were called. A failed operation
  * rejects its own promise and leaves nothing behind; later operations carry on. An operation
  * waits for all the earlier ones, so one whose input never ends holds up those called after it.
- * If a failed operation's changes to the stored files can't be undone, the transaction can't commit.
+ * If a failed operation's changes to the stored files can't be undone, the commit discards the transaction and throws that operation's error.
  */
 class OcflObjectTransaction {
   #versionPath: string;
@@ -204,7 +204,7 @@ class OcflObjectTransaction {
   #lastTurn: Promise<unknown> = Promise.resolve();
   #stagedCount = 0;
   #committed = false;
-  #commitBlocker: Error | undefined;
+  #commitBlocker: { error: unknown } | undefined;
   #limit = createLimiter(IMPORT_CONCURRENCY);
 
   private constructor(target: UpdateTarget, inventory: OcflObjectInventory, versionPath: string, rootExisted: boolean) {
@@ -283,13 +283,11 @@ class OcflObjectTransaction {
       const count = this.#queue.filter((p) => !p.done).length;
       if (count > 0) {
         await this.rollback();
-        throw new Error(
-          `Unfinished operations detected (${count}). Make sure that updater callback is async function and there are no floating promises inside.`,
-        );
+        throw new Error(`Unfinished operations detected (${count}). Make sure the callback is an async function that awaits every operation it starts.`);
       }
       if (this.#commitBlocker) {
         await this.rollback();
-        throw this.#commitBlocker;
+        throw this.#commitBlocker.error;
       }
       // if there is no changes, abort commit
       if (!this.#inventory._isChanged) {
@@ -450,12 +448,14 @@ class OcflObjectTransaction {
       }
       await place?.();
     } catch (error) {
-      await this.#blockCommitOnFailure(async () => {
+      try {
         for (const { from, to } of moved.reverse()) {
           await store.move(to, from);
           await this.#pruneEmptyDirectories(path.dirname(to));
         }
-      }).catch(() => {});
+      } catch {
+        this.#blockCommit(error);
+      }
       throw error;
     }
     const vacated = files.filter(({ from }) => from !== placedAt);
@@ -476,9 +476,14 @@ class OcflObjectTransaction {
     try {
       await change();
     } catch (error) {
-      this.#commitBlocker ??= new Error('Update cannot be committed: a change to its files failed and could not be undone', { cause: error });
+      this.#blockCommit(error);
       throw error;
     }
+  }
+
+  /** @param error - What the operation that left the files and inventory out of step rejects with, which the commit then throws */
+  #blockCommit(error: unknown) {
+    this.#commitBlocker ??= { error };
   }
 
   #contentFilePath(contentPath: string) {

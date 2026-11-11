@@ -1408,7 +1408,7 @@ describe('update', () => {
             () => assert.rejects(t.remove('d'), /injected failure/),
           );
         }),
-        /cannot be committed/,
+        /injected failure/,
       );
       await assert.rejects(fs.promises.access(path.join(o.root, 'inventory.json')), { code: 'ENOENT' });
     });
@@ -1425,7 +1425,7 @@ describe('update', () => {
             () => assert.rejects(t.rename('d', 'e'), /injected failure/),
           );
         }),
-        /cannot be committed/,
+        /injected failure/,
       );
       await assert.rejects(fs.promises.access(path.join(o.root, 'inventory.json')), { code: 'ENOENT' });
     });

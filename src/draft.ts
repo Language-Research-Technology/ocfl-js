@@ -123,7 +123,8 @@ async function commitDraft(
     await change(draft);
   } catch (error) {
     draft._finish();
-    await transaction.rollback();
+    // A failure to discard the draft must not replace the callback's error
+    await transaction.rollback().catch(() => {});
     throw error;
   }
   draft._finish();
