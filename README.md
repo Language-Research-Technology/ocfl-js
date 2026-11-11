@@ -171,20 +171,9 @@ The library doesn't support [`0005-mutable-head`](https://ocfl.github.io/extensi
 
 If you need support for this extension, send a pull request.
 
-## Development
+## Contributing
 
-Clone the Git repo:
-
-```bash
-git clone https://github.com/Language-Research-Technology/ocfl-js
-```
-
-The package lives at the repository root. Development needs Node.js 22.18 or later. Install the dependencies:
-
-```bash
-cd ocfl-js
-pnpm install
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up, run the checks and send a pull request. To report a security vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Releasing
 
