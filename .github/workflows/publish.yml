@@ -15,7 +15,7 @@ jobs:
   test:
     # workflow_dispatch can't hide its branch picker; everything else (via needs) only runs from main or beta
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta'
-    uses: ./.github/workflows/test.yml
+    uses: ./.github/workflows/test.yml # zizmor: ignore[self-repository] actionlint rejects the $/ form
     permissions:
       contents: read
 
@@ -36,6 +36,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # so git can see the push to beta is a fast-forward
+          persist-credentials: true # to push beta
 
       - name: Fast-forward beta to main
         run: git push origin HEAD:refs/heads/beta
@@ -69,6 +70,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: true # semantic-release pushes the tag and the release commit
 
       - name: Check beta only contains commits from main
         if: github.ref == 'refs/heads/beta'
