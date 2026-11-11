@@ -6,13 +6,13 @@ import type { BuiltInLayout } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { createLayout } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
-import { checkedObjectPath, mappedObjectPath, readSpecText, readStorageRoot, writeStorageRoot } from './storage-root.ts';
+import { checkedObjectPath, mappedObjectPath, readSpecText, readStorageRoot, updateTarget, writeStorageRoot } from './storage-root.ts';
 import * as store from './store.ts';
 import type { OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
 import { findNamasteVersion, isDirEmpty } from './utils.ts';
 import { createError } from './validation.ts';
 
-const { OCFL_VERSION, EXTENSIONS_DIR, WORKSPACE_EXTENSION, NAMASTE_PREFIX_OBJECT } = OcflConstants;
+const { OCFL_VERSION, EXTENSIONS_DIR, NAMASTE_PREFIX_OBJECT } = OcflConstants;
 
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 
@@ -23,7 +23,6 @@ const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
 class OcflStorage {
   ocflVersion: OcflVersion = OCFL_VERSION;
   #root: string;
-  #workspace: string;
   #layout: BuiltInLayout | undefined;
   #objectConfig: Omit<OcflObjectConfig, 'root' | 'storageRoot' | 'workspace' | 'id' | 'ocflVersion'>;
 
@@ -33,7 +32,6 @@ class OcflStorage {
     }
     const { root, layout, ...objectConfig } = config;
     this.#root = path.resolve(root);
-    this.#workspace = path.join(this.#root, EXTENSIONS_DIR, WORKSPACE_EXTENSION);
     if (layout !== undefined) {
       this.#layout = createLayout(layout);
     }
@@ -92,10 +90,7 @@ class OcflStorage {
     return new OcflObject({
       ...this.#objectConfig,
       id,
-      root: path.join(this.root, relative),
-      storageRoot: this.root,
-      workspace: path.join(this.#workspace, relative),
-      ocflVersion: this.ocflVersion,
+      ...updateTarget(this.root, path.join(this.root, relative), this.ocflVersion),
     });
   }
 
@@ -201,10 +196,7 @@ class OcflStorage {
       if (nv) {
         yield new OcflObject({
           ...this.#objectConfig,
-          root: basePath,
-          storageRoot: this.root,
-          workspace: path.join(this.#workspace, path.relative(this.root, basePath)),
-          ocflVersion: nv,
+          ...updateTarget(this.root, basePath, nv),
         });
       } else {
         yield* this.#objectsUnder(basePath);

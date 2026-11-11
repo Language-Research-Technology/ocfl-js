@@ -5,12 +5,51 @@ import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { OcflError } from './error.ts';
 import type { ContentRelease, OcflObjectInventory } from './inventory.ts';
-import type { OcflObject } from './object.ts';
 import * as store from './store.ts';
-import type { Digests, WriteFileData } from './types.ts';
-import { createLimiter, hasErrorCode, isAlreadyExists, isNotFound, normaliseLogicalPath, parentDirectories, relativeWithin } from './utils.ts';
+import type { Digests, OcflVersion, WriteFileData } from './types.ts';
+import {
+  createLimiter,
+  findNamasteVersion,
+  hasErrorCode,
+  isAlreadyExists,
+  isDirEmpty,
+  isNotFound,
+  normaliseLogicalPath,
+  parentDirectories,
+  relativeWithin,
+} from './utils.ts';
+import { createError } from './validation.ts';
 
-const { INVENTORY_NAME } = OcflConstants;
+const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
+
+export interface UpdateTarget {
+  /** Absolute path of the object root */
+  readonly root: string;
+  /** This object's directory in the storage root's workspace */
+  readonly workspace: string;
+  /** Absolute path of the storage root, where removing empty directories stops */
+  readonly storageRoot: string;
+  /** Declared when the first commit creates the object */
+  readonly ocflVersion: OcflVersion;
+}
+
+/** @returns The path of the declaration file, if this call wrote one */
+async function ensureObjectDeclaration(root: string, ocflVersion: OcflVersion): Promise<string | undefined> {
+  const declared = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, root);
+  if (declared === '') {
+    throw createError('E007', root);
+  }
+  if (declared) {
+    return;
+  }
+  if (!(await isDirEmpty(root))) {
+    throw new OcflError('DIRECTORY_NOT_EMPTY', 'Cannot create an OCFL Object in a non-empty directory');
+  }
+  const declaration = NAMASTE_PREFIX_OBJECT + ocflVersion;
+  const filePath = path.join(root, NAMASTE_T + declaration);
+  await store.writeFile(filePath, `${declaration}\n`);
+  return filePath;
+}
 
 function invalidLogicalPath(logicalPath: string) {
   return new OcflError('INVALID_LOGICAL_PATH', `Logical path "${logicalPath}" must be a relative path without \`..\``);
@@ -157,7 +196,8 @@ function splitDigests(digests: Digests, algorithm: string): Hashes {
 class OcflObjectTransaction {
   #versionPath: string;
   #contentRoot: string;
-  #object: OcflObject;
+  #target: UpdateTarget;
+  #fixityAlgorithms: readonly string[];
   #inventory: OcflObjectInventory;
   #rootExisted: boolean;
   #createdNamaste: string | undefined;
@@ -172,26 +212,28 @@ class OcflObjectTransaction {
   #commitBlocker: Error | undefined;
   #limit = createLimiter(IMPORT_CONCURRENCY);
 
-  private constructor(ocflObject: OcflObject, inventory: OcflObjectInventory, versionPath: string, rootExisted: boolean) {
+  private constructor(target: UpdateTarget, inventory: OcflObjectInventory, fixityAlgorithms: readonly string[], versionPath: string, rootExisted: boolean) {
     this.#versionPath = versionPath;
     this.#contentRoot = path.join(versionPath, inventory.contentDirectory);
-    this.#object = ocflObject;
+    this.#target = target;
+    this.#fixityAlgorithms = fixityAlgorithms;
     this.#inventory = inventory;
     this.#rootExisted = rootExisted;
   }
 
   /**
    * Create a new transaction instance.
+   * @param fixityAlgorithms - Extra digest algorithms calculated for each file and recorded in the fixity block
    * @internal
    */
-  static async create(ocflObject: OcflObject, inventory: OcflObjectInventory) {
-    const rootExisted = await fs.promises.stat(ocflObject.root).then(
+  static async create(target: UpdateTarget, inventory: OcflObjectInventory, fixityAlgorithms: readonly string[] = []) {
+    const rootExisted = await fs.promises.stat(target.root).then(
       () => true,
       () => false,
     );
-    const versionPath = path.join(ocflObject._workspace, inventory.head);
+    const versionPath = path.join(target.workspace, inventory.head);
     for (let attempt = 1; ; attempt++) {
-      await fs.promises.mkdir(ocflObject._workspace, { recursive: true });
+      await fs.promises.mkdir(target.workspace, { recursive: true });
       try {
         // Exclusive, so of any overlapping updates only one reserves the version
         await fs.promises.mkdir(versionPath);
@@ -209,7 +251,7 @@ class OcflObjectTransaction {
         }
       }
     }
-    return new OcflObjectTransaction(ocflObject, inventory, versionPath, rootExisted);
+    return new OcflObjectTransaction(target, inventory, fixityAlgorithms, versionPath, rootExisted);
   }
 
   #getRealPath(logicalPath: string) {
@@ -238,6 +280,14 @@ class OcflObjectTransaction {
    * @param options - Commit options. message and user will be included in the version entry of the inventory.json
    */
   async commit(options?: CommitOptions): Promise<void> {
+    await this._commit(options);
+  }
+
+  /**
+   * @returns The committed inventory, or `undefined` if nothing was committed: there were no changes, or the transaction had already ended
+   * @internal
+   */
+  async _commit(options?: CommitOptions): Promise<OcflObjectInventory | undefined> {
     if (!this.#committed) {
       const count = this.#queue.filter((p) => !p.done).length + this.#writers.size;
       if (count > 0) {
@@ -252,7 +302,8 @@ class OcflObjectTransaction {
       }
       // if there is no changes, abort commit
       if (!this.#inventory._isChanged) {
-        return await this.rollback();
+        await this.rollback();
+        return;
       }
       try {
         await this.#commit(options);
@@ -260,15 +311,15 @@ class OcflObjectTransaction {
         await this.rollback();
         throw error;
       }
-      this.#object._setInventory(this.#inventory);
       this.#committed = true;
-      await this.#removeEmptyAncestors(this.#object._workspace);
+      await this.#removeEmptyAncestors(this.#target.workspace);
+      return this.#inventory;
     }
   }
 
   /** Remove everything this transaction created, restoring the root inventory if it was replaced */
   async #undo() {
-    const root = this.#object.root;
+    const root = this.#target.root;
     const rootInv = this.#rootInventoryPaths;
     if (this.#rootInventoryReplaced) {
       if (this.#previousRootInventory) {
@@ -289,19 +340,19 @@ class OcflObjectTransaction {
     if (!this.#rootExisted) {
       await this.#removeEmptyAncestors(root);
     }
-    await this.#removeEmptyAncestors(this.#object._workspace);
+    await this.#removeEmptyAncestors(this.#target.workspace);
   }
 
   /**
    * Remove `dirPath` and the parents it leaves empty, below `stopAt`.
    * A leftover empty directory is harmless, so failing to remove one must not mask the update's outcome.
    */
-  async #removeEmptyAncestors(dirPath: string, stopAt = this.#object._storageRoot) {
+  async #removeEmptyAncestors(dirPath: string, stopAt = this.#target.storageRoot) {
     await store.removeEmptyAncestors(dirPath, stopAt).catch(() => {});
   }
 
   get #rootInventoryPaths() {
-    const inventory = path.join(this.#object.root, INVENTORY_NAME);
+    const inventory = path.join(this.#target.root, INVENTORY_NAME);
     const digest = `${inventory}.${this.#inventory.digestAlgorithm}`;
     return { inventory, digest, inventoryTmp: `${inventory}.tmp`, digestTmp: `${digest}.tmp` };
   }
@@ -311,7 +362,7 @@ class OcflObjectTransaction {
     const digestAlgorithm = inventory.digestAlgorithm;
     inventory._stamp(new Date().toISOString(), options.message, options.user);
 
-    const objectVersionPath = path.join(this.#object.root, inventory.head);
+    const objectVersionPath = path.join(this.#target.root, inventory.head);
     /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json */
     let invPath = path.join(this.#versionPath, INVENTORY_NAME);
     /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json.sha512 */
@@ -324,12 +375,12 @@ class OcflObjectTransaction {
     // write inventory.json to workspace
     await store.writeFile(invPath, inventoryContent);
     await store.writeFile(invDigestPath, digest);
-    this.#createdNamaste = await this.#object._ensureNamaste();
+    this.#createdNamaste = await ensureObjectDeclaration(this.#target.root, this.#target.ocflVersion);
     try {
       await store.move(this.#versionPath, objectVersionPath);
     } catch (error) {
       throw hasErrorCode(error, 'EXDEV')
-        ? new OcflError('CROSS_FILESYSTEM_MOVE', `Cannot move the new version into "${this.#object.root}": it is on a different filesystem from the workspace.`)
+        ? new OcflError('CROSS_FILESYSTEM_MOVE', `Cannot move the new version into "${this.#target.root}": it is on a different filesystem from the workspace.`)
         : error;
     }
     this.#versionPath = objectVersionPath;
@@ -350,7 +401,7 @@ class OcflObjectTransaction {
   }
 
   get #digestAlgorithms() {
-    return [this.#inventory.digestAlgorithm, ...(this.#object.fixityAlgorithms || [])];
+    return [this.#inventory.digestAlgorithm, ...this.#fixityAlgorithms];
   }
 
   /** Content waits here, outside the content directory, until its digest decides whether it's kept */
