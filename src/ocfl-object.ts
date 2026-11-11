@@ -51,6 +51,8 @@ interface OcflObject {
   /**
    * Commits one new version made from the draft changed by `change`. If `change` throws, everything is discarded.
    * Returns the object with the new version, or this object if the draft ended the same as the head.
+   * The update is committed when the root inventory is replaced: any error but `RECOVERY_NEEDED` means it wasn't committed and can be repeated.
+   * This object never changes, whatever the outcome.
    *
    * @throws {@link OcflError} `INVALID_OBJECT` if the object's declaration has been removed or damaged, or the object is now inside another object, since it was opened.
    * @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE` if the object has an active mutable head (extension 0005).
@@ -58,8 +60,9 @@ interface OcflObject {
    * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if a later version has been committed since this object was opened; open it again and retry.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another update of this object is running; `lockedAt` says since when. The update never waits for it.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `UPDATE_IN_PROGRESS`.
    * @throws `TypeError` if the message or the user's name is missing or empty.
-   * @throws Whatever `change` or a draft operation throws.
+   * @throws Whatever `change` or a draft operation throws; the update is discarded, and the object is as it was and isn't locked.
    * @example
    * ```ts
    * const updated = await object.update({ message: 'Fix transcript', user: { name: 'Alice' } }, async (draft) => {

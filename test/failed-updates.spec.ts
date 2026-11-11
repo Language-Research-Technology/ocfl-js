@@ -69,13 +69,14 @@ const endings: [string, (run: Run) => Promise<void>][] = [
   ],
 ];
 
-/** The steps of a commit before the root inventory is replaced, as the file system call each one makes */
+/** The steps of a commit up to its commit point, the replacement of the root inventory, as the file system call each one makes */
 const commitSteps: { step: string; method: 'rename' | 'copyFile' | 'writeFile'; target: (objectRoot: string, workspace: string, version: string) => string }[] =
   [
     { step: 'writing the version inventory', method: 'writeFile', target: (_, workspace, v) => path.join(workspace, v, 'inventory.json') },
     { step: 'moving the version into the object', method: 'rename', target: (objectRoot, _, v) => path.join(objectRoot, v) },
     { step: 'staging the root inventory', method: 'copyFile', target: (objectRoot) => path.join(objectRoot, 'inventory.json.tmp') },
     { step: 'staging the root inventory sidecar', method: 'copyFile', target: (objectRoot) => path.join(objectRoot, 'inventory.json.sha512.tmp') },
+    { step: 'replacing the root inventory', method: 'rename', target: (objectRoot) => path.join(objectRoot, 'inventory.json') },
   ];
 
 const failingPartway: [string, () => WriteContent][] = [
@@ -455,11 +456,6 @@ describe('an update that fails or finishes early', () => {
       const root = await newRoot();
       await withFsFailure('rmdir', path.join(workspaceOf(root), ID), () => throwing(creating(root)));
       assert.ok(!fs.existsSync(objectRootOf(root, ID)));
-    });
-
-    it("reports the callback's error when what the draft wrote cannot be removed", async () => {
-      const root = await newRoot();
-      await withFsFailure('rm', path.join(workspaceOf(root), ID, 'v1'), () => throwing(creating(root)), 'EACCES');
     });
 
     it('resolves when the committed update cannot remove its empty workspace', async () => {

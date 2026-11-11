@@ -12,7 +12,7 @@ The OCFL spec lets a storage root have an `extensions` directory containing only
 
 - **No `workspace` option.** `OcflStorageConfig` doesn't accept a workspace path.
 - **One workspace per storage root**, at `<storage root>/extensions/ocfl-js-workspace/`. Each object has one directory in it, `<workspace>/<object path>/`, where `<object path>` is the object root relative to the storage root.
-- **One lock per object**, the file `<workspace>/<object path>/lock`, created exclusively and holding the time it was taken. It doesn't depend on the version number. A writer takes it before anything else and holds it until its update is committed or discarded (ADR 0004).
+- **One lock per object**, the file `<workspace>/<object path>/lock`, created exclusively and holding the time it was taken. It doesn't depend on the version number. A writer takes it before anything else and holds it until its update has ended cleanly (ADR 0004).
 - **The new version is built beside the lock**, at `<workspace>/<object path>/vN`.
 - **The name is a local extension.** `ocfl-js-workspace` has no `NNNN-` prefix, so it can't collide with a registered extension. `create()` documents it with a plain-text file in the storage root (§4.5).
 - **No cross-filesystem moves.** If the rename into the object root fails with `EXDEV`, the update fails with an `OcflError` and nothing is copied.
@@ -22,7 +22,8 @@ The OCFL spec lets a storage root have an `extensions` directory containing only
 
 ## Consequences
 
-- A failed or interrupted update leaves debris only in the storage root's workspace. No object is left invalid.
+- An update is committed when the root inventory is replaced (ADR 0004). An update that fails before that is discarded: what it built in the workspace, and what it had moved into the object root, is removed, and the object is as it was. An update that fails after it stays committed.
+- An update that is interrupted, or can't be discarded, leaves its lock, and may leave an unfinished version in the workspace, or in the object root a version directory or staged inventory files that the root inventory doesn't name. The root inventory names only complete versions throughout.
 - A storage root with a workspace in use gets a W016 warning from validators, because `ocfl-js-workspace` isn't a registered extension name.
 - Part of the object hierarchy mounted from another filesystem can't be updated. Callers get an explicit error instead of a slow copy.
 - Every create or update made through this library takes the object's lock first, so a second writer of an object is refused with `UPDATE_IN_PROGRESS` before either writes content, whichever version each believes is the head.

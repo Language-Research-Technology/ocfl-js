@@ -164,8 +164,9 @@ interface StorageRoot {
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds something else or is inside another object.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object; `lockedAt` says since when.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked.
    * @throws `TypeError` if the id, the message or the user's name is missing or empty.
-   * @throws Whatever `build` or a draft operation throws.
+   * @throws Whatever `build` or a draft operation throws; nothing of the object is left, and it isn't locked.
    * @example
    * ```ts
    * const object = await root.create(id, { message: 'Initial deposit', user: { name: 'Alice' } }, async (draft) => {

@@ -119,6 +119,7 @@ try {
 | `OBJECT_NOT_FOUND`            | The object doesn't exist; thrown as an `ObjectNotFoundError` (see [Errors for missing objects](#errors-for-missing-objects)) |
 | `OBJECT_NOT_LOADED`           | `getFile()` is called before the inventory has been read; thrown as an `ObjectNotLoadedError`                                |
 | `UPDATE_IN_PROGRESS`          | The object's lock is taken: another update of it is running, or one was interrupted; `lockedAt` is when it was taken         |
+| `RECOVERY_NEEDED`             | An update failed after the root inventory was replaced, or couldn't remove what it made; the lock is kept, `cause` says why  |
 | `OBJECT_OUT_OF_DATE`          | An update finds a later version committed since the object was loaded, at its start or when it commits                       |
 | `OBJECT_EXISTS`               | An update making an object's first version finds that another writer has created the object                                  |
 | `DIRECTORY_NOT_EMPTY`         | An object or storage root is created in a non-empty directory                                                                |
@@ -264,13 +265,21 @@ async function moveObject(id: string) {
 
 An update now removes only what it created:
 
-- A failed update removes the version directory it was building, so an existing object is left as it was. This includes a commit that fails partway.
+- A failed update removes the version directory it was building, so an existing object is left as it was. This includes a commit that fails before the root inventory is replaced.
 - A failed first version also removes the conformance declaration it wrote, and the object root if the update created it.
 - A workspace directory is removed only when it's left empty, along with any of its parents, up to the storage root, that it leaves empty.
 
 Each object has one lock, held from the start of an update until it is committed or rolled back. Starting an update while another update of the same object is open now throws `UPDATE_IN_PROGRESS` straight away, with the time the lock was taken as `lockedAt`. Previously it was detected only once the first update had written a file, and only between updates making the same version.
 
 An update of an object that another writer has since updated now throws `OBJECT_OUT_OF_DATE` before the updater runs. Previously it failed at commit with a raw `ENOTEMPTY`. Load the object again and retry.
+
+An update is committed at one moment, when the root `inventory.json` is replaced:
+
+- A failure before that discards the update, releases the lock and throws the original error, as before.
+- A failure after it, such as replacing the inventory's sidecar, now throws `RECOVERY_NEEDED` with the failure as its `cause`. The new version stays committed and the lock is kept. Previously the old root inventory was put back.
+- A failed update, or a `rollback()`, that can't remove what the update made now throws `RECOVERY_NEEDED` and keeps the lock. Its `cause` is the update's original failure, or for `rollback()` what stopped the removal. Previously the removal's own error was thrown, or was dropped.
+
+While the lock is kept, later updates of the object throw `UPDATE_IN_PROGRESS`.
 
 ## Concurrent operations in one update
 
