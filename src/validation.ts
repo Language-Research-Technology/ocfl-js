@@ -15,6 +15,7 @@ type ValidationCode =
   | 'E070'
   | 'E080'
   | 'E082'
+  | 'E096'
   | 'E099'
   | 'E100'
   | 'E104'
@@ -47,6 +48,10 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
   E082: [
     'INVALID_OBJECT',
     'OCFL Object Roots MUST be stored either as the terminal resource at the end of a directory storage hierarchy or as direct children of a containing OCFL Storage Root.',
+  ],
+  E096: [
+    'INVALID_OBJECT',
+    'As JSON keys are case sensitive, while digests may not be, there is an additional requirement that each digest value MUST occur only once in the manifest regardless of case.',
   ],
   E099: ['INVALID_OBJECT', 'Path elements [of a content path] MUST NOT be ., .., or empty (//).'],
   E100: ['INVALID_OBJECT', 'A content path MUST NOT begin or end with a forward slash (/).'],

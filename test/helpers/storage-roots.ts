@@ -141,6 +141,11 @@ export async function writeInventory(dir: string, content: string, digestAlgorit
   });
 }
 
+/** `digests`, a manifest or state, with each digest in upper case */
+export function upperCased(digests: Record<string, string[]>): Record<string, string[]> {
+  return Object.fromEntries(Object.entries(digests).map(([digest, paths]) => [digest.toUpperCase(), paths]));
+}
+
 /** Rewrites the root inventory of the sha512 object at `objectRoot` as `change` leaves it, with a sidecar that matches */
 export async function rewriteInventory(objectRoot: string, change: (inventory: Partial<Inventory>) => void): Promise<void> {
   const inventory: Partial<Inventory> = JSON.parse(await fs.promises.readFile(path.join(objectRoot, 'inventory.json'), 'utf8'));

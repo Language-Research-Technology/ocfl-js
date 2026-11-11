@@ -193,8 +193,7 @@ async function checkStoredFile(
     }
     throw error;
   }
-  // OCFL digests are case-insensitive
-  return actual === expected.toLowerCase() ? undefined : { problem: 'changed', contentPath, expected, actual };
+  return actual === Hashing.normaliseDigest(expected) ? undefined : { problem: 'changed', contentPath, expected, actual };
 }
 
 /** Each version's number and name, oldest first */

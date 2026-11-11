@@ -14,7 +14,7 @@ interface ByteRange {
 interface OcflFile {
   /** Logical path within the version, such as `audio/1.wav`. */
   readonly path: string;
-  /** Hex digest of the content, in the object's {@link OcflObject.digestAlgorithm}. */
+  /** Lowercase hex digest of the content, in the object's {@link OcflObject.digestAlgorithm}. */
   readonly digest: string;
   /** Size in bytes. */
   size(): Promise<number>;
