@@ -147,9 +147,11 @@ interface Transfer {
   digests: Digests;
 }
 
-interface RenamePlan {
+/** A copy or rename resolved to its files */
+interface TransferPlan {
   transfers: Transfer[];
-  releases: ContentRelease[];
+  /** Files now at a `dest` that hold other content, which the transfer replaces */
+  replaced: string[];
 }
 
 export interface DeletePlan {
@@ -157,10 +159,9 @@ export interface DeletePlan {
   releases: ContentRelease[];
 }
 
-interface ReinstatePlan extends DeletePlan {
+/** A copy, rename or reinstate: the paths it unlists, then the files it lists */
+export interface RelistPlan extends DeletePlan {
   files: { logicalPath: string; digest: string; digests: Digests }[];
-  /** Paths found in the earlier version, including those already the same in the head */
-  count: number;
 }
 
 /**
@@ -370,6 +371,11 @@ class OcflObjectInventory {
 
   #resolveVersion(versionName?: string): string {
     return versionName === undefined || versionName === 'latest' ? this.head : versionName;
+  }
+
+  /** The name of committed version `version`, if there is one */
+  #committedVersionName(version: number): string | undefined {
+    return Object.keys(this.versions).find((name) => name !== this.head && VersionNumber.fromString(name).value === version);
   }
 
   toString(): string {
@@ -630,43 +636,53 @@ class OcflObjectInventory {
   }
 
   /**
-   * What happens to the content of logical paths once they all stop using it, for content this version stored
+   * What happens to the content of logical paths once they all stop using it, for content this version stored.
+   * Content stored at a leaving path's own content path follows that path if it is transferred, or else moves
+   * to a path that still uses it. A release can move content to a path another release vacates.
+   * @param arriving - Transfers that list their destinations once `logicalPaths` are unlisted
    * @internal
    */
-  _contentReleases(logicalPaths: string[]): ContentRelease[] {
+  _contentReleases(logicalPaths: string[], arriving: Transfer[] = []): ContentRelease[] {
     const leaving = new Set(logicalPaths);
     const ownPaths = new Set(logicalPaths.map((logicalPath) => this.#ownContentPath(logicalPath)));
     const digests = new Set(logicalPaths.map((logicalPath) => this.getDigest(logicalPath)).filter((digest) => digest !== undefined));
+    const arrivalsOf = Map.groupBy(arriving, (transfer) => transfer.digest);
     return [...digests].flatMap((digest) => {
       const from = this.getContentPath(digest);
       if (!from?.startsWith(`${this.head}/`)) {
         return [];
       }
-      const heir = this.state[digest]?.find((file) => !leaving.has(file));
+      const arrivals = arrivalsOf.get(digest) ?? [];
+      const follows = arrivals.find(({ src }) => this.#ownContentPath(src) === from);
+      const heirs = [
+        ...(follows ? [follows.dest] : []),
+        ...(this.state[digest] ?? []).filter((file) => !leaving.has(file)),
+        ...arrivals.map(({ dest }) => dest),
+      ];
+      const [heir] = heirs;
       if (heir === undefined) {
         return [{ digest, from }];
       }
-      return ownPaths.has(from) ? [{ digest, from, to: this.#ownContentPath(heir) }] : [];
+      const stays = !ownPaths.has(from) || heirs.some((file) => this.#ownContentPath(file) === from);
+      return stays ? [] : [{ digest, from, to: this.#ownContentPath(heir) }];
     });
   }
 
   #applyContentReleases(releases: ContentRelease[]) {
-    for (const { digest, from, to } of releases) {
+    // Every `from` is read and forgotten first: a release can move content to a path another vacates
+    const released = releases.map((release) => ({ ...release, fixity: Object.entries(this.#indexGetFixity(release.from)) }));
+    for (const { from } of released) {
+      this.#forgetFixity(from);
+    }
+    for (const { digest, to, fixity } of released) {
       if (to === undefined) {
         delete this.#data.manifest[digest];
-        this.#forgetFixity(from);
-      } else {
-        this.#moveContent(digest, from, to);
+        continue;
       }
-    }
-  }
-
-  #moveContent(digest: string, from: string, to: string) {
-    const fixity = Object.entries(this.#indexGetFixity(from));
-    this.#forgetFixity(from);
-    this.#data.manifest[digest] = [to];
-    for (const [algorithm, value] of fixity) {
-      this.#addFixity(to, algorithm, value);
+      this.#data.manifest[digest] = [to];
+      for (const [algorithm, value] of fixity) {
+        this.#addFixity(to, algorithm, value);
+      }
     }
   }
 
@@ -725,11 +741,6 @@ class OcflObjectInventory {
     }
   }
 
-  /** True if a file or directory occupies the path, or the path is inside a file, in the head state */
-  #isOccupied(logicalPath: string) {
-    return this.getDigest(logicalPath) !== undefined || this.#headDirectories.has(logicalPath) || this.#isInsideFile(logicalPath);
-  }
-
   /**
    * Check a file can be listed at the path, replacing any file already there
    * @throws {@link OcflError} `FILE_EXISTS` if the path is a directory, or is inside a file, in the head state
@@ -744,79 +755,98 @@ class OcflObjectInventory {
   }
 
   /**
-   * Resolve a copy or rename to the files it transfers, changing nothing.
-   * @throws {@link OcflError} `FILE_NOT_FOUND` if the source is missing, `FILE_EXISTS` if the target exists
+   * Resolve a copy or rename to the files it transfers and the files they replace, changing nothing.
+   * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
    */
-  #planTransfer(srcLogicalPath: string, destLogicalPath: string): Transfer[] {
-    // Filesystem paths are normalised, so the check and the state must use the same form as the file on disk
-    const target = normaliseLogicalPath(destLogicalPath);
-    const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
-    const srcList = this.#indexFindPaths(srcPrefix);
-    const pairs = srcList.map((src): [string, string] => [src, `${target}/${src.slice(srcPrefix.length)}`]);
-    if (pairs.length === 0) {
-      pairs.push([srcLogicalPath, target]);
-    }
-    const transfers = pairs.map(([src, dest]) => {
-      const digests = this.#indexGet(src, this.head, true);
-      const digest = digests?.[this.digestAlgorithm];
-      if (!digests || !digest) {
-        throw new OcflError('FILE_NOT_FOUND', `Source logical path "${src}" does not exist in object [${this.id}]`);
+  #planTransfer(source: string, target: string, merge: boolean): TransferPlan {
+    const src = normaliseLogicalPath(source);
+    const dest = normaliseLogicalPath(target);
+    for (const logicalPath of [src, dest]) {
+      if (logicalPath === '.') {
+        throw new OcflError('INVALID_LOGICAL_PATH', "A logical path can't be empty");
       }
-      return { src, dest, digest, digests };
+    }
+    const isFile = this.getDigest(src) !== undefined;
+    const sources = isFile ? [src] : this.#indexFindPaths(src);
+    if (sources.length === 0) {
+      throw new OcflError('FILE_NOT_FOUND', `Source logical path "${source}" does not exist in object [${this.id}]`);
+    }
+    if (src === dest) {
+      return { transfers: [], replaced: [] };
+    }
+    if (dest.startsWith(`${src}/`)) {
+      throw new OcflError('INVALID_LOGICAL_PATH', `Target logical path "${target}" is inside the source "${source}"`);
+    }
+    if (!isFile) {
+      this.#checkNotInsideFile(dest);
+      if (this.getDigest(dest) !== undefined) {
+        throw new OcflError('FILE_EXISTS', `Target logical path "${target}" is an existing file in object [${this.id}]`);
+      }
+      if (!merge && this.#headDirectories.has(dest)) {
+        throw new OcflError('FILE_EXISTS', `Target logical path "${target}" already has files in object [${this.id}]`);
+      }
+    }
+    const transfers = sources.flatMap((file) => {
+      const digests = this.#indexGet(file, this.head, true);
+      const digest = digests?.[this.digestAlgorithm];
+      return digests && digest ? [{ src: file, dest: `${dest}${file.slice(src.length)}`, digest, digests }] : [];
     });
-    if (!target || target === '.') {
-      throw new Error(`Target logical path cannot be empty`);
+    for (const transfer of transfers) {
+      this._checkFilePath(transfer.dest);
     }
-    if (this.#isOccupied(target)) {
-      throw new OcflError('FILE_EXISTS', `Target logical path "${destLogicalPath}" already exists in object [${this.id}]`);
-    }
-    return transfers;
+    const replaced = transfers
+      .filter(({ dest, digest }) => {
+        const held = this.getDigest(dest);
+        return held !== undefined && held !== digest;
+      })
+      .map(({ dest }) => dest);
+    return { transfers, replaced };
   }
 
   /**
-   * Rename a logical path or directory
-   * @throws {@link OcflError} `FILE_EXISTS` if the target exists
-   * @internal
+   * @param unlisted - The paths the transfers unlist
+   * @returns The plan that unlists them, then lists each destination that doesn't still hold its content
    */
-  _rename(srcLogicalPath: string, destLogicalPath: string): void {
-    this._applyRename(this._planRename(srcLogicalPath, destLogicalPath));
+  #relistPlan(transfers: Transfer[], unlisted: string[]): RelistPlan {
+    const leaving = new Set(unlisted);
+    const paths = [...leaving];
+    const files = transfers
+      .filter(({ dest, digest }) => leaving.has(dest) || this.getDigest(dest) !== digest)
+      .map(({ dest, digest, digests }) => ({ logicalPath: dest, digest, digests }));
+    return { paths, files, releases: this._contentReleases(paths, transfers) };
   }
 
   /**
-   * Resolve a rename to its transfers and the content it moves, changing nothing. Only files this
-   * version stored at a source's own content path move.
-   * @throws {@link OcflError} `FILE_NOT_FOUND` if the source is missing, `FILE_EXISTS` if the target exists
+   * Resolve a rename to the paths it unlists, the files it lists and what happens to stored content,
+   * changing nothing. Only files this version stored at a source's or a replaced file's own content path move.
+   * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
    * @internal
    */
-  _planRename(srcLogicalPath: string, destLogicalPath: string): RenamePlan {
-    const transfers = this.#planTransfer(srcLogicalPath, destLogicalPath);
-    const releases = transfers.flatMap(({ src, dest, digest }) => {
-      const from = this.getContentPath(digest);
-      return from === this.#ownContentPath(src) ? [{ digest, from, to: this.#ownContentPath(dest) }] : [];
-    });
-    return { transfers, releases };
+  _planRename(source: string, target: string, merge = false): RelistPlan {
+    const { transfers, replaced } = this.#planTransfer(source, target, merge);
+    return this.#relistPlan(transfers, [...replaced, ...transfers.map(({ src }) => src)]);
   }
 
   /**
-   * Apply a plan from {@link _planRename}, which must be from the current head state
+   * Resolve a copy to the files it replaces, the files it lists and what happens to the replaced
+   * files' content, changing nothing
+   * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
    * @internal
    */
-  _applyRename({ transfers, releases }: RenamePlan) {
-    this.#applyContentReleases(releases);
-    for (const { src, dest, digest, digests } of transfers) {
-      this.#unlist(src);
-      this.#list(dest, digest, digests);
-    }
+  _planCopy(source: string, target: string, merge = false): RelistPlan {
+    const { transfers, replaced } = this.#planTransfer(source, target, merge);
+    return this.#relistPlan(transfers, replaced);
   }
 
   /**
-   * Create an alias or reference of a logical path or directory
-   * @throws {@link OcflError} `FILE_EXISTS` if the target exists
+   * Apply a plan from {@link _planCopy}, {@link _planRename} or {@link _planReinstate}, which must be
+   * from the current head state
    * @internal
    */
-  _copy(srcLogicalPath: string, destLogicalPath: string): void {
-    for (const { dest, digest, digests } of this.#planTransfer(srcLogicalPath, destLogicalPath)) {
-      this.#list(dest, digest, digests);
+  _applyRelist({ paths, files, releases }: RelistPlan): void {
+    this._applyDelete({ paths, releases });
+    for (const { logicalPath, digest, digests } of files) {
+      this.#list(logicalPath, digest, digests);
     }
   }
 
@@ -867,46 +897,32 @@ class OcflObjectInventory {
     return count;
   }
 
-  /** @internal */
-  _reinstate(logicalPath: string, versionName: string): number {
-    return this._applyReinstate(this._planReinstate(logicalPath, versionName));
-  }
-
   /**
-   * Resolve a reinstate to the files it lists, the paths they replace and what happens to the
-   * replaced paths' content, changing nothing
-   * @throws {@link OcflError} `FILE_EXISTS` if a file it lists is inside a file in the head state
+   * Resolve a reinstate to the files it lists, the files they replace and what happens to the
+   * replaced files' content, changing nothing
+   * @param version - The number of a committed version
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the version doesn't exist or has nothing at the path,
+   * `FILE_EXISTS` if a file it lists is a directory or inside a file in the head state
    * @internal
    */
-  _planReinstate(logicalPath: string, versionName: string): ReinstatePlan {
-    const files: ReinstatePlan['files'] = [];
-    let count = 0;
-    for (const lp of this.#indexFindPaths(logicalPath, versionName)) {
-      const digests = this.#indexGet(lp, versionName);
+  _planReinstate(logicalPath: string, version: number): RelistPlan {
+    const path = normaliseLogicalPath(logicalPath);
+    const versionName = this.#committedVersionName(version);
+    const found = versionName === undefined ? [] : this.#indexFindPaths(path, versionName);
+    if (found.length === 0) {
+      throw new OcflError('FILE_NOT_FOUND', `Version ${version} of object [${this.id}] has nothing at logical path "${logicalPath}"`);
+    }
+    const files = found.flatMap((filePath) => {
+      const digests = this.#indexGet(filePath, versionName, true);
       const digest = digests?.[this.digestAlgorithm];
-      if (digests && digest) {
-        if (this.getDigest(lp) !== digest) {
-          this.#checkNotInsideFile(lp);
-          files.push({ logicalPath: lp, digest, digests });
-        }
-        count++;
+      if (!digests || !digest || this.getDigest(filePath) === digest) {
+        return [];
       }
-    }
-    const paths = [...new Set(files.flatMap((file) => this.#indexFindPaths(file.logicalPath)))];
-    return { files, paths, releases: this._contentReleases(paths), count };
-  }
-
-  /**
-   * Apply a plan from {@link _planReinstate}, which must be from the current state
-   * @internal
-   */
-  _applyReinstate({ files, paths, releases, count }: ReinstatePlan) {
-    this.#delist(paths);
-    this.#applyContentReleases(releases);
-    for (const { logicalPath, digest, digests } of files) {
-      this.#list(logicalPath, digest, digests);
-    }
-    return count;
+      this._checkFilePath(filePath);
+      return [{ logicalPath: filePath, digest, digests }];
+    });
+    const paths = files.map((file) => file.logicalPath).filter((filePath) => this.getDigest(filePath) !== undefined);
+    return { files, paths, releases: this._contentReleases(paths) };
   }
 }
 

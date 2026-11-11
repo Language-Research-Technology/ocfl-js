@@ -7,6 +7,7 @@ import type { Draft, OcflObject, StorageRoot, WriteContent } from '../src/index.
 import { emptyDirectoriesUnder } from './empty-directories.ts';
 import { mountSeparately, withFsFailure } from './fs-failures.ts';
 import {
+  assertHolds,
   assertVersionValid,
   createObject,
   DETAILS,
@@ -291,6 +292,20 @@ describe('an update that fails or finishes early', () => {
         });
       }
     }
+
+    it('leaves no directory behind when written content cannot be put in place', async () => {
+      const root = await newRoot();
+      const object = await root.create(ID, DETAILS, async (draft) => {
+        await draft.write('ok', 'ok');
+        await withFsFailure(
+          'rename',
+          (_, target) => target.endsWith('/content/deep/er/broken'),
+          () => assert.rejects(draft.write('deep/er/broken', 'broken'), /injected failure/),
+        );
+        await draft.write('deep', 'a file');
+      });
+      await assertHolds(root, object, { ok: 'ok', deep: 'a file' });
+    });
 
     it('discards the draft when the callback lets a failed stream through', async () => {
       const root = await newRoot();

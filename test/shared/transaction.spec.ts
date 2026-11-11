@@ -221,7 +221,7 @@ describe('transaction from update() with no callback', () => {
     await trx.commit();
     assert(!object.inventory!.getDigest('metadata.json'));
     trx = await begin();
-    await trx.reinstate('metadata.json', 'v1');
+    await trx.reinstate('metadata.json', 1);
     await trx.commit();
     assert(object.inventory!.getDigest('metadata.json'));
   });

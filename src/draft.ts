@@ -45,6 +45,38 @@ interface Draft {
   import(source: string, target?: string): Promise<void>;
 
   /**
+   * Copies a file, or every file below a directory, to `target` within the draft.
+   * With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay.
+   *
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a file would go where a directory is, or below a file, as the draft stands before the operation.
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
+   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
+   */
+  copy(source: string, target: string, options?: { merge: boolean }): Promise<void>;
+
+  /**
+   * Moves a file, or every file below a directory, to `target` within the draft.
+   * With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay.
+   *
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a file would go where a directory is, or below a file, as the draft stands before the operation.
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
+   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
+   */
+  rename(source: string, target: string, options?: { merge: boolean }): Promise<void>;
+
+  /**
+   * Puts a file, or every file below a directory, back as it was in an earlier version, at the same path.
+   *
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the version doesn't exist or has nothing at `path`.
+   * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory.
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
+   * @throws `TypeError` if `version` is not a number.
+   */
+  reinstate(path: string, version: number): Promise<void>;
+
+  /**
    * Removes a file, or every file below a directory, from the draft. Earlier versions keep it.
    *
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `path` is not in the draft.
@@ -131,6 +163,18 @@ class ObjectDraft implements Draft {
 
   async import(source: string, target?: string): Promise<void> {
     return this.#open.import(source, target);
+  }
+
+  async copy(source: string, target: string, options?: { merge: boolean }): Promise<void> {
+    return this.#open.copy(source, target, options);
+  }
+
+  async rename(source: string, target: string, options?: { merge: boolean }): Promise<void> {
+    return this.#open.rename(source, target, options);
+  }
+
+  async reinstate(path: string, version: number): Promise<void> {
+    return this.#open.reinstate(path, version);
   }
 
   async remove(path: string): Promise<void> {

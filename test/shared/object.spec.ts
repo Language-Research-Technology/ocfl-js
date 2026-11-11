@@ -16,6 +16,7 @@ import ocfl, {
 import type { OcflObject } from '../../src/object.ts';
 import { emptyDirectoriesUnder } from '../empty-directories.ts';
 import { withFsFailure } from '../fs-failures.ts';
+import { ocflError } from '../ocfl-error.ts';
 import { testObject } from '../test-object.ts';
 
 let objcount = 0;
@@ -355,9 +356,9 @@ describe('update', () => {
   it('can reinstate files', async () => {
     await objectx.update(async (t) => {
       // file
-      await t.reinstate('test.txt', 'v3');
+      await t.reinstate('test.txt', 3);
       // directory
-      await t.reinstate('bar', 'v3');
+      await t.reinstate('bar', 3);
     });
     //console.log([...(await objectx.files())].map(f => f.logicalPath));
     const inv = (await objectx.getInventory())!;
@@ -1207,7 +1208,6 @@ describe('update', () => {
         { 'e/x': 'AAA', 'e/y': 'AAA' },
         ['v1/content/e/x'],
       ],
-      ['rename a directory into itself', [(t) => t.write('d/x', 'XXX'), (t) => t.rename('d', 'd/sub')], { 'd/sub/x': 'XXX' }, ['v1/content/d/sub/x']],
       [
         'rename a file, then write new content to the old name',
         [(t) => t.write('a', 'AAA'), (t) => t.rename('a', 'b'), (t) => t.write('a', 'ZZZ')],
@@ -1330,7 +1330,7 @@ describe('update', () => {
       await o.update(async (t) => {
         await t.write('a', 'NEW');
         await t.write('b', 'BBB');
-        await t.reinstate('a', 'v1');
+        await t.reinstate('a', 1);
       });
       const inventory = await assertValid(o, 'v2', { a: 'AAA', b: 'BBB' });
       assert.deepStrictEqual(await contentFiles(o, 'v2'), ['v2/content/b']);
@@ -1342,29 +1342,29 @@ describe('update', () => {
       await o.update(async (t) => {
         await t.write('a', 'NEW');
         await t.copy('a', 'c');
-        await t.reinstate('a', 'v1');
+        await t.reinstate('a', 1);
       });
       const inventory = await assertValid(o, 'v2', { a: 'AAA', c: 'NEW' });
       assert.deepStrictEqual(inventory.manifest[sha512('NEW')], ['v2/content/c']);
     });
 
-    it('reinstating a file over a directory this version wrote removes its content', async () => {
+    it('reinstating a file over a directory this version wrote throws FILE_EXISTS and keeps its content', async () => {
       const { o } = await committed({ a: 'AAA' });
       await o.update(async (t) => {
         await t.remove('a');
         await t.write('a/x', 'XXX');
         await t.write('b', 'BBB');
-        await t.reinstate('a', 'v1');
+        await assert.rejects(t.reinstate('a', 1), ocflError('FILE_EXISTS'));
       });
-      await assertValid(o, 'v2', { a: 'AAA', b: 'BBB' });
-      assert.deepStrictEqual(await contentFiles(o, 'v2'), ['v2/content/b']);
+      await assertValid(o, 'v2', { 'a/x': 'XXX', b: 'BBB' });
+      assert.deepStrictEqual(await contentFiles(o, 'v2'), ['v2/content/a/x', 'v2/content/b']);
     });
 
     it('writes a file again after reinstating over content this version wrote', async () => {
       const { o } = await committed({ a: 'AAA' });
       await o.update(async (t) => {
         await t.write('a', 'NEW');
-        await t.reinstate('a', 'v1');
+        await t.reinstate('a', 1);
         await t.remove('a');
         await t.write('a', 'THREE');
       });

@@ -16,6 +16,10 @@ _Avoid_: Record, item, snapshot
 The changes being assembled during an update to an OCFL object, which become one new version or are discarded.
 _Avoid_: Transaction
 
+**Reinstate**:
+To put a file, or every file below a directory, back in a draft as it was in an earlier version, at the same logical path.
+_Avoid_: Restore, revert, copy from a version
+
 **Workspace**:
 The library's directory inside a storage root where a new version is assembled before it is published to its OCFL object.
 _Avoid_: Staging area, temp directory, deposit directory

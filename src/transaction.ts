@@ -1,10 +1,11 @@
 /** Models a set of ocfl object modifying operations as a transaction that is as close as atomic as possible */
 import fs from 'node:fs';
 import path from 'node:path';
+import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { OcflError } from './error.ts';
-import type { ContentRelease, DeletePlan, OcflObjectInventory } from './inventory.ts';
+import type { ContentRelease, DeletePlan, OcflObjectInventory, RelistPlan } from './inventory.ts';
 import * as store from './store.ts';
 import type { OcflVersion, WriteFileData } from './types.ts';
 import {
@@ -89,6 +90,24 @@ function fileLogicalPath(logicalPath: string) {
     throw new OcflError('INVALID_LOGICAL_PATH', "A file's logical path can't be empty");
   }
   return normalised;
+}
+
+/**
+ * @returns Whether `options` asks for a merge
+ * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
+ */
+function mergeOption(options: unknown): boolean {
+  if (options === undefined) {
+    return false;
+  }
+  if (typeof options !== 'object' || options === null) {
+    throw new TypeError(`Options must be an object, such as { merge: true }, not ${inspect(options)}`);
+  }
+  const { merge } = options as { merge?: unknown };
+  if (merge !== undefined && typeof merge !== 'boolean') {
+    throw new TypeError(`The merge option must be a boolean, not ${inspect(merge)}`);
+  }
+  return merge === true;
 }
 
 function isAsyncIterable(data: unknown): data is AsyncIterable<unknown> {
@@ -443,7 +462,7 @@ class OcflObjectTransaction {
   }
 
   /**
-   * Make releases' changes to the stored files around `place`, undoing every move if a move or `place` fails.
+   * Make releases' changes to the stored files around `place`. If a move or `place` fails, every move is undone and no directory it made is left.
    * @param placedAt - The file `place` fills, if it stores any content
    */
   async #applyContentReleases(releases: ContentRelease[], placedAt?: string, place?: () => Promise<void>) {
@@ -451,17 +470,29 @@ class OcflObjectTransaction {
       from: this.#contentFilePath(from),
       to: to === undefined ? undefined : this.#contentFilePath(to),
     }));
+    const targets = new Set(files.map(({ to }) => to));
+    // A file a move would overwrite is set aside first, so it can still be moved on, or put back after a failure
+    const setAside = files.filter(({ from }) => targets.has(from)).map(({ from }) => ({ from, to: this.#stagingPath() }));
+    const asideAt = new Map(setAside.map(({ from, to }) => [from, to]));
+    const remaining = files.map(({ from, to }) => ({ from: asideAt.get(from) ?? from, to }));
     const moved: { from: string; to: string }[] = [];
+    // Where the step in progress puts a file, creating the directories above it
+    let filling: string | undefined;
     try {
-      for (const { from, to } of files) {
+      for (const { from, to } of [...setAside, ...remaining]) {
         if (to !== undefined) {
+          filling = to;
           await store.move(from, to);
           moved.push({ from, to });
         }
       }
+      filling = placedAt;
       await place?.();
     } catch (error) {
       try {
+        if (filling !== undefined) {
+          await this.#pruneEmptyDirectories(path.dirname(filling));
+        }
         for (const { from, to } of moved.reverse()) {
           await store.move(to, from);
           await this.#pruneEmptyDirectories(path.dirname(to));
@@ -473,8 +504,8 @@ class OcflObjectTransaction {
     }
     const vacated = files.filter(({ from }) => from !== placedAt);
     await this.#blockCommitOnFailure(async () => {
-      for (const { from, to } of vacated) {
-        if (to === undefined) {
+      for (const { from, to } of remaining) {
+        if (to === undefined && from !== placedAt) {
           await fs.promises.rm(from, { recursive: true, force: true });
         }
       }
@@ -644,14 +675,18 @@ class OcflObjectTransaction {
    * Duplicate the logical path `source` as a different logical path `target`, both paths will then point
    * to the same content path and bitstreams. `source` can be a file or a directory.
    * @param source - The logical path to be copied
-   * @param target - The target logical path. To replace an existing target, remove it first.
+   * @param target - The target logical path. A file already there is replaced; the same path as `source` does nothing.
+   * @param options - With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws {@link OcflError} `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set, or if a file would go where a directory is, or below a file, as things stand before the operation
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
+   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
    */
-  async copy(source: string, target: string): Promise<void> {
+  async copy(source: string, target: string, options?: { merge: boolean }): Promise<void> {
     return this.#transact(async () => {
-      checkLogicalPath(target);
-      this.#inventory._copy(source, target);
+      const merge = mergeOption(options);
+      const plan = this.#inventory._planCopy(fileLogicalPath(source), fileLogicalPath(target), merge);
+      await this.#applyRelist(plan);
     });
   }
 
@@ -660,30 +695,38 @@ class OcflObjectTransaction {
    * Unless renaming files that are not yet commited, this operation will NOT rename the actual file name referenced by the manifest.
    * `source` can be a file or a directory.
    * @param source - The logical path to be renamed
-   * @param target - The target logical path. To replace an existing target, remove it first.
+   * @param target - The target logical path. A file already there is replaced; the same path as `source` does nothing.
+   * @param options - With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws {@link OcflError} `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set, or if a file would go where a directory is, or below a file, as things stand before the operation
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
+   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
    */
-  async rename(source: string, target: string): Promise<void> {
+  async rename(source: string, target: string, options?: { merge: boolean }): Promise<void> {
     return this.#transact(async () => {
-      checkLogicalPath(source);
-      checkLogicalPath(target);
-      const plan = this.#inventory._planRename(source, target);
-      await this.#applyContentReleases(plan.releases);
-      this.#inventory._applyRename(plan);
+      const merge = mergeOption(options);
+      const plan = this.#inventory._planRename(fileLogicalPath(source), fileLogicalPath(target), merge);
+      await this.#applyRelist(plan);
     });
   }
 
   /**
-   * Makes content from a version earlier than the previous version available in the current version of an OCFL Object.
-   * A reinstated file replaces a file or directory at its logical path.
-   * @throws {@link OcflError} `FILE_EXISTS` if a reinstated file would be inside an existing file. To replace that file, remove it first.
+   * Put a file, or every file below a directory, back as it was in an earlier version, at the same logical path.
+   * Files now at the same paths are replaced; other files below a directory stay.
+   * @param logicalPath - The logical path of a file or directory in `version`
+   * @param version - The number of an existing version, which can be the latest
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the version doesn't exist or has nothing at `logicalPath`
+   * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `logicalPath` is empty or leaves the object
+   * @throws `TypeError` if `version` is not a number
    */
-  async reinstate(logicalPath: string, versionName: string): Promise<number> {
+  async reinstate(logicalPath: string, version: number): Promise<void> {
     return this.#transact(async () => {
-      const plan = this.#inventory._planReinstate(logicalPath, versionName);
-      await this.#applyContentReleases(plan.releases);
-      return this.#inventory._applyReinstate(plan);
+      if (typeof version !== 'number') {
+        throw new TypeError(`The version must be a number, such as 1, not ${inspect(version)}`);
+      }
+      const plan = this.#inventory._planReinstate(fileLogicalPath(logicalPath), version);
+      await this.#applyRelist(plan);
     });
   }
 
@@ -707,6 +750,11 @@ class OcflObjectTransaction {
   /** Remove every file */
   async clear(): Promise<void> {
     return this.#transact(() => this.#applyDelete(this.#inventory._planClear()));
+  }
+
+  async #applyRelist(plan: RelistPlan) {
+    await this.#applyContentReleases(plan.releases);
+    this.#inventory._applyRelist(plan);
   }
 
   async #applyDelete(plan: DeletePlan) {

@@ -45,6 +45,10 @@ function assertMatchesRebuilt(inv: OcflObjectInventory) {
   }
 }
 
+const copy = (inv: OcflObjectInventory, source: string, target: string, merge?: boolean) => inv._applyRelist(inv._planCopy(source, target, merge));
+const rename = (inv: OcflObjectInventory, source: string, target: string, merge?: boolean) => inv._applyRelist(inv._planRename(source, target, merge));
+const reinstate = (inv: OcflObjectInventory, logicalPath: string, version: number) => inv._applyRelist(inv._planReinstate(logicalPath, version));
+
 describe('OcflObjectInventory class', () => {
   let data: Inventory;
   beforeEach(() => {
@@ -204,7 +208,7 @@ describe('OcflObjectInventory class', () => {
     inv._delete('test.txt');
     assert(!inv.versions.v2!.state.aabbccddeeff);
     inv = OcflObjectInventory.newVersion(inv);
-    inv._reinstate('test.txt', 'v1');
+    reinstate(inv, 'test.txt', 1);
     assert(inv.versions.v3!.state.aabbccddeeff);
     assertHeadStateValid(inv);
   });
@@ -242,8 +246,8 @@ describe('OcflObjectInventory class', () => {
       assert.strictEqual(inv.getFileByDigest('d1', 'latest'), undefined);
     });
 
-    it('resolves to head in reinstate', () => {
-      assert.strictEqual(inv._reinstate('a', 'latest'), 1);
+    it('does not make the head a version to reinstate', () => {
+      assert.throws(() => reinstate(inv, 'a', 2), { name: 'OcflError', code: 'FILE_NOT_FOUND' });
       assert.deepStrictEqual(inv.state, { d2: ['a'] });
     });
 
@@ -255,8 +259,6 @@ describe('OcflObjectInventory class', () => {
       assert.strictEqual(inv.getFile('a', ''), undefined);
       assert.strictEqual(inv.getFileByDigest('d2', ''), undefined);
       assert.strictEqual(inv.getFileByContentPath('v2/content/a', ''), undefined);
-      assert.strictEqual(inv._reinstate('a', ''), 0);
-      assert.deepStrictEqual(inv.state, { d2: ['a'] });
     });
 
     it('leaves explicit older versions unchanged', () => {
@@ -290,69 +292,86 @@ describe('OcflObjectInventory class', () => {
       assertHeadStateValid(inv);
     });
 
-    for (const op of ['_copy', '_rename'] as const) {
-      describe(`${op}() target`, () => {
-        function inventoryWith(files: Record<string, string>) {
-          const inv = OcflObjectInventory.newVersion(data);
-          for (const [logicalPath, digest] of Object.entries(files)) {
-            inv._add(logicalPath, digest);
-          }
-          return inv;
-        }
+    function inventoryWith(files: Record<string, string>) {
+      const inv = OcflObjectInventory.newVersion(data);
+      for (const [logicalPath, digest] of Object.entries(files)) {
+        inv._add(logicalPath, digest);
+      }
+      return inv;
+    }
 
+    const sorted = <T>(record: Record<string, T>) => Object.fromEntries(Object.entries(record).sort());
+
+    for (const [op, transfer] of [
+      ['copy', copy],
+      ['rename', rename],
+    ] as const) {
+      describe(`${op} target`, () => {
         const refused: [string, Record<string, string>, string, string, string][] = [
-          ['an existing file with different content', { a: 'd1', b: 'd2' }, 'a', 'b', 'FILE_EXISTS'],
-          ['an existing file with identical content', { a: 'd1', b: 'd1' }, 'a', 'b', 'FILE_EXISTS'],
-          ['the same path as source and target', { a: 'd1' }, 'a', 'a', 'FILE_EXISTS'],
           ['a directory with content', { a: 'd1', 'y/f': 'd2' }, 'a', 'y', 'FILE_EXISTS'],
           ['a target inside an existing file', { a: 'd1', b: 'd2' }, 'a', 'b/c/d', 'FILE_EXISTS'],
-          ['a directory source onto non-overlapping content', { 'x/a': 'd1', 'x/b': 'd2', 'y/c': 'd3' }, 'x', 'y', 'FILE_EXISTS'],
-          ['a dot-prefixed form of an existing file', { a: 'd1', b: 'd2' }, 'a', './b', 'FILE_EXISTS'],
           ['a doubled-slash form of a path inside a file', { a: 'd1', b: 'd2' }, 'a', 'b//c', 'FILE_EXISTS'],
+          ['a directory source onto non-overlapping content', { 'x/a': 'd1', 'x/b': 'd2', 'y/c': 'd3' }, 'x', 'y', 'FILE_EXISTS'],
+          ['a directory source onto a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b', 'FILE_EXISTS'],
+          ['a directory source inside a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b/c', 'FILE_EXISTS'],
           ['a missing source, even onto an existing file', { a: 'd1' }, 'missing', 'a', 'FILE_NOT_FOUND'],
+          ['a missing source, even as its own target', { a: 'd1' }, 'missing', 'missing', 'FILE_NOT_FOUND'],
+          ['a directory source into itself', { 'x/a': 'd1' }, 'x', 'x/y', 'INVALID_LOGICAL_PATH'],
+          ['a directory source into itself, un-normalised', { 'x/a': 'd1' }, './x/', 'x//y', 'INVALID_LOGICAL_PATH'],
+          ['a file source below itself', { a: 'd1' }, 'a', 'a/b', 'INVALID_LOGICAL_PATH'],
+          ['an empty target', { a: 'd1' }, 'a', '', 'INVALID_LOGICAL_PATH'],
+          ['a target of .', { a: 'd1' }, 'a', '.', 'INVALID_LOGICAL_PATH'],
+          ['a target of ./', { a: 'd1' }, 'a', './', 'INVALID_LOGICAL_PATH'],
+          ['an empty source', { a: 'd1' }, '', 'b', 'INVALID_LOGICAL_PATH'],
+          ['a missing source with an empty target', { a: 'd1' }, 'missing', '', 'INVALID_LOGICAL_PATH'],
         ];
 
         for (const [name, files, source, target, code] of refused) {
           it(`throws ${code} for ${name}, changing nothing`, () => {
             const inv = inventoryWith(files);
             const before = inv.toJSON();
-            assert.throws(() => inv[op](source, target), { name: 'OcflError', code });
+            assert.throws(() => transfer(inv, source, target), { name: 'OcflError', code });
             assert.deepStrictEqual(inv.toJSON(), before);
             assertHeadStateValid(inv);
           });
         }
 
-        it('rejects an empty target', () => {
-          for (const target of ['', '.', './']) {
-            assert.throws(() => inventoryWith({ a: 'd1' })[op]('a', target), { message: 'Target logical path cannot be empty' });
-          }
-        });
-
-        it('throws FILE_NOT_FOUND for a missing source with an empty target', () => {
-          assert.throws(() => inventoryWith({ a: 'd1' })[op]('missing', ''), { name: 'OcflError', code: 'FILE_NOT_FOUND' });
-        });
+        for (const [name, source, target] of [
+          ['the same path as source and target', 'a', 'a'],
+          ['the same path spelled two ways', './a', 'a/'],
+          ['the same directory as source and target', 'x', 'x'],
+        ] as const) {
+          it(`changes nothing for ${name}`, () => {
+            const inv = inventoryWith({ a: 'd1', b: 'd1', 'x/c': 'd2' });
+            const before = inv.toJSON();
+            transfer(inv, source, target);
+            assert.deepStrictEqual(inv.toJSON(), before);
+            assertHeadStateValid(inv);
+          });
+        }
 
         for (const target of ['./c', 'c/', './/c//']) {
-          it(`records the target ${target} under its normalised path`, () => {
+          it(`records the target ${target} under its normalised path, where a second ${op} replaces it`, () => {
             const inv = inventoryWith({ a: 'd1', b: 'd2' });
-            inv[op]('a', target);
+            transfer(inv, 'a', target);
             assert.strictEqual(inv.getDigest('c'), 'd1');
-            assert.throws(() => inv[op]('b', 'c'), { name: 'OcflError', code: 'FILE_EXISTS' });
-            assert.throws(() => inv[op]('b', target), { name: 'OcflError', code: 'FILE_EXISTS' });
+            transfer(inv, 'b', target);
+            assert.strictEqual(inv.getDigest('c'), 'd2');
+            assert.deepStrictEqual(Object.keys(inv.manifest), op === 'copy' ? ['d1', 'd2'] : ['d2']);
             assertHeadStateValid(inv);
           });
         }
 
         it('normalises a directory target', () => {
           const inv = inventoryWith({ 'x/a': 'd1' });
-          inv[op]('x', './y//z/');
+          transfer(inv, 'x', './y//z/');
           assert.strictEqual(inv.getDigest('y/z/a'), 'd1');
           assertHeadStateValid(inv);
         });
 
         it('accepts a target that only shares a name prefix with an existing path', () => {
           const inv = inventoryWith({ a: 'd1', bc: 'd2', 'bd/e': 'd3' });
-          inv[op]('a', 'b');
+          transfer(inv, 'a', 'b');
           assert.strictEqual(inv.getDigest('b'), 'd1');
           assertHeadStateValid(inv);
         });
@@ -360,21 +379,208 @@ describe('OcflObjectInventory class', () => {
         it('accepts a target whose path was deleted first', () => {
           const inv = inventoryWith({ a: 'd1', b: 'd2' });
           inv._delete('b');
-          inv[op]('a', 'b');
+          transfer(inv, 'a', 'b');
           assert.strictEqual(inv.getDigest('b'), 'd1');
           assertHeadStateValid(inv);
         });
 
-        it('moves every path of a directory source to a free target', () => {
-          const inv = inventoryWith({ 'x/a': 'd1', 'x/s/b': 'd2' });
-          inv[op]('x', 'y/z');
-          assert.strictEqual(inv.getDigest('y/z/a'), 'd1');
-          assert.strictEqual(inv.getDigest('y/z/s/b'), 'd2');
-          assert.strictEqual(inv.getDigest('x/a'), op === '_copy' ? 'd1' : undefined);
+        const refusedMerging: [string, Record<string, string>, string, string, string][] = [
+          ['a file where the target has a directory', { 'x/a': 'd1', 'x/b': 'd2', 'y/a/c': 'd3' }, 'x', 'y', 'FILE_EXISTS'],
+          ['a directory where the target has a file', { 'x/a/c': 'd1', 'x/b': 'd2', 'y/a': 'd3' }, 'x', 'y', 'FILE_EXISTS'],
+          ['a directory source onto a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b', 'FILE_EXISTS'],
+          ['a directory source inside a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b/c', 'FILE_EXISTS'],
+          ['a file source onto a directory', { a: 'd1', 'y/f': 'd2' }, 'a', 'y', 'FILE_EXISTS'],
+          ['a file onto the directory it is in', { 'y/a': 'd1' }, 'y/a', 'y', 'FILE_EXISTS'],
+          ['a directory source into itself', { 'x/a': 'd1', 'x/y/b': 'd2' }, 'x', 'x/y', 'INVALID_LOGICAL_PATH'],
+          ['a missing source', { 'y/a': 'd1' }, 'missing', 'y', 'FILE_NOT_FOUND'],
+        ];
+
+        for (const [name, files, source, target, code] of refusedMerging) {
+          it(`throws ${code} when merging ${name}, changing nothing`, () => {
+            const inv = inventoryWith(files);
+            const before = inv.toJSON();
+            assert.throws(() => transfer(inv, source, target, true), { name: 'OcflError', code });
+            assert.deepStrictEqual(inv.toJSON(), before);
+            assertHeadStateValid(inv);
+          });
+        }
+
+        it('throws FILE_EXISTS for a directory source onto a directory with content when merge is false', () => {
+          const inv = inventoryWith({ 'x/a': 'd1', 'y/a': 'd2' });
+          assert.throws(() => transfer(inv, 'x', 'y', false), { name: 'OcflError', code: 'FILE_EXISTS' });
           assertHeadStateValid(inv);
         });
+
+        const kept = (files: Record<string, string>) => (op === 'copy' ? files : {});
+        const merged: [string, Record<string, string>, string, string, Record<string, string>, Record<string, string>][] = [
+          [
+            'a directory into one with no clashing files',
+            { 'x/a': 'd1', 'x/s/b': 'd2', 'y/c': 'd3', 'y/s/d': 'd4' },
+            'x',
+            'y',
+            { ...kept({ 'x/a': 'd1', 'x/s/b': 'd2' }), 'y/a': 'd1', 'y/s/b': 'd2', 'y/c': 'd3', 'y/s/d': 'd4' },
+            op === 'copy' ? { d1: 'x/a', d2: 'x/s/b', d3: 'y/c', d4: 'y/s/d' } : { d1: 'y/a', d2: 'y/s/b', d3: 'y/c', d4: 'y/s/d' },
+          ],
+          [
+            'a directory into one with files at the same paths',
+            { 'x/a': 'd1', 'x/b': 'd2', 'y/a': 'd3', 'y/b': 'd2', 'y/c': 'd4' },
+            'x',
+            './y/',
+            { ...kept({ 'x/a': 'd1', 'x/b': 'd2' }), 'y/a': 'd1', 'y/b': 'd2', 'y/c': 'd4' },
+            op === 'copy' ? { d1: 'x/a', d2: 'x/b', d4: 'y/c' } : { d1: 'y/a', d2: 'y/b', d4: 'y/c' },
+          ],
+          [
+            'a directory whose file shares content stored at a file it replaces',
+            { 'y/a': 'd1', 'x/a': 'd2', 'x/b': 'd1' },
+            'x',
+            'y',
+            { ...kept({ 'x/a': 'd2', 'x/b': 'd1' }), 'y/a': 'd2', 'y/b': 'd1' },
+            op === 'copy' ? { d1: 'x/b', d2: 'x/a' } : { d1: 'y/b', d2: 'y/a' },
+          ],
+          [
+            'a directory into the directory it is in',
+            { 'y/x/a': 'd1', 'y/x/x/a': 'd2', 'y/a': 'd3' },
+            'y/x',
+            'y',
+            { ...kept({ 'y/x/x/a': 'd2' }), 'y/a': 'd1', 'y/x/a': 'd2' },
+            op === 'copy' ? { d1: 'y/a', d2: 'y/x/x/a' } : { d1: 'y/a', d2: 'y/x/a' },
+          ],
+          [
+            'a directory into one with no content',
+            { 'x/a': 'd1' },
+            'x',
+            'y/z',
+            { ...kept({ 'x/a': 'd1' }), 'y/z/a': 'd1' },
+            op === 'copy' ? { d1: 'x/a' } : { d1: 'y/z/a' },
+          ],
+          ['a file onto a file', { a: 'd1', b: 'd2' }, 'a', 'b', { ...kept({ a: 'd1' }), b: 'd1' }, op === 'copy' ? { d1: 'a' } : { d1: 'b' }],
+        ];
+
+        for (const [name, files, source, target, expected, manifest] of merged) {
+          it(`merges ${name}`, () => {
+            const inv = inventoryWith(files);
+            transfer(inv, source, target, true);
+            assert.deepStrictEqual(Object.fromEntries([...inv.files()].map((f) => [f.logicalPath, inv.getDigest(f.logicalPath)]).sort()), sorted(expected));
+            assert.deepStrictEqual(sorted(inv.manifest), sorted(Object.fromEntries(Object.entries(manifest).map(([d, p]) => [d, [`v1/content/${p}`]]))));
+            assertHeadStateValid(inv);
+          });
+        }
       });
     }
+
+    describe('copy target', () => {
+      for (const [name, target] of [
+        ['an existing file with different content', 'b'],
+        ['a dot-prefixed form of an existing file', './b'],
+      ] as const) {
+        it(`replaces ${name}, dropping content nothing else uses`, () => {
+          const inv = inventoryWith({ a: 'd1', b: 'd2' });
+          copy(inv, 'a', target);
+          assert.deepStrictEqual(inv.state, { d1: ['a', 'b'] });
+          assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
+          assertHeadStateValid(inv);
+        });
+      }
+
+      it('moves content stored at a replaced target to a path that still uses it', () => {
+        const inv = inventoryWith({ a: 'd1', b: 'd2', c: 'd2' });
+        copy(inv, 'a', 'b');
+        assert.deepStrictEqual(inv.state, { d1: ['a', 'b'], d2: ['c'] });
+        assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d2: ['v1/content/c'] });
+        assertHeadStateValid(inv);
+      });
+
+      it('leaves the content of an earlier version alone when its file is replaced', () => {
+        const inv = OcflObjectInventory.newVersion(inventoryWith({ a: 'd1', b: 'd2' }));
+        copy(inv, 'a', 'b');
+        assert.deepStrictEqual(inv.state, { d1: ['a', 'b'] });
+        assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d2: ['v1/content/b'] });
+        assert.deepStrictEqual(inv.versionState('v1'), { d1: ['a'], d2: ['b'] });
+      });
+
+      for (const [name, source, target] of [['an existing file with identical content', 'a', 'b']] as const) {
+        it(`changes nothing for ${name}`, () => {
+          const inv = inventoryWith({ a: 'd1', b: 'd1', 'x/c': 'd2' });
+          const before = inv.toJSON();
+          copy(inv, source, target);
+          assert.deepStrictEqual(inv.toJSON(), before);
+          assertHeadStateValid(inv);
+        });
+      }
+
+      it('finds a source given un-normalised', () => {
+        const inv = inventoryWith({ 'x/a': 'd1' });
+        copy(inv, './x//a', 'b');
+        copy(inv, './/x/', 'y');
+        assert.deepStrictEqual(inv.state, { d1: ['x/a', 'b', 'y/a'] });
+        assertHeadStateValid(inv);
+      });
+
+      it('lists every path of a directory source at a free target, keeping the source', () => {
+        const inv = inventoryWith({ 'x/a': 'd1', 'x/s/b': 'd2', xy: 'd3' });
+        copy(inv, 'x', 'y/z');
+        assert.deepStrictEqual(inv.state, { d1: ['x/a', 'y/z/a'], d2: ['x/s/b', 'y/z/s/b'], d3: ['xy'] });
+        assertHeadStateValid(inv);
+      });
+    });
+
+    describe('rename target', () => {
+      for (const [name, target] of [
+        ['an existing file with different content', 'b'],
+        ['a dot-prefixed form of an existing file', './b'],
+      ] as const) {
+        it(`replaces ${name}, dropping content nothing else uses and moving its own`, () => {
+          const inv = inventoryWith({ a: 'd1', b: 'd2' });
+          rename(inv, 'a', target);
+          assert.deepStrictEqual(inv.state, { d1: ['b'] });
+          assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/b'] });
+          assertHeadStateValid(inv);
+        });
+      }
+
+      it('plans the release of a replaced target before the move that takes its place', () => {
+        const inv = inventoryWith({ a: 'd1', b: 'd2', c: 'd2' });
+        assert.deepStrictEqual(inv._planRename('a', 'b').releases, [
+          { digest: 'd2', from: 'v1/content/b', to: 'v1/content/c' },
+          { digest: 'd1', from: 'v1/content/a', to: 'v1/content/b' },
+        ]);
+        rename(inv, 'a', 'b');
+        assert.deepStrictEqual(inv.state, { d1: ['b'], d2: ['c'] });
+        assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/b'], d2: ['v1/content/c'] });
+        assertHeadStateValid(inv);
+      });
+
+      it('leaves the content of an earlier version alone when its file is replaced', () => {
+        const inv = OcflObjectInventory.newVersion(inventoryWith({ a: 'd1', b: 'd2' }));
+        rename(inv, 'a', 'b');
+        assert.deepStrictEqual(inv.state, { d1: ['b'] });
+        assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d2: ['v1/content/b'] });
+        assert.deepStrictEqual(inv.versionState('v1'), { d1: ['a'], d2: ['b'] });
+      });
+
+      it('only unlists the source when the target holds identical content, moving content stored at the source', () => {
+        const inv = inventoryWith({ a: 'd1', b: 'd1' });
+        rename(inv, 'a', 'b');
+        assert.deepStrictEqual(inv.state, { d1: ['b'] });
+        assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/b'] });
+        assertHeadStateValid(inv);
+      });
+
+      it('finds a source given un-normalised', () => {
+        const inv = inventoryWith({ 'x/a': 'd1', 'x/b': 'd2' });
+        rename(inv, './x//a', 'b');
+        rename(inv, './/x/', 'y');
+        assert.deepStrictEqual(inv.state, { d1: ['b'], d2: ['y/b'] });
+        assertHeadStateValid(inv);
+      });
+
+      it('moves every path of a directory source to a free target', () => {
+        const inv = inventoryWith({ 'x/a': 'd1', 'x/s/b': 'd2', xy: 'd3' });
+        rename(inv, 'x', 'y/z');
+        assert.deepStrictEqual(inv.state, { d1: ['y/z/a'], d2: ['y/z/s/b'], d3: ['xy'] });
+        assertHeadStateValid(inv);
+      });
+    });
 
     it('reinstates a logical path without dropping other paths with the same digest', () => {
       let inv = OcflObjectInventory.newVersion(data);
@@ -383,7 +589,7 @@ describe('OcflObjectInventory class', () => {
       inv._delete('x');
       inv._add('y', 'd1');
       inv = OcflObjectInventory.newVersion(inv);
-      assert.strictEqual(inv._reinstate('x', 'v1'), 1);
+      reinstate(inv, 'x', 1);
       assert.deepStrictEqual(inv.state, { d1: ['y', 'x'] });
       assert.strictEqual(inv.getDigest('y'), 'd1');
       assertHeadStateValid(inv);
@@ -396,7 +602,7 @@ describe('OcflObjectInventory class', () => {
       inv._add('x', 'd2');
       inv._add('z', 'd2');
       inv = OcflObjectInventory.newVersion(inv);
-      inv._reinstate('x', 'v1');
+      reinstate(inv, 'x', 1);
       assert.deepStrictEqual(inv.state, { d2: ['z'], d1: ['x'] });
       assertHeadStateValid(inv);
     });
@@ -416,7 +622,7 @@ describe('OcflObjectInventory class', () => {
       inv._add('x', 'd1');
       inv._add('y', 'd1');
       inv = OcflObjectInventory.newVersion(inv);
-      inv._reinstate('x', 'v1');
+      reinstate(inv, 'x', 1);
       assert.deepStrictEqual(inv.state, { d1: ['x', 'y'] });
       assertHeadStateValid(inv);
     });
@@ -446,7 +652,7 @@ describe('OcflObjectInventory class', () => {
       inv._add('d/sub/z', 'd3');
       inv = OcflObjectInventory.newVersion(inv);
       inv._delete('d/x');
-      inv._rename('d/sub/y', 'y');
+      rename(inv, 'd/sub/y', 'y');
       assert.throws(() => inv._add('d/sub', 'd4'), { name: 'OcflError', code: 'FILE_EXISTS' });
       assert.throws(() => inv._add('d', 'd4'), { name: 'OcflError', code: 'FILE_EXISTS' });
       inv._delete('d/sub/z');
@@ -464,21 +670,81 @@ describe('OcflObjectInventory class', () => {
         inv._delete('d');
         inv._add('d', 'd3');
         const before = inv.toJSON();
-        assert.throws(() => inv._reinstate(logicalPath, 'v1'), { name: 'OcflError', code: 'FILE_EXISTS' });
+        assert.throws(() => reinstate(inv, logicalPath, 1), { name: 'OcflError', code: 'FILE_EXISTS' });
         assert.deepStrictEqual(inv.toJSON(), before);
         assertHeadStateValid(inv);
       });
     }
 
-    it('reinstates a file over a directory, replacing the paths under it', () => {
+    it('throws FILE_EXISTS reinstating a file where a directory is, changing nothing', () => {
       let inv = OcflObjectInventory.newVersion(data);
       inv._add('x', 'd1');
       inv = OcflObjectInventory.newVersion(inv);
       inv._delete('x');
       inv._add('x/y', 'd2');
       inv = OcflObjectInventory.newVersion(inv);
-      inv._reinstate('x', 'v1');
+      const before = inv.toJSON();
+      assert.throws(() => reinstate(inv, 'x', 1), { name: 'OcflError', code: 'FILE_EXISTS' });
+      assert.deepStrictEqual(inv.toJSON(), before);
+      assertHeadStateValid(inv);
+    });
+
+    it('reinstates a directory file by file, replacing files at the same paths and keeping the rest', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv._add('d/a', 'd1');
+      inv._add('d/b', 'd2');
+      inv._add('d/same', 'd3');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv._delete('d/a');
+      inv._add('d/b', 'd4');
+      inv._add('d/new', 'd5');
+      reinstate(inv, 'd', 1);
+      assert.deepStrictEqual(inv.state, { d3: ['d/same'], d5: ['d/new'], d1: ['d/a'], d2: ['d/b'] });
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/d/a'], d2: ['v1/content/d/b'], d3: ['v1/content/d/same'], d5: ['v2/content/d/new'] });
+      assertHeadStateValid(inv);
+    });
+
+    for (const version of [2, 3, 0, -1, 1.5, Number.NaN]) {
+      it(`throws FILE_NOT_FOUND reinstating from version ${version}, which is not a committed version`, () => {
+        let inv = OcflObjectInventory.newVersion(data);
+        inv._add('x', 'd1');
+        inv = OcflObjectInventory.newVersion(inv);
+        inv._add('x', 'd2');
+        const before = inv.toJSON();
+        assert.throws(() => reinstate(inv, 'x', version), { name: 'OcflError', code: 'FILE_NOT_FOUND' });
+        assert.deepStrictEqual(inv.toJSON(), before);
+      });
+    }
+
+    for (const logicalPath of ['missing', 'x/y', 'xy', '']) {
+      it(`throws FILE_NOT_FOUND reinstating "${logicalPath}", which the version did not have`, () => {
+        let inv = OcflObjectInventory.newVersion(data);
+        inv._add('x', 'd1');
+        inv = OcflObjectInventory.newVersion(inv);
+        inv._add('xy', 'd2');
+        const before = inv.toJSON();
+        assert.throws(() => reinstate(inv, logicalPath, 1), { name: 'OcflError', code: 'FILE_NOT_FOUND' });
+        assert.deepStrictEqual(inv.toJSON(), before);
+      });
+    }
+
+    it('finds a version by its number whatever the width of its name', () => {
+      const version = (state: Record<string, string[]>) => ({ created: '2026-01-02T03:04:05Z', state });
+      const inv = OcflObjectInventory.newVersion(
+        new OcflObjectInventory({
+          ...data,
+          head: 'v003',
+          manifest: { d1: ['v001/content/x'], d2: ['v2/content/x'] },
+          versions: { v001: version({ d1: ['x'] }), v2: version({ d2: ['x'] }), v003: version({}) },
+        }),
+      );
+      assert.strictEqual(inv.head, 'v004');
+      reinstate(inv, './x', 1);
       assert.deepStrictEqual(inv.state, { d1: ['x'] });
+      reinstate(inv, 'x', 2);
+      assert.deepStrictEqual(inv.state, { d2: ['x'] });
+      reinstate(inv, 'x', 2);
+      assert.deepStrictEqual(inv.state, { d2: ['x'] });
       assertHeadStateValid(inv);
     });
   });
@@ -503,7 +769,7 @@ describe('OcflObjectInventory class', () => {
 
     it('delete moves shared content to a remaining path', () => {
       const inv = newContent();
-      inv._copy('a', 'b');
+      copy(inv, 'a', 'b');
       inv._delete('a');
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/b'] });
       assert.deepStrictEqual(inv.getFile('b')?.contentPath, 'v1/content/b');
@@ -512,7 +778,7 @@ describe('OcflObjectInventory class', () => {
 
     it('delete keeps content stored at a remaining path where it is', () => {
       const inv = newContent();
-      inv._copy('a', 'b');
+      copy(inv, 'a', 'b');
       inv._delete('b');
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
       assertHeadStateValid(inv);
@@ -536,22 +802,22 @@ describe('OcflObjectInventory class', () => {
 
     it('rename moves the manifest entry of a path this version stored', () => {
       const inv = newContent();
-      inv._rename('a', 'x/b');
+      rename(inv, 'a', 'x/b');
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/x/b'] });
       assertHeadStateValid(inv);
     });
 
     it('rename leaves entries alone when the content is stored at another path', () => {
       const inv = newContent();
-      inv._copy('a', 'b');
-      inv._rename('b', 'c');
+      copy(inv, 'a', 'b');
+      rename(inv, 'b', 'c');
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
       assertHeadStateValid(inv);
     });
 
     it('rename leaves entries of committed content unchanged', () => {
       const inv = committedContent();
-      inv._rename('a', 'b');
+      rename(inv, 'a', 'b');
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
       assertHeadStateValid(inv);
     });
@@ -567,7 +833,7 @@ describe('OcflObjectInventory class', () => {
     it('drops the manifest entry of content nothing else uses', () => {
       const inv = committedA();
       inv._add('a', 'd2');
-      assert.strictEqual(inv._reinstate('a', 'v1'), 1);
+      reinstate(inv, 'a', 1);
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
       assertHeadStateValid(inv);
     });
@@ -575,19 +841,19 @@ describe('OcflObjectInventory class', () => {
     it('moves shared content to a remaining path', () => {
       const inv = committedA();
       inv._add('a', 'd2');
-      inv._copy('a', 'b');
-      inv._reinstate('a', 'v1');
+      copy(inv, 'a', 'b');
+      reinstate(inv, 'a', 1);
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d2: ['v2/content/b'] });
       assertHeadStateValid(inv);
     });
 
-    it('drops content stored under a directory the reinstated file replaces', () => {
+    it('keeps content stored under a directory that a reinstated file is refused for', () => {
       const inv = committedA();
       inv._delete('a');
       inv._add('a/x', 'd2');
       inv._add('a/y', 'd3');
-      inv._reinstate('a', 'v1');
-      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
+      assert.throws(() => reinstate(inv, 'a', 1), { name: 'OcflError', code: 'FILE_EXISTS' });
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d2: ['v2/content/a/x'], d3: ['v2/content/a/y'] });
       assertHeadStateValid(inv);
     });
   });
@@ -615,7 +881,7 @@ describe('OcflObjectInventory class', () => {
     it('moves content shared through copy()', () => {
       const inv = OcflObjectInventory.newVersion(data);
       inv._add('a', 'd1');
-      inv._copy('a', 'b');
+      copy(inv, 'a', 'b');
       inv._add('a', 'd2');
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/b'], d2: ['v1/content/a'] });
       assertHeadStateValid(inv);

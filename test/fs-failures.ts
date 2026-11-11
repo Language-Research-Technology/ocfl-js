@@ -6,6 +6,12 @@ import { isErrnoException } from '../src/utils.ts';
 type FsMethod = 'mkdir' | 'rename' | 'copyFile' | 'writeFile' | 'readFile' | 'readdir' | 'rmdir' | 'rm' | 'opendir' | 'stat';
 type Fails = (source: string, target: string) => boolean;
 
+/** Matches a move from a path ending in `from` to one ending in `to` */
+export const moving =
+  (from: string, to: string): Fails =>
+  (source, target) =>
+    source.endsWith(from) && target.endsWith(to);
+
 export function fsError(code: string) {
   return Object.assign(new Error('injected failure'), { code });
 }

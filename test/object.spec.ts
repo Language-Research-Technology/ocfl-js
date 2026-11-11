@@ -355,56 +355,50 @@ describe('OcflObject with a malformed or missing inventory', () => {
     }
   }
 
-  for (const op of ['copy', 'rename'] as const) {
-    describe(`${op}() onto an occupied target`, () => {
-      const files = { 'a.txt': 'a', 'b.txt': 'b', 'same.txt': 'a', 'dir/c.txt': 'c', 'other/d.txt': 'd' };
-      const cases = [
-        ['an existing file with different content', 'a.txt', 'b.txt'],
-        ['an existing file with identical content', 'a.txt', 'same.txt'],
-        ['the same path as source and target', 'a.txt', 'a.txt'],
-        ['a directory with content', 'a.txt', 'other'],
-        ['a target inside an existing file', 'a.txt', 'b.txt/x/y.txt'],
-        ['a dot-prefixed form of an existing file', 'a.txt', './b.txt'],
-        ['a directory source onto a directory with non-overlapping content', 'dir', 'other'],
-      ] as const;
+  describe('rename() onto an occupied target', () => {
+    const files = { 'a.txt': 'a', 'b.txt': 'b', 'same.txt': 'a', 'dir/c.txt': 'c', 'other/d.txt': 'd' };
+    const cases = [
+      ['a directory with content', 'a.txt', 'other'],
+      ['a target inside an existing file', 'a.txt', 'b.txt/x/y.txt'],
+      ['a directory source onto a directory with non-overlapping content', 'dir', 'other'],
+    ] as const;
 
-      cases.forEach(([name, source, target], index) => {
-        it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
-          const o = testObject({ id: `${op}-${index}`, root: path.join(tempdir, `${op}-occupied-${index}`) });
-          await o.update(async (t) => {
-            for (const [logicalPath, content] of Object.entries(files)) {
-              await t.write(logicalPath, content);
-            }
-            await assert.rejects(t[op](source, target), ocflError('FILE_EXISTS'));
-          });
-          await assertFiles(o, files);
-        });
-      });
-
-      it('throws FILE_NOT_FOUND for a missing source, even onto an existing file', async () => {
-        const o = testObject({ id: `${op}-missing`, root: path.join(tempdir, `${op}-occupied-missing`) });
-        await o.update(async (t) => t.write('a.txt', 'a'));
-        await assert.rejects(
-          o.update(async (t) => t[op]('missing.txt', 'a.txt')),
-          ocflError('FILE_NOT_FOUND'),
-        );
-      });
-
-      it('replaces a target removed first in the same transaction, keeping the earlier version', async () => {
-        const o = testObject({ id: `${op}-removed`, root: path.join(tempdir, `${op}-occupied-removed`) });
+    cases.forEach(([name, source, target], index) => {
+      it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
+        const o = testObject({ id: `rename-${index}`, root: path.join(tempdir, `rename-occupied-${index}`) });
         await o.update(async (t) => {
-          await t.write('a.txt', 'a');
-          await t.write('b.txt', 'b');
+          for (const [logicalPath, content] of Object.entries(files)) {
+            await t.write(logicalPath, content);
+          }
+          await assert.rejects(t.rename(source, target), ocflError('FILE_EXISTS'));
         });
-        await o.update(async (t) => {
-          await t.remove('b.txt');
-          await t[op]('a.txt', 'b.txt');
-        });
-        assert.strictEqual(await o.getFile('b.txt')?.text(), 'a');
-        assert.strictEqual(await o.getFile('b.txt', 'v1')?.text(), 'b');
+        await assertFiles(o, files);
       });
     });
-  }
+
+    it('throws FILE_NOT_FOUND for a missing source, even onto an existing file', async () => {
+      const o = testObject({ id: 'rename-missing-occupied', root: path.join(tempdir, 'rename-occupied-missing') });
+      await o.update(async (t) => t.write('a.txt', 'a'));
+      await assert.rejects(
+        o.update(async (t) => t.rename('missing.txt', 'a.txt')),
+        ocflError('FILE_NOT_FOUND'),
+      );
+    });
+
+    it('replaces a target removed first in the same transaction, keeping the earlier version', async () => {
+      const o = testObject({ id: 'rename-removed', root: path.join(tempdir, 'rename-occupied-removed') });
+      await o.update(async (t) => {
+        await t.write('a.txt', 'a');
+        await t.write('b.txt', 'b');
+      });
+      await o.update(async (t) => {
+        await t.remove('b.txt');
+        await t.rename('a.txt', 'b.txt');
+      });
+      assert.strictEqual(await o.getFile('b.txt')?.text(), 'a');
+      assert.strictEqual(await o.getFile('b.txt', 'v1')?.text(), 'b');
+    });
+  });
 
   describe('a logical path that would be both a file and a directory', () => {
     const files = { a: 'a', 'd/x': 'x' };
@@ -512,14 +506,14 @@ describe('OcflObject with a malformed or missing inventory', () => {
       await o.update(async (t) => {
         await t.remove('d');
         await t.write('d', 'file');
-        await assert.rejects(t.reinstate('d/x', 'v1'), ocflError('FILE_EXISTS'));
-        await assert.rejects(t.reinstate('d', 'v1'), ocflError('FILE_EXISTS'));
+        await assert.rejects(t.reinstate('d/x', 1), ocflError('FILE_EXISTS'));
+        await assert.rejects(t.reinstate('d', 1), ocflError('FILE_EXISTS'));
       });
       assert.strictEqual(o.inventory?.head, 'v2');
       await assertFiles(o, { a: 'a', d: 'file' });
     });
 
-    it('reinstate() replaces a directory with the file an earlier version had there', async () => {
+    it('reinstate() throws FILE_EXISTS for a file an earlier version had where a directory is now, changing nothing', async () => {
       const o = testObject({ id: 'conflict-reinstate-file', root: path.join(tempdir, 'conflict-reinstate-file') });
       await o.update(async (t) => t.write('x', 'file'));
       await o.update(async (t) => {
@@ -527,9 +521,10 @@ describe('OcflObject with a malformed or missing inventory', () => {
         await t.write('x/y', 'y');
       });
       await o.update(async (t) => {
-        assert.strictEqual(await t.reinstate('x', 'v1'), 1);
+        await assert.rejects(t.reinstate('x', 1), ocflError('FILE_EXISTS'));
       });
-      await assertFiles(o, { x: 'file' });
+      assert.strictEqual(o.inventory?.head, 'v2');
+      await assertFiles(o, { 'x/y': 'y' });
     });
   });
 
