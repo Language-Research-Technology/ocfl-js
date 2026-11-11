@@ -117,6 +117,14 @@ export interface FileStat {
 }
 
 // @public
+export interface FixityProblem {
+    readonly actual?: string;
+    readonly contentPath: string;
+    readonly expected: string;
+    readonly problem: 'changed' | 'missing';
+}
+
+// @public
 export interface FlatDirectLayoutConfig {
     extensionName: '0002-flat-direct-storage-layout';
 }
@@ -335,6 +343,7 @@ export interface OcflLayoutParameters {
 
 // @public
 export interface OcflObject {
+    checkFixity(): Promise<readonly FixityProblem[]>;
     readonly digestAlgorithm: 'sha256' | 'sha512';
     readonly head: Version;
     readonly id: string;
