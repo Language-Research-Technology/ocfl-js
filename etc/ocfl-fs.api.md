@@ -508,6 +508,7 @@ export interface StorageRoot {
     readonly ocflVersion: '1.0' | '1.1';
     open(id: string): Promise<OcflObject>;
     readonly path: string;
+    recover(id: string): Promise<void>;
 }
 
 // @public (undocumented)
@@ -538,7 +539,7 @@ export class ValidationError extends OcflError {
 }
 
 // @public (undocumented)
-export type ValidationErrorCode = 'E007' | 'E017' | 'E018' | 'E036' | 'E040' | 'E050' | 'E060' | 'E069' | 'E070' | 'E080' | 'E082' | 'E099' | 'E100' | 'E104';
+export type ValidationErrorCode = 'E007' | 'E017' | 'E018' | 'E036' | 'E040' | 'E050' | 'E058' | 'E060' | 'E069' | 'E070' | 'E080' | 'E082' | 'E099' | 'E100' | 'E104';
 
 // @public (undocumented)
 export interface ValidationErrorOptions {

@@ -1,7 +1,11 @@
+import nodePath from 'node:path';
+import { OcflConstants } from './constants.ts';
 import { OcflError } from './error.ts';
 import type { ContentAlgorithm, DeepReadonly, Digests, Inventory, InventoryDigests, InventoryVersion } from './types.ts';
 import { normaliseLogicalPath, parentDirectories } from './utils.ts';
 import { createError } from './validation.ts';
+
+const { INVENTORY_NAME } = OcflConstants;
 
 export interface InventoryFile {
   logicalPath: string;
@@ -98,6 +102,28 @@ function headVersion(data: Inventory): InventoryVersion {
 /** Whether `name` is a version directory name, such as `v1` or `v001` */
 function isVersionName(name: string): boolean {
   return /^v(?:[1-9]\d*|0\d*[1-9]\d*)$/.test(name);
+}
+
+/** The digest an inventory sidecar records, if it records one */
+function sidecarDigest(sidecar: string | undefined): string | undefined {
+  return sidecar?.match(/\S+/)?.[0];
+}
+
+/** What the sidecar of `inventory` holds, once its digest is known */
+function sidecarContent(inventory: OcflObjectInventory): string {
+  return `${inventory._digest} ${INVENTORY_NAME}`;
+}
+
+/** The root inventory and its sidecar, and where a commit stages each before renaming it into place */
+function rootInventoryPaths(objectRoot: string, digestAlgorithm: string): Record<'inventory' | 'sidecar' | 'stagedInventory' | 'stagedSidecar', string> {
+  const inventory = nodePath.join(objectRoot, INVENTORY_NAME);
+  const sidecar = `${inventory}.${digestAlgorithm}`;
+  return { inventory, sidecar, stagedInventory: `${inventory}.tmp`, stagedSidecar: `${sidecar}.tmp` };
+}
+
+/** Whether `name` is a staged file of {@link rootInventoryPaths}, for any digest algorithm */
+function isStagedRootInventory(name: string): boolean {
+  return /^inventory\.json(\.[^.]+)?\.tmp$/.test(name);
 }
 
 /**
@@ -926,4 +952,4 @@ class OcflObjectInventory {
   }
 }
 
-export { isVersionName, OcflObjectInventory, VersionNumber, validateStoredInventory };
+export { isStagedRootInventory, isVersionName, OcflObjectInventory, rootInventoryPaths, sidecarContent, sidecarDigest, VersionNumber, validateStoredInventory };

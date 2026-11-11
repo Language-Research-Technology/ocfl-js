@@ -101,3 +101,8 @@ export async function removeEmptyAncestors(dirPath: string, stopAt: string): Pro
     }
   }
 }
+
+/** {@link removeEmptyAncestors} where a failure must not mask the caller's outcome: a leftover empty directory is harmless */
+export async function removeEmptyAncestorsQuietly(dirPath: string, stopAt: string): Promise<void> {
+  await removeEmptyAncestors(dirPath, stopAt).catch(() => {});
+}

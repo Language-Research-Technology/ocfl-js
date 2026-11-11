@@ -6,7 +6,9 @@ import { checkedDetails, type Draft, type VersionDetails } from './draft.ts';
 import { OcflError } from './error.ts';
 import type { BuiltInLayout, OcflExtensionConfig } from './extension.ts';
 import { createLayout, type LayoutClass, supportedLayoutClass } from './extensions/index.ts';
+import { LOCK_NAME, NO_OBJECT_ROOT } from './lock.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
+import { recoverObject } from './recover.ts';
 import * as store from './store.ts';
 import type { Layout, LayoutConfig, OcflVersion } from './types.ts';
 import { deepFreeze, findNamasteVersion, isDirEmpty, isNonEmptyString, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
@@ -19,10 +21,20 @@ const WORKSPACE_EXTENSION_TEXT = `# ${WORKSPACE_EXTENSION}
 
 A local storage root extension used by the ocfl-js library (@ocfl/ocfl-fs).
 
-While an object is being updated, its new version is assembled in
-\`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<object path>/<version>\` and then moved into the object root.
-The directory exists only while an update is in progress. Anything left in it afterwards is
-from an update that was interrupted, and is not part of any OCFL object.
+Each object has one directory here, \`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<object path>/\`, where
+\`<object path>\` is the object root relative to the storage root. While the object is being created
+or updated, that directory holds:
+
+- \`${LOCK_NAME}\`: the object's lock, a file whose first line is the time it was taken (ISO 8601, UTC). A
+  second line, \`${NO_OBJECT_ROOT}\`, means the object root did not exist when the lock was taken. Only
+  the writer that created it may change the object. The library never waits for a lock, and never
+  removes one because of its age.
+- \`<version>/\`: the new version being assembled, which is then moved into the object root.
+
+The directories exist only while an update is in progress. Anything left in them afterwards is
+from an update that was interrupted, and is not part of any OCFL object. A lock or a version
+left behind keeps the object from being updated, until the library's \`recover\` is called for
+the object.
 `;
 
 const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1.1': 'ocfl_1.1.md' };
@@ -136,7 +148,7 @@ interface StorageRoot {
   /**
    * Reads an object's inventory and returns the object as it is now. It does not change when later versions are committed.
    *
-   * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id.
+   * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id, or another writer is creating it and hasn't committed it.
    * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is missing, corrupt or inconsistent, or the object has no declaration.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds another object.
    * @example
@@ -154,10 +166,11 @@ interface StorageRoot {
    *
    * @throws {@link OcflError} `OBJECT_EXISTS` if an object with this id already exists.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds something else or is inside another object.
-   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object.
+   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object, or died creating it; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs and leaving the object unlocked, if an earlier create left an unfinished version in the workspace. Don't simply repeat the create: call {@link StorageRoot.recover}, then open the object to see whether it was created.
    * @throws `TypeError` if the id, the message or the user's name is missing or empty.
-   * @throws Whatever `build` or a draft operation throws.
+   * @throws Whatever `build` or a draft operation throws; nothing of the object is left, and it isn't locked.
    * @example
    * ```ts
    * const object = await root.create(id, { message: 'Initial deposit', user: { name: 'Alice' } }, async (draft) => {
@@ -166,6 +179,39 @@ interface StorageRoot {
    * ```
    */
   create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>): Promise<OcflObject>;
+
+  /**
+   * Clears what a dead update or create left behind and releases the object's lock. Does nothing if there is nothing to clear.
+   *
+   * **Only call this when no writer of the object is alive: a live writer's update is destroyed**, and the library can't tell
+   * a live writer from a dead one. `lockedAt` on `UPDATE_IN_PROGRESS` says when the lock was taken.
+   *
+   * An update that wasn't committed is discarded: the unfinished version in the workspace, the directory of the version after the head
+   * in the object, and staged inventory files are removed. A create that wasn't committed is discarded while its lock is still there:
+   * the declaration and first version of an object that never got an inventory, and its directory if the create made it. An update that
+   * was committed is completed by writing the root inventory's sidecar. A version is never made the head by `recover`, and no other
+   * version directory is ever removed.
+   *
+   * After `RECOVERY_NEEDED`, call `recover` and then open the object again before retrying: the head shows whether the update was committed.
+   *
+   * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id and nothing left over for it.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is corrupt or inconsistent, or the object is inside another object; or if it has a declaration and no inventory, and either no lock or a version other than the first, which a dead create never leaves. Nothing is changed.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds another object, or holds no object and is inside one; nothing is changed.
+   * @throws `TypeError` if the id is missing or empty.
+   * @throws The file system error that stopped it; the object stays locked, and `recover` can be called again.
+   * @example
+   * ```ts
+   * try {
+   *   object = await object.update(details, change);
+   * } catch (error) {
+   *   if ((error as OcflError).code !== 'RECOVERY_NEEDED') throw error;
+   *   // This process is the only writer, so none is alive
+   *   await root.recover(id);
+   *   object = await root.open(id);
+   * }
+   * ```
+   */
+  recover(id: string): Promise<void>;
 }
 
 /**
@@ -197,17 +243,21 @@ function checkedId(id: string): string {
 }
 
 function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayout): StorageRoot {
+  const objectRootOf = (id: string) => nodePath.join(root, mappedObjectPath(root, layout, id));
   return deepFreeze({
     path: root,
     ocflVersion,
     layout: { extensionName: layout.name, ...layout.parameters } as Layout,
     async open(id: string) {
-      return openObject(root, nodePath.join(root, mappedObjectPath(root, layout, checkedId(id))), id);
+      return openObject(root, objectRootOf(checkedId(id)), id);
     },
     async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>) {
       const objectId = checkedId(id);
       const checked = checkedDetails(details);
-      return createObject(root, nodePath.join(root, mappedObjectPath(root, layout, objectId)), objectId, ocflVersion, checked, build);
+      return createObject(root, objectRootOf(objectId), objectId, ocflVersion, checked, build);
+    },
+    async recover(id: string) {
+      await recoverObject(root, objectRootOf(checkedId(id)), id);
     },
   });
 }

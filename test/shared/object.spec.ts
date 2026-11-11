@@ -9,6 +9,7 @@ import ocfl, {
   type Inventory,
   ObjectNotFoundError,
   ObjectNotLoadedError,
+  type OcflError,
   type OcflObjectTransaction,
   type OcflVersion,
   type WriteFileData,
@@ -652,7 +653,6 @@ describe('update', () => {
       { step: 'staging the root inventory', method: 'copyFile', target: (root) => path.join(root, 'inventory.json.tmp') },
       { step: 'staging the root inventory sidecar', method: 'copyFile', target: (root) => path.join(root, 'inventory.json.sha512.tmp') },
       { step: 'replacing the root inventory', method: 'rename', target: (root) => path.join(root, 'inventory.json') },
-      { step: 'replacing the root inventory sidecar', method: 'rename', target: (root) => path.join(root, 'inventory.json.sha512') },
     ];
 
     for (const { step, method, target } of commitSteps) {
@@ -684,16 +684,56 @@ describe('update', () => {
       });
     }
 
-    it('restores the root inventory when the previous version has no inventory of its own', async () => {
+    it('throws RECOVERY_NEEDED and keeps the new root inventory and the lock when replacing the root inventory sidecar fails', async () => {
       const { root } = dirs();
       const o = testObject({ id: 'scoped', root });
       await o.update(async (t) => t.write('a.txt', 'a'));
-      await fs.promises.rm(path.join(root, 'v1/inventory.json'));
-      const before = await snapshot(root);
 
-      await withFsFailure('rename', path.join(root, 'inventory.json.sha512'), () => assert.rejects(o.update(writeB), /injected failure/));
+      await withFsFailure('rename', path.join(root, 'inventory.json.sha512'), () =>
+        assert.rejects(o.update(writeB), (e: OcflError) => e.code === 'RECOVERY_NEEDED' && /injected failure/.test((e.cause as Error).message)),
+      );
 
-      assert.deepStrictEqual(await snapshot(root), before);
+      assert.strictEqual(JSON.parse(await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8')).head, 'v2');
+      assert.strictEqual(o.headVersion?.toString(), 'v1');
+      await assert.rejects(o.update(writeB), { code: 'UPDATE_IN_PROGRESS' });
+    });
+
+    it('throws RECOVERY_NEEDED with the updater error as its cause, and keeps the lock, when the update cannot be undone', async () => {
+      const { root } = dirs();
+      const o = testObject({ id: 'scoped', root });
+      const failure = new Error('updater failed');
+
+      await withFsFailure(
+        'rm',
+        path.join(o._workspace, 'v1'),
+        () =>
+          assert.rejects(
+            o.update(async (t) => {
+              await t.write('a.txt', 'a');
+              throw failure;
+            }),
+            (e: OcflError) => e.code === 'RECOVERY_NEEDED' && e.cause === failure,
+          ),
+        'EACCES',
+      );
+
+      await assert.rejects(o.update(writeB), { code: 'UPDATE_IN_PROGRESS' });
+    });
+
+    it('throws RECOVERY_NEEDED from rollback(), and keeps the lock, when the update cannot be undone', async () => {
+      const { root } = dirs();
+      const o = testObject({ id: 'scoped', root });
+      const t = (await o.update())!;
+      await t.write('a.txt', 'a');
+
+      await withFsFailure(
+        'rm',
+        path.join(o._workspace, 'v1'),
+        () => assert.rejects(t.rollback(), (e: OcflError) => e.code === 'RECOVERY_NEEDED' && /injected failure/.test((e.cause as Error).message)),
+        'EACCES',
+      );
+
+      await assert.rejects(o.update(writeB), { code: 'UPDATE_IN_PROGRESS' });
     });
 
     it('keeps a file that only looks like its staged inventory when nothing was staged', async () => {
@@ -714,7 +754,7 @@ describe('update', () => {
       await withFsFailure('rmdir', o._workspace, () => throwing(o));
     });
 
-    it('keeps its version reserved when its only file is removed', async () => {
+    it('keeps the object locked when the only file of the update is removed', async () => {
       const { root } = dirs();
       const o = testObject({ id: 'scoped', root });
 
@@ -725,7 +765,7 @@ describe('update', () => {
       await first.rollback();
     });
 
-    it('lets only one concurrent update reserve a version', async () => {
+    it('lets only one concurrent update take the lock', async () => {
       const { root } = dirs();
       const o = testObject({ id: 'scoped', root });
       await o.update(async (t) => t.write('a.txt', 'a'));
@@ -737,6 +777,19 @@ describe('update', () => {
         rejected.map((r) => r.reason.code),
         ['UPDATE_IN_PROGRESS'],
       );
+      const [holder] = results.filter((r) => r.status === 'fulfilled');
+      await holder!.value!.rollback();
+    });
+
+    it('refuses an out-of-date object with OBJECT_OUT_OF_DATE, leaving no lock', async () => {
+      const { root, extensions } = dirs();
+      const stale = testObject({ id: 'scoped', root });
+      await stale.update(async (t) => t.write('a.txt', 'a'));
+      await testObject({ id: 'scoped', root }).update(writeB);
+
+      await assert.rejects(stale.update(writeB), { code: 'OBJECT_OUT_OF_DATE' });
+
+      await assertGone(extensions);
     });
 
     it('resolves when the committed update cannot remove its empty workspace', async () => {

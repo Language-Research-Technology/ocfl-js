@@ -23,3 +23,15 @@ _Avoid_: Restore, revert, copy from a version
 **Workspace**:
 The library's directory inside a storage root where a new version is assembled before it is published to its OCFL object.
 _Avoid_: Staging area, temp directory, deposit directory
+
+**Lock**:
+The file in the workspace that marks an OCFL object as having a writer, held from the start of a create or update until it ends cleanly. A second writer is refused, never made to wait, and the library never removes a lock because of its age.
+_Avoid_: Mutex, lease, lock file
+
+**Commit point**:
+The rename that replaces an OCFL object's root inventory. Before it an update isn't committed and can be discarded; after it the update is committed, whatever happens next.
+_Avoid_: Publish, finalise
+
+**Recover**:
+To clear what a dead writer left of an OCFL object and release its lock, on the caller's word that no writer is alive: an update that wasn't committed is discarded, and one that was is completed.
+_Avoid_: Repair, unlock, roll back

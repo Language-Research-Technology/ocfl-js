@@ -140,6 +140,15 @@ describe('creating a storage root', () => {
     assert.match(text, /extensions\/ocfl-js-workspace/);
   });
 
+  it('describes where the workspace keeps the lock and the new version of an object', async () => {
+    const rootPath = newPath();
+    await createStorageRoot(rootPath, { layout: { extensionName: HASHED } });
+    const text = await fs.promises.readFile(path.join(rootPath, 'ocfl-js-workspace.md'), 'utf8');
+    assert.match(text, /extensions\/ocfl-js-workspace\/<object path>\//);
+    assert.match(text, /^- `lock`: .*the time it was taken/m);
+    assert.match(text, /^- `<version>\/`/m);
+  });
+
   describe('describing the path-direct layout', () => {
     const PATH_DIRECT = '000N-path-direct-storage-layout';
 
