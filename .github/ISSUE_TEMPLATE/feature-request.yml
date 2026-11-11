@@ -1,0 +1,25 @@
+name: Feature request
+description: Something @ocfl/ocfl-fs should do but doesn't
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: Storage layouts and digest algorithms are added by pull request rather than through a plugin API. See [CONTRIBUTING.md](https://github.com/Language-Research-Technology/ocfl-js/blob/main/CONTRIBUTING.md#layouts-and-digest-algorithms).
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you're trying to do, and what stops you doing it with the library today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd like
+      description: How you'd like the library to behave, with example code if it helps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
