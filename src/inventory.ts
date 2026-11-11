@@ -1,5 +1,6 @@
 import nodePath from 'node:path';
 import { OcflConstants } from './constants.ts';
+import { normaliseDigest } from './digest.ts';
 import { ocflError } from './error.ts';
 import type { ContentAlgorithm, DeepReadonly, Inventory, InventoryDigests, InventoryVersion } from './types.ts';
 import { normaliseLogicalPath, parentDirectories } from './utils.ts';
@@ -89,9 +90,10 @@ function isVersionName(name: string): boolean {
   return /^v(?:[1-9]\d*|0\d*[1-9]\d*)$/.test(name);
 }
 
-/** The digest an inventory sidecar records, if it records one */
+/** The digest an inventory sidecar records, normalised, if it records one */
 function sidecarDigest(sidecar: string | undefined): string | undefined {
-  return sidecar?.match(/\S+/)?.[0];
+  const recorded = sidecar?.match(/\S+/)?.[0];
+  return recorded === undefined ? undefined : normaliseDigest(recorded);
 }
 
 /** What the sidecar of `inventory` holds, once its digest is known */
@@ -198,7 +200,9 @@ export interface RelistPlan extends DeletePlan {
  */
 class OcflObjectInventory {
   #data: Inventory;
-  /** The digest of each file of each version, by version name then logical path */
+  /** The manifest's key for each digest, by its normalised form */
+  #manifestKeys = new Map<string, string>();
+  /** The normalised digest of each file of each version, by version name then logical path */
   #fileIndex = new Map<string, Map<string, string>>();
   /** How many files each directory of the head state contains, at any depth */
   #headDirectories = new Map<string, number>();
@@ -225,6 +229,7 @@ class OcflObjectInventory {
     return index;
   }
 
+  /** @param digest - Normalised */
   #indexAdd(logicalPath: string, version: string, digest: string) {
     const index = this.#versionIndex(version);
     if (version === this.head && !index.has(logicalPath)) {
@@ -263,8 +268,9 @@ class OcflObjectInventory {
     for (const [verName, ver] of Object.entries(this.versions)) {
       this.#versionIndex(verName);
       for (const [digest, lps] of Object.entries(ver.state)) {
+        const normalised = normaliseDigest(digest);
         for (const lp of lps) {
-          this.#indexAdd(lp, verName, digest);
+          this.#indexAdd(lp, verName, normalised);
         }
       }
     }
@@ -285,6 +291,13 @@ class OcflObjectInventory {
       throw headNotInVersionsError(data.id, data.head);
     }
     this.#data = data;
+    for (const digest of Object.keys(data.manifest)) {
+      const normalised = normaliseDigest(digest);
+      if (this.#manifestKeys.has(normalised)) {
+        throw createError('E096', data.id, `digest "${digest}" is in the manifest more than once`);
+      }
+      this.#manifestKeys.set(normalised, digest);
+    }
     this.#checkStatesInManifest();
     this.#indexBuild();
   }
@@ -333,26 +346,66 @@ class OcflObjectInventory {
   *files(versionName: string): Generator<InventoryFile> {
     for (const [digest, files] of Object.entries(this.versions[versionName]?.state ?? {})) {
       const [contentPath] = this.#requireContentPaths(digest);
+      const normalised = normaliseDigest(digest);
       for (const logicalPath of files) {
-        yield { logicalPath, digest, contentPath };
+        yield { logicalPath, digest: normalised, contentPath };
       }
     }
   }
 
   /** The first content path the manifest lists for a digest, or `undefined` if it lists none */
   getContentPath(digest: string): string | undefined {
-    return Object.hasOwn(this.manifest, digest) ? this.manifest[digest]?.[0] : undefined;
+    return this.#contentPaths(digest)?.[0];
+  }
+
+  /** The manifest's key for `digest`, in whatever case the manifest spells it */
+  #manifestKey(digest: string): string | undefined {
+    return this.#manifestKeys.get(normaliseDigest(digest));
+  }
+
+  /** @throws {@link OcflError} `INVALID_OBJECT` with `E050` if the manifest doesn't have `digest` */
+  #requireManifestKey(digest: string): string {
+    const key = this.#manifestKey(digest);
+    if (key === undefined) {
+      throw createError('E050', this.id, `digest "${digest}" is not in the manifest`);
+    }
+    return key;
+  }
+
+  /** Set the content paths of a digest, under the manifest's spelling of it if it has one */
+  #setManifestEntry(digest: string, contentPaths: string[]) {
+    const key = this.#manifestKey(digest) ?? digest;
+    this.#data.manifest[key] = contentPaths;
+    this.#manifestKeys.set(normaliseDigest(key), key);
+  }
+
+  #deleteManifestEntry(digest: string) {
+    delete this.#data.manifest[this.#requireManifestKey(digest)];
+    this.#manifestKeys.delete(normaliseDigest(digest));
+  }
+
+  #contentPaths(digest: string): DeepReadonly<string[]> | undefined {
+    const key = this.#manifestKey(digest);
+    return key === undefined ? undefined : this.manifest[key];
   }
 
   #requireContentPaths(digest: string): readonly [string, ...string[]] {
-    const cps = Object.hasOwn(this.manifest, digest) ? this.manifest[digest] : undefined;
+    const cps = this.manifest[this.#requireManifestKey(digest)];
     if (!isNonEmpty(cps)) {
-      throw createError('E050', this.id, `digest "${digest}" is not in the manifest`);
+      throw createError('E050', this.id, `digest "${digest}" has no content paths in the manifest`);
     }
     return cps;
   }
 
-  /** The digest of the file at a logical path in a version, the head by default */
+  /**
+   * The logical paths of the head state with the content of `digest`
+   * @internal
+   */
+  _headFiles(digest: string): readonly string[] {
+    return this.#headStateEntry(digest).files;
+  }
+
+  /** The normalised digest of the file at a logical path in a version, the head by default */
   getDigest(logicalPath: string, versionName: string = this.head): string | undefined {
     return this.#fileIndex.get(versionName)?.get(logicalPath);
   }
@@ -388,8 +441,24 @@ class OcflObjectInventory {
       state,
     };
     const next = new OcflObjectInventory(data as Inventory);
+    next.#rekeyHeadStateToManifest();
     next._madeFrom = madeFrom;
     return next;
+  }
+
+  /** Rekey the head state with the manifest's spelling of each digest, so the version writes keys that match it exactly */
+  #rekeyHeadStateToManifest() {
+    const version = headVersion(this.#data);
+    const entries = Object.entries(version.state);
+    if (entries.every(([digest]) => this.#requireManifestKey(digest) === digest)) {
+      return;
+    }
+    const state: InventoryDigests = {};
+    for (const [digest, files] of entries) {
+      const key = this.#requireManifestKey(digest);
+      state[key] = [...(state[key] ?? []), ...files];
+    }
+    version.state = state;
   }
 
   /**
@@ -429,11 +498,10 @@ class OcflObjectInventory {
     return false;
   }
 
-  /** The digest of a logical path and the head state entry listing it */
-  #stateEntry(logicalPath: string): { digest: string; files: string[] } | undefined {
-    const digest = this.getDigest(logicalPath);
-    const files = digest ? headVersion(this.#data).state[digest] : undefined;
-    return digest && files ? { digest, files } : undefined;
+  /** The head state entry for a digest the manifest has, and its key */
+  #headStateEntry(digest: string): { key: string; files: string[] } {
+    const key = this.#requireManifestKey(digest);
+    return { key, files: headVersion(this.#data).state[key] ?? [] };
   }
 
   /**
@@ -441,13 +509,14 @@ class OcflObjectInventory {
    * @returns true if the path was listed
    */
   #unlist(logicalPath: string): boolean {
-    const entry = this.#stateEntry(logicalPath);
+    const digest = this.getDigest(logicalPath);
+    const entry = digest === undefined ? undefined : this.#headStateEntry(digest);
     const index = entry?.files.indexOf(logicalPath) ?? -1;
     if (!entry || index < 0) {
       return false;
     }
     if (entry.files.length === 1) {
-      delete headVersion(this.#data).state[entry.digest];
+      delete headVersion(this.#data).state[entry.key];
     } else {
       entry.files.splice(index, 1);
     }
@@ -455,11 +524,12 @@ class OcflObjectInventory {
     return true;
   }
 
-  /** Append a logical path to its digest's list in the head version state */
+  /** Append a logical path to its digest's list in the head version state, for a normalised digest the manifest has */
   #list(logicalPath: string, digest: string) {
     const { state } = headVersion(this.#data);
-    state[digest] ??= [];
-    state[digest].push(logicalPath);
+    const key = this.#requireManifestKey(digest);
+    state[key] ??= [];
+    state[key].push(logicalPath);
     this.#indexAdd(logicalPath, this.head, digest);
   }
 
@@ -469,7 +539,8 @@ class OcflObjectInventory {
    * @throws {@link OcflError} `FILE_EXISTS` if the path is a directory, or is inside a file
    * @internal
    */
-  _add(logicalPath: string, digest: string): boolean {
+  _add(logicalPath: string, rawDigest: string): boolean {
+    const digest = normaliseDigest(rawDigest);
     this._checkFilePath(logicalPath);
     if (this.getDigest(logicalPath) !== digest) {
       const releases = this._contentReleases([logicalPath]);
@@ -477,7 +548,7 @@ class OcflObjectInventory {
       this.#applyContentReleases(releases);
     }
     if (!this.getContentPath(digest)) {
-      this.#data.manifest[digest] = [this.#ownContentPath(logicalPath)];
+      this.#setManifestEntry(digest, [this.#ownContentPath(logicalPath)]);
     }
     if (this.getDigest(logicalPath) === digest) {
       return false;
@@ -509,11 +580,7 @@ class OcflObjectInventory {
       }
       const arrivals = arrivalsOf.get(digest) ?? [];
       const follows = arrivals.find(({ src }) => this.#ownContentPath(src) === from);
-      const heirs = [
-        ...(follows ? [follows.dest] : []),
-        ...(this.state[digest] ?? []).filter((file) => !leaving.has(file)),
-        ...arrivals.map(({ dest }) => dest),
-      ];
+      const heirs = [...(follows ? [follows.dest] : []), ...this._headFiles(digest).filter((file) => !leaving.has(file)), ...arrivals.map(({ dest }) => dest)];
       const [heir] = heirs;
       if (heir === undefined) {
         return [{ digest, from }];
@@ -526,9 +593,9 @@ class OcflObjectInventory {
   #applyContentReleases(releases: ContentRelease[]) {
     for (const { digest, to } of releases) {
       if (to === undefined) {
-        delete this.#data.manifest[digest];
+        this.#deleteManifestEntry(digest);
       } else {
-        this.#data.manifest[digest] = [to];
+        this.#setManifestEntry(digest, [to]);
       }
     }
   }

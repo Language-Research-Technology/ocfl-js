@@ -78,8 +78,13 @@ function digestSync(algorithm: string, input: DataType): string {
   return createHasher(algorithm).update(input).digest();
 }
 
+/** The form digests are compared and written in: hex digests are case-insensitive, and the library writes them in lowercase */
+function normaliseDigest(digest: string): string {
+  return digest.toLowerCase();
+}
+
 function getHexDigestLength(algorithm: string): number {
   return ALGORITHMS.get(algorithm)?.hexLength ?? 0;
 }
 
-export { createHasher, digest, digestSync, getHexDigestLength, toBytes };
+export { createHasher, digest, digestSync, getHexDigestLength, normaliseDigest, toBytes };

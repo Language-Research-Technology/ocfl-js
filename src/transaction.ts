@@ -693,7 +693,7 @@ class OcflObjectTransaction {
     }
     // Only content this version stored is removed when its last file is replaced
     return (
-      !contentPath.startsWith(`${inventory.head}/`) || (inventory.state[digest] ?? []).some((logicalPath) => (imported.get(logicalPath) ?? digest) === digest)
+      !contentPath.startsWith(`${inventory.head}/`) || inventory._headFiles(digest).some((logicalPath) => (imported.get(logicalPath) ?? digest) === digest)
     );
   }
 

@@ -341,6 +341,13 @@ describe('opening an object', () => {
         },
       ],
       [
+        'a state digest the manifest lists with no content paths',
+        'E050',
+        (inventory) => {
+          inventory.manifest = Object.fromEntries(Object.keys(inventory.manifest!).map((digest) => [digest, []]));
+        },
+      ],
+      [
         'a state digest that is only an inherited property of the manifest',
         'E050',
         (inventory) => {

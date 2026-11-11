@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import { OcflError, openStorageRoot } from '../src/index.ts';
 import { DIGESTS_OF_ABC } from './helpers/digests-of-abc.ts';
 import { createObject, DETAILS, objectRootOf, sha512, snapshot, useTempRoots } from './helpers/drafts.ts';
-import { rewriteInventory, SPEC_EX_FULL_ID, writeFiles, writeForeignObject, writeSpecExFullRoot } from './helpers/storage-roots.ts';
+import { rewriteInventory, SPEC_EX_FULL_ID, upperCased, writeFiles, writeForeignObject, writeSpecExFullRoot } from './helpers/storage-roots.ts';
 
 describe('checking the fixity of an object', () => {
   const temp = useTempRoots('ocfl-check-fixity-');
@@ -98,8 +98,6 @@ describe('checking the fixity of an object', () => {
     const root = await temp.newRoot();
     await createObject(root, 'upper-case', { 'a.txt': 'abc', 'b.txt': 'b' });
     const objectRoot = objectRootOf(root, 'upper-case');
-    const upperCased = (digests: Record<string, string[]>) =>
-      Object.fromEntries(Object.entries(digests).map(([digest, paths]) => [digest.toUpperCase(), paths]));
     await rewriteInventory(objectRoot, (inventory) => {
       inventory.manifest = upperCased(inventory.manifest!);
       inventory.versions!.v1!.state = upperCased(inventory.versions!.v1!.state);
