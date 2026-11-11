@@ -50,7 +50,9 @@ export class ValidationError extends OcflError {
   declare detail?: string | undefined;
 
   constructor(options: ValidationErrorOptions) {
-    super(options.code, `${options.code}: ${options.description} At ${options.path}${options.detail ? ` (${options.detail})` : ''}`);
+    super(options.code, `${options.code}: ${options.description} At ${options.path}${options.detail ? ` (${options.detail})` : ''}`, {
+      ocflCode: options.code,
+    });
     this.name = 'ValidationError';
     Object.assign(this, options);
   }
