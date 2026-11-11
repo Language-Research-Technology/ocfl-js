@@ -1,0 +1,5 @@
+{
+  "extensionName": "000N-path-direct-storage-layout",
+  "replace": [["http://example.org/minimal_no_content", "object_1"]],
+  "suffix": ""
+}

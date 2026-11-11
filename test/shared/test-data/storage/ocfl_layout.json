@@ -1,0 +1,4 @@
+{
+  "extension": "000N-path-direct-storage-layout",
+  "description": "OCFL object identifiers are used directly as the path."
+}

@@ -1,4 +1,4 @@
-import { inspect, isDeepStrictEqual } from 'node:util';
+import { inspect } from 'node:util';
 import { OcflError } from './error.ts';
 import type { OcflLayoutName } from './types.ts';
 
@@ -9,10 +9,10 @@ const typeName = (value: unknown) => (Array.isArray(value) ? 'array' : typeof va
 
 /** `defaults` with the parameters `config` sets, and the names of those parameters */
 function mergeParameters(defaults: object | undefined, config: OcflExtensionConfig = {}): { parameters: OcflExtensionConfig; setNames: string[] } {
-  const parameters: OcflExtensionConfig = { ...defaults };
+  const parameters: OcflExtensionConfig = structuredClone({ ...defaults });
   const setNames: string[] = [];
   for (const name of Object.keys(config)) {
-    if (Object.hasOwn(parameters, name)) {
+    if (Object.hasOwn(parameters, name) && config[name] !== undefined) {
       parameters[name] = config[name];
       setNames.push(name);
     }
@@ -24,6 +24,8 @@ abstract class BuiltInLayout<C extends object = object> {
   /** Official extension name */
   abstract readonly name: OcflLayoutName;
   abstract readonly description: string;
+  /** Plain text describing a layout that isn't a registered OCFL extension, which a storage root using it carries (OCFL spec §4.5) */
+  readonly documentation?: string;
   /** Effective parameters, defaults included */
   readonly parameters: Readonly<C>;
   /** Names of the parameters the caller or config.json set, which config.json records */
@@ -59,9 +61,4 @@ abstract class BuiltInLayout<C extends object = object> {
   abstract map(id: string): string;
 }
 
-/** Names of the parameters in `expected` whose values differ in `actual` */
-function differingParameters(actual: OcflExtensionConfig, expected: OcflExtensionConfig): string[] {
-  return Object.keys(expected).filter((name) => !isDeepStrictEqual(actual[name], expected[name]));
-}
-
-export { BuiltInLayout, differingParameters, type OcflExtensionConfig };
+export { BuiltInLayout, type OcflExtensionConfig };

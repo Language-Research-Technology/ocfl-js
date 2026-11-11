@@ -1,22 +1,7 @@
 import { OcflError } from './error.ts';
 
 // Messages for the OCFL 1.1 validation codes this library raises: https://ocfl.io/1.1/spec/validation-codes.html
-export type ValidationErrorCode =
-  | 'E007'
-  | 'E017'
-  | 'E018'
-  | 'E036'
-  | 'E040'
-  | 'E050'
-  | 'E060'
-  | 'E069'
-  | 'E070'
-  | 'E080'
-  | 'E081'
-  | 'E082'
-  | 'E099'
-  | 'E100'
-  | 'E104';
+export type ValidationErrorCode = 'E007' | 'E017' | 'E018' | 'E036' | 'E040' | 'E050' | 'E060' | 'E069' | 'E070' | 'E080' | 'E082' | 'E099' | 'E100' | 'E104';
 
 const ERRORS: Record<ValidationErrorCode, string> = {
   E007: 'The text contents of the [version declaration] file must be the same as dvalue, followed by a newline (\\n).',
@@ -29,7 +14,6 @@ const ERRORS: Record<ValidationErrorCode, string> = {
   E069: 'An OCFL Storage Root MUST contain a Root Conformance Declaration identifying it as such.',
   E070: 'If present, [the ocfl_layout.json document] MUST include the following two keys in the root JSON object: [extension, description].',
   E080: 'The text contents of [the OCFL version declaration file] MUST be the same as dvalue, followed by a newline (\\n).',
-  E081: 'OCFL Objects within the OCFL Storage Root also include a conformance declaration which MUST indicate OCFL Object conformance to the same or earlier version of the specification.',
   E082: 'OCFL Object Roots MUST be stored either as the terminal resource at the end of a directory storage hierarchy or as direct children of a containing OCFL Storage Root.',
   E099: 'Path elements [of a content path] MUST NOT be ., .., or empty (//).',
   E100: 'A content path MUST NOT begin or end with a forward slash (/).',

@@ -38,6 +38,11 @@ export type ContentAlgorithm = 'sha256' | 'sha512';
 export function createStorage(config: OcflStorageConfig): Promise<OcflStorage>;
 
 // @public
+export function createStorageRoot(path: string, options: {
+    layout: LayoutConfig;
+}): Promise<StorageRoot>;
+
+// @public
 export type DeepReadonly<T> = {
     readonly [K in keyof T]: DeepReadonly<T[K]>;
 };
@@ -90,12 +95,34 @@ export interface FileStat {
     size?: number;
 }
 
+// @public
+export interface FlatDirectLayoutConfig {
+    extensionName: '0002-flat-direct-storage-layout';
+}
+
+// @public
+export interface HashAndIdNTupleLayoutConfig {
+    digestAlgorithm?: string;
+    extensionName: '0003-hash-and-id-n-tuple-storage-layout';
+    numberOfTuples?: number;
+    tupleSize?: number;
+}
+
 // @public (undocumented)
 export type HashAndIdNTupleStorageLayoutConfig = {
     digestAlgorithm?: string;
     tupleSize?: number;
     numberOfTuples?: number;
 };
+
+// @public
+export interface HashedNTupleLayoutConfig {
+    digestAlgorithm?: string;
+    extensionName: '0004-hashed-n-tuple-storage-layout';
+    numberOfTuples?: number;
+    shortObjectRoot?: boolean;
+    tupleSize?: number;
+}
 
 // @public (undocumented)
 export type HashedNTupleStorageLayoutConfig = {
@@ -172,6 +199,12 @@ export interface InventoryVersion {
 }
 
 // @public
+export type Layout = Readonly<Required<LayoutConfig>>;
+
+// @public
+export type LayoutConfig = FlatDirectLayoutConfig | HashAndIdNTupleLayoutConfig | HashedNTupleLayoutConfig | PathDirectLayoutConfig;
+
+// @public
 export function loadStorage(config: OcflStorageConfig): Promise<OcflStorage>;
 
 // @public (undocumented)
@@ -207,7 +240,7 @@ export class OcflError extends Error {
 }
 
 // @public
-export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_OF_DATE' | 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'RECOVERY_NEEDED' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'LAYOUT_MISMATCH' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | 'CROSS_FILESYSTEM_MOVE' | ValidationErrorCode;
+export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_OF_DATE' | 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'RECOVERY_NEEDED' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | 'CROSS_FILESYSTEM_MOVE' | ValidationErrorCode;
 
 // @public
 export type OcflLayoutConfig<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? {
@@ -389,7 +422,6 @@ export type OcflStorageConfig = {
     fixityAlgorithms?: string[] | undefined;
     digestAlgorithm?: ContentAlgorithm | undefined;
     contentDirectory?: string | undefined;
-    ocflVersion?: OcflVersion | undefined;
 };
 
 // @public
@@ -401,6 +433,17 @@ export type OcflStorageLayout<N extends OcflLayoutName = OcflLayoutName> = N ext
 
 // @public (undocumented)
 export type OcflVersion = '1.0' | '1.1';
+
+// @public
+export function openStorageRoot(path: string): Promise<StorageRoot>;
+
+// @public
+export interface PathDirectLayoutConfig {
+    extensionName: '000N-path-direct-storage-layout';
+    omitScheme?: boolean;
+    replace?: [find: string, replacement: string][];
+    suffix?: string;
+}
 
 // @public (undocumented)
 export type PathDirectStorageLayoutConfig = {
@@ -414,6 +457,13 @@ export function storage(config: OcflStorageConfig): OcflStorage;
 
 // @public
 export function storageLayout<N extends OcflLayoutName>(config: N | OcflLayoutConfig<N>): OcflStorageLayout<N>;
+
+// @public
+export interface StorageRoot {
+    readonly layout: Layout;
+    readonly ocflVersion: '1.0' | '1.1';
+    readonly path: string;
+}
 
 // @public (undocumented)
 export type UpdateMode = 'MERGE' | 'REPLACE';
@@ -437,7 +487,7 @@ export class ValidationError extends OcflError {
 }
 
 // @public (undocumented)
-export type ValidationErrorCode = 'E007' | 'E017' | 'E018' | 'E036' | 'E040' | 'E050' | 'E060' | 'E069' | 'E070' | 'E080' | 'E081' | 'E082' | 'E099' | 'E100' | 'E104';
+export type ValidationErrorCode = 'E007' | 'E017' | 'E018' | 'E036' | 'E040' | 'E050' | 'E060' | 'E069' | 'E070' | 'E080' | 'E082' | 'E099' | 'E100' | 'E104';
 
 // @public (undocumented)
 export interface ValidationErrorOptions {

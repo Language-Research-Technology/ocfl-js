@@ -2,10 +2,9 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, before, describe, it, mock } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 import ocfl, { type OcflObject } from '../src/index.ts';
-import { fsError, stillOpen, trackOpendir, withFsFailure } from './fs-failures.ts';
-import { ocflError } from './ocfl-error.ts';
+import { stillOpen, trackOpendir, withFsFailure } from './fs-failures.ts';
 
 describe('OcflStorage with an unsupported layout or object reference', () => {
   let tempdir: string;
@@ -16,55 +15,9 @@ describe('OcflStorage with an unsupported layout or object reference', () => {
     await fs.promises.rm(tempdir, { recursive: true, force: true });
   });
 
-  it('rejects an unsupported layout in ocfl_layout.json when loading', async () => {
-    const root = path.join(tempdir, 'layout-file');
-    await fs.promises.mkdir(root);
-    await fs.promises.writeFile(path.join(root, '0=ocfl_1.1'), 'ocfl_1.1\n');
-    await fs.promises.writeFile(path.join(root, 'ocfl_layout.json'), JSON.stringify({ extension: 'no-such-layout' }));
-    await assert.rejects(ocfl.storage({ root }).load(), ocflError('UNSUPPORTED_LAYOUT'));
-  });
-
-  it('uses the layout named in ocfl_layout.json when its extension config has no name', async () => {
-    const root = path.join(tempdir, 'layout-config-unnamed');
-    const extension = '0004-hashed-n-tuple-storage-layout';
-    await fs.promises.mkdir(path.join(root, 'extensions', extension), { recursive: true });
-    await fs.promises.writeFile(path.join(root, '0=ocfl_1.1'), 'ocfl_1.1\n');
-    await fs.promises.writeFile(path.join(root, 'ocfl_layout.json'), JSON.stringify({ extension }));
-    await fs.promises.writeFile(path.join(root, 'extensions', extension, 'config.json'), JSON.stringify({ tupleSize: 4 }));
-    const storage = await ocfl.storage({ root }).load();
-    const [firstTuple] = storage.objectRoot('an-object').split('/');
-    assert.strictEqual(firstTuple!.length, 4);
-  });
-
-  it('rejects an unsupported layout named in the layout extension config when loading', async () => {
-    const root = path.join(tempdir, 'layout-extension-config');
-    const extension = '0004-hashed-n-tuple-storage-layout';
-    await fs.promises.mkdir(path.join(root, 'extensions', extension), { recursive: true });
-    await fs.promises.writeFile(path.join(root, '0=ocfl_1.1'), 'ocfl_1.1\n');
-    await fs.promises.writeFile(path.join(root, 'ocfl_layout.json'), JSON.stringify({ extension }));
-    await fs.promises.writeFile(path.join(root, 'extensions', extension, 'config.json'), JSON.stringify({ extensionName: 'no-such-layout' }));
-    await assert.rejects(ocfl.storage({ root }).load(), ocflError('UNSUPPORTED_LAYOUT'));
-  });
-
-  it('creates a layout from a config object naming the extension', () => {
-    const storage = ocfl.storage({
-      root: path.join(tempdir, 'layout-config'),
-      layout: { extensionName: '0004-hashed-n-tuple-storage-layout', tupleSize: 4 },
-    });
-    const [firstTuple] = storage.objectRoot('an-object').split('/');
-    assert.strictEqual(firstTuple!.length, 4);
-  });
-
   it('rejects an object reference with neither id nor root', () => {
     const storage = ocfl.storage({ root: path.join(tempdir, 'object-ref'), layout: '0004-hashed-n-tuple-storage-layout' });
     assert.throws(() => storage.object({}), { name: 'TypeError', message: '[OcflStorage] object id or root is required.' });
-  });
-
-  it('rejects creating a storage root in a non-empty directory', async () => {
-    const root = path.join(tempdir, 'not-empty');
-    await fs.promises.mkdir(root);
-    await fs.promises.writeFile(path.join(root, 'stray.txt'), 'x');
-    await assert.rejects(ocfl.createStorage({ root, layout: '0004-hashed-n-tuple-storage-layout' }), ocflError('DIRECTORY_NOT_EMPTY'));
   });
 });
 
@@ -170,77 +123,5 @@ describe('iterating a storage root', () => {
     );
     assert.ok(opened.length > 1);
     assert.deepStrictEqual(await stillOpen(opened), []);
-  });
-});
-
-describe('loading a storage root whose declaration cannot be read', () => {
-  let root: string;
-  before(async () => {
-    root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-fs-storage-load-'));
-    await ocfl.storage({ root }).create();
-  });
-  after(async () => {
-    await fs.promises.rm(root, { recursive: true, force: true });
-  });
-
-  it('rejects with the file system error, not E069', async () => {
-    const declaration = (filePath: string) => path.basename(filePath).startsWith('0=ocfl_');
-    await withFsFailure('readFile', declaration, () => assert.rejects(ocfl.storage({ root }).load(), { code: 'EACCES' }), 'EACCES');
-  });
-});
-
-describe('checking whether a storage root exists', () => {
-  let tempdir: string;
-  before(async () => {
-    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-fs-storage-exists-'));
-  });
-  after(async () => {
-    await fs.promises.rm(tempdir, { recursive: true, force: true });
-  });
-
-  it('rethrows and closes the directory it opened when reading it fails', async () => {
-    const storage = ocfl.storage({ root: tempdir, layout: '0004-hashed-n-tuple-storage-layout' });
-    const opened = await trackOpendir(async () => {
-      const read = mock.method(fs.Dir.prototype, 'read', async () => {
-        throw fsError('EIO');
-      });
-      try {
-        await assert.rejects(storage.exists(), { code: 'EIO' });
-      } finally {
-        read.mock.restore();
-      }
-    });
-    assert.strictEqual(opened.length, 1);
-    assert.deepStrictEqual(await stillOpen(opened), []);
-  });
-
-  it('rethrows when the root cannot be opened', async () => {
-    const storage = ocfl.storage({ root: tempdir, layout: '0004-hashed-n-tuple-storage-layout' });
-    await withFsFailure('opendir', tempdir, () => assert.rejects(storage.exists(), { code: 'EIO' }));
-  });
-
-  it('is true when the root is a file', async () => {
-    const root = path.join(tempdir, 'a-file');
-    await fs.promises.writeFile(root, 'x');
-    assert.strictEqual(await ocfl.storage({ root, layout: '0004-hashed-n-tuple-storage-layout' }).exists(), true);
-  });
-
-  it('is false when the root does not exist', async () => {
-    const root = path.join(tempdir, 'missing');
-    assert.strictEqual(await ocfl.storage({ root, layout: '0004-hashed-n-tuple-storage-layout' }).exists(), false);
-  });
-
-  it('is false when a parent of the root is a file', async () => {
-    const parent = path.join(tempdir, 'parent-file');
-    await fs.promises.writeFile(parent, 'x');
-    const root = path.join(parent, 'root');
-    assert.strictEqual(await ocfl.storage({ root, layout: '0004-hashed-n-tuple-storage-layout' }).exists(), false);
-  });
-
-  it('rethrows when the root is not a directory and cannot be inspected', async () => {
-    const root = path.join(tempdir, 'uninspectable');
-    await fs.promises.writeFile(root, 'x');
-    const storage = ocfl.storage({ root, layout: '0004-hashed-n-tuple-storage-layout' });
-    await withFsFailure('stat', root, () => assert.rejects(storage.exists(), { code: 'EACCES' }), 'EACCES');
   });
 });

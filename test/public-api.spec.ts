@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import * as entryPoint from '../src/index.ts';
-import ocfl, { createStorage, loadStorage, OCFL_VERSIONS, type OcflObject, storage, storageLayout } from '../src/index.ts';
+import ocfl, { createStorage, createStorageRoot, loadStorage, OCFL_VERSIONS, type OcflObject, openStorageRoot, storage, storageLayout } from '../src/index.ts';
 
 describe('the public entry point', () => {
   let dir: string;
@@ -51,18 +51,40 @@ describe('the public entry point', () => {
     assert.strictEqual(storageLayout({ extensionName: '0002-flat-direct-storage-layout' }).map('abc'), 'abc');
   });
 
-  it('creates a storage root on disk with createStorage', async () => {
+  it('creates a storage root on disk with createStorageRoot', async () => {
     const root = path.join(dir, 'root');
-    const created = await createStorage({ root });
-    assert.strictEqual(created.root, root);
+    const created = await createStorageRoot(root, { layout: { extensionName: '0002-flat-direct-storage-layout' } });
+    assert.strictEqual(created.path, root);
     assert.strictEqual(await fs.promises.readFile(path.join(root, '0=ocfl_1.1'), 'utf8'), 'ocfl_1.1\n');
   });
 
-  it('loads an existing storage root with loadStorage', async () => {
+  it('opens an existing storage root with openStorageRoot', async () => {
     const root = path.join(dir, 'root');
-    await createStorage({ root, layout: '0002-flat-direct-storage-layout' });
-    const loaded = await loadStorage({ root });
+    await createStorageRoot(root, { layout: { extensionName: '0002-flat-direct-storage-layout' } });
+    const opened = await openStorageRoot(root);
+    assert.deepStrictEqual(opened.layout, { extensionName: '0002-flat-direct-storage-layout' });
+  });
+
+  it('still opens a storage root made with createStorageRoot through the old loadStorage', async () => {
+    const root = path.join(dir, 'root');
+    await createStorageRoot(root, { layout: { extensionName: '0002-flat-direct-storage-layout' } });
+    const loaded = await loadStorage({ root, layout: '0004-hashed-n-tuple-storage-layout' });
     assert.strictEqual(loaded.objectRoot('abc'), 'abc');
+  });
+
+  it('still loads a storage root that has no ocfl_layout.json through the old loadStorage, with no layout', async () => {
+    const root = path.join(dir, 'root');
+    await fs.promises.mkdir(root);
+    await fs.promises.writeFile(path.join(root, '0=ocfl_1.1'), 'ocfl_1.1\n');
+    const loaded = await loadStorage({ root, layout: '0004-hashed-n-tuple-storage-layout' });
+    assert.throws(() => loaded.objectRoot('abc'), /No layout defined/);
+  });
+
+  it('still writes the spec text when the old create is asked to', async () => {
+    const root = path.join(dir, 'root');
+    await storage({ root }).create({ ocflSpecText: true });
+    const resource = path.join(import.meta.dirname, '../resources/ocfl_1.1.md');
+    assert.deepStrictEqual(await fs.promises.readFile(path.join(root, 'ocfl_1.1.md')), await fs.promises.readFile(resource));
   });
 
   it('creates a storage root on disk through storage', async () => {

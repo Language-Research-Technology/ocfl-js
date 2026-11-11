@@ -17,6 +17,50 @@ const DefaultConfig: Required<PathDirectStorageLayoutConfig> = {
   suffix: '/__object__',
 };
 
+const NAME = '000N-path-direct-storage-layout';
+
+const DOCUMENTATION = `# ${NAME}
+
+A local storage layout extension used by the ocfl-js library (@ocfl/ocfl-fs). It is not a registered OCFL extension.
+
+The path of an OCFL object root is spelled by the object's identifier, so the storage root can be browsed by identifier.
+
+## Parameters
+
+Set in \`extensions/${NAME}/config.json\`. A parameter left out takes its default.
+
+| Parameter | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| \`omitScheme\` | boolean | \`${DefaultConfig.omitScheme}\` | Leave the identifier's URI scheme out of the path. |
+| \`replace\` | array of \`[find, replacement]\` pairs of strings | \`${JSON.stringify(DefaultConfig.replace)}\` | Text to find in the identifier and what to put in its place. Only the first occurrence of each \`find\` is replaced. |
+| \`suffix\` | string | \`${DefaultConfig.suffix}\` | Added to the end of the path. It marks the object root, so that one identifier can be the start of another without one object sitting inside the other. |
+
+## Mapping
+
+1. Each \`replace\` pair is applied to the identifier, in order, as JavaScript's \`String.prototype.replace\` applies a string pattern.
+   A \`$\` in a replacement therefore has that function's special meaning, such as \`$&\` for the text found.
+2. An identifier that parses as a URL under the WHATWG URL Standard is first normalised as that standard describes:
+   the scheme and, for schemes such as \`https\`, the host are lower-cased, and characters such as spaces in the path are percent-encoded.
+   It then becomes \`<scheme>_<host>/<path><query><fragment>\`, or \`<scheme>/<path><query><fragment>\` if it has no host.
+   The host is the host name only: a port, user name or password in the identifier is left out, so identifiers that differ only in those map to the same path.
+   The scheme is left out when \`omitScheme\` is set, and always for a \`file:\` URL. In the host, the first \`,\` becomes \`_\` and the first \`;\` becomes \`/\`.
+   Any other identifier is used as it is.
+3. Leading, trailing and repeated \`/\` are removed.
+4. \`suffix\` is added.
+
+An identifier that ends with \`suffix\`, or has a \`.\` or \`..\` path segment, is refused.
+
+## Examples
+
+With the default parameters:
+
+| Identifier | Object root |
+| --- | --- |
+| \`arcp://name,corpus/item/1\` | \`arcp_name_corpus/item/1/__object__\` |
+| \`https://example.org/a/b\` | \`https_example.org/a/b/__object__\` |
+| \`collection/item\` | \`collection/item/__object__\` |
+`;
+
 /** Whether `p` has a segment that `path.join` or the URL parser would resolve away, such as `..`, `%2e` or `.\t.` */
 function hasDotSegment(p: string): boolean {
   return p
@@ -26,8 +70,9 @@ function hasDotSegment(p: string): boolean {
 }
 
 class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
-  readonly name = '000N-path-direct-storage-layout';
+  readonly name: typeof NAME = NAME;
   readonly description = 'OCFL object identifiers are used directly as the path.';
+  override readonly documentation: string = DOCUMENTATION;
 
   constructor(config?: OcflExtensionConfig) {
     super(config, DefaultConfig);

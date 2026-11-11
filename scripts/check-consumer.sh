@@ -32,30 +32,26 @@ cat >"$consumer/package.json" <<EOF
 EOF
 cat >"$consumer/smoke.js" <<'EOF'
 import assert from 'node:assert/strict';
-import { readdir, readFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { OCFL_VERSIONS, storage } from '@ocfl/ocfl-fs';
+import { createStorageRoot, loadStorage, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const resources = process.argv[2];
-const specTexts = await readdir(resources);
+const root = join(import.meta.dirname, 'storage');
+const layout = { extensionName: '0004-hashed-n-tuple-storage-layout' };
+await createStorageRoot(root, { layout });
 
-for (const ocflVersion of OCFL_VERSIONS) {
-  const root = join(import.meta.dirname, `storage-${ocflVersion}`);
-  const store = storage({ root, ocflVersion });
-  await store.create({ ocflSpecText: true });
+const specText = 'ocfl_1.1.md';
+assert(
+  (await readFile(join(root, specText))).equals(await readFile(join(resources, specText))),
+  'the installed package wrote the wrong specification text',
+);
+assert.equal((await openStorageRoot(root)).layout.extensionName, layout.extensionName);
 
-  const specText = specTexts.find((file) => file.startsWith(`ocfl_${ocflVersion}.`));
-  assert(specText, `no specification text for OCFL ${ocflVersion}`);
-  assert(
-    (await readFile(join(root, specText))).equals(await readFile(join(resources, specText))),
-    `the installed package wrote the wrong specification text for OCFL ${ocflVersion}`,
-  );
-
-  const object = store.object('smoke');
-  await object.update(async (transaction) => transaction.write('a.txt', 'written'));
-  await object.getInventory();
-  assert.equal(await object.getFile('a.txt')?.text(), 'written');
-}
+const object = (await loadStorage({ root })).object('smoke');
+await object.update(async (transaction) => transaction.write('a.txt', 'written'));
+await object.getInventory();
+assert.equal(await object.getFile('a.txt')?.text(), 'written');
 EOF
 
 pnpm -C "$consumer" install --prefer-offline --silent || fail "installing the tarball failed"

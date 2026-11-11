@@ -92,17 +92,65 @@ export type OcflStorageLayout<N extends OcflLayoutName = OcflLayoutName> = N ext
     }
   : never;
 
+/** A storage layout to create a storage root with: its extension name plus any parameters, which default as its extension spec says. */
+export type LayoutConfig = FlatDirectLayoutConfig | HashAndIdNTupleLayoutConfig | HashedNTupleLayoutConfig | PathDirectLayoutConfig;
+
+/** A storage root's layout: a {@link LayoutConfig} with every parameter present. */
+export type Layout = Readonly<Required<LayoutConfig>>;
+
+/** Object directories named by their id, directly in the storage root. */
+export interface FlatDirectLayoutConfig {
+  /** Name of the layout's OCFL extension. */
+  extensionName: '0002-flat-direct-storage-layout';
+}
+
+/** Object directories named by their encoded id, nested under pieces of the id's digest. */
+export interface HashAndIdNTupleLayoutConfig {
+  /** Name of the layout's OCFL extension. */
+  extensionName: '0003-hash-and-id-n-tuple-storage-layout';
+  /** Algorithm used to hash the id. Defaults to `sha256`. */
+  digestAlgorithm?: string;
+  /** Characters of the digest in each directory level. Defaults to 3. */
+  tupleSize?: number;
+  /** Number of directory levels. Defaults to 3. */
+  numberOfTuples?: number;
+}
+
+/** Object directories named by their id's digest, nested under pieces of it. */
+export interface HashedNTupleLayoutConfig {
+  /** Name of the layout's OCFL extension. */
+  extensionName: '0004-hashed-n-tuple-storage-layout';
+  /** Algorithm used to hash the id. Defaults to `sha256`. */
+  digestAlgorithm?: string;
+  /** Characters of the digest in each directory level. Defaults to 3. */
+  tupleSize?: number;
+  /** Number of directory levels. Defaults to 3. */
+  numberOfTuples?: number;
+  /** Name the object directory with only the rest of the digest. Defaults to `false`. */
+  shortObjectRoot?: boolean;
+}
+
+/** Object directories at the path spelled by their id. */
+export interface PathDirectLayoutConfig {
+  /** Name of the layout's OCFL extension. */
+  extensionName: '000N-path-direct-storage-layout';
+  /** Leave the id's URI scheme out of the path. Defaults to `false`. */
+  omitScheme?: boolean;
+  /** Pairs of text to find in the id and what to put in its place. Defaults to none. */
+  replace?: [find: string, replacement: string][];
+  /** Text added to the end of the object directory's path. Defaults to `/__object__`. */
+  suffix?: string;
+}
+
 /** Configuration options for an OCFL storage root and the objects opened through it. */
 export type OcflStorageConfig = {
   /** Absolute path to the ocfl storage root. */
   root: string;
   /**
    * A layout that identifies an arrangement of directories and OCFL objects under the storage root,
-   * as an official extension name or `{ extensionName, ...params }`. Anything else throws `UNSUPPORTED_LAYOUT`.
-   * Loading a root that declares a supported layout with a different name or parameters throws `LAYOUT_MISMATCH`,
-   * loading one that declares a layout this library doesn't implement throws `UNSUPPORTED_LAYOUT`,
-   * loading one whose `ocfl_layout.json` has no string `extension` throws `E070`,
-   * and parameters the layout rejects, in this option or in the root's layout config, throw `INVALID_LAYOUT_CONFIG`.
+   * as an official extension name or `{ extensionName, ...params }`. Anything else throws `UNSUPPORTED_LAYOUT`,
+   * and parameters the layout rejects throw `INVALID_LAYOUT_CONFIG`.
+   * Only used to create a storage root: loading one always takes the layout the root declares.
    */
   layout?: OcflLayoutName | OcflLayoutConfig | undefined;
   /** A default list of digest algorithm names to be added to the fixity block of objects under this storage. */
@@ -111,12 +159,6 @@ export type OcflStorageConfig = {
   digestAlgorithm?: ContentAlgorithm | undefined;
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
   contentDirectory?: string | undefined;
-  /**
-   * Ocfl version of a newly created storage root and its objects. When loading an existing root, defaults to
-   * the root's declared version; `load()` rejects with E081 if this is later than the root's version.
-   * @defaultValue `"1.1"`
-   */
-  ocflVersion?: OcflVersion | undefined;
 };
 
 /** @internal */
