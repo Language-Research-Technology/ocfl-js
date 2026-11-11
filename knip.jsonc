@@ -4,6 +4,13 @@
   "tags": ["-lintignore"],
   // Typechecked only, by test/tsconfig.json.
   "entry": ["test/*.ts"],
-  // Loaded by semantic-release from the `preset` option, and the plugins release.config.mjs drops on beta.
-  "ignoreDependencies": ["conventional-changelog-conventionalcommits", "@semantic-release/changelog", "@semantic-release/git"]
+  // Loaded by semantic-release from the `preset` option, the plugins release.config.mjs drops on beta,
+  // and the tools scripts/check-consumer.sh runs.
+  "ignoreDependencies": [
+    "conventional-changelog-conventionalcommits",
+    "@semantic-release/changelog",
+    "@semantic-release/git",
+    "publint",
+    "@arethetypeswrong/cli"
+  ]
 }
