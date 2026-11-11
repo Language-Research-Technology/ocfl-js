@@ -1,6 +1,6 @@
 import { inspect } from 'node:util';
 import type { BuiltInLayout, OcflExtensionConfig } from '../extension.ts';
-import type { LayoutConfig, OcflLayoutName } from '../types.ts';
+import type { LayoutConfig, LayoutName } from '../types.ts';
 import { PathDirectStorageLayout } from './000N-path-direct-storage-layout.ts';
 import { FlatDirectStorageLayout } from './0002-flat-direct-storage-layout.ts';
 import { HashAndIdNTupleStorageLayout } from './0003-hash-and-id-n-tuple-storage-layout.ts';
@@ -13,11 +13,11 @@ const BUILT_IN_LAYOUTS = {
   '0002-flat-direct-storage-layout': FlatDirectStorageLayout,
   '0003-hash-and-id-n-tuple-storage-layout': HashAndIdNTupleStorageLayout,
   '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayout,
-} satisfies Record<OcflLayoutName, LayoutClass>;
+} satisfies Record<LayoutName, LayoutClass>;
 
 /** The class of the layout with the official extension name `name`, or `undefined` if the library doesn't implement it */
 function builtInLayoutClass(name: string): LayoutClass | undefined {
-  return Object.hasOwn(BUILT_IN_LAYOUTS, name) ? BUILT_IN_LAYOUTS[name as OcflLayoutName] : undefined;
+  return Object.hasOwn(BUILT_IN_LAYOUTS, name) ? BUILT_IN_LAYOUTS[name as LayoutName] : undefined;
 }
 
 /**

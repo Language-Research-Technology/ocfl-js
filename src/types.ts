@@ -1,9 +1,6 @@
 /** A digest algorithm OCFL allows for content addressing */
 export type ContentAlgorithm = 'sha256' | 'sha512';
 
-/** Digest values keyed by algorithm name */
-export type Digests = { [algorithm: string]: string };
-
 /** `T` and everything nested in it, read-only at compile time. The data isn't frozen. */
 export type DeepReadonly<T> = { readonly [K in keyof T]: DeepReadonly<T[K]> };
 
@@ -55,6 +52,9 @@ export type OcflVersion = '1.0' | '1.1';
 /** A storage layout to create a storage root with: its extension name plus any parameters, which default as its extension spec says. */
 export type LayoutConfig = FlatDirectLayoutConfig | HashAndIdNTupleLayoutConfig | HashedNTupleLayoutConfig | PathDirectLayoutConfig;
 
+/** The official extension name of a layout this library implements. */
+export type LayoutName = LayoutConfig['extensionName'];
+
 /** A storage root's layout: a {@link LayoutConfig} with every parameter present. */
 export type Layout = Readonly<Required<LayoutConfig>>;
 
@@ -101,6 +101,3 @@ export interface PathDirectLayoutConfig {
   /** Text added to the end of the object directory's path. Defaults to `/__object__`. */
   suffix?: string;
 }
-
-/** The official extension name of a layout this library implements. */
-export type OcflLayoutName = LayoutConfig['extensionName'];

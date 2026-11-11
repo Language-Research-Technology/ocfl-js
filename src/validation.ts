@@ -1,7 +1,24 @@
 import { type OcflError, ocflError } from './error.ts';
 
 // The OCFL 1.1 validation codes this library raises: https://ocfl.io/1.1/spec/validation-codes.html
-type ValidationCode = 'E007' | 'E017' | 'E018' | 'E036' | 'E040' | 'E050' | 'E058' | 'E060' | 'E069' | 'E070' | 'E080' | 'E082' | 'E099' | 'E100' | 'E104';
+type ValidationCode =
+  | 'E007'
+  | 'E017'
+  | 'E018'
+  | 'E036'
+  | 'E040'
+  | 'E050'
+  | 'E057'
+  | 'E058'
+  | 'E060'
+  | 'E069'
+  | 'E070'
+  | 'E080'
+  | 'E082'
+  | 'E099'
+  | 'E100'
+  | 'E104'
+  | 'E111';
 
 type Violated = 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT';
 
@@ -14,6 +31,10 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
   E050: [
     'INVALID_OBJECT',
     'The keys of [the state JSON object] are digest values, each of which MUST correspond to an entry in the manifest of the inventory.',
+  ],
+  E057: [
+    'INVALID_OBJECT',
+    'The value of the fixity block for a particular digest algorithm MUST follow the structure of the manifest block; that is, a key corresponding to the digest value, and an array of content paths that match that digest.',
   ],
   E058: ['INVALID_OBJECT', 'Every occurrence of an inventory file MUST have an accompanying sidecar file stating its digest.'],
   E060: ['INVALID_OBJECT', 'The digest sidecar file must contain the digest of the inventory file.'],
@@ -30,6 +51,7 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
   E099: ['INVALID_OBJECT', 'Path elements [of a content path] MUST NOT be ., .., or empty (//).'],
   E100: ['INVALID_OBJECT', 'A content path MUST NOT begin or end with a forward slash (/).'],
   E104: ['INVALID_OBJECT', 'Version directory names MUST be constructed by prepending v to the version number.'],
+  E111: ['INVALID_OBJECT', 'If present, [the fixity block] MUST be a JSON object, which MAY be empty.'],
 };
 
 /**
@@ -39,10 +61,6 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
  * @param detail - Extra context appended to the message
  */
 export function createError(code: ValidationCode, path: string, detail?: string): OcflError {
-  const rule = Object.hasOwn(RULES, code) ? RULES[code] : undefined;
-  if (!rule) {
-    throw new RangeError(`Unknown OCFL validation code ${code}`);
-  }
-  const [violated, description] = rule;
+  const [violated, description] = RULES[code];
   return ocflError(violated, `${code}: ${description} At ${path}${detail ? ` (${detail})` : ''}`, { ocflCode: code });
 }

@@ -1,5 +1,4 @@
 import crypto from 'node:crypto';
-import zlib from 'node:zlib';
 
 type DataType = string | ArrayBufferView | ArrayBufferLike;
 
@@ -30,54 +29,14 @@ function toBytes(data: unknown): Uint8Array {
   throw new TypeError(`Unsupported data type: ${Object.prototype.toString.call(data)}`);
 }
 
-interface HashState {
-  update(data: Uint8Array): void;
-  hex(): string;
-}
-
-function nativeHash(nodeName: string): () => HashState {
-  return () => {
-    const h = crypto.createHash(nodeName);
-    let result: string | undefined;
-    return {
-      update: (d) => h.update(d),
-      hex: () => {
-        result ??= h.digest('hex');
-        return result;
-      },
-    };
-  };
-}
-
-function crc32Hash(): HashState {
-  let crc = 0;
-  return {
-    update: (d) => {
-      crc = zlib.crc32(d, crc);
-    },
-    hex: () => crc.toString(16).padStart(8, '0'),
-  };
-}
-
-function sizeHash(): HashState {
-  let size = 0;
-  return {
-    update: (d) => {
-      size += d.byteLength;
-    },
-    hex: () => `${size}`,
-  };
-}
-
-const ALGORITHMS = new Map<string, { hexLength: number; start: () => HashState }>([
-  ['md5', { hexLength: 32, start: nativeHash('md5') }],
-  ['sha1', { hexLength: 40, start: nativeHash('sha1') }],
-  ['sha256', { hexLength: 64, start: nativeHash('sha256') }],
-  ['sha512', { hexLength: 128, start: nativeHash('sha512') }],
-  ['sha512/256', { hexLength: 64, start: nativeHash('sha512-256') }],
-  ['blake2b-512', { hexLength: 128, start: nativeHash('blake2b512') }],
-  ['crc32', { hexLength: 8, start: crc32Hash }],
-  ['size', { hexLength: 1, start: sizeHash }],
+/** Each algorithm by its OCFL name, with the name `node:crypto` knows it by */
+const ALGORITHMS = new Map<string, { hexLength: number; nodeName: string }>([
+  ['md5', { hexLength: 32, nodeName: 'md5' }],
+  ['sha1', { hexLength: 40, nodeName: 'sha1' }],
+  ['sha256', { hexLength: 64, nodeName: 'sha256' }],
+  ['sha512', { hexLength: 128, nodeName: 'sha512' }],
+  ['sha512/256', { hexLength: 64, nodeName: 'sha512-256' }],
+  ['blake2b-512', { hexLength: 128, nodeName: 'blake2b512' }],
 ]);
 
 /**
@@ -88,13 +47,18 @@ function createHasher(algorithm: string): Hasher {
   if (!definition) {
     throw new Error(`Unsupported digest algorithm: ${algorithm}`);
   }
-  const state = definition.start();
+  const hash = crypto.createHash(definition.nodeName);
+  let hex: string | undefined;
   return {
     update(data) {
-      state.update(toBytes(data));
+      hash.update(toBytes(data));
       return this;
     },
-    digest: state.hex,
+    // node:crypto allows a hash to be finished only once
+    digest() {
+      hex ??= hash.digest('hex');
+      return hex;
+    },
   };
 }
 

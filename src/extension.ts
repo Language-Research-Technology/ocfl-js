@@ -1,5 +1,5 @@
 import { inspect } from 'node:util';
-import type { OcflLayoutName } from './types.ts';
+import type { LayoutName } from './types.ts';
 
 /** A layout's config as callers and config.json give it, before any checking */
 type OcflExtensionConfig = { extensionName?: string; [key: string]: unknown };
@@ -33,7 +33,7 @@ function mergeParameters(defaults: object | undefined, config: OcflExtensionConf
 
 abstract class BuiltInLayout<C extends object = object> {
   /** Official extension name */
-  abstract readonly name: OcflLayoutName;
+  abstract readonly name: LayoutName;
   abstract readonly description: string;
   /** Plain text describing a layout that isn't a registered OCFL extension, which a storage root using it carries (OCFL spec §4.5) */
   readonly documentation?: string;

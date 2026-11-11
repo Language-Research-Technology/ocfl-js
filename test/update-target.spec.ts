@@ -38,7 +38,7 @@ describe('OcflObjectTransaction driven from an update target', () => {
 
     assert.ok(committed);
     assert.strictEqual(committed.head, 'v1');
-    assert.strictEqual(committed.version.message, DETAILS.message);
+    assert.strictEqual(committed.versions.v1?.message, DETAILS.message);
     assert.strictEqual(committed.getDigest('a.txt'), DIGESTS_OF_ABC.sha512);
     assert.deepStrictEqual(fs.readdirSync(target.root).sort(), ['0=ocfl_object_1.0', 'inventory.json', 'inventory.json.sha512', 'v1']);
     assert.strictEqual(fs.readFileSync(path.join(target.root, '0=ocfl_object_1.0'), 'utf8'), 'ocfl_object_1.0\n');
