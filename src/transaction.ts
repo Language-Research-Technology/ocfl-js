@@ -5,7 +5,7 @@ import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { OcflError } from './error.ts';
-import type { ContentRelease, DeletePlan, OcflObjectInventory } from './inventory.ts';
+import type { ContentRelease, DeletePlan, OcflObjectInventory, RelistPlan } from './inventory.ts';
 import * as store from './store.ts';
 import type { OcflVersion, WriteFileData } from './types.ts';
 import {
@@ -678,7 +678,7 @@ class OcflObjectTransaction {
    * @param target - The target logical path. A file already there is replaced; the same path as `source` does nothing.
    * @param options - With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set, or if a path would become both a file and a directory
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set, or if a file would go where a directory is, or below a file, as things stand before the operation
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
    * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
    */
@@ -686,8 +686,7 @@ class OcflObjectTransaction {
     return this.#transact(async () => {
       const merge = mergeOption(options);
       const plan = this.#inventory._planCopy(fileLogicalPath(source), fileLogicalPath(target), merge);
-      await this.#applyContentReleases(plan.releases);
-      this.#inventory._applyRelist(plan);
+      await this.#applyRelist(plan);
     });
   }
 
@@ -699,7 +698,7 @@ class OcflObjectTransaction {
    * @param target - The target logical path. A file already there is replaced; the same path as `source` does nothing.
    * @param options - With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set, or if a path would become both a file and a directory
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set, or if a file would go where a directory is, or below a file, as things stand before the operation
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
    * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
    */
@@ -707,8 +706,7 @@ class OcflObjectTransaction {
     return this.#transact(async () => {
       const merge = mergeOption(options);
       const plan = this.#inventory._planRename(fileLogicalPath(source), fileLogicalPath(target), merge);
-      await this.#applyContentReleases(plan.releases);
-      this.#inventory._applyRelist(plan);
+      await this.#applyRelist(plan);
     });
   }
 
@@ -728,8 +726,7 @@ class OcflObjectTransaction {
         throw new TypeError(`The version must be a number, such as 1, not ${inspect(version)}`);
       }
       const plan = this.#inventory._planReinstate(fileLogicalPath(logicalPath), version);
-      await this.#applyContentReleases(plan.releases);
-      this.#inventory._applyRelist(plan);
+      await this.#applyRelist(plan);
     });
   }
 
@@ -753,6 +750,11 @@ class OcflObjectTransaction {
   /** Remove every file */
   async clear(): Promise<void> {
     return this.#transact(() => this.#applyDelete(this.#inventory._planClear()));
+  }
+
+  async #applyRelist(plan: RelistPlan) {
+    await this.#applyContentReleases(plan.releases);
+    this.#inventory._applyRelist(plan);
   }
 
   async #applyDelete(plan: DeletePlan) {

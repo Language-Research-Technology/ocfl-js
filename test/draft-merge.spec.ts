@@ -6,7 +6,7 @@ import type { Draft, StorageRoot } from '../src/index.ts';
 import { moving, withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
-  assertRefuses,
+  assertRefusesWith,
   assertWritesNothing,
   createObject,
   DETAILS,
@@ -37,11 +37,6 @@ describe('merging a directory into another in a draft', () => {
     ['copy', (draft, source, target, options) => draft.copy(source, target, options)],
     ['rename', (draft, source, target, options) => draft.rename(source, target, options)],
   ];
-
-  /** Asserts that `operation` is refused with `code` in an update of an object holding `files`, and that the update writes nothing */
-  async function assertRefused(files: Record<string, string>, operation: (draft: Draft) => Promise<void>, code: 'FILE_EXISTS' | 'INVALID_LOGICAL_PATH') {
-    await assertRefuses(root, await createObject(root, newId(), files), operation, code);
-  }
 
   /** `files` without those at or below `directory`, if it is given */
   const without = (files: Record<string, string>, directory?: string) =>
@@ -130,7 +125,7 @@ describe('merging a directory into another in a draft', () => {
         ['a file below a file of the target', { 'src/a/x/y': 'Y', 'src/b': 'B', 'dst/a': 'A', 'dst/b': 'old b' }],
       ] as const) {
         it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
-          await assertRefused(files, (draft) => transfer(draft, 'src', 'dst', MERGE), 'FILE_EXISTS');
+          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, 'src', 'dst', MERGE), 'FILE_EXISTS');
         });
       }
 
@@ -143,7 +138,7 @@ describe('merging a directory into another in a draft', () => {
       ] as const) {
         it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
           const files = { 'src/a': 'A', 'dst/c': 'C', 'dst/deep/deep': 'D', 'dst/deep/e': 'E', file: 'F' };
-          await assertRefused(files, (draft) => transfer(draft, source, target, MERGE), 'FILE_EXISTS');
+          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, source, target, MERGE), 'FILE_EXISTS');
         });
       }
 
@@ -162,7 +157,7 @@ describe('merging a directory into another in a draft', () => {
       });
 
       it('throws INVALID_LOGICAL_PATH for a directory into itself, changing nothing', async () => {
-        await assertRefused({ 'd/x': 'X', 'd/sub/y': 'Y' }, (draft) => transfer(draft, 'd', 'd/sub', MERGE), 'INVALID_LOGICAL_PATH');
+        await assertRefusesWith(root, newId(), { 'd/x': 'X', 'd/sub/y': 'Y' }, (draft) => transfer(draft, 'd', 'd/sub', MERGE), 'INVALID_LOGICAL_PATH');
       });
 
       it('does nothing for the same source and target, and a draft holding only that writes no version', async () => {
@@ -224,8 +219,8 @@ describe('merging a directory into another in a draft', () => {
       ] as const) {
         it(`throws FILE_EXISTS with ${name} for a directory onto a target with files, changing nothing`, async () => {
           const files = { 'src/a': 'A', 'dst/b': 'B', 'twin/a': 'A' };
-          await assertRefused(files, (draft) => transfer(draft, 'src', 'dst', options), 'FILE_EXISTS');
-          await assertRefused(files, (draft) => transfer(draft, 'src', 'twin', options), 'FILE_EXISTS');
+          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, 'src', 'dst', options), 'FILE_EXISTS');
+          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, 'src', 'twin', options), 'FILE_EXISTS');
         });
       }
     });

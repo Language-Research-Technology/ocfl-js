@@ -49,7 +49,7 @@ interface Draft {
    * With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay.
    *
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
-   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a path would become both a file and a directory.
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a file would go where a directory is, or below a file, as the draft stands before the operation.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
    * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
    */
@@ -60,7 +60,7 @@ interface Draft {
    * With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay.
    *
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
-   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a path would become both a file and a directory.
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a file would go where a directory is, or below a file, as the draft stands before the operation.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
    * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
    */

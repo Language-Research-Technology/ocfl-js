@@ -160,7 +160,7 @@ export interface DeletePlan {
 }
 
 /** A copy, rename or reinstate: the paths it unlists, then the files it lists */
-interface RelistPlan extends DeletePlan {
+export interface RelistPlan extends DeletePlan {
   files: { logicalPath: string; digest: string; digests: Digests }[];
 }
 
@@ -912,16 +912,16 @@ class OcflObjectInventory {
     if (found.length === 0) {
       throw new OcflError('FILE_NOT_FOUND', `Version ${version} of object [${this.id}] has nothing at logical path "${logicalPath}"`);
     }
-    const files = found.flatMap((lp) => {
-      const digests = this.#indexGet(lp, versionName, true);
+    const files = found.flatMap((filePath) => {
+      const digests = this.#indexGet(filePath, versionName, true);
       const digest = digests?.[this.digestAlgorithm];
-      if (!digests || !digest || this.getDigest(lp) === digest) {
+      if (!digests || !digest || this.getDigest(filePath) === digest) {
         return [];
       }
-      this._checkFilePath(lp);
-      return [{ logicalPath: lp, digest, digests }];
+      this._checkFilePath(filePath);
+      return [{ logicalPath: filePath, digest, digests }];
     });
-    const paths = files.map((file) => file.logicalPath).filter((lp) => this.getDigest(lp) !== undefined);
+    const paths = files.map((file) => file.logicalPath).filter((filePath) => this.getDigest(filePath) !== undefined);
     return { files, paths, releases: this._contentReleases(paths) };
   }
 }

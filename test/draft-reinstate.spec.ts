@@ -41,11 +41,6 @@ describe('reinstating in a draft', () => {
     return object;
   }
 
-  /** Asserts that `operation` is refused with `code` in an update of `object`, and that the update writes nothing */
-  async function assertRefused(object: OcflObject, operation: Step, code: 'FILE_EXISTS' | 'FILE_NOT_FOUND' | 'INVALID_LOGICAL_PATH') {
-    await assertRefuses(root, object, operation, code);
-  }
-
   describe('a file', () => {
     it('puts back a removed file as it was, storing no new content', async () => {
       const object = await objectWith({ 'a.txt': 'AAA', keep: 'KKK' }, (draft) => draft.remove('a.txt'));
@@ -259,7 +254,7 @@ describe('reinstating in a draft', () => {
     for (const version of [3, 4, 99, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       it(`throws FILE_NOT_FOUND for version ${version} of an object with two versions, writing nothing`, async () => {
         const object = await objectWith({ a: 'ONE' }, (draft) => draft.write('a', 'TWO'));
-        await assertRefused(object, (draft) => draft.reinstate('a', version), 'FILE_NOT_FOUND');
+        await assertRefuses(root, object, (draft) => draft.reinstate('a', version), 'FILE_NOT_FOUND');
       });
     }
 
@@ -325,7 +320,7 @@ describe('reinstating in a draft', () => {
           await draft.remove('a');
           await draft.write('later', 'LLL');
         });
-        await assertRefused(object, (draft) => draft.reinstate(logicalPath, version), 'FILE_NOT_FOUND');
+        await assertRefuses(root, object, (draft) => draft.reinstate(logicalPath, version), 'FILE_NOT_FOUND');
       });
     }
   });
@@ -362,7 +357,7 @@ describe('reinstating in a draft', () => {
         await draft.remove('x');
         await draft.write('x/y', 'y');
       });
-      await assertRefused(object, (draft) => draft.reinstate('x', 1), 'FILE_EXISTS');
+      await assertRefuses(root, object, (draft) => draft.reinstate('x', 1), 'FILE_EXISTS');
     });
 
     for (const logicalPath of ['d/x', 'd']) {
@@ -391,13 +386,13 @@ describe('reinstating in a draft', () => {
     ] as const) {
       it(`throws INVALID_LOGICAL_PATH for ${name}, writing nothing`, async () => {
         const object = await objectWith({ a: 'ONE', 'd/x': 'x' }, (draft) => draft.write('a', 'TWO'));
-        await assertRefused(object, (draft) => draft.reinstate(logicalPath, 1), 'INVALID_LOGICAL_PATH');
+        await assertRefuses(root, object, (draft) => draft.reinstate(logicalPath, 1), 'INVALID_LOGICAL_PATH');
       });
     }
 
     it('throws INVALID_LOGICAL_PATH for an invalid path even when the version does not exist', async () => {
       const object = await createObject(root, newId(), { a: 'a' });
-      await assertRefused(object, (draft) => draft.reinstate('', 7), 'INVALID_LOGICAL_PATH');
+      await assertRefuses(root, object, (draft) => draft.reinstate('', 7), 'INVALID_LOGICAL_PATH');
     });
   });
 

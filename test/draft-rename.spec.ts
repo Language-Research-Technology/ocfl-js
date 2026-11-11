@@ -6,7 +6,7 @@ import type { Draft, StorageRoot } from '../src/index.ts';
 import { moving, withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
-  assertRefuses,
+  assertRefusesWith,
   assertWritesNothing,
   createObject,
   DETAILS,
@@ -31,15 +31,6 @@ describe('renaming in a draft', () => {
   before(async () => {
     root = await temp.newRoot();
   });
-
-  /** Asserts that `operation` is refused with `code` in an update of an object holding `files`, and that the update writes nothing */
-  async function assertRefused(
-    files: Record<string, string>,
-    operation: (draft: Draft) => Promise<void>,
-    code: 'FILE_EXISTS' | 'FILE_NOT_FOUND' | 'INVALID_LOGICAL_PATH',
-  ) {
-    await assertRefuses(root, await createObject(root, newId(), files), operation, code);
-  }
 
   describe('a file', () => {
     it('changes only the logical path of a committed file, storing nothing new', async () => {
@@ -243,7 +234,7 @@ describe('renaming in a draft', () => {
       ['a file onto the directory it is in', 'other/d.txt', 'other'],
     ] as const) {
       it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
-        await assertRefused({ 'a.txt': 'a', 'b.txt': 'b', 'other/d.txt': 'd' }, (draft) => draft.rename(source, target), 'FILE_EXISTS');
+        await assertRefusesWith(root, newId(), { 'a.txt': 'a', 'b.txt': 'b', 'other/d.txt': 'd' }, (draft) => draft.rename(source, target), 'FILE_EXISTS');
       });
     }
   });
@@ -298,7 +289,7 @@ describe('renaming in a draft', () => {
     ] as const) {
       it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
         const files = { 'a.txt': 'a', 'dir/c.txt': 'c', 'twin/c.txt': 'c', 'other/d.txt': 'd', 'other/sub/e.txt': 'e' };
-        await assertRefused(files, (draft) => draft.rename(source, target), 'FILE_EXISTS');
+        await assertRefusesWith(root, newId(), files, (draft) => draft.rename(source, target), 'FILE_EXISTS');
       });
     }
   });
@@ -431,13 +422,13 @@ describe('renaming in a draft', () => {
         ['target', (draft: Draft) => draft.rename('a', logicalPath)],
       ] as const) {
         it(`throws INVALID_LOGICAL_PATH for ${name} as the ${which}, moving nothing`, async () => {
-          await assertRefused({ a: 'a', 'd/x': 'x' }, rename, 'INVALID_LOGICAL_PATH');
+          await assertRefusesWith(root, newId(), { a: 'a', 'd/x': 'x' }, rename, 'INVALID_LOGICAL_PATH');
         });
       }
     }
 
     it('throws INVALID_LOGICAL_PATH for an invalid target even when the source is missing', async () => {
-      await assertRefused({ a: 'a' }, (draft) => draft.rename('missing', ''), 'INVALID_LOGICAL_PATH');
+      await assertRefusesWith(root, newId(), { a: 'a' }, (draft) => draft.rename('missing', ''), 'INVALID_LOGICAL_PATH');
     });
 
     for (const [name, source, target] of [
@@ -447,7 +438,7 @@ describe('renaming in a draft', () => {
       ['a file below itself', 'a', 'a/b'],
     ] as const) {
       it(`throws INVALID_LOGICAL_PATH for ${name}, moving nothing`, async () => {
-        await assertRefused({ a: 'a', 'd/x': 'x' }, (draft) => draft.rename(source, target), 'INVALID_LOGICAL_PATH');
+        await assertRefusesWith(root, newId(), { a: 'a', 'd/x': 'x' }, (draft) => draft.rename(source, target), 'INVALID_LOGICAL_PATH');
       });
     }
 
@@ -468,7 +459,7 @@ describe('renaming in a draft', () => {
       ['a path that merely starts a file name', 'd/x', 'c'],
     ] as const) {
       it(`throws FILE_NOT_FOUND for ${name}, and the update writes nothing`, async () => {
-        await assertRefused({ a: 'a', 'd/xy': 'xy' }, (draft) => draft.rename(source, target), 'FILE_NOT_FOUND');
+        await assertRefusesWith(root, newId(), { a: 'a', 'd/xy': 'xy' }, (draft) => draft.rename(source, target), 'FILE_NOT_FOUND');
       });
     }
 

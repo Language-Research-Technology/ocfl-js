@@ -159,3 +159,14 @@ export async function assertRefuses(root: StorageRoot, object: OcflObject, opera
   });
   await assertHolds(root, object, files);
 }
+
+/** {@link assertRefuses} for a new object `id` holding `files` */
+export async function assertRefusesWith(
+  root: StorageRoot,
+  id: string,
+  files: Record<string, string>,
+  operation: (draft: Draft) => Promise<void>,
+  code: OcflErrorCode,
+): Promise<void> {
+  await assertRefuses(root, await createObject(root, id, files), operation, code);
+}
