@@ -24,17 +24,12 @@ describe('Hashing', () => {
     it('can calculate hash from a string', async () => {
       const hash = await Hashing.digest('sha512', inputData);
       assert.strictEqual(hash, controlDigest);
-      const hash2 = await Hashing.digest(['sha512'], inputData);
-      assert.strictEqual(hash2.sha512, controlDigest);
     });
     it('can calculate hash from a stream of byte chunks', async () => {
       assert.strictEqual(await Hashing.digest('sha512', createReadable()), controlDigest);
     });
     it('can calculate hash from a stream of string chunks', async () => {
       assert.strictEqual(await Hashing.digest('sha512', createReadable('utf8')), controlDigest);
-    });
-    it('can calculate several digests from one stream', async () => {
-      assert.strictEqual((await Hashing.digest(['sha512'], createReadable())).sha512, controlDigest);
     });
     it('rejects a chunk that is not bytes or a string', async () => {
       await assert.rejects(Hashing.digest('sha512', Readable.from([42])), /Unsupported data type: \[object Number\]/);

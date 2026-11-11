@@ -447,17 +447,6 @@ describe('OcflObject with a malformed or missing inventory', () => {
       await assertFiles(o, { 'd/x': 'x' });
     });
 
-    it('a stream from createWritable() fails with FILE_EXISTS when closed onto a directory', async () => {
-      const o = await objectWithFiles('conflict-writable');
-      await o.update(async (t) => {
-        const writer = (await t.createWritable('d')).getWriter();
-        await writer.write('new');
-        await assert.rejects(writer.close(), ocflError('FILE_EXISTS'));
-      });
-      assert.strictEqual(o.inventory?.head, 'v1');
-      await assertFiles(o, files);
-    });
-
     it('import() throws FILE_EXISTS for a file inside an existing file, importing nothing', async () => {
       const source = path.join(tempdir, 'conflict-import-source');
       await fs.promises.mkdir(path.join(source, 'a'), { recursive: true });
@@ -480,13 +469,11 @@ describe('OcflObject with a malformed or missing inventory', () => {
       await assertFiles(o, files);
     });
 
-    it('write() and createWritable() store a logical path in its normalised form', async () => {
+    it('write() stores a logical path in its normalised form', async () => {
       const o = testObject({ id: 'conflict-normalised', root: path.join(tempdir, 'conflict-normalised') });
       await o.update(async (t) => {
         await t.write('./d//x', 'x');
-        const writer = (await t.createWritable('./e/./y/')).getWriter();
-        await writer.write('y');
-        await writer.close();
+        await t.write('./e/./y/', 'y');
         await assert.rejects(t.write('d', 'new'), ocflError('FILE_EXISTS'));
         await assert.rejects(t.write('e/y/z', 'new'), ocflError('FILE_EXISTS'));
         await t.write('d/x', 'replaced');
@@ -495,11 +482,10 @@ describe('OcflObject with a malformed or missing inventory', () => {
     });
 
     for (const logicalPath of ['', '.', './']) {
-      it(`write() and createWritable() reject the empty logical path "${logicalPath}"`, async () => {
+      it(`write() rejects the empty logical path "${logicalPath}"`, async () => {
         const o = await objectWithFiles(`conflict-empty-${logicalPath.length}`);
         await o.update(async (t) => {
           await assert.rejects(t.write(logicalPath, 'new'), ocflError('INVALID_LOGICAL_PATH'));
-          await assert.rejects(t.createWritable(logicalPath), ocflError('INVALID_LOGICAL_PATH'));
         });
         assert.strictEqual(o.inventory?.head, 'v1');
         await assertFiles(o, files);
@@ -581,18 +567,6 @@ describe('OcflObject with a malformed or missing inventory', () => {
     } finally {
       await fs.promises.chmod(path.join(dir, 'locked.txt'), 0o600);
     }
-  });
-
-  it('rolls back an update that leaves a writable stream open', async () => {
-    const o = testObject({ id: 'open-writer', root: path.join(tempdir, 'open-writer') });
-    await assert.rejects(
-      o.update(async (t) => {
-        await t.createWritable('a.txt');
-      }),
-      /Unfinished operations detected/,
-    );
-    await o.update(async (t) => t.write('b.txt', 'b'));
-    assert.strictEqual(await o.count(), 1);
   });
 });
 

@@ -1,17 +1,11 @@
 import crypto from 'node:crypto';
 import zlib from 'node:zlib';
-import type { Digests } from './types.ts';
 
 type DataType = string | ArrayBufferView | ArrayBufferLike;
 
 interface Hasher {
   update: (data: DataType) => Hasher;
   digest: () => string;
-}
-
-interface MultiHasher {
-  update: (data: DataType) => MultiHasher;
-  digest: () => Digests;
 }
 
 const encoder = new TextEncoder();
@@ -104,33 +98,8 @@ function createHasher(algorithm: string): Hasher {
   };
 }
 
-/**
- * Create a hasher instance for calculating multiple types of digest in one go.
- */
-function createMultiHasher(algorithms: string[]): MultiHasher {
-  const algoNames = algorithms.length ? [...new Set(algorithms)] : ['sha512'];
-  const hashers = algoNames.map((name) => [name, createHasher(name)] as const);
-  const multiHasher: MultiHasher = {
-    update(data) {
-      const bytes = toBytes(data);
-      for (const [, hash] of hashers) {
-        hash.update(bytes);
-      }
-      return this;
-    },
-    digest: () => Object.fromEntries(hashers.map(([name, hash]) => [name, hash.digest()])),
-  };
-  return multiHasher;
-}
-
-function createAnyHasher(algorithm: string | string[]): Hasher | MultiHasher {
-  return Array.isArray(algorithm) ? createMultiHasher(algorithm) : createHasher(algorithm);
-}
-
-async function digest(algorithm: string[], input: DataType | AsyncIterable<DataType>): Promise<Digests>;
-async function digest(algorithm: string, input: DataType | AsyncIterable<DataType>): Promise<string>;
-async function digest(algorithm: string | string[], input: DataType | AsyncIterable<DataType>): Promise<string | Digests> {
-  const hash = createAnyHasher(algorithm);
+async function digest(algorithm: string, input: DataType | AsyncIterable<DataType>): Promise<string> {
+  const hash = createHasher(algorithm);
   if (typeof input === 'object' && Symbol.asyncIterator in input) {
     for await (const chunk of input) {
       hash.update(chunk);
@@ -149,4 +118,4 @@ function getHexDigestLength(algorithm: string): number {
   return ALGORITHMS.get(algorithm)?.hexLength ?? 0;
 }
 
-export { createMultiHasher, digest, digestSync, getHexDigestLength, toBytes };
+export { createHasher, digest, digestSync, getHexDigestLength, toBytes };

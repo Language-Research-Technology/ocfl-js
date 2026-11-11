@@ -135,7 +135,7 @@ await object.update(
 
 `t.write()` takes a string (stored as UTF-8), a `Buffer` or other typed array, a `DataView`, an `ArrayBuffer`, a `Blob` or `File`, or any async iterable of bytes or strings, such as `fs.createReadStream()`, a web `ReadableStream` or an async generator. Decode base64 or hex yourself first, e.g. `t.write('a.bin', Buffer.from(text, 'base64'))`.
 
-Operations called concurrently in one transaction, such as with `Promise.all`, give the same result as awaiting them one after another in the order they were called. A stream from `t.createWritable()` takes its place in that order once its queued writes finish and it closes.
+Operations called concurrently in one transaction, such as with `Promise.all`, give the same result as awaiting them one after another in the order they were called.
 
 List all existing files in the object
 

@@ -219,7 +219,6 @@ export class LegacyOcflObject {
     get digestAlgorithm(): ContentAlgorithm;
     exists(): Promise<boolean>;
     files(version?: string): Promise<Generator<OcflObjectFile, void, unknown>>;
-    fixityAlgorithms: string[] | undefined;
     getFile(opt: LogicalPath | FileRefLogical | FileRefDigest | FileRefContent, version?: string, lazy?: boolean): OcflObjectFile | undefined;
     getInventory(version?: string): Promise<OcflObjectInventory | undefined>;
     get headVersion(): VersionNumber | undefined;
@@ -410,7 +409,6 @@ export class OcflObjectInventory {
 export class OcflObjectTransaction {
     commit(options?: CommitOptions): Promise<void>;
     copy(source: string, target: string): Promise<void>;
-    createWritable(logicalPath: string): Promise<WritableStream>;
     import(source: string, target?: string): Promise<void>;
     reinstate(logicalPath: string, versionName: string): Promise<number>;
     remove(logicalPath: string): Promise<void>;
@@ -444,7 +442,6 @@ export class OcflStorage {
 export type OcflStorageConfig = {
     root: string;
     layout?: OcflLayoutName | OcflLayoutConfig | undefined;
-    fixityAlgorithms?: string[] | undefined;
     digestAlgorithm?: ContentAlgorithm | undefined;
     contentDirectory?: string | undefined;
 };

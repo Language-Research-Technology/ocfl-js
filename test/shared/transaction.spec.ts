@@ -18,7 +18,7 @@ describe('transaction from update() with no callback', () => {
   let object: OcflObject;
 
   const read = (file: string) => fs.readFileSync(file, 'utf-8');
-  const begin = async (o = object) => (await o.update()) as OcflObjectTransaction;
+  const begin = async () => (await object.update()) as OcflObjectTransaction;
 
   beforeEach(async () => {
     tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-tests-transaction-'));
@@ -65,16 +65,6 @@ describe('transaction from update() with no callback', () => {
     await trx.commit();
   });
 
-  it('createWritable', async () => {
-    const trx = await begin();
-    const writer = (await trx.createWritable('test.txt')).getWriter();
-    await writer.write('test1');
-    await writer.write('test2');
-    await writer.close();
-    assert.strictEqual(read(path.join(workspace, 'v1/content/test.txt')), 'test1test2');
-    await trx.commit();
-  });
-
   it('write', async () => {
     const trx = await begin();
     const bytes = Uint8Array.from([1, 2, 3, 4, 5]);
@@ -107,24 +97,13 @@ describe('transaction from update() with no callback', () => {
     await trx.commit();
   });
 
-  it('write with fixity', async () => {
-    const withFixity = testObject({ id: 'test', root, fixityAlgorithms: ['size', 'crc32'] });
-    const trx = await begin(withFixity);
-    await trx.write('test.txt', 'Hello, World!');
-    await trx.commit();
-    const { fixity } = withFixity.inventory!;
-    assert(fixity!.size!['13']!.includes('v1/content/test.txt'));
-    assert(fixity!.crc32!.ec4ac3d0!.includes('v1/content/test.txt'));
-  });
-
-  it('records created, message, user and fixity on a later version, leaving earlier versions as they were', async () => {
-    const withFixity = testObject({ id: 'test', root, fixityAlgorithms: ['size'] });
-    let trx = await begin(withFixity);
+  it('records created, message and user on a later version, leaving earlier versions as they were', async () => {
+    let trx = await begin();
     await trx.write('a.txt', 'first');
     await trx.commit({ message: 'one', user: { name: 'ann' } });
-    const v1 = withFixity.inventory!.toJSON().versions.v1;
+    const v1 = object.inventory!.toJSON().versions.v1;
     const started = Date.now();
-    trx = await begin(withFixity);
+    trx = await begin();
     await trx.write('b.txt', 'second!');
     await trx.commit({ message: 'two', user: { name: 'bob', address: 'mailto:bob@example.com' } });
 
@@ -133,7 +112,6 @@ describe('transaction from update() with no callback', () => {
     assert.strictEqual(inventory.message, 'two');
     assert.deepStrictEqual(inventory.user, { name: 'bob', address: 'mailto:bob@example.com' });
     assert.ok(Date.parse(inventory.created) >= started - 1000);
-    assert.deepStrictEqual(inventory.fixity!.size, { 5: ['v1/content/a.txt'], 7: ['v2/content/b.txt'] });
     assert.deepStrictEqual(inventory.toJSON().versions.v1, v1);
   });
 

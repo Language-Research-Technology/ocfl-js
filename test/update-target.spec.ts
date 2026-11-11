@@ -61,15 +61,6 @@ describe('OcflObjectTransaction driven from an update target', () => {
     assert.deepStrictEqual(fs.readdirSync(storageRoot), ['objects']);
   });
 
-  it('records the fixity algorithms it is given', async () => {
-    const transaction = await OcflObjectTransaction.create(target, firstVersion(), ['md5']);
-    await transaction.write('a.txt', 'abc');
-
-    const committed = await transaction._commit();
-
-    assert.deepStrictEqual(committed?.toJSON().fixity, { md5: { [DIGESTS_OF_ABC.md5]: ['v1/content/a.txt'] } });
-  });
-
   it('refuses a root that holds something other than an object', async () => {
     await writeFiles(target.root, { 'stray.txt': 'stray' });
     const transaction = await OcflObjectTransaction.create(target, firstVersion());

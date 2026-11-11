@@ -51,10 +51,6 @@ class OcflObject {
   #id: string | undefined;
   #digestAlgorithm: ContentAlgorithm;
   #contentDirectory: string;
-  /**
-   * A default list of digest algorithms to be calculated for each file in this object and added to the fixity block.
-   */
-  fixityAlgorithms: string[] | undefined;
   #inventories: { [version: string]: OcflObjectInventory } = {};
   #latestRead = false;
 
@@ -66,14 +62,12 @@ class OcflObject {
     this.#configuredOcflVersion = config.ocflVersion;
     //this.contentVersion = null; // No content yet
     this.#id = config.id;
-    //this.fixityDigest = config.fixityDigest ?? this.digestAlgorithm;
     this.#digestAlgorithm = contentDigestAlgorithm(config.digestAlgorithm);
     const { contentDirectory = 'content' } = config;
     if (contentDirectory.includes('/') || contentDirectory === '.' || contentDirectory === '..') {
       throw new TypeError(`[OcflObject] config.contentDirectory must be a directory name, not "${contentDirectory}".`);
     }
     this.#contentDirectory = contentDirectory;
-    this.fixityAlgorithms = config.fixityAlgorithms;
   }
 
   /**
@@ -275,7 +269,6 @@ class OcflObject {
     const t = await OcflObjectTransaction.create(
       { root: this.root, workspace: this._workspace, storageRoot: this._storageRoot, ocflVersion: this.ocflVersion },
       newInv,
-      this.fixityAlgorithms ?? [],
     );
     // The caller may be the one to commit, so the cache is updated from the transaction it holds
     t.commit = async (options) => {

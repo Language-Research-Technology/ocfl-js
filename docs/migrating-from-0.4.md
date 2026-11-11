@@ -182,12 +182,12 @@ To check an object or storage root against the spec, use a dedicated OCFL valida
 
 ## Deprecated methods removed
 
-| Removed                                     | Use instead        |
-| ------------------------------------------- | ------------------ |
-| `OcflObjectFile.asBuffer()`                 | `buffer()`         |
-| `OcflObjectFile.asString()`                 | `text()`           |
-| `OcflObjectFile.asStream()`                 | `stream()`         |
-| `OcflObjectTransaction.createWriteStream()` | `createWritable()` |
+| Removed                                     | Use instead |
+| ------------------------------------------- | ----------- |
+| `OcflObjectFile.asBuffer()`                 | `buffer()`  |
+| `OcflObjectFile.asString()`                 | `text()`    |
+| `OcflObjectFile.asStream()`                 | `stream()`  |
+| `OcflObjectTransaction.createWriteStream()` | `write()`   |
 
 The `OcflObjectFile` replacements behave the same as the methods they replace. `OcflObjectTransaction.createWriteStream()` only ever threw `Not Implemented`.
 
@@ -270,7 +270,6 @@ Starting an update while another update of the same version is open now throws `
 
 Operations called concurrently in one update, such as with `Promise.all`, now give the same result as awaiting them one after another in the order they were called:
 
-- A stream from `createWritable()` takes its place in that order once its queued writes finish and it closes, and doesn't hold up other operations while it's open.
 - Each operation waits for the ones called before it. A stream passed to `write()` that's still waiting for input holds up later operations, so finish it before awaiting one of them.
 - A failed operation rejects its own promise and leaves nothing behind. Later operations carry on, so a later write of the same content stores it.
 - Every operation has to be awaited. `copy()` and `reinstate()` calls left unawaited used to take effect, but now count as unfinished operations and roll back the update.
@@ -281,8 +280,8 @@ Operations called concurrently in one update, such as with `Promise.all`, now gi
 
 When a logical path is replaced within the update that added its content:
 
-- Content no other logical path uses is removed, along with its manifest and fixity entries.
-- Content another logical path still uses moves to that path's content path, and its manifest and fixity entries follow it.
+- Content no other logical path uses is removed, along with its manifest entry.
+- Content another logical path still uses moves to that path's content path, and its manifest entry follows it.
 - Writing content identical to what's stored leaves the stored file in place.
 
 Content from earlier versions is never changed.
@@ -293,8 +292,8 @@ Content from earlier versions is never changed.
 
 For content stored by the update in progress:
 
-- `rename()` moves the file to the new logical path's content path, and its manifest and fixity entries follow it. If the content is stored at another logical path's content path, no file moves.
-- `remove()` follows the rules for [replacing a file](#replacing-a-file-within-one-update): content another logical path still uses moves to that path's content path, and content nothing uses is removed along with its manifest and fixity entries.
+- `rename()` moves the file to the new logical path's content path, and its manifest entry follows it. If the content is stored at another logical path's content path, no file moves.
+- `remove()` follows the rules for [replacing a file](#replacing-a-file-within-one-update): content another logical path still uses moves to that path's content path, and content nothing uses is removed along with its manifest entry.
 - Directories are handled file by file, so one can mix committed and new files.
 
 Renaming or removing a file from an earlier version still changes only the logical path.
@@ -367,12 +366,13 @@ Each public member now corresponds to something the OCFL specification or the li
 | `RemoveOptions`                                                                                          | Nothing: `remove()` takes only a logical path                                                                       |
 | `CommitOptions.force`                                                                                    | Nothing: a commit with no changes rolls back                                                                        |
 | The `options` argument of `write(path, data, options)`                                                   | Nothing: decode first, e.g. `Buffer.from(text, 'base64')`; strings are written as UTF-8                             |
-| The `options` argument of `createWritable(path, options)`                                                | Nothing: string chunks are written as UTF-8                                                                         |
+| `OcflObjectTransaction.createWritable()`                                                                 | `write(path, stream)`, which takes a stream or any async iterable                                                   |
 | `OcflObjectInventory.newVersion()`                                                                       | `object.update()`, which creates each new version                                                                   |
 | `inventory.isChanged`                                                                                    | `inventory.diffState(version0, version1)`; see [Read-only inventories](#read-only-inventories)                      |
 | `inventory.clone()`                                                                                      | `inventory.toJSON()`, which gives a plain copy of the inventory data                                                |
 | The `inventory.created`, `message` and `user` setters                                                    | `transaction.commit({ message, user })`; `created` is set when a version is committed                               |
-| The `inventory.fixity` setter                                                                            | The `fixityAlgorithms` option of an object or storage                                                               |
+| The `inventory.fixity` setter                                                                            | Nothing: fixity values are no longer written                                                                        |
+| The `fixityAlgorithms` option of an object or storage                                                    | Nothing: an existing `fixity` block is kept as it is                                                                |
 | The `OcflObjectInventoryMut` type                                                                        | `OcflObjectInventory`                                                                                               |
 | `OcflObject.export()`                                                                                    | `object.files(version)` and `file.stream()`; see [Writing a version out](#writing-a-version-out)                    |
 | `extensions.DigestAlgorithm`                                                                             | Nothing to replace: to add an algorithm from extension 0009, send a pull request to this library                    |
@@ -637,13 +637,12 @@ The remaining `_` members, such as `object._setInventory()`, `object._requireInv
 - An empty-string version is now always a version that doesn't exist. `inventory.versionState('')`, `inventory.files('')` and reading a lazy file looked up by logical path used to mean the head version, and looking up a file by digest or content path with an empty version used to search every version.
 - `object.import()` no longer empties the array of sources passed to it.
 - Importing a directory fails if any of its files fails. Previously the other files were committed and the failures were dropped.
-- An update that leaves a stream from `createWritable()` open now rolls back and rejects with "Unfinished operations detected" instead of never settling.
 - When an `update()` callback throws after one of its operations failed, the update now rolls back fully and rethrows the callback's error. Previously it rethrew the operation's error and left the workspace behind, so the next update of that object failed with `UPDATE_IN_PROGRESS`.
 - `update()` and `import()` throw `MUTABLE_HEAD_ACTIVE` and write nothing when the object has an active mutable head. Previously they created a new version, which extension 0005 forbids. See [Mutable head](../README.md#mutable-head-extension-0005).
 - `rename()` throws `FILE_NOT_FOUND` when the source doesn't exist, instead of doing nothing.
 - **Breaking:** `rename()` and `copy()` throw `FILE_EXISTS` when the target exists, even with identical content or when the target is the source. A target exists if it's a file, if it's a directory with anything in it (directories are never merged), or if it's inside a file. When they throw, nothing has changed. `rename()` used to replace the target, and `copy()` onto an existing target wrote an invalid object. To replace a target, remove it first in the same update, then copy or rename onto it.
-- **Breaking:** `write()`, a `createWritable()` stream when it closes, and `reinstate()` throw `FILE_EXISTS` for a file that would be inside an existing file. `write()` and the stream also throw it for a file that would be an existing directory with anything in it; `reinstate()` replaces the directory. When they throw, nothing has changed. They used to write an invalid object, in which one logical path was both a file and a directory. Writing over an existing file still replaces it. To put a file where a directory is, remove the directory first in the same update.
-- `write()` and `createWritable()` store a logical path in its normalised form, as `copy()`, `rename()` and `import()` do, so `./a//b.txt` is `a/b.txt`. An empty path, such as `''` or `.`, throws `INVALID_LOGICAL_PATH`.
+- **Breaking:** `write()` and `reinstate()` throw `FILE_EXISTS` for a file that would be inside an existing file. `write()` also throws it for a file that would be an existing directory with anything in it; `reinstate()` replaces the directory. When they throw, nothing has changed. They used to write an invalid object, in which one logical path was both a file and a directory. Writing over an existing file still replaces it. To put a file where a directory is, remove the directory first in the same update.
+- `write()` stores a logical path in its normalised form, as `copy()`, `rename()` and `import()` do, so `./a//b.txt` is `a/b.txt`. An empty path, such as `''` or `.`, throws `INVALID_LOGICAL_PATH`.
 - A logical path with a `..` segment, such as `a/../b`, is rejected instead of being normalised. A name that only starts with two dots, such as `..notes.txt`, is now accepted.
 - **Breaking:** an object id or `root` that maps to the storage root, outside it, or into its `extensions` directory throws `ID_INCOMPATIBLE_WITH_LAYOUT` from `objectRoot()`, `object()`, `has()` and `remove()`, and nothing is written. Previously objects could be written outside the storage root.
 - **Breaking:** the path-direct layout rejects an id with a `.` or `..` segment, such as `a/./b`, `../x` or `https://h/a/../b`, with `ID_INCOMPATIBLE_WITH_LAYOUT` instead of normalising it. This includes the encoded forms a URL parser resolves, such as `%2e%2e`, and `\` as a separator. A layout `suffix` with such a segment throws `INVALID_LAYOUT_CONFIG`. The flat-direct layout rejects the ids `.` and `..`.

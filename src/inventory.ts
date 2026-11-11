@@ -596,7 +596,7 @@ class OcflObjectInventory {
    * @throws {@link OcflError} `FILE_EXISTS` if the path is a directory, or is inside a file
    * @internal
    */
-  _add(logicalPath: string, digest: string, fixity?: { [x: string]: string }): boolean {
+  _add(logicalPath: string, digest: string): boolean {
     this._checkFilePath(logicalPath);
     if (this.getDigest(logicalPath) !== digest) {
       const releases = this._contentReleases([logicalPath]);
@@ -604,7 +604,7 @@ class OcflObjectInventory {
       this.#applyContentReleases(releases);
     }
     const existingPath = this.getContentPath(digest);
-    const digests = existingPath ? this.#fillFixity(existingPath, digest, fixity) : this.#addContent(logicalPath, digest, fixity);
+    const digests = existingPath ? this.#fillFixity(existingPath, digest) : this.#addContent(logicalPath, digest);
     if (this.getDigest(logicalPath) === digest) {
       return false;
     }

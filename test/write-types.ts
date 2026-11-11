@@ -25,9 +25,3 @@ export function pinWrite(t: OcflObjectTransaction) {
   // @ts-expect-error not data
   t.write('a', 42);
 }
-
-export function pinCreateWritable(t: OcflObjectTransaction) {
-  t.createWritable('a');
-  // @ts-expect-error createWritable takes no options
-  t.createWritable('a', { encoding: 'base64' });
-}
