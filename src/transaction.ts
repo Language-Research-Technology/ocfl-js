@@ -4,7 +4,7 @@ import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { OcflError } from './error.ts';
-import type { ContentRelease, OcflObjectInventory } from './inventory.ts';
+import type { ContentRelease, DeletePlan, OcflObjectInventory } from './inventory.ts';
 import * as store from './store.ts';
 import type { OcflVersion, WriteFileData } from './types.ts';
 import {
@@ -631,17 +631,30 @@ class OcflObjectTransaction {
   }
 
   /**
-   * Remove a file or directory
+   * Remove a file, or every file below a directory
    * @param logicalPath - A path relative to the object content directory
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if nothing is at `logicalPath`
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `logicalPath` is empty or leaves the object
    */
   async remove(logicalPath: string): Promise<void> {
     return this.#transact(async () => {
-      checkLogicalPath(logicalPath);
       const inventory = this.#inventory;
-      const plan = inventory._planDelete(logicalPath);
-      await this.#applyContentReleases(plan.releases);
-      inventory._applyDelete(plan);
+      const plan = inventory._planDelete(fileLogicalPath(logicalPath));
+      if (plan.paths.length === 0) {
+        throw new OcflError('FILE_NOT_FOUND', `Logical path "${logicalPath}" does not exist in object [${inventory.id}]`);
+      }
+      await this.#applyDelete(plan);
     });
+  }
+
+  /** Remove every file */
+  async clear(): Promise<void> {
+    return this.#transact(() => this.#applyDelete(this.#inventory._planClear()));
+  }
+
+  async #applyDelete(plan: DeletePlan) {
+    await this.#applyContentReleases(plan.releases);
+    this.#inventory._applyDelete(plan);
   }
 
   /** `#inTurn` for an operation with nothing to prepare */

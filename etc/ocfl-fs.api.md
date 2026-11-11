@@ -60,6 +60,8 @@ export type Digests = {
 
 // @public
 export interface Draft {
+    clear(): Promise<void>;
+    remove(path: string): Promise<void>;
     write(path: string, content: WriteContent): Promise<void>;
 }
 
@@ -413,6 +415,7 @@ export class OcflObjectInventory {
 
 // @public
 export class OcflObjectTransaction {
+    clear(): Promise<void>;
     commit(options?: CommitOptions): Promise<void>;
     copy(source: string, target: string): Promise<void>;
     import(source: string, target?: string): Promise<void>;

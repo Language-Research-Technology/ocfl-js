@@ -123,9 +123,9 @@ try {
 | `ID_INCOMPATIBLE_WITH_LAYOUT` | The storage layout can't map the object id, or the id or `root` maps to the storage root, outside it, or into `extensions`   |
 | `UNSUPPORTED_LAYOUT`          | `layout` isn't a supported name or config, or a root's `ocfl_layout.json` names an unsupported layout                        |
 | `INVALID_LAYOUT_CONFIG`       | A layout rejects its parameters, or a root's layout extension `config.json` isn't a JSON object or names another layout      |
-| `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`, or a path to write is empty                    |
+| `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`, or a path to write or remove is empty          |
 | `INVALID_PATH`                | A path given to `object.readFile()`, `stat()` or `createReadable()` is absolute or leaves the object root                    |
-| `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain               |
+| `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()`, `rename()` or `remove()` names a path the object doesn't contain     |
 | `FILE_EXISTS`                 | `copy()` or `rename()` names a target that exists; see [Other behaviour changes](#other-behaviour-changes)                   |
 | `FILE_EXISTS`                 | Two sources of one `object.import()` produce the same logical path, or one inside a file                                     |
 | `FILE_EXISTS`                 | A written, imported or reinstated file would be inside a file, or a written or imported file would be a directory            |
@@ -639,6 +639,7 @@ The remaining `_` members, such as `object._setInventory()`, `object._requireInv
 - Importing a directory fails if any of its files fails. Previously the other files were committed and the failures were dropped.
 - When an `update()` callback throws after one of its operations failed, the update now rolls back fully and rethrows the callback's error. Previously it rethrew the operation's error and left the workspace behind, so the next update of that object failed with `UPDATE_IN_PROGRESS`.
 - `update()` and `import()` throw `MUTABLE_HEAD_ACTIVE` and write nothing when the object has an active mutable head. Previously they created a new version, which extension 0005 forbids. See [Mutable head](../README.md#mutable-head-extension-0005).
+- **Breaking:** `remove()` throws `FILE_NOT_FOUND` when nothing is at the path, instead of doing nothing, and `INVALID_LOGICAL_PATH` for an empty path. Its path is normalised first, so `./raw//1.wav` removes `raw/1.wav`.
 - `rename()` throws `FILE_NOT_FOUND` when the source doesn't exist, instead of doing nothing.
 - **Breaking:** `rename()` and `copy()` throw `FILE_EXISTS` when the target exists, even with identical content or when the target is the source. A target exists if it's a file, if it's a directory with anything in it (directories are never merged), or if it's inside a file. When they throw, nothing has changed. `rename()` used to replace the target, and `copy()` onto an existing target wrote an invalid object. To replace a target, remove it first in the same update, then copy or rename onto it.
 - **Breaking:** `write()` and `reinstate()` throw `FILE_EXISTS` for a file that would be inside an existing file. `write()` also throws it for a file that would be an existing directory with anything in it; `reinstate()` replaces the directory. When they throw, nothing has changed. They used to write an invalid object, in which one logical path was both a file and a directory. Writing over an existing file still replaces it. To put a file where a directory is, remove the directory first in the same update.

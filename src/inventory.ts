@@ -140,7 +140,7 @@ interface RenamePlan {
   releases: ContentRelease[];
 }
 
-interface DeletePlan {
+export interface DeletePlan {
   paths: string[];
   releases: ContentRelease[];
 }
@@ -849,7 +849,16 @@ class OcflObjectInventory {
   }
 
   /**
-   * Apply a plan from {@link _planDelete}, which must be from the current state
+   * {@link _planDelete} for every file
+   * @internal
+   */
+  _planClear(): DeletePlan {
+    const paths = Object.values(this.state).flat();
+    return { paths, releases: this._contentReleases(paths) };
+  }
+
+  /**
+   * Apply a plan from {@link _planDelete} or {@link _planClear}, which must be from the current state
    * @internal
    */
   _applyDelete({ paths, releases }: DeletePlan) {

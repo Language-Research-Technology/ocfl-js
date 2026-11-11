@@ -29,6 +29,17 @@ interface Draft {
    * @throws `TypeError` if `content` is not a {@link WriteContent}.
    */
   write(path: string, content: WriteContent): Promise<void>;
+
+  /**
+   * Removes a file, or every file below a directory, from the draft. Earlier versions keep it.
+   *
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if `path` is not in the draft.
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
+   */
+  remove(path: string): Promise<void>;
+
+  /** Removes every file from the draft. */
+  clear(): Promise<void>;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -84,6 +95,14 @@ class ObjectDraft implements Draft {
   async write(path: string, content: WriteContent): Promise<void> {
     checkContent(content);
     return this.#open.write(path, content);
+  }
+
+  async remove(path: string): Promise<void> {
+    return this.#open.remove(path);
+  }
+
+  async clear(): Promise<void> {
+    return this.#open.clear();
   }
 }
 
