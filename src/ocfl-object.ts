@@ -55,6 +55,7 @@ interface OcflObject {
    * @throws {@link OcflError} `INVALID_OBJECT` if the object's declaration has been removed or damaged, or the object is now inside another object, since it was opened.
    * @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE` if the object has an active mutable head (extension 0005).
    * @throws {@link OcflError} `VERSION_LIMIT_REACHED` if the object's version names are zero-padded and the next one couldn't start with a zero, as OCFL requires (E011): `v01` to `v09` leaves none.
+   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is updating the object.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws `TypeError` if the message or the user's name is missing or empty.
    * @throws Whatever `change` or a draft operation throws.
@@ -353,7 +354,10 @@ async function createObject(
     contentDirectory: 'content',
   });
   const committed = await commitDraft(updateTarget(storageRoot, objectRoot, ocflVersion), inventory, details, build);
-  return new OpenedObject(storageRoot, objectRoot, ocflVersion, committed as OcflObjectInventory);
+  if (!committed) {
+    throw new Error(`No first version of <${id}> was committed.`);
+  }
+  return new OpenedObject(storageRoot, objectRoot, ocflVersion, committed);
 }
 
 export { createObject, type OcflObject, openObject, type User, type Version };

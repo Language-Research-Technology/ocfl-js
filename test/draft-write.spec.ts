@@ -90,6 +90,21 @@ describe('writing a file to a draft', () => {
       ['a DataView', () => new DataView(encode('héllo').buffer), /Unsupported data type: \[object DataView\]/],
       ['a Uint16Array', () => new Uint16Array(4), /Unsupported data type: \[object Uint16Array\]/],
       ['an iterable yielding something other than bytes or strings', () => Readable.from([{ text: 'héllo' }]), /Unsupported data type: \[object Object\]/],
+      [
+        'an async generator yielding a Uint16Array after a string',
+        async function* () {
+          yield 'hé';
+          yield new Uint16Array(4);
+        },
+        /Unsupported data type: \[object Uint16Array\]/,
+      ],
+      [
+        'an async generator yielding an ArrayBuffer',
+        async function* () {
+          yield encode('héllo').buffer;
+        },
+        /Unsupported data type: \[object ArrayBuffer\]/,
+      ],
     ];
 
     for (const [name, content, message] of unsupported) {

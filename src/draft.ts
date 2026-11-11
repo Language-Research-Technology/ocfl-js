@@ -74,11 +74,35 @@ function checkedDetails(details: VersionDetails): VersionDetails {
   return { message, user: { name: user.name, ...(user.address !== undefined && { address: user.address }) } };
 }
 
-/** @throws `TypeError` if `content` is not a {@link WriteContent}. What a stream yields is checked as it is read. */
-function checkContent(content: unknown): void {
-  if (typeof content !== 'string' && !(content instanceof Uint8Array) && !isAsyncIterable(content)) {
-    throw new TypeError(`Unsupported data type: ${Object.prototype.toString.call(content)}`);
+function unsupportedContent(content: unknown): TypeError {
+  return new TypeError(`Unsupported data type: ${Object.prototype.toString.call(content)}`);
+}
+
+function isTextOrBytes(content: unknown): content is string | Uint8Array {
+  return typeof content === 'string' || content instanceof Uint8Array;
+}
+
+async function* checkedChunks(stream: AsyncIterable<unknown>): AsyncGenerator<string | Uint8Array> {
+  for await (const chunk of stream) {
+    if (!isTextOrBytes(chunk)) {
+      throw unsupportedContent(chunk);
+    }
+    yield chunk;
   }
+}
+
+/**
+ * @returns `content`, with what a stream yields checked as it is read
+ * @throws `TypeError` if `content` is not a {@link WriteContent}
+ */
+function checkedContent(content: unknown): WriteContent {
+  if (isTextOrBytes(content)) {
+    return content;
+  }
+  if (!isAsyncIterable(content)) {
+    throw unsupportedContent(content);
+  }
+  return checkedChunks(content);
 }
 
 class ObjectDraft implements Draft {
@@ -102,8 +126,7 @@ class ObjectDraft implements Draft {
   }
 
   async write(path: string, content: WriteContent): Promise<void> {
-    checkContent(content);
-    return this.#open.write(path, content);
+    return this.#open.write(path, checkedContent(content));
   }
 
   async import(source: string, target?: string): Promise<void> {
