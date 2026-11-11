@@ -1208,7 +1208,6 @@ describe('update', () => {
         { 'e/x': 'AAA', 'e/y': 'AAA' },
         ['v1/content/e/x'],
       ],
-      ['rename a directory into itself', [(t) => t.write('d/x', 'XXX'), (t) => t.rename('d', 'd/sub')], { 'd/sub/x': 'XXX' }, ['v1/content/d/sub/x']],
       [
         'rename a file, then write new content to the old name',
         [(t) => t.write('a', 'AAA'), (t) => t.rename('a', 'b'), (t) => t.write('a', 'ZZZ')],

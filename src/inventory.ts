@@ -158,8 +158,7 @@ interface CopyPlan extends TransferPlan {
   releases: ContentRelease[];
 }
 
-interface RenamePlan {
-  transfers: Transfer[];
+interface RenamePlan extends TransferPlan {
   releases: ContentRelease[];
 }
 
@@ -739,11 +738,6 @@ class OcflObjectInventory {
     }
   }
 
-  /** True if a file or directory occupies the path, or the path is inside a file, in the head state */
-  #isOccupied(logicalPath: string) {
-    return this.getDigest(logicalPath) !== undefined || this.#headDirectories.has(logicalPath) || this.#isInsideFile(logicalPath);
-  }
-
   /**
    * Check a file can be listed at the path, replacing any file already there
    * @throws {@link OcflError} `FILE_EXISTS` if the path is a directory, or is inside a file, in the head state
@@ -800,60 +794,32 @@ class OcflObjectInventory {
   }
 
   /**
-   * Rename a logical path or directory
-   * @throws {@link OcflError} `FILE_EXISTS` if the target exists
+   * Resolve a rename to its transfers, the files they replace and what happens to stored content,
+   * changing nothing. Only files this version stored at a source's own content path move.
+   * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
    * @internal
    */
-  _rename(srcLogicalPath: string, destLogicalPath: string): void {
-    this._applyRename(this._planRename(srcLogicalPath, destLogicalPath));
-  }
-
-  /**
-   * Resolve a rename to its transfers and the content it moves, changing nothing. Only files this
-   * version stored at a source's own content path move.
-   * @throws {@link OcflError} `FILE_NOT_FOUND` if the source is missing, `FILE_EXISTS` if the target exists
-   * @internal
-   */
-  _planRename(srcLogicalPath: string, destLogicalPath: string): RenamePlan {
-    // Filesystem paths are normalised, so the check and the state must use the same form as the file on disk
-    const target = normaliseLogicalPath(destLogicalPath);
-    const srcPrefix = srcLogicalPath.endsWith('/') ? srcLogicalPath : `${srcLogicalPath}/`;
-    const srcList = this.#indexFindPaths(srcPrefix);
-    const pairs = srcList.map((src): [string, string] => [src, `${target}/${src.slice(srcPrefix.length)}`]);
-    if (pairs.length === 0) {
-      pairs.push([srcLogicalPath, target]);
-    }
-    const transfers = pairs.map(([src, dest]) => {
-      const digests = this.#indexGet(src, this.head, true);
-      const digest = digests?.[this.digestAlgorithm];
-      if (!digests || !digest) {
-        throw new OcflError('FILE_NOT_FOUND', `Source logical path "${src}" does not exist in object [${this.id}]`);
-      }
-      return { src, dest, digest, digests };
-    });
-    if (!target || target === '.') {
-      throw new Error(`Target logical path cannot be empty`);
-    }
-    if (this.#isOccupied(target)) {
-      throw new OcflError('FILE_EXISTS', `Target logical path "${destLogicalPath}" already exists in object [${this.id}]`);
-    }
-    const releases = transfers.flatMap(({ src, dest, digest }) => {
+  _planRename(source: string, target: string): RenamePlan {
+    const plan = this.#planTransfer(source, target);
+    const moves = plan.transfers.flatMap(({ src, dest, digest }) => {
       const from = this.getContentPath(digest);
       return from === this.#ownContentPath(src) ? [{ digest, from, to: this.#ownContentPath(dest) }] : [];
     });
-    return { transfers, releases };
+    // A replaced file's content has to leave its content path before renamed content takes it
+    return { ...plan, releases: [...this._contentReleases(plan.replaced), ...moves] };
   }
 
   /**
    * Apply a plan from {@link _planRename}, which must be from the current head state
    * @internal
    */
-  _applyRename({ transfers, releases }: RenamePlan) {
+  _applyRename({ transfers, replaced, releases }: RenamePlan): void {
+    this.#delist(replaced);
     this.#applyContentReleases(releases);
-    for (const { src, dest, digest, digests } of transfers) {
+    for (const { src } of transfers) {
       this.#unlist(src);
-      this.#list(dest, digest, digests);
     }
+    this.#listTransfers(transfers);
   }
 
   /**
@@ -874,6 +840,11 @@ class OcflObjectInventory {
   _applyCopy({ transfers, replaced, releases }: CopyPlan): void {
     this.#delist(replaced);
     this.#applyContentReleases(releases);
+    this.#listTransfers(transfers);
+  }
+
+  /** List each transfer's destination, unless it already holds that content */
+  #listTransfers(transfers: Transfer[]) {
     for (const { dest, digest, digests } of transfers) {
       if (this.getDigest(dest) !== digest) {
         this.#list(dest, digest, digests);

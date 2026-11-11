@@ -65,6 +65,7 @@ export interface Draft {
     import(source: string, target?: string): Promise<void>;
     reinstate(path: string, version: number): Promise<void>;
     remove(path: string): Promise<void>;
+    rename(source: string, target: string): Promise<void>;
     write(path: string, content: WriteContent): Promise<void>;
 }
 

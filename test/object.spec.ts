@@ -355,56 +355,50 @@ describe('OcflObject with a malformed or missing inventory', () => {
     }
   }
 
-  for (const op of ['rename'] as const) {
-    describe(`${op}() onto an occupied target`, () => {
-      const files = { 'a.txt': 'a', 'b.txt': 'b', 'same.txt': 'a', 'dir/c.txt': 'c', 'other/d.txt': 'd' };
-      const cases = [
-        ['an existing file with different content', 'a.txt', 'b.txt'],
-        ['an existing file with identical content', 'a.txt', 'same.txt'],
-        ['the same path as source and target', 'a.txt', 'a.txt'],
-        ['a directory with content', 'a.txt', 'other'],
-        ['a target inside an existing file', 'a.txt', 'b.txt/x/y.txt'],
-        ['a dot-prefixed form of an existing file', 'a.txt', './b.txt'],
-        ['a directory source onto a directory with non-overlapping content', 'dir', 'other'],
-      ] as const;
+  describe('rename() onto an occupied target', () => {
+    const files = { 'a.txt': 'a', 'b.txt': 'b', 'same.txt': 'a', 'dir/c.txt': 'c', 'other/d.txt': 'd' };
+    const cases = [
+      ['a directory with content', 'a.txt', 'other'],
+      ['a target inside an existing file', 'a.txt', 'b.txt/x/y.txt'],
+      ['a directory source onto a directory with non-overlapping content', 'dir', 'other'],
+    ] as const;
 
-      cases.forEach(([name, source, target], index) => {
-        it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
-          const o = testObject({ id: `${op}-${index}`, root: path.join(tempdir, `${op}-occupied-${index}`) });
-          await o.update(async (t) => {
-            for (const [logicalPath, content] of Object.entries(files)) {
-              await t.write(logicalPath, content);
-            }
-            await assert.rejects(t[op](source, target), ocflError('FILE_EXISTS'));
-          });
-          await assertFiles(o, files);
-        });
-      });
-
-      it('throws FILE_NOT_FOUND for a missing source, even onto an existing file', async () => {
-        const o = testObject({ id: `${op}-missing`, root: path.join(tempdir, `${op}-occupied-missing`) });
-        await o.update(async (t) => t.write('a.txt', 'a'));
-        await assert.rejects(
-          o.update(async (t) => t[op]('missing.txt', 'a.txt')),
-          ocflError('FILE_NOT_FOUND'),
-        );
-      });
-
-      it('replaces a target removed first in the same transaction, keeping the earlier version', async () => {
-        const o = testObject({ id: `${op}-removed`, root: path.join(tempdir, `${op}-occupied-removed`) });
+    cases.forEach(([name, source, target], index) => {
+      it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
+        const o = testObject({ id: `rename-${index}`, root: path.join(tempdir, `rename-occupied-${index}`) });
         await o.update(async (t) => {
-          await t.write('a.txt', 'a');
-          await t.write('b.txt', 'b');
+          for (const [logicalPath, content] of Object.entries(files)) {
+            await t.write(logicalPath, content);
+          }
+          await assert.rejects(t.rename(source, target), ocflError('FILE_EXISTS'));
         });
-        await o.update(async (t) => {
-          await t.remove('b.txt');
-          await t[op]('a.txt', 'b.txt');
-        });
-        assert.strictEqual(await o.getFile('b.txt')?.text(), 'a');
-        assert.strictEqual(await o.getFile('b.txt', 'v1')?.text(), 'b');
+        await assertFiles(o, files);
       });
     });
-  }
+
+    it('throws FILE_NOT_FOUND for a missing source, even onto an existing file', async () => {
+      const o = testObject({ id: 'rename-missing-occupied', root: path.join(tempdir, 'rename-occupied-missing') });
+      await o.update(async (t) => t.write('a.txt', 'a'));
+      await assert.rejects(
+        o.update(async (t) => t.rename('missing.txt', 'a.txt')),
+        ocflError('FILE_NOT_FOUND'),
+      );
+    });
+
+    it('replaces a target removed first in the same transaction, keeping the earlier version', async () => {
+      const o = testObject({ id: 'rename-removed', root: path.join(tempdir, 'rename-occupied-removed') });
+      await o.update(async (t) => {
+        await t.write('a.txt', 'a');
+        await t.write('b.txt', 'b');
+      });
+      await o.update(async (t) => {
+        await t.remove('b.txt');
+        await t.rename('a.txt', 'b.txt');
+      });
+      assert.strictEqual(await o.getFile('b.txt')?.text(), 'a');
+      assert.strictEqual(await o.getFile('b.txt', 'v1')?.text(), 'b');
+    });
+  });
 
   describe('a logical path that would be both a file and a directory', () => {
     const files = { a: 'a', 'd/x': 'x' };

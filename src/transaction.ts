@@ -451,9 +451,12 @@ class OcflObjectTransaction {
       from: this.#contentFilePath(from),
       to: to === undefined ? undefined : this.#contentFilePath(to),
     }));
+    const targets = new Set(files.map(({ to }) => to));
+    // A file to remove that a move would overwrite is set aside first, so a failure can put it back
+    const setAside = files.filter(({ from, to }) => to === undefined && targets.has(from)).map(({ from }) => ({ from, to: this.#stagingPath() }));
     const moved: { from: string; to: string }[] = [];
     try {
-      for (const { from, to } of files) {
+      for (const { from, to } of [...setAside, ...files]) {
         if (to !== undefined) {
           await store.move(from, to);
           moved.push({ from, to });
@@ -472,11 +475,10 @@ class OcflObjectTransaction {
       throw error;
     }
     const vacated = files.filter(({ from }) => from !== placedAt);
+    const doomed = [...setAside.map(({ to }) => to), ...vacated.filter(({ from, to }) => to === undefined && !targets.has(from)).map(({ from }) => from)];
     await this.#blockCommitOnFailure(async () => {
-      for (const { from, to } of vacated) {
-        if (to === undefined) {
-          await fs.promises.rm(from, { recursive: true, force: true });
-        }
+      for (const file of doomed) {
+        await fs.promises.rm(file, { recursive: true, force: true });
       }
     });
     for (const dir of new Set(vacated.map(({ from }) => path.dirname(from)))) {
@@ -662,15 +664,14 @@ class OcflObjectTransaction {
    * Unless renaming files that are not yet commited, this operation will NOT rename the actual file name referenced by the manifest.
    * `source` can be a file or a directory.
    * @param source - The logical path to be renamed
-   * @param target - The target logical path. To replace an existing target, remove it first.
+   * @param target - The target logical path. A file already there is replaced; the same path as `source` does nothing.
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws {@link OcflError} `FILE_EXISTS` if `target` is an existing file or directory, or is inside an existing file, including when it is `source`
+   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, or if a path would become both a file and a directory
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
    */
   async rename(source: string, target: string): Promise<void> {
     return this.#transact(async () => {
-      checkLogicalPath(source);
-      checkLogicalPath(target);
-      const plan = this.#inventory._planRename(source, target);
+      const plan = this.#inventory._planRename(fileLogicalPath(source), fileLogicalPath(target));
       await this.#applyContentReleases(plan.releases);
       this.#inventory._applyRename(plan);
     });
