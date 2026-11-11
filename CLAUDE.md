@@ -11,3 +11,7 @@ Uses the default triage labels: `needs-triage`, `needs-info`, `ready-for-agent`,
 ### Domain docs
 
 Single-context: one root `GLOSSARY.md` and `docs/adr/` covering the package. See `docs/agents/domain.md`.
+
+## Consumers
+
+Before any breaking change to the public API, read `docs/consumers.md`: who uses the library and what they rely on.
