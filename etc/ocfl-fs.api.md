@@ -61,6 +61,7 @@ export type Digests = {
 // @public
 export interface Draft {
     clear(): Promise<void>;
+    import(source: string, target?: string): Promise<void>;
     remove(path: string): Promise<void>;
     write(path: string, content: WriteContent): Promise<void>;
 }

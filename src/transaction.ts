@@ -125,6 +125,10 @@ interface ImportFile {
   logicalPath: string;
 }
 
+interface HashedImportFile extends ImportFile {
+  digest: string;
+}
+
 /** Every file under `source`, with the logical path it becomes */
 async function listImportFiles(source: string, target: string | undefined): Promise<ImportFile[]> {
   const base = target === undefined ? undefined : importTarget(target);
@@ -546,22 +550,60 @@ class OcflObjectTransaction {
       for (const { logicalPath } of files) {
         this.#inventory._checkFilePath(logicalPath);
       }
-      const errors: unknown[] = [];
-      for (const file of hashed) {
+      const readable = hashed.map((file) => {
         if (!('digest' in file)) {
-          errors.push(file.error);
-          continue;
+          throw file.error;
         }
-        const { digest } = file;
-        const staging = this.#stagingPath();
-        await this.#addContent(file.logicalPath, digest, staging, () => this.#limit(() => this.#stageImportedFile(file.source, staging, digest))).catch(
-          (error) => errors.push(error),
-        );
-      }
-      if (errors.length) {
-        throw new AggregateError(errors, `Cannot import ${sources.map(({ source }) => source).join(', ')}`);
-      }
+        return file;
+      });
+      const staged = await this.#stageImport(readable);
+      // Past here a failure can't be put back: files the import replaced are already gone
+      await this.#blockCommitOnFailure(async () => {
+        for (const { logicalPath, digest } of readable) {
+          const staging = staged.get(digest) ?? this.#stagingPath();
+          staged.delete(digest);
+          await this.#addContent(logicalPath, digest, staging);
+        }
+      });
     };
+  }
+
+  /**
+   * Copy in the content the object won't otherwise hold once `files` are added, changing neither the inventory nor the content directory.
+   * @returns Where each digest's content is staged
+   */
+  async #stageImport(files: HashedImportFile[]): Promise<Map<string, string>> {
+    const imported = new Map(files.map(({ logicalPath, digest }) => [logicalPath, digest]));
+    const staged = new Map<string, string>();
+    try {
+      for (const { source, digest } of files) {
+        if (!staged.has(digest) && !this.#keepsContent(digest, imported)) {
+          const staging = this.#stagingPath();
+          staged.set(digest, staging);
+          await this.#limit(() => this.#stageImportedFile(source, staging, digest));
+        }
+      }
+    } catch (error) {
+      await Promise.all(Array.from(staged.values(), (staging) => fs.promises.rm(staging, { recursive: true, force: true }).catch(() => {})));
+      throw error;
+    }
+    return staged;
+  }
+
+  /**
+   * Whether the object still holds the content of `digest` once the files of `imported` have replaced those at their logical paths
+   * @param imported - The digest each logical path is given
+   */
+  #keepsContent(digest: string, imported: Map<string, string>) {
+    const inventory = this.#inventory;
+    const contentPath = inventory.getContentPath(digest);
+    if (contentPath === undefined) {
+      return false;
+    }
+    // Only content this version stored is removed when its last file is replaced
+    return (
+      !contentPath.startsWith(`${inventory.head}/`) || (inventory.state[digest] ?? []).some((logicalPath) => (imported.get(logicalPath) ?? digest) === digest)
+    );
   }
 
   /**
@@ -574,7 +616,8 @@ class OcflObjectTransaction {
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `target` is empty or absolute, or contains `..`
    * @throws {@link OcflError} `UNSUPPORTED_FILE_TYPE` if `source` is, or contains, anything other than a regular file or directory, such as a symlink
    * @throws {@link OcflError} `FILE_EXISTS` if a file would be an existing directory, or inside an existing file, importing nothing. An existing file is replaced.
-   * @throws `AggregateError` of each file's error if any file can't be imported, including {@link OcflError} `SOURCE_CHANGED` if a file changed while it was being imported
+   * @throws {@link OcflError} `SOURCE_CHANGED` if a file changed while it was being imported
+   * @throws The error of the first file that can't be imported, as it is. A failed import adds nothing, unless a copied file can't be put in place, which fails the commit.
    */
   async import(source: string, target?: string): Promise<void> {
     return this._importAll([{ source, target }]);

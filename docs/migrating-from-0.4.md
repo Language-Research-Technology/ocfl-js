@@ -138,7 +138,7 @@ try {
 
 Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`. Invalid layout parameters are the exception: they throw `INVALID_LAYOUT_CONFIG`, because a storage root's `config.json` can hold them too.
 
-An import checks its targets and walks its sources before reading any file, and throws `INVALID_LOGICAL_PATH`, `UNSUPPORTED_FILE_TYPE` or `FILE_EXISTS` directly. If files then fail to import, it throws an `AggregateError` whose `errors` holds the error for each failed file, with its `code` where it has one.
+An import checks its targets and walks its sources before reading any file, and throws `INVALID_LOGICAL_PATH`, `UNSUPPORTED_FILE_TYPE` or `FILE_EXISTS` directly. If a file then fails to import, it throws the error of the first file that failed, as it is: an `OcflError` such as `SOURCE_CHANGED`, or the file system's error. An import that fails adds none of its files, so an update that catches the error and carries on commits nothing of that import.
 
 ## Errors for invalid OCFL content
 
@@ -636,7 +636,7 @@ The remaining `_` members, such as `object._setInventory()`, `object._requireInv
 - `'latest'` now works as a version name in `getFile()` and the inventory methods that take a version. It previously matched nothing, and looking up a file by digest or content path threw a `TypeError`.
 - An empty-string version is now always a version that doesn't exist. `inventory.versionState('')`, `inventory.files('')` and reading a lazy file looked up by logical path used to mean the head version, and looking up a file by digest or content path with an empty version used to search every version.
 - `object.import()` no longer empties the array of sources passed to it.
-- Importing a directory fails if any of its files fails. Previously the other files were committed and the failures were dropped.
+- Importing a directory fails if any of its files fails, with the error of the first file that failed. Previously the other files were committed and the failures were dropped.
 - When an `update()` callback throws after one of its operations failed, the update now rolls back fully and rethrows the callback's error. Previously it rethrew the operation's error and left the workspace behind, so the next update of that object failed with `UPDATE_IN_PROGRESS`.
 - When an operation fails and its changes to the stored files can't be undone, `update()` throws that operation's own error once the callback returns, so `error.code` is the operation's. Previously it threw a plain `Error` with the operation's error as its `cause`.
 - `update()` and `import()` throw `MUTABLE_HEAD_ACTIVE` and write nothing when the object has an active mutable head. Previously they created a new version, which extension 0005 forbids. See [Mutable head](../README.md#mutable-head-extension-0005).

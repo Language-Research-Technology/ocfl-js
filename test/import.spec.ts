@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import type { OcflObject } from '../src/object.ts';
+import { ocflError } from './ocfl-error.ts';
 import { testObject } from './test-object.ts';
 
 const CONCURRENCY_LIMIT = 10;
@@ -107,14 +108,7 @@ describe('import', () => {
       await fs.promises.writeFile(file, 'changed before the copy');
       return copyFile(from, to);
     });
-    await assert.rejects(object.import(source), (e) => {
-      assert.ok(e instanceof AggregateError);
-      assert.deepStrictEqual(
-        e.errors.map((error: { code?: string }) => error.code),
-        ['SOURCE_CHANGED'],
-      );
-      return true;
-    });
+    await assert.rejects(object.import(source), ocflError('SOURCE_CHANGED'));
     await object.refresh();
     assert.strictEqual(object.headVersion?.toString(), 'v1');
     assert.strictEqual(fs.existsSync(path.join(object.root, 'v2')), false);

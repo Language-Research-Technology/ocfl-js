@@ -31,6 +31,19 @@ interface Draft {
   write(path: string, content: WriteContent): Promise<void>;
 
   /**
+   * Copies a file or directory from disk into the draft, at `target` or at the top. Files already there are replaced; the rest stay.
+   *
+   * Without a `target`, a directory's contents go at the top and a file keeps its own name there.
+   * Everything below a directory is copied, including hidden files. If a file fails, the first failure is thrown and the draft is left as it was.
+   *
+   * @throws {@link OcflError} `UNSUPPORTED_FILE_TYPE` if `source` is, or contains, anything but regular files and directories, such as a symlink.
+   * @throws {@link OcflError} `SOURCE_CHANGED` if a file changed while it was being read.
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `target` is empty or leaves the object.
+   * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory.
+   */
+  import(source: string, target?: string): Promise<void>;
+
+  /**
    * Removes a file, or every file below a directory, from the draft. Earlier versions keep it.
    *
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `path` is not in the draft.
@@ -95,6 +108,10 @@ class ObjectDraft implements Draft {
   async write(path: string, content: WriteContent): Promise<void> {
     checkContent(content);
     return this.#open.write(path, content);
+  }
+
+  async import(source: string, target?: string): Promise<void> {
+    return this.#open.import(source, target);
   }
 
   async remove(path: string): Promise<void> {
