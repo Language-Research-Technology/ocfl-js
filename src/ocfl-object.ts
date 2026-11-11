@@ -4,12 +4,12 @@ import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { checkedDetails, commitDraft, type Draft, type VersionDetails } from './draft.ts';
 import { OcflError } from './error.ts';
-import { OcflObjectInventory, VersionNumber, validateStoredInventory } from './inventory.ts';
+import { isVersionName, OcflObjectInventory, sidecarDigest, VersionNumber, validateStoredInventory } from './inventory.ts';
 import { type OcflFile, StoredFile } from './ocfl-file.ts';
 import type { StorageRoot } from './storage-root.ts';
 import { assertNoMutableHead, updateTarget } from './transaction.ts';
 import type { ContentAlgorithm, Inventory, OcflVersion } from './types.ts';
-import { findNamasteVersion, hasErrorCode, isDirEmpty, pathExists } from './utils.ts';
+import { findNamasteVersion, hasErrorCode, isDirEmpty, isNothingAtPath, pathExists } from './utils.ts';
 import { createError, ValidationError } from './validation.ts';
 
 const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
@@ -200,21 +200,16 @@ function checkVersions(inventory: OcflObjectInventory, file: string): void {
   }
 }
 
-/** The file's text, or `undefined` if nothing can be at its path: it doesn't exist, a directory above it is a file, or a name in it is too long */
+/** The file's text, or `undefined` if nothing can be at its path */
 async function readIfPresent(file: string): Promise<string | undefined> {
   try {
     return await fs.promises.readFile(file, 'utf8');
   } catch (error) {
-    if (hasErrorCode(error, 'ENOENT', 'ENOTDIR', 'ENAMETOOLONG')) {
+    if (isNothingAtPath(error)) {
       return undefined;
     }
     throw error;
   }
-}
-
-/** The digest an inventory sidecar records, if it records one */
-function sidecarDigest(sidecar: string | undefined): string | undefined {
-  return sidecar?.match(/\S+/)?.[0];
 }
 
 /**
@@ -223,7 +218,7 @@ function sidecarDigest(sidecar: string | undefined): string | undefined {
  */
 async function isHeadVersionInventory(objectRoot: string, head: unknown, text: string, digestAlgorithm: ContentAlgorithm, digest: string): Promise<boolean> {
   // Not yet validated, so it could name anything
-  if (typeof head !== 'string' || !/^v\d+$/.test(head)) {
+  if (typeof head !== 'string' || !isVersionName(head)) {
     return false;
   }
   const file = nodePath.join(objectRoot, head, INVENTORY_NAME);
@@ -285,6 +280,11 @@ async function readInventory(objectRoot: string): Promise<OcflObjectInventory | 
   return inventory;
 }
 
+/** For an `objectRoot` that the layout gives to the object `id`, and that holds the object `found` */
+function holdsAnotherObject(objectRoot: string, found: string, id: string): OcflError {
+  return new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot} holds the object <${found}>, not <${id}>.`);
+}
+
 /** The nearest directory between the storage root and `objectRoot` that is itself an object, if any */
 async function enclosingObject(storageRoot: string, objectRoot: string): Promise<string | undefined> {
   const ancestors: string[] = [];
@@ -341,7 +341,7 @@ async function openObject(storageRoot: string, objectRoot: string, id: string): 
   }
   const ocflVersion = await declaredVersion(storageRoot, objectRoot);
   if (inventory.id !== id) {
-    throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot} holds the object <${inventory.id}>, not <${id}>.`);
+    throw holdsAnotherObject(objectRoot, inventory.id, id);
   }
   return new OpenedObject(storageRoot, objectRoot, ocflVersion, inventory);
 }
@@ -383,4 +383,4 @@ async function createObject(
   return new OpenedObject(storageRoot, objectRoot, ocflVersion, committed);
 }
 
-export { createObject, type OcflObject, openObject, readInventory, sidecarDigest, type User, type Version };
+export { createObject, holdsAnotherObject, type OcflObject, openObject, readInventory, type User, type Version };

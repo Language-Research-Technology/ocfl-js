@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it, mock } from 'node:test';
 import type { StorageRoot } from '../src/index.ts';
-import { createObject, DETAILS, objectRootOf, sha512, textFiles, useTempRoots } from './helpers/drafts.ts';
+import { createObject, DETAILS, objectRootOf, readInventory, textFiles, useTempRoots } from './helpers/drafts.ts';
+import { writeInventory } from './helpers/storage-roots.ts';
 import { ocflError } from './ocfl-error.ts';
 
 const SIDECAR = 'inventory.json.sha512';
@@ -101,11 +102,8 @@ describe('opening an object while another writer is committing', () => {
       const root = await newRoot();
       const objectRoot = objectRootOf(root, 'escaping');
       await createObject(root, 'escaping', { 'a.txt': 'one' });
-      const inventory = JSON.parse(await fs.promises.readFile(path.join(objectRoot, 'inventory.json'), 'utf8'));
-      const content = JSON.stringify({ ...inventory, head: '../outside' });
-      await fs.promises.mkdir(path.join(root.path, 'outside'));
-      await fs.promises.writeFile(path.join(root.path, 'outside', 'inventory.json'), content);
-      await fs.promises.writeFile(path.join(root.path, 'outside', SIDECAR), `${sha512(content)} inventory.json\n`);
+      const content = JSON.stringify({ ...(await readInventory(objectRoot)), head: '../outside' });
+      await writeInventory(path.join(root.path, 'outside'), content);
       await fs.promises.writeFile(path.join(objectRoot, 'inventory.json'), content);
       await assert.rejects(root.open('escaping'), ocflError('INVALID_OBJECT', 'E060'));
     });

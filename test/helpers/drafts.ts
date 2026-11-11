@@ -68,6 +68,24 @@ export function workspaceOf(root: StorageRoot): string {
   return path.join(root.path, 'extensions', 'ocfl-js-workspace');
 }
 
+/** The lock of the object `id` in a storage root with the {@link FLAT} layout */
+export function lockOf(root: StorageRoot, id: string): string {
+  return path.join(workspaceOf(root), id, 'lock');
+}
+
+/** Where the object `id`, its directory in the workspace and its lock are, or would be, in a storage root with the {@link FLAT} layout */
+export function placesOf(root: StorageRoot, id: string): { objectRoot: string; workspace: string; lock: string } {
+  return { objectRoot: objectRootOf(root, id), workspace: path.join(workspaceOf(root), id), lock: lockOf(root, id) };
+}
+
+/** Asserts that a storage root with the {@link FLAT} layout has no `extensions` directory, so no workspace is left */
+export function assertNoWorkspace(root: StorageRoot): void {
+  assert.ok(!fs.existsSync(path.join(root.path, 'extensions')));
+}
+
+export const writeB = (draft: Draft): Promise<void> => draft.write('b.txt', 'b');
+export const writeC = (draft: Draft): Promise<void> => draft.write('c.txt', 'c');
+
 /** Creates the object `id` with `files`, keyed by logical path */
 export function createObject(root: StorageRoot, id: string, files: Record<string, string>): Promise<OcflObject> {
   return root.create(id, DETAILS, async (draft) => {
@@ -80,6 +98,13 @@ export function createObject(root: StorageRoot, id: string, files: Record<string
 /** The root inventory of the object at `objectRoot`, as it is on disk */
 export async function readInventory(objectRoot: string): Promise<Inventory> {
   return JSON.parse(await fs.promises.readFile(path.join(objectRoot, 'inventory.json'), 'utf8'));
+}
+
+/** Whether the root inventory of the object at `objectRoot` has the sha512 sidecar a commit writes for it */
+export async function sidecarMatches(objectRoot: string): Promise<boolean> {
+  const content = await fs.promises.readFile(path.join(objectRoot, 'inventory.json'), 'utf8');
+  const sidecar = await fs.promises.readFile(path.join(objectRoot, 'inventory.json.sha512'), 'utf8').catch(() => undefined);
+  return sidecar === `${sha512(content)} inventory.json`;
 }
 
 /** The text of each file of `version`, keyed by logical path */
@@ -136,6 +161,13 @@ export async function snapshot(dir: string): Promise<Record<string, string>> {
   });
   const files = entries.filter((e) => e.isFile()).map((e) => path.join(e.parentPath, e.name));
   return Object.fromEntries(await Promise.all(files.map(async (f) => [path.relative(dir, f), await fs.promises.readFile(f, 'utf8')])));
+}
+
+/** Creates the object `id` in `root`, at v1 holding `a.txt`, and says where it is and what its object root holds */
+export async function objectAtV1(root: StorageRoot, id: string) {
+  const object = await createObject(root, id, { 'a.txt': 'a' });
+  const places = placesOf(root, id);
+  return { root, object, ...places, before: await snapshot(places.objectRoot) };
 }
 
 /** Asserts that `update` on `object` wrote nothing: no version, no workspace, the disk as it was */

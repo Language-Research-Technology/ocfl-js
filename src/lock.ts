@@ -29,9 +29,17 @@ async function readLockedAt(lock: string): Promise<Date | undefined> {
   }
 }
 
-async function removeEmptyWorkspace(workspace: string, storageRoot: string): Promise<void> {
-  // A leftover empty directory is harmless, so failing to remove one must not mask the update's outcome
-  await store.removeEmptyAncestors(workspace, storageRoot).catch(() => {});
+/** Creates the lock file, holding the time and then `rest`. Exclusive, so of any overlapping writers only one takes the lock. */
+async function createLock(lock: string, rest: string): Promise<void> {
+  const handle = await fs.promises.open(lock, 'wx');
+  try {
+    await handle.writeFile(new Date().toISOString() + rest);
+  } catch (error) {
+    await fs.promises.rm(lock, { force: true }).catch(() => {});
+    throw error;
+  } finally {
+    await handle.close();
+  }
 }
 
 /**
@@ -42,20 +50,11 @@ async function removeEmptyWorkspace(workspace: string, storageRoot: string): Pro
  */
 async function takeLock(workspace: string, storageRoot: string, objectRootExists: boolean): Promise<void> {
   const lock = lockPath(workspace);
-  const taken = (time: string) => (objectRootExists ? time : `${time}\n${NO_OBJECT_ROOT}`);
+  const rest = objectRootExists ? '' : `\n${NO_OBJECT_ROOT}`;
   for (let attempt = 1; ; attempt++) {
     try {
       await fs.promises.mkdir(workspace, { recursive: true });
-      // Exclusive, so of any overlapping writers only one takes the lock
-      const handle = await fs.promises.open(lock, 'wx');
-      try {
-        await handle.writeFile(taken(new Date().toISOString()));
-      } catch (error) {
-        await fs.promises.rm(lock, { force: true }).catch(() => {});
-        throw error;
-      } finally {
-        await handle.close();
-      }
+      await createLock(lock, rest);
       return;
     } catch (error) {
       if (isAlreadyExists(error)) {
@@ -65,7 +64,7 @@ async function takeLock(workspace: string, storageRoot: string, objectRootExists
       }
       // Another update's clean-up removed the empty workspace before the lock was created in it
       if (!isNotFound(error) || attempt === MAX_LOCK_ATTEMPTS) {
-        await removeEmptyWorkspace(workspace, storageRoot);
+        await store.removeEmptyAncestorsQuietly(workspace, storageRoot);
         throw error;
       }
     }
@@ -75,7 +74,7 @@ async function takeLock(workspace: string, storageRoot: string, objectRootExists
 /** Removes the object's lock, and the workspace directories that leaves empty */
 async function releaseLock(workspace: string, storageRoot: string): Promise<void> {
   await fs.promises.rm(lockPath(workspace), { force: true });
-  await removeEmptyWorkspace(workspace, storageRoot);
+  await store.removeEmptyAncestorsQuietly(workspace, storageRoot);
 }
 
 /**
@@ -87,4 +86,4 @@ async function readLock(workspace: string): Promise<{ objectRootExisted: boolean
   return content === undefined ? undefined : { objectRootExisted: content.split('\n')[1] !== NO_OBJECT_ROOT };
 }
 
-export { readLock, releaseLock, takeLock };
+export { LOCK_NAME, NO_OBJECT_ROOT, readLock, releaseLock, takeLock };

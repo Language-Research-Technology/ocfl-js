@@ -8,16 +8,19 @@ import { emptyDirectoriesUnder } from './empty-directories.ts';
 import { mountSeparately, withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
+  assertNoWorkspace,
   assertVersionValid,
   createObject,
   DETAILS,
   FLAT,
+  objectAtV1,
   objectRootOf,
   snapshot,
   storedFiles,
   textFiles,
   useTempRoots,
   workspaceOf,
+  writeB,
 } from './helpers/drafts.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
 import { ocflError } from './ocfl-error.ts';
@@ -29,7 +32,6 @@ type Run = (change: Change) => Promise<OcflObject>;
 const ID = 'scoped';
 const NEW_ROOT_ENTRIES = ['0=ocfl_1.1', 'ocfl-js-workspace.md', 'ocfl_1.1.md', 'ocfl_layout.json'];
 
-const writeB: Change = (draft) => draft.write('b.txt', 'b');
 const isUnfinished = (e: unknown) => e instanceof Error && e.message.startsWith('Unfinished operations detected');
 const isFinishedDraft = (e: unknown) => e instanceof Error && !(e instanceof TypeError) && /draft/.test(e.message) && /finished/.test(e.message);
 
@@ -135,20 +137,14 @@ describe('an update that fails or finishes early', () => {
     (object: OcflObject): Run =>
     (change) =>
       object.update(DETAILS, change);
-  const assertNoExtensions = (root: StorageRoot) => assert.ok(!fs.existsSync(path.join(root.path, 'extensions')));
 
   /** A storage root holding the object {@link ID} at v1, and what it looks like on disk */
-  async function existingObject() {
-    const root = await newRoot();
-    const object = await createObject(root, ID, { 'a.txt': 'a' });
-    const objectRoot = objectRootOf(root, ID);
-    return { root, object, objectRoot, before: await snapshot(objectRoot) };
-  }
+  const existingObject = async () => objectAtV1(await newRoot(), ID);
 
   /** The object is at v1 on disk, as the object the update was called on and as opened afresh, with nothing left over */
   async function assertStillAtV1({ root, object, objectRoot, before }: Awaited<ReturnType<typeof existingObject>>) {
     assert.deepStrictEqual(await snapshot(objectRoot), before);
-    assertNoExtensions(root);
+    assertNoWorkspace(root);
     for (const o of [object, await root.open(ID)]) {
       assert.strictEqual(o.head.number, 1);
       assert.deepStrictEqual([...o.versions.keys()], [1]);
@@ -159,7 +155,7 @@ describe('an update that fails or finishes early', () => {
   /** Nothing of the object {@link ID} exists, and it can still be created */
   async function assertNoPartialObject(root: StorageRoot) {
     assert.ok(!fs.existsSync(objectRootOf(root, ID)));
-    assertNoExtensions(root);
+    assertNoWorkspace(root);
     assert.deepStrictEqual((await fs.promises.readdir(root.path)).sort(), NEW_ROOT_ENTRIES);
     await assert.rejects(root.open(ID), ocflError('OBJECT_NOT_FOUND'));
     const created = await root.create(ID, DETAILS, writeB);
@@ -188,7 +184,7 @@ describe('an update that fails or finishes early', () => {
         await end(creating(root));
 
         assert.deepStrictEqual(await fs.promises.readdir(objectRoot), []);
-        assertNoExtensions(root);
+        assertNoWorkspace(root);
         const created = await root.create(ID, DETAILS, writeB);
         assert.deepStrictEqual(await textFiles(created.head), { 'b.txt': 'b' });
       });
@@ -272,7 +268,7 @@ describe('an update that fails or finishes early', () => {
         await assert.rejects(outcome, (e) => e === rejection);
         assert.match((rejection as Error).message, /injected failure/);
         assert.deepStrictEqual(await snapshot(objectRootOf(root, ID)), before);
-        assertNoExtensions(root);
+        assertNoWorkspace(root);
       });
 
       for (const [name, content] of failingPartway) {
@@ -289,7 +285,7 @@ describe('an update that fails or finishes early', () => {
           assert.strictEqual((await textFiles(committed.head)).broken, undefined);
           assert.deepStrictEqual(await storedFiles(objectRoot, version), [`${version}/content/ok`]);
           await assertVersionValid(objectRoot, version);
-          assertNoExtensions(root);
+          assertNoWorkspace(root);
         });
       }
     }
@@ -402,11 +398,11 @@ describe('an update that fails or finishes early', () => {
       it(`removes the workspace and extensions directories left empty by ${name} update`, async () => {
         const root = await newRoot();
         await update(creating(root));
-        assertNoExtensions(root);
+        assertNoWorkspace(root);
 
         const object = await root.open(ID).catch(() => createObject(root, ID, {}));
         await update(updating(object));
-        assertNoExtensions(root);
+        assertNoWorkspace(root);
       });
 
       for (const layout of [FLAT, { extensionName: HASHED }] as const) {
@@ -449,7 +445,7 @@ describe('an update that fails or finishes early', () => {
       assert.strictEqual(updated.head.number, 2);
       assert.deepStrictEqual(await textFiles(updated.head), { 'a.txt': 'a', 'new.txt': 'new' });
       assert.deepStrictEqual(await textFiles((await root.open('b')).head), { 'b.txt': 'b' });
-      assertNoExtensions(root);
+      assertNoWorkspace(root);
     });
 
     it("reports the callback's error when the empty workspace cannot be removed", async () => {

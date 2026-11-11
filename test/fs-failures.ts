@@ -1,3 +1,4 @@
+import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { mock } from 'node:test';
@@ -42,6 +43,26 @@ export async function withFsFailure<T>(method: FsMethod, failing: string | Fails
   const spy = failFsMethod(method, fails, code);
   try {
     return await fn();
+  } finally {
+    spy.mock.restore();
+  }
+}
+
+/** Runs `fn` with `beforeOpen` called once, just before the first file at `file` is opened */
+export async function beforeOpening<T>(file: string, beforeOpen: () => Promise<unknown>, fn: () => Promise<T>): Promise<T> {
+  const real = fs.promises.open;
+  let called = false;
+  const spy = mock.method(fs.promises, 'open', async (...args: Parameters<typeof real>) => {
+    if (!called && String(args[0]) === file) {
+      called = true;
+      await beforeOpen();
+    }
+    return real.apply(fs.promises, args);
+  });
+  try {
+    const result = await fn();
+    assert.ok(called, `${file} was never opened`);
+    return result;
   } finally {
     spy.mock.restore();
   }

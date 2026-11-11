@@ -2,25 +2,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { OcflError } from './error.ts';
-import type { OcflObjectInventory } from './inventory.ts';
+import { isStagedRootInventory, isVersionName, type OcflObjectInventory, rootInventoryPaths, sidecarContent, sidecarDigest } from './inventory.ts';
 import { readLock, releaseLock } from './lock.ts';
-import { readInventory, sidecarDigest } from './ocfl-object.ts';
+import { holdsAnotherObject, readInventory } from './ocfl-object.ts';
 import * as store from './store.ts';
 import { objectWorkspace } from './transaction.ts';
-import { hasErrorCode, readIfExists } from './utils.ts';
+import { isNothingAtPath, readIfExists } from './utils.ts';
 
-const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
-
-const VERSION_DIRECTORY = /^v\d+$/;
-/** The root inventory or its sidecar, as a commit stages it before renaming it into place */
-const STAGED_INVENTORY = /^inventory\.json(\.[^.]+)?\.tmp$/;
+const { NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
 
 /** The names in `dir`, or none if nothing can be at its path */
 async function namesIn(dir: string): Promise<string[]> {
   try {
     return await fs.promises.readdir(dir);
   } catch (error) {
-    if (hasErrorCode(error, 'ENOENT', 'ENOTDIR', 'ENAMETOOLONG')) {
+    if (isNothingAtPath(error)) {
       return [];
     }
     throw error;
@@ -35,13 +31,12 @@ async function removeAll(dir: string, names: string[]): Promise<void> {
 
 /** Replaces the sidecar of the root inventory if it doesn't record that inventory's digest */
 async function completeSidecar(objectRoot: string, inventory: OcflObjectInventory): Promise<void> {
-  const sidecar = `${path.join(objectRoot, INVENTORY_NAME)}.${inventory.digestAlgorithm}`;
+  const { sidecar, stagedSidecar } = rootInventoryPaths(objectRoot, inventory.digestAlgorithm);
   if (sidecarDigest(await readIfExists(sidecar)) === inventory._digest) {
     return;
   }
-  const staged = `${sidecar}.tmp`;
-  await store.writeFile(staged, `${inventory._digest} ${INVENTORY_NAME}`);
-  await store.move(staged, sidecar);
+  await store.writeFile(stagedSidecar, sidecarContent(inventory));
+  await store.move(stagedSidecar, sidecar);
 }
 
 /**
@@ -52,14 +47,18 @@ async function completeSidecar(objectRoot: string, inventory: OcflObjectInventor
  * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if `objectRoot` holds an object with another id, changing nothing
  */
 async function recoverObject(storageRoot: string, objectRoot: string, id: string): Promise<void> {
-  const inventory = await readInventory(objectRoot);
-  if (inventory && inventory.id !== id) {
-    throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot} holds the object <${inventory.id}>, not <${id}>.`);
-  }
   const workspace = objectWorkspace(storageRoot, objectRoot);
-  const [lock, workspaceNames, rootNames] = await Promise.all([readLock(workspace), namesIn(workspace), namesIn(objectRoot)]);
+  const [inventory, lock, workspaceNames, rootNames] = await Promise.all([
+    readInventory(objectRoot),
+    readLock(workspace),
+    namesIn(workspace),
+    namesIn(objectRoot),
+  ]);
+  if (inventory && inventory.id !== id) {
+    throw holdsAnotherObject(objectRoot, inventory.id, id);
+  }
   // Only version directories: with some layouts another object's workspace can be below this one
-  const unfinished = workspaceNames.filter((name) => VERSION_DIRECTORY.test(name));
+  const unfinished = workspaceNames.filter(isVersionName);
   const declarations = rootNames.filter((name) => name.startsWith(NAMASTE_T + NAMASTE_PREFIX_OBJECT));
   if (!inventory && !lock && unfinished.length === 0 && declarations.length === 0) {
     throw new OcflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}, and nothing left of one to recover.`);
@@ -71,7 +70,7 @@ async function recoverObject(storageRoot: string, objectRoot: string, id: string
     const named = inventory?.versions ?? {};
     await removeAll(
       objectRoot,
-      rootNames.filter((name) => STAGED_INVENTORY.test(name) || (VERSION_DIRECTORY.test(name) && !Object.hasOwn(named, name))),
+      rootNames.filter((name) => isStagedRootInventory(name) || (isVersionName(name) && !Object.hasOwn(named, name))),
     );
   }
   if (inventory) {

@@ -2,26 +2,14 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
-import { type Draft, OcflError } from '../src/index.ts';
 import { withFsFailure } from './fs-failures.ts';
-import { createObject, DETAILS, objectRootOf, readInventory, sha512, snapshot, textFiles, useTempRoots, workspaceOf } from './helpers/drafts.ts';
-import { ocflError } from './ocfl-error.ts';
+import { DETAILS, objectAtV1, placesOf, readInventory, sidecarMatches, snapshot, textFiles, useTempRoots, writeB } from './helpers/drafts.ts';
+import { ocflError, rejection } from './ocfl-error.ts';
 
 const ID = 'committing';
 const INJECTED = /injected failure/;
 
-const writeB = (draft: Draft) => draft.write('b.txt', 'b');
-
-/** The rejection of `promise`, which must be `RECOVERY_NEEDED` */
-async function recoveryNeeded(promise: Promise<unknown>): Promise<OcflError> {
-  const error = await promise.then(
-    () => assert.fail('expected a rejection'),
-    (e: unknown) => e,
-  );
-  assert.ok(error instanceof OcflError, String(error));
-  assert.strictEqual(error.code, 'RECOVERY_NEEDED');
-  return error;
-}
+const recoveryNeeded = (promise: Promise<unknown>) => rejection(promise, 'RECOVERY_NEEDED');
 
 describe('the commit point', () => {
   const { newRoot } = useTempRoots('ocfl-commit-point-');
@@ -30,26 +18,17 @@ describe('the commit point', () => {
   });
 
   /** A storage root holding the object {@link ID} at v1, and where its files and lock are */
-  async function existingObject() {
-    const root = await newRoot();
-    const object = await createObject(root, ID, { 'a.txt': 'a' });
-    const objectRoot = objectRootOf(root, ID);
-    const workspace = path.join(workspaceOf(root), ID);
-    return { root, object, objectRoot, workspace, lock: path.join(workspace, 'lock'), before: await snapshot(objectRoot) };
-  }
+  const existingObject = async () => objectAtV1(await newRoot(), ID);
 
   /** A storage root with no objects, and where the object {@link ID} and its lock would be */
   async function emptyRoot() {
     const root = await newRoot();
-    const workspace = path.join(workspaceOf(root), ID);
-    return { root, objectRoot: objectRootOf(root, ID), workspace, lock: path.join(workspace, 'lock') };
+    return { root, ...placesOf(root, ID) };
   }
 
   /** The root inventory on disk and whether its sidecar records its digest */
   async function rootInventory(objectRoot: string) {
-    const content = await fs.promises.readFile(path.join(objectRoot, 'inventory.json'), 'utf8');
-    const sidecar = await fs.promises.readFile(path.join(objectRoot, 'inventory.json.sha512'), 'utf8').catch(() => undefined);
-    return { head: JSON.parse(content).head as string, sidecarMatches: sidecar?.split(' ')[0] === sha512(content) };
+    return { head: (await readInventory(objectRoot)).head, sidecarMatches: await sidecarMatches(objectRoot) };
   }
 
   describe('when replacing the sidecar fails, after the root inventory was replaced', () => {

@@ -5,7 +5,7 @@ import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { OcflError } from './error.ts';
-import type { ContentRelease, DeletePlan, OcflObjectInventory, RelistPlan } from './inventory.ts';
+import { type ContentRelease, type DeletePlan, type OcflObjectInventory, type RelistPlan, rootInventoryPaths, sidecarContent } from './inventory.ts';
 import { releaseLock, takeLock } from './lock.ts';
 import * as store from './store.ts';
 import type { OcflVersion, WriteFileData } from './types.ts';
@@ -334,7 +334,7 @@ class OcflObjectTransaction {
    * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if something the transaction made can't be removed; `cause` is what stopped it
    */
   async rollback(): Promise<void> {
-    await this.#discard((undoFailure) => undoFailure);
+    await this.#discard();
   }
 
   /**
@@ -343,11 +343,11 @@ class OcflObjectTransaction {
    * @internal
    */
   async _discardAfter(failure: unknown): Promise<void> {
-    await this.#discard(() => failure);
+    await this.#discard({ error: failure });
   }
 
-  /** @param cause - Given what stopped the undo, the `cause` of the `RECOVERY_NEEDED` thrown */
-  async #discard(cause: (undoFailure: unknown) => unknown): Promise<void> {
+  /** @param failure - Holds the `cause` of the `RECOVERY_NEEDED` thrown, which is otherwise what stopped the undo */
+  async #discard(failure?: { error: unknown }): Promise<void> {
     if (this.#committed) {
       return;
     }
@@ -356,7 +356,7 @@ class OcflObjectTransaction {
     try {
       await this.#undo();
     } catch (undoFailure) {
-      throw recoveryNeeded(this.#target.root, 'was not committed, and what it made could not all be removed', cause(undoFailure));
+      throw recoveryNeeded(this.#target.root, 'was not committed, and what it made could not all be removed', failure ? failure.error : undoFailure);
     }
   }
 
@@ -375,24 +375,20 @@ class OcflObjectTransaction {
    */
   async _commit(options?: CommitOptions): Promise<OcflObjectInventory | undefined> {
     if (!this.#committed) {
-      const count = this.#queue.filter((p) => !p.done).length;
-      if (count > 0) {
-        const unfinished = new Error(
-          `Unfinished operations detected (${count}). Make sure the callback is an async function that awaits every operation it starts.`,
-        );
-        await this._discardAfter(unfinished);
-        throw unfinished;
-      }
-      if (this.#commitBlocker) {
-        await this._discardAfter(this.#commitBlocker.error);
-        throw this.#commitBlocker.error;
-      }
-      // if there is no changes, abort commit
-      if (!this.#inventory._isChanged) {
-        await this.rollback();
-        return;
-      }
       try {
+        const count = this.#queue.filter((p) => !p.done).length;
+        if (count > 0) {
+          throw new Error(`Unfinished operations detected (${count}). Make sure the callback is an async function that awaits every operation it starts.`);
+        }
+        if (this.#commitBlocker) {
+          throw this.#commitBlocker.error;
+        }
+        // if there is no changes, abort commit
+        if (!this.#inventory._isChanged) {
+          // If this throws, the discard below does nothing: the transaction has ended
+          await this.rollback();
+          return;
+        }
         await this.#replaceRootInventory(options);
       } catch (error) {
         await this._discardAfter(error);
@@ -401,7 +397,7 @@ class OcflObjectTransaction {
       this.#committed = true;
       try {
         const rootInv = this.#rootInventoryPaths;
-        await store.move(rootInv.digestTmp, rootInv.digest);
+        await store.move(rootInv.stagedSidecar, rootInv.sidecar);
         await this.#releaseLock();
       } catch (error) {
         throw recoveryNeeded(this.#target.root, 'was committed, but could not be finished', error);
@@ -415,15 +411,15 @@ class OcflObjectTransaction {
     const root = this.#target.root;
     const rootInv = this.#rootInventoryPaths;
     if (this.#rootInventoryStaged) {
-      await fs.promises.rm(rootInv.inventoryTmp, { recursive: true, force: true });
-      await fs.promises.rm(rootInv.digestTmp, { recursive: true, force: true });
+      await fs.promises.rm(rootInv.stagedInventory, { recursive: true, force: true });
+      await fs.promises.rm(rootInv.stagedSidecar, { recursive: true, force: true });
     }
     await fs.promises.rm(this.#versionPath, { recursive: true, force: true });
     if (this.#createdNamaste) {
       await fs.promises.rm(this.#createdNamaste, { recursive: true, force: true });
     }
     if (!this.#rootExisted) {
-      await this.#removeEmptyAncestors(root);
+      await store.removeEmptyAncestorsQuietly(root, this.#target.storageRoot);
     }
     await this.#releaseLock();
   }
@@ -432,18 +428,8 @@ class OcflObjectTransaction {
     await releaseLock(this.#target.workspace, this.#target.storageRoot);
   }
 
-  /**
-   * Remove `dirPath` and the parents it leaves empty, below `stopAt`.
-   * A leftover empty directory is harmless, so failing to remove one must not mask the update's outcome.
-   */
-  async #removeEmptyAncestors(dirPath: string, stopAt = this.#target.storageRoot) {
-    await store.removeEmptyAncestors(dirPath, stopAt).catch(() => {});
-  }
-
   get #rootInventoryPaths() {
-    const inventory = path.join(this.#target.root, INVENTORY_NAME);
-    const digest = `${inventory}.${this.#inventory.digestAlgorithm}`;
-    return { inventory, digest, inventoryTmp: `${inventory}.tmp`, digestTmp: `${digest}.tmp` };
+    return rootInventoryPaths(this.#target.root, this.#inventory.digestAlgorithm);
   }
 
   /** Every step of the commit up to its commit point, the replacement of the root inventory, which is the last thing this does */
@@ -460,7 +446,7 @@ class OcflObjectTransaction {
 
     const inventoryContent = inventory.toString();
     inventory._digest = await Hashing.digest(digestAlgorithm, inventoryContent);
-    const digest = `${inventory._digest} ${INVENTORY_NAME}`;
+    const digest = sidecarContent(inventory);
 
     // write inventory.json to workspace
     await store.writeFile(invPath, inventoryContent);
@@ -482,9 +468,9 @@ class OcflObjectTransaction {
     invPath = path.join(objectVersionPath, INVENTORY_NAME);
     invDigestPath = `${invPath}.${digestAlgorithm}`;
     this.#rootInventoryStaged = true;
-    await store.copyFile(invPath, rootInv.inventoryTmp);
-    await store.copyFile(invDigestPath, rootInv.digestTmp);
-    await store.move(rootInv.inventoryTmp, rootInv.inventory);
+    await store.copyFile(invPath, rootInv.stagedInventory);
+    await store.copyFile(invDigestPath, rootInv.stagedSidecar);
+    await store.move(rootInv.stagedInventory, rootInv.inventory);
   }
 
   /** Content waits here, outside the content directory, until its digest decides whether it's kept */
@@ -602,7 +588,7 @@ class OcflObjectTransaction {
 
   /** A version shouldn't contain empty directories, so remove any at or above `start`, up to and including the content directory */
   async #pruneEmptyDirectories(start: string) {
-    await this.#removeEmptyAncestors(start, this.#versionPath);
+    await store.removeEmptyAncestorsQuietly(start, this.#versionPath);
   }
 
   /**

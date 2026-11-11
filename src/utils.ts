@@ -21,6 +21,11 @@ function isNotFound(error: unknown): boolean {
   return isErrnoException(error) && error.code === 'ENOENT';
 }
 
+/** Whether nothing can be at the path read: it doesn't exist, a directory above it is a file, or a name in it is too long */
+function isNothingAtPath(error: unknown): boolean {
+  return hasErrorCode(error, 'ENOENT', 'ENOTDIR', 'ENAMETOOLONG');
+}
+
 function isNotDir(error: unknown): boolean {
   return isErrnoException(error) && error.code === 'ENOTDIR';
 }
@@ -176,6 +181,7 @@ export {
   isErrnoException,
   isNonEmptyString,
   isNotFound,
+  isNothingAtPath,
   normaliseLogicalPath,
   parentDirectories,
   parseJsonObject,

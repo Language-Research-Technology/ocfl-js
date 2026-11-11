@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, before, describe, it, mock } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 import ocfl, {
   type OcflLayoutConfig,
   type LegacyOcflObject as OcflObject,
@@ -11,6 +11,7 @@ import ocfl, {
   type OcflVersion,
 } from '../../src/index.ts';
 import { emptyDirectoriesUnder } from '../empty-directories.ts';
+import { beforeOpening, withFsFailure } from '../fs-failures.ts';
 import { writeStorageRoot } from '../helpers/storage-roots.ts';
 import { testObject } from '../test-object.ts';
 
@@ -400,44 +401,27 @@ describe('workspace', () => {
   it("takes the lock when another update's cleanup removes the empty workspace first", async () => {
     const storage = await ocfl.storage({ root: path.join(tempdir, 'race') }).create();
     const o = storage.object('object-1');
-    const lock = path.join(o._workspace, 'lock');
-    const realOpen = fs.promises.open;
-    let raced = false;
-    const spy = mock.method(fs.promises, 'open', async (...args: Parameters<typeof realOpen>) => {
-      if (!raced && String(args[0]) === lock) {
-        raced = true;
-        await fs.promises.rm(path.join(storage.root, 'extensions'), { recursive: true });
-      }
-      return realOpen.apply(fs.promises, args);
-    });
-    try {
-      await o.update(async (t) => t.write('a.txt', 'a'));
-    } finally {
-      spy.mock.restore();
-    }
-    assert.ok(raced);
+    await beforeOpening(
+      path.join(o._workspace, 'lock'),
+      () => fs.promises.rm(path.join(storage.root, 'extensions'), { recursive: true }),
+      () => o.update(async (t) => t.write('a.txt', 'a')),
+    );
     assert.strictEqual(await o.getFile('a.txt')!.text(), 'a');
   });
 
   it('reports any other failure to take the lock, leaving nothing behind', async () => {
     const storage = await ocfl.storage({ root: path.join(tempdir, 'lock-fails') }).create();
     const o = storage.object('object-1');
-    const lock = path.join(o._workspace, 'lock');
-    const realOpen = fs.promises.open;
-    const spy = mock.method(fs.promises, 'open', async (...args: Parameters<typeof realOpen>) => {
-      if (String(args[0]) === lock) {
-        throw Object.assign(new Error('injected failure'), { code: 'EACCES' });
-      }
-      return realOpen.apply(fs.promises, args);
-    });
-    try {
-      await assert.rejects(
-        o.update(async (t) => t.write('a.txt', 'a')),
-        { code: 'EACCES' },
-      );
-    } finally {
-      spy.mock.restore();
-    }
+    await withFsFailure(
+      'open',
+      path.join(o._workspace, 'lock'),
+      () =>
+        assert.rejects(
+          o.update(async (t) => t.write('a.txt', 'a')),
+          { code: 'EACCES' },
+        ),
+      'EACCES',
+    );
     assert.ok(!fs.existsSync(o.root));
     assert.ok(!fs.existsSync(workspaceOf(storage.root)));
   });

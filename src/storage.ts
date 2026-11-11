@@ -174,9 +174,9 @@ class OcflStorage {
     // Workspace first, so if it can't be removed the object survives and remove can be retried
     await fs.promises.rm(object._workspace, { recursive: true, force: true });
     await fs.promises.rm(objectRoot, { recursive: true, force: true });
-    // The object is gone, so a retry would throw ObjectNotFoundError; a leftover empty directory is harmless
+    // The object is gone, so a retry would throw ObjectNotFoundError
     for (const dir of [object._workspace, objectRoot]) {
-      await store.removeEmptyAncestors(path.dirname(dir), this.root).catch(() => {});
+      await store.removeEmptyAncestorsQuietly(path.dirname(dir), this.root);
     }
   }
 

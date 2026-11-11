@@ -6,6 +6,7 @@ import { checkedDetails, type Draft, type VersionDetails } from './draft.ts';
 import { OcflError } from './error.ts';
 import type { BuiltInLayout, OcflExtensionConfig } from './extension.ts';
 import { createLayout, type LayoutClass, supportedLayoutClass } from './extensions/index.ts';
+import { LOCK_NAME, NO_OBJECT_ROOT } from './lock.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import { recoverObject } from './recover.ts';
 import * as store from './store.ts';
@@ -24,8 +25,8 @@ Each object has one directory here, \`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<
 \`<object path>\` is the object root relative to the storage root. While the object is being created
 or updated, that directory holds:
 
-- \`lock\`: the object's lock, a file whose first line is the time it was taken (ISO 8601, UTC). A
-  second line, \`no-object-root\`, means the object root did not exist when the lock was taken. Only
+- \`${LOCK_NAME}\`: the object's lock, a file whose first line is the time it was taken (ISO 8601, UTC). A
+  second line, \`${NO_OBJECT_ROOT}\`, means the object root did not exist when the lock was taken. Only
   the writer that created it may change the object. The library never waits for a lock, and never
   removes one because of its age.
 - \`<version>/\`: the new version being assembled, which is then moved into the object root.
@@ -240,20 +241,21 @@ function checkedId(id: string): string {
 }
 
 function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayout): StorageRoot {
+  const objectRootOf = (id: string) => nodePath.join(root, mappedObjectPath(root, layout, id));
   return deepFreeze({
     path: root,
     ocflVersion,
     layout: { extensionName: layout.name, ...layout.parameters } as Layout,
     async open(id: string) {
-      return openObject(root, nodePath.join(root, mappedObjectPath(root, layout, checkedId(id))), id);
+      return openObject(root, objectRootOf(checkedId(id)), id);
     },
     async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>) {
       const objectId = checkedId(id);
       const checked = checkedDetails(details);
-      return createObject(root, nodePath.join(root, mappedObjectPath(root, layout, objectId)), objectId, ocflVersion, checked, build);
+      return createObject(root, objectRootOf(objectId), objectId, ocflVersion, checked, build);
     },
     async recover(id: string) {
-      await recoverObject(root, nodePath.join(root, mappedObjectPath(root, layout, checkedId(id))), id);
+      await recoverObject(root, objectRootOf(checkedId(id)), id);
     },
   });
 }
