@@ -6,10 +6,10 @@ import type { BuiltInLayout } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
 import { createLayout } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
-import { readSpecText, readStorageRoot, writeStorageRoot } from './storage-root.ts';
+import { checkedObjectPath, mappedObjectPath, readSpecText, readStorageRoot, writeStorageRoot } from './storage-root.ts';
 import * as store from './store.ts';
 import type { OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
-import { findNamasteVersion, isDirEmpty, relativeWithin } from './utils.ts';
+import { findNamasteVersion, isDirEmpty } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { OCFL_VERSION, EXTENSIONS_DIR, WORKSPACE_EXTENSION, NAMASTE_PREFIX_OBJECT } = OcflConstants;
@@ -55,29 +55,16 @@ class OcflStorage {
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id, or maps it to the storage root, outside it, or into its extensions directory
    */
   objectRoot(id: string): string {
-    const objectRoot = this.#mapId(id);
-    this.#checkedObjectPath(objectRoot, `The object id <${id}>`);
+    const objectRoot = this.#requireLayout().map(id);
+    checkedObjectPath(this.root, objectRoot, `The object id <${id}>`);
     return objectRoot;
   }
 
-  #mapId(id: string): string {
+  #requireLayout(): BuiltInLayout {
     if (!this.#layout) {
       throw new Error('[OcflStorage] No layout defined');
     }
-    return this.#layout.map(id);
-  }
-
-  /**
-   * @returns `relObjectRoot` normalised
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it's the storage root, outside it, or in its extensions directory
-   */
-  #checkedObjectPath(relObjectRoot: string, label: string): string {
-    const relative = relativeWithin(this.root, path.join(this.root, relObjectRoot));
-    // Case-insensitive, so a case-insensitive filesystem can't map an object root into extensions/
-    if (!relative || relative.split(path.sep)[0]?.toLowerCase() === EXTENSIONS_DIR) {
-      throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${label} maps to "${relObjectRoot}", which can't hold an object in this storage root.`);
-    }
-    return relative;
+    return this.#layout;
   }
 
   /**
@@ -96,9 +83,9 @@ class OcflStorage {
     }
     let relative: string;
     if (root) {
-      relative = this.#checkedObjectPath(root, 'The object root');
+      relative = checkedObjectPath(this.root, root, 'The object root');
     } else if (id) {
-      relative = this.#checkedObjectPath(this.#mapId(id), `The object id <${id}>`);
+      relative = mappedObjectPath(this.root, this.#requireLayout(), id);
     } else {
       throw new TypeError('[OcflStorage] object id or root is required.');
     }

@@ -1,4 +1,4 @@
-import type { BinaryOptions, EncodingOptions, OcflObject, OcflObjectFile } from '../src/index.ts';
+import type { BinaryOptions, EncodingOptions, LegacyOcflObject as OcflObject, OcflObjectFile } from '../src/index.ts';
 
 declare function expectText(result: Promise<string>): void;
 declare function expectBytes(result: Promise<Uint8Array>): void;

@@ -5,9 +5,10 @@ import { OcflConstants } from './constants.ts';
 import { OcflError } from './error.ts';
 import type { BuiltInLayout, OcflExtensionConfig } from './extension.ts';
 import { createLayout, type LayoutClass, supportedLayoutClass } from './extensions/index.ts';
+import { type OcflObject, openObject } from './ocfl-object.ts';
 import * as store from './store.ts';
 import type { Layout, LayoutConfig, OcflVersion } from './types.ts';
-import { deepFreeze, findNamasteVersion, isDirEmpty, parseJsonObject, readIfExists } from './utils.ts';
+import { deepFreeze, findNamasteVersion, isDirEmpty, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
 import { createError, ValidationError } from './validation.ts';
 
 const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, NAMASTE_PREFIX_STORAGE, NAMASTE_T } = OcflConstants;
@@ -130,10 +131,56 @@ interface StorageRoot {
   readonly ocflVersion: '1.0' | '1.1';
   /** The storage root's layout, with every parameter present. */
   readonly layout: Layout;
+
+  /**
+   * Reads an object's inventory and returns the object as it is now. It does not change when later versions are committed.
+   *
+   * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is missing, corrupt or inconsistent, or the object has no declaration.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds another object.
+   * @example
+   * ```ts
+   * const object = await root.open('arcp://name,corpus/item/1');
+   * const file = object.head.files.get('ro-crate-metadata.json');
+   * const metadata = JSON.parse(await file!.text());
+   * ```
+   */
+  open(id: string): Promise<OcflObject>;
+}
+
+/**
+ * @returns `relObjectRoot` normalised
+ * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it's the storage root, outside it, or in its extensions directory
+ */
+function checkedObjectPath(root: string, relObjectRoot: string, label: string): string {
+  const relative = relativeWithin(root, nodePath.join(root, relObjectRoot));
+  // Case-insensitive, so a case-insensitive filesystem can't map an object root into extensions/
+  if (!relative || relative.split(nodePath.sep)[0]?.toLowerCase() === EXTENSIONS_DIR) {
+    throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${label} maps to "${relObjectRoot}", which can't hold an object in this storage root.`);
+  }
+  return relative;
+}
+
+/**
+ * @returns The object root of `id`, relative to the storage root
+ * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id, or maps it to the storage root, outside it, or into its extensions directory
+ */
+function mappedObjectPath(root: string, layout: BuiltInLayout, id: string): string {
+  return checkedObjectPath(root, layout.map(id), `The object id <${id}>`);
 }
 
 function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayout): StorageRoot {
-  return deepFreeze({ path: root, ocflVersion, layout: { extensionName: layout.name, ...layout.parameters } as Layout });
+  return deepFreeze({
+    path: root,
+    ocflVersion,
+    layout: { extensionName: layout.name, ...layout.parameters } as Layout,
+    async open(id: string) {
+      if (typeof id !== 'string' || id === '') {
+        throw new TypeError('The id of the object is required.');
+      }
+      return openObject(root, nodePath.join(root, mappedObjectPath(root, layout, id)), id);
+    },
+  });
 }
 
 function absolutePath(rootPath: string): string {
@@ -219,4 +266,4 @@ async function openStorageRoot(path: string): Promise<StorageRoot> {
   }
 }
 
-export { createStorageRoot, openStorageRoot, readSpecText, readStorageRoot, type StorageRoot, writeStorageRoot };
+export { checkedObjectPath, createStorageRoot, mappedObjectPath, openStorageRoot, readSpecText, readStorageRoot, type StorageRoot, writeStorageRoot };

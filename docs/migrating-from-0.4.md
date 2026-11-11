@@ -11,8 +11,8 @@ You must remove `@ocfl/ocfl` from your dependencies. `@ocfl/ocfl-fs` no longer d
 After removing it, change the package name in your imports:
 
 ```diff
-- import { OcflError, type OcflObject } from '@ocfl/ocfl';
-+ import { OcflError, type OcflObject } from '@ocfl/ocfl-fs';
+- import { OcflError, type OcflStorage } from '@ocfl/ocfl';
++ import { OcflError, type OcflStorage } from '@ocfl/ocfl-fs';
 ```
 
 ## Node.js 22.12 or later
@@ -536,9 +536,9 @@ import { createWriteStream } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { Writable } from 'node:stream';
-import type { OcflObject } from '@ocfl/ocfl-fs';
+import type { LegacyOcflObject } from '@ocfl/ocfl-fs';
 
-async function writeVersion(object: OcflObject, targetDir: string, version: string) {
+async function writeVersion(object: LegacyOcflObject, targetDir: string, version: string) {
   for (const file of await object.files(version)) {
     const target = path.join(targetDir, file.logicalPath!);
     await mkdir(path.dirname(target), { recursive: true });
@@ -614,11 +614,11 @@ Loading a storage root that declares either of them, or any other layout this li
 
 ### Public classes are types
 
-`OcflObject`, `OcflStorage`, `OcflObjectTransaction`, `OcflObjectInventory` and `OcflObjectFile` are now exported as types only. You can still name them in annotations, using `import type` or `type` in an import, but you can't construct or subclass them. They no longer exist at runtime, so `instanceof OcflStorage` and `class MyStorage extends OcflStorage` stop working. `new OcflStorage()` used to compile and give an object whose methods only threw.
+`OcflStorage`, `OcflObjectTransaction`, `OcflObjectInventory` and `OcflObjectFile` are now exported as types only, and so is the object class, under the name `LegacyOcflObject`. The name `OcflObject` now belongs to the object that `root.open()` returns. You can still name them in annotations, using `import type` or `type` in an import, but you can't construct or subclass them. They no longer exist at runtime, so `instanceof OcflStorage` and `class MyStorage extends OcflStorage` stop working. `new OcflStorage()` used to compile and give an object whose methods only threw.
 
 | Type                    | Get one from                                        |
 | ----------------------- | --------------------------------------------------- |
-| `OcflObject`            | `storage.object()`                                  |
+| `LegacyOcflObject`      | `storage.object()`                                  |
 | `OcflStorage`           | `storage()`, `createStorage()` or `loadStorage()`   |
 | `OcflObjectTransaction` | `object.update()`, which passes it to your callback |
 | `OcflObjectInventory`   | `object.getInventory()` or `object.inventory`       |

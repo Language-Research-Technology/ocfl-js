@@ -78,7 +78,7 @@ class OcflObject {
 
   /**
    * The digest algorithm used to identify files within the OCFL object. For an existing object, only reliable once its
-   * root inventory has been read, by {@link OcflObject.load} or any method that reads it. Until then, and for an object that
+   * root inventory has been read, by {@link LegacyOcflObject.load} or any method that reads it. Until then, and for an object that
    * doesn't exist yet, this is the configured algorithm or the library default.
    */
   get digestAlgorithm(): ContentAlgorithm {
@@ -87,7 +87,7 @@ class OcflObject {
 
   /**
    * The name of the directory holding each version's content. For an existing object, only reliable once its root
-   * inventory has been read, by {@link OcflObject.load} or any method that reads it. Until then, and for an object that doesn't
+   * inventory has been read, by {@link LegacyOcflObject.load} or any method that reads it. Until then, and for an object that doesn't
    * exist yet, this is the configured directory or the library default.
    */
   get contentDirectory(): string {
@@ -138,7 +138,7 @@ class OcflObject {
 
   /**
    * The OCFL version the object adheres to, eg 1.0, 1.1. For an existing object, only reliable once its root inventory
-   * has been read, by {@link OcflObject.load} or any method that reads it. Until then, and for an object that doesn't exist yet,
+   * has been read, by {@link LegacyOcflObject.load} or any method that reads it. Until then, and for an object that doesn't exist yet,
    * this is the configured version or the library default.
    */
   get ocflVersion(): OcflVersion {
@@ -315,14 +315,14 @@ class OcflObject {
    * @param source - A path to a file or directory in the local filesystem
    * @param target - The logical path the source becomes
    * @param options - The mode, and the message and user recorded in the version
-   * @throws The errors of {@link OcflObjectTransaction.import} and {@link OcflObject.update}
+   * @throws The errors of {@link OcflObjectTransaction.import} and {@link LegacyOcflObject.update}
    */
   async import(source: string, target?: string, options?: UpdateOptions): Promise<void>;
   /**
    * Import a file or directory from the local filesystem as one new version, without a target.
    * @param source - A path to a file or directory in the local filesystem
    * @param options - The mode, and the message and user recorded in the version
-   * @throws The errors of {@link OcflObjectTransaction.import} and {@link OcflObject.update}
+   * @throws The errors of {@link OcflObjectTransaction.import} and {@link LegacyOcflObject.update}
    */
   async import(source: string, options: UpdateOptions): Promise<void>;
   /**
@@ -330,7 +330,7 @@ class OcflObject {
    * @param sources - Each source, and the logical path it becomes
    * @param options - The mode, and the message and user recorded in the version
    * @throws {@link OcflError} `FILE_EXISTS` if two sources produce the same logical path
-   * @throws The errors of {@link OcflObjectTransaction.import} and {@link OcflObject.update}
+   * @throws The errors of {@link OcflObjectTransaction.import} and {@link LegacyOcflObject.update}
    */
   async import(sources: ImportSource[], options?: UpdateOptions): Promise<void>;
   async import(sources: string | ImportSource[], targetOrOptions?: string | UpdateOptions, options?: UpdateOptions): Promise<void> {
@@ -398,7 +398,7 @@ class OcflObject {
    * @param version - The object version name, eg: 'v1', 'v2'. Default to 'latest'. Only used if opt is a LogicalPath. Defaults to `'latest'`.
    * @param lazy - If true, always return a file instance even if the object inventory file is not loaded.
    * @returns `undefined` if the object has no such file.
-   * @throws {@link ObjectNotLoadedError} If not lazy and the inventory has not been read, by {@link OcflObject.load} or any method that reads it.
+   * @throws {@link ObjectNotLoadedError} If not lazy and the inventory has not been read, by {@link LegacyOcflObject.load} or any method that reads it.
    * @throws {@link ObjectNotFoundError} If not lazy and the loaded object does not exist.
    */
   getFile(opt: LogicalPath | FileRefLogical | FileRefDigest | FileRefContent, version?: string, lazy?: boolean): OcflObjectFile | undefined {
@@ -424,7 +424,7 @@ class OcflObject {
   }
 
   /**
-   * Return the latest version of the cached data from inventory.json which can be read using {@link OcflObject.getInventory}
+   * Return the latest version of the cached data from inventory.json which can be read using {@link LegacyOcflObject.getInventory}
    */
   get inventory(): OcflObjectInventory | undefined {
     return this.#inventories.latest;
@@ -457,7 +457,7 @@ class OcflObject {
   /**
    * Bring the cached latest inventory up to date, reading only the sidecar file if the object hasn't changed.
    * A loaded object keeps its last good inventory if a commit is in progress, and a later refresh picks up the new version.
-   * With nothing cached, behaves like {@link OcflObject.load}.
+   * With nothing cached, behaves like {@link LegacyOcflObject.load}.
    * File metadata from `load({ filesMetadata: true })` doesn't carry over to a new inventory.
    */
   async refresh(): Promise<void> {

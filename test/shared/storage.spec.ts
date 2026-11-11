@@ -3,7 +3,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it, mock } from 'node:test';
-import ocfl, { type OcflLayoutConfig, type OcflObject, type OcflStorage, type OcflStorageConfig, type OcflVersion } from '../../src/index.ts';
+import ocfl, {
+  type OcflLayoutConfig,
+  type LegacyOcflObject as OcflObject,
+  type OcflStorage,
+  type OcflStorageConfig,
+  type OcflVersion,
+} from '../../src/index.ts';
 import { emptyDirectoriesUnder } from '../empty-directories.ts';
 import { writeStorageRoot } from '../helpers/storage-roots.ts';
 import { testObject } from '../test-object.ts';
