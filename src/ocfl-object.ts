@@ -5,9 +5,10 @@ import * as Hashing from './digest.ts';
 import { checkedDetails, commitDraft, type Draft, type VersionDetails } from './draft.ts';
 import { OcflError } from './error.ts';
 import { isVersionName, OcflObjectInventory, sidecarDigest, VersionNumber, validateStoredInventory } from './inventory.ts';
+import { isLocked, updateInProgress } from './lock.ts';
 import { type OcflFile, StoredFile } from './ocfl-file.ts';
 import type { StorageRoot } from './storage-root.ts';
-import { assertNoMutableHead, updateTarget } from './transaction.ts';
+import { assertNoMutableHead, objectWorkspace, updateTarget } from './transaction.ts';
 import type { ContentAlgorithm, Inventory, OcflVersion } from './types.ts';
 import { findNamasteVersion, hasErrorCode, isDirEmpty, isNothingAtPath, pathExists } from './utils.ts';
 import { createError, ValidationError } from './validation.ts';
@@ -59,9 +60,9 @@ interface OcflObject {
    * @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE` if the object has an active mutable head (extension 0005).
    * @throws {@link OcflError} `VERSION_LIMIT_REACHED` if the object's version names are zero-padded and the next one couldn't start with a zero, as OCFL requires (E011): `v01` to `v09` leaves none.
    * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if a later version has been committed since this object was opened; open it again and retry.
-   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another update of this object is running; `lockedAt` says since when. The update never waits for it.
+   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another update of this object is running; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile. The update never waits for it.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
-   * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `UPDATE_IN_PROGRESS`. Don't simply repeat the update: call {@link StorageRoot.recover}, then open the object again to see whether it was committed.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `UPDATE_IN_PROGRESS`. Also thrown, before `change` runs and leaving the object unlocked, if an earlier update left an unfinished version in the workspace. Don't simply repeat the update: call {@link StorageRoot.recover}, then open the object again to see whether it was committed.
    * @throws `TypeError` if the message or the user's name is missing or empty.
    * @throws Whatever `change` or a draft operation throws; the update is discarded, and the object is as it was and isn't locked.
    * @example
@@ -320,22 +321,37 @@ async function declaredVersion(storageRoot: string, objectRoot: string): Promise
     throw invalidObject(`${objectRoot} has an inventory but no OCFL object declaration.`, { ocflCode: 'E003' });
   }
   if (outer !== undefined) {
-    throw asInvalidObject(createError('E082', objectRoot, `nested under the object at ${outer}`));
+    throw nestedObject(objectRoot, outer);
   }
   return ocflVersion;
 }
 
+/** For an object at `objectRoot`, which is inside the object at `outer` */
+function nestedObject(objectRoot: string, outer: string): OcflError {
+  return asInvalidObject(createError('E082', objectRoot, `nested under the object at ${outer}`));
+}
+
+/** For an `objectRoot` that the layout gives to the object `id`, and that is inside the object at `outer` */
+function insideAnotherObject(objectRoot: string, id: string, outer: string): OcflError {
+  return new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is inside the object at ${outer}.`);
+}
+
+/** For an `objectRoot` with an object declaration and no inventory, which no writer is working on */
+function declarationWithoutInventory(objectRoot: string): OcflError {
+  return invalidObject(`${objectRoot} has an OCFL object declaration but no inventory.`, { ocflCode: 'E063' });
+}
+
 /**
  * Opens the object `id` that the storage root's layout places at `objectRoot`.
- * @throws {@link OcflError} `OBJECT_NOT_FOUND` if `objectRoot` has neither an inventory nor an object declaration
- * @throws {@link OcflError} `INVALID_OBJECT` if it has only one of them, is inside another object, or its inventory can't be used
+ * @throws {@link OcflError} `OBJECT_NOT_FOUND` if `objectRoot` has no inventory, and either no object declaration or a lock held: a create that isn't committed
+ * @throws {@link OcflError} `INVALID_OBJECT` if it has only one of them and isn't locked, is inside another object, or its inventory can't be used
  * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it holds an object with another id
  */
 async function openObject(storageRoot: string, objectRoot: string, id: string): Promise<OcflObject> {
   const inventory = await readInventory(objectRoot);
   if (!inventory) {
-    if (await hasObjectDeclaration(objectRoot)) {
-      throw invalidObject(`${objectRoot} has an OCFL object declaration but no inventory.`, { ocflCode: 'E063' });
+    if ((await hasObjectDeclaration(objectRoot)) && !(await isLocked(objectWorkspace(storageRoot, objectRoot)))) {
+      throw declarationWithoutInventory(objectRoot);
     }
     throw new OcflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}.`);
   }
@@ -350,6 +366,7 @@ async function openObject(storageRoot: string, objectRoot: string, id: string): 
  * Creates the object `id` at `objectRoot`, where the storage root's layout places it, with the draft `build` leaves as its first version.
  * @param details - As {@link checkedDetails} returns them
  * @throws {@link OcflError} `OBJECT_EXISTS` if `objectRoot` has an object declaration or an inventory
+ * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if it has a declaration, no inventory and a lock held: a create that isn't committed
  * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it holds anything else, or is inside another object
  */
 async function createObject(
@@ -360,7 +377,13 @@ async function createObject(
   details: VersionDetails,
   build: (draft: Draft) => Promise<void>,
 ): Promise<OcflObject> {
-  if ((await hasObjectDeclaration(objectRoot)) || (await pathExists(nodePath.join(objectRoot, INVENTORY_NAME)))) {
+  const declared = await hasObjectDeclaration(objectRoot);
+  const hasInventory = await pathExists(nodePath.join(objectRoot, INVENTORY_NAME));
+  if (declared || hasInventory) {
+    const workspace = objectWorkspace(storageRoot, objectRoot);
+    if (!hasInventory && (await isLocked(workspace))) {
+      throw await updateInProgress(workspace);
+    }
     throw new OcflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}, where the storage root ${storageRoot} places <${id}>.`);
   }
   if (!(await isDirEmpty(objectRoot))) {
@@ -368,7 +391,7 @@ async function createObject(
   }
   const outer = await enclosingObject(storageRoot, objectRoot);
   if (outer !== undefined) {
-    throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is inside the object at ${outer}.`);
+    throw insideAnotherObject(objectRoot, id, outer);
   }
   const inventory = OcflObjectInventory.newVersion({
     id,
@@ -383,4 +406,16 @@ async function createObject(
   return new OpenedObject(storageRoot, objectRoot, ocflVersion, committed);
 }
 
-export { createObject, holdsAnotherObject, type OcflObject, openObject, readInventory, type User, type Version };
+export {
+  createObject,
+  declarationWithoutInventory,
+  enclosingObject,
+  holdsAnotherObject,
+  insideAnotherObject,
+  nestedObject,
+  type OcflObject,
+  openObject,
+  readInventory,
+  type User,
+  type Version,
+};

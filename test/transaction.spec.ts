@@ -76,6 +76,32 @@ describe('OcflObjectTransaction against a temporary directory', () => {
       assertAtV1(before, object);
     });
 
+    it('refuses an operation started while a rollback waits for an earlier one, and leaves nothing behind', async () => {
+      const object = await objectAtV1();
+      const t = await object.update();
+      assert.ok(t);
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const slow = t.write(
+        'slow.txt',
+        (async function* () {
+          await gate;
+          yield 'slow';
+        })(),
+      );
+
+      const rollback = t.rollback();
+      const stray = t.write('stray.txt', 'stray');
+      release();
+
+      await assert.rejects(stray, /Transaction already commited/);
+      await slow;
+      await rollback;
+      assert.ok(!fs.existsSync(path.join(root, 'extensions')));
+    });
+
     it('is unchanged by a commit that fails', async () => {
       const object = await objectAtV1();
       const before = object.inventory;

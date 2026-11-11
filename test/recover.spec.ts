@@ -17,10 +17,11 @@ import {
   snapshot,
   textFiles,
   useTempRoots,
+  workspaceOf,
   writeB,
   writeC,
 } from './helpers/drafts.ts';
-import { HASHED } from './helpers/layouts.ts';
+import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
 import { rewriteInventory, writeFiles } from './helpers/storage-roots.ts';
 import { ocflError } from './ocfl-error.ts';
 
@@ -183,7 +184,17 @@ describe('root.recover', () => {
     it('removes the unfinished version a dead writer left in the workspace', async () => {
       const { root, workspace, before } = await existingObject();
       await lockObject(root);
-      await writeFiles(path.join(workspace, 'v2'), { 'content/b.txt': 'unfinished', '.staged-2': 'unfinished', 'inventory.json': 'unfinished' });
+      await writeFiles(path.join(workspace, 'v2'), {
+        'content/b.txt': 'unfinished',
+        'content/lock': 'content, not a lock',
+        'content/empty/lock': '',
+        'content/year/lock': '2024',
+        'content/noted/lock': `${new Date().toISOString()}\nnote`,
+        'content/lined/lock': `${new Date().toISOString()}\nno-object-root\n`,
+        'content/long/lock': `${new Date().toISOString()}\n${'x'.repeat(100)}`,
+        '.staged-2': 'unfinished',
+        'inventory.json': 'unfinished',
+      });
 
       await root.recover(ID);
 
@@ -385,15 +396,27 @@ describe('root.recover', () => {
       assertNoWorkspace(root);
     });
 
-    it('removes a declaration with no inventory even when the lock is gone, keeping its directory', async () => {
+    it('throws INVALID_OBJECT for a declaration with no inventory once the lock is gone, changing nothing', async () => {
       const { root, objectRoot, lock } = await emptyRoot();
       await failBeforeCommit(objectRoot, () => root.create(ID, DETAILS, writeB));
       await fs.promises.rm(lock);
+      const left = await snapshot(root.path);
+
+      await assert.rejects(root.recover(ID), ocflError('INVALID_OBJECT', 'E063'));
+
+      assert.deepStrictEqual(await snapshot(root.path), left);
+    });
+
+    it('keeps a first version that has no declaration beside it, and releases the lock', async () => {
+      const { root, objectRoot, lock } = await emptyRoot();
+      await writeFiles(path.join(objectRoot, 'v1'), { 'content/a.txt': 'a' });
+      const held = await snapshot(objectRoot);
+      await lockObject(root);
 
       await root.recover(ID);
 
-      assert.deepStrictEqual(await fs.promises.readdir(objectRoot), []);
-      await assert.rejects(root.open(ID), ocflError('OBJECT_NOT_FOUND'));
+      assert.deepStrictEqual(await snapshot(objectRoot), held);
+      assert.ok(!fs.existsSync(lock));
     });
 
     it('leaves the disk as it is when called again, and then throws OBJECT_NOT_FOUND', async () => {
@@ -404,6 +427,151 @@ describe('root.recover', () => {
       await assert.rejects(root.recover(ID), ocflError('OBJECT_NOT_FOUND'));
 
       assert.deepStrictEqual(await snapshot(root.path), before);
+    });
+  });
+
+  describe('a version directory that no dead writer can have left', () => {
+    /** {@link existingObject} with versions up to `head`, and what its object root then holds */
+    async function objectAt(head: number) {
+      const existing = await existingObject();
+      let object = existing.object;
+      for (let n = 2; n <= head; n++) {
+        object = await object.update(DETAILS, (draft) => draft.write(`${n}.txt`, `${n}`));
+      }
+      return { ...existing, object, committed: await snapshot(existing.objectRoot) };
+    }
+
+    for (const locked of [false, true]) {
+      it(`is kept, with INVALID_OBJECT, in an object of several versions that lost its root inventory and has ${locked ? 'a' : 'no'} lock`, async () => {
+        const { root, objectRoot } = await objectAt(2);
+        await fs.promises.rm(path.join(objectRoot, 'inventory.json'));
+        if (locked) {
+          await lockObject(root);
+        }
+        const damaged = await snapshot(root.path);
+
+        await assert.rejects(root.recover(ID), ocflError('INVALID_OBJECT', 'E063'));
+
+        assert.deepStrictEqual(await snapshot(root.path), damaged);
+        assert.deepStrictEqual(Object.keys(damaged).filter((file) => file.endsWith('lock')).length, locked ? 1 : 0);
+      });
+    }
+
+    it('is kept when it is not the version after the head', async () => {
+      const { root, objectRoot, lock } = await objectAt(3);
+      await lockObject(root);
+      await writeFiles(path.join(objectRoot, 'v5'), { 'content/stray.txt': 'stray' });
+      const held = await snapshot(objectRoot);
+
+      await root.recover(ID);
+
+      assert.deepStrictEqual(await snapshot(objectRoot), held);
+      assert.ok(!fs.existsSync(lock));
+      assert.strictEqual((await root.open(ID)).head.number, 3);
+    });
+
+    for (const locked of [true, false]) {
+      it(`is removed when it is the version after the head, which the root inventory does not name, ${locked ? 'with a' : 'without a'} lock`, async () => {
+        const { root, objectRoot, lock, committed } = await objectAt(3);
+        if (locked) {
+          await lockObject(root);
+        }
+        await writeFiles(path.join(objectRoot, 'v4'), { 'content/unfinished.txt': 'unfinished' });
+
+        await root.recover(ID);
+
+        assert.deepStrictEqual(await snapshot(objectRoot), committed);
+        assert.ok(!fs.existsSync(path.join(objectRoot, 'v4')));
+        assert.ok(!fs.existsSync(lock));
+        assert.strictEqual((await (await root.open(ID)).update(DETAILS, writeC)).head.number, 4);
+      });
+    }
+
+    it('is kept when the object can have no further version', async () => {
+      const { root, objectRoot, lock } = await existingObject();
+      await fs.promises.rename(path.join(objectRoot, 'v1'), path.join(objectRoot, 'v09'));
+      await rewriteInventory(objectRoot, (inventory) => {
+        inventory.head = 'v09';
+        inventory.versions = { v09: inventory.versions!.v1! };
+        inventory.manifest = Object.fromEntries(
+          Object.entries(inventory.manifest!).map(([digest, paths]) => [digest, paths.map((file) => file.replace('v1/', 'v09/'))]),
+        );
+      });
+      await lockObject(root);
+      await writeFiles(path.join(objectRoot, 'v10'), { 'content/stray.txt': 'stray' });
+      const held = await snapshot(objectRoot);
+
+      await root.recover(ID);
+
+      assert.deepStrictEqual(await snapshot(objectRoot), held);
+      assert.ok(!fs.existsSync(lock));
+    });
+  });
+
+  describe('in a storage root whose layout nests object paths', () => {
+    const nestingRoot = () => newRoot({ extensionName: PATH_DIRECT, suffix: '' });
+
+    it('throws ID_INCOMPATIBLE_WITH_LAYOUT, changing nothing, for leftovers inside another object', async () => {
+      const root = await nestingRoot();
+      await createObject(root, 'outer', { 'a.txt': 'a' });
+      await lockObject(root, 'outer/inner');
+      await writeFiles(path.join(workspaceOf(root), 'outer', 'inner', 'v1'), { 'content/b.txt': 'unfinished' });
+      const held = await snapshot(root.path);
+
+      await assert.rejects(root.recover('outer/inner'), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+
+      assert.deepStrictEqual(await snapshot(root.path), held);
+    });
+
+    it('throws INVALID_OBJECT with E082, changing nothing, for an object inside another object', async () => {
+      const root = await nestingRoot();
+      await createObject(root, 'outer', { 'a.txt': 'a' });
+      await createObject(root, 'other', { 'a.txt': 'a' });
+      const nested = path.join(root.path, 'outer', 'inner');
+      await fs.promises.cp(path.join(root.path, 'other'), nested, { recursive: true });
+      await rewriteInventory(nested, (inventory) => {
+        inventory.id = 'outer/inner';
+      });
+      await lockObject(root, 'outer/inner');
+      await writeFiles(path.join(nested, 'v2'), { 'content/b.txt': 'unfinished' });
+      const held = await snapshot(root.path);
+
+      await assert.rejects(root.recover('outer/inner'), ocflError('INVALID_OBJECT', 'E082'));
+
+      assert.deepStrictEqual(await snapshot(root.path), held);
+    });
+
+    for (const child of ['corpus/v1', 'corpus/v1/item']) {
+      it(`leaves alone the lock and unfinished version of <${child}>, which a live writer holds below a version name of <corpus>`, async () => {
+        const root = await nestingRoot();
+        const object = await createObject(root, child, { 'a.txt': 'a' });
+        const workspace = path.join(workspaceOf(root), child);
+
+        const updated = await object.update(DETAILS, async (draft) => {
+          await writeB(draft);
+          const during = await snapshot(workspace);
+          assert.deepStrictEqual(Object.keys(during).sort(), ['lock', path.join('v2', 'content', 'b.txt')]);
+          await assert.rejects(root.recover('corpus'), ocflError('OBJECT_NOT_FOUND'));
+          assert.deepStrictEqual(await snapshot(workspace), during);
+        });
+
+        assert.deepStrictEqual(await textFiles(updated.head), { 'a.txt': 'a', 'b.txt': 'b' });
+        assert.deepStrictEqual(await textFiles((await root.open(child)).head), { 'a.txt': 'a', 'b.txt': 'b' });
+      });
+    }
+  });
+
+  describe('when it cannot read what is there', () => {
+    it('throws the file system error for a directory it cannot list, and keeps the lock', async () => {
+      const { root, objectRoot, lock } = await existingObject();
+      await lockObject(root);
+
+      await assert.rejects(
+        withFsFailure('readdir', objectRoot, () => root.recover(ID), 'EACCES'),
+        { code: 'EACCES' },
+      );
+
+      assert.ok(fs.existsSync(lock));
     });
   });
 

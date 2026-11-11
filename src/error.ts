@@ -32,7 +32,7 @@ class OcflError extends Error {
   readonly code: OcflErrorCode;
   /** The OCFL validation code, such as `E060`, when the fault has one. */
   declare readonly ocflCode?: string;
-  /** When the object's lock was taken. Set only for `UPDATE_IN_PROGRESS`. */
+  /** When the object's lock was taken. Set only for `UPDATE_IN_PROGRESS`, and absent when the lock couldn't be read or was released meanwhile. */
   declare readonly lockedAt?: Date;
 
   /**

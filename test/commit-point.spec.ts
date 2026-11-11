@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
-import { withFsFailure } from './fs-failures.ts';
+import { withFsFailure, withLostReply } from './fs-failures.ts';
 import { DETAILS, objectAtV1, placesOf, readInventory, sidecarMatches, snapshot, textFiles, useTempRoots, writeB } from './helpers/drafts.ts';
 import { ocflError, rejection } from './ocfl-error.ts';
 
@@ -76,6 +76,62 @@ describe('the commit point', () => {
       await assert.rejects((await root.open(ID)).update(DETAILS, writeB), ocflError('UPDATE_IN_PROGRESS'));
 
       assert.deepStrictEqual(await snapshot(root.path), after);
+    });
+  });
+
+  describe('when replacing the root inventory reports a failure but has happened', () => {
+    it('throws RECOVERY_NEEDED from an update, with the failure as its cause, and undoes nothing', async () => {
+      const { root, object, objectRoot, lock } = await existingObject();
+
+      const error = await withLostReply('rename', path.join(objectRoot, 'inventory.json'), () => recoveryNeeded(object.update(DETAILS, writeB)));
+
+      assert.match((error.cause as Error).message, INJECTED);
+      assert.deepStrictEqual(await rootInventory(objectRoot), { head: 'v2', sidecarMatches: false });
+      assert.ok(fs.existsSync(path.join(objectRoot, 'v2', 'content', 'b.txt')));
+      assert.ok(fs.existsSync(lock));
+      assert.strictEqual(object.head.number, 1);
+      assert.deepStrictEqual(await textFiles((await root.open(ID)).head), { 'a.txt': 'a', 'b.txt': 'b' });
+
+      await root.recover(ID);
+      assert.deepStrictEqual(await rootInventory(objectRoot), { head: 'v2', sidecarMatches: true });
+      assert.ok(!fs.existsSync(lock));
+    });
+
+    it('throws RECOVERY_NEEDED from a create, and keeps the created object and the lock', async () => {
+      const { root, objectRoot, lock } = await emptyRoot();
+
+      const error = await withLostReply('rename', path.join(objectRoot, 'inventory.json'), () => recoveryNeeded(root.create(ID, DETAILS, writeB)));
+
+      assert.match((error.cause as Error).message, INJECTED);
+      assert.ok(fs.existsSync(lock));
+      assert.deepStrictEqual(await textFiles((await root.open(ID)).head), { 'b.txt': 'b' });
+    });
+
+    it('throws RECOVERY_NEEDED, undoing nothing, when the root inventory cannot be read to tell whether it was replaced', async () => {
+      const { root, object, objectRoot, lock, before } = await existingObject();
+      const inventory = path.join(objectRoot, 'inventory.json');
+      let renameFailed = false;
+      const failingRename = (_source: string, target: string) => {
+        renameFailed ||= target === inventory;
+        return target === inventory;
+      };
+
+      const error = await withFsFailure('rename', failingRename, () =>
+        withFsFailure(
+          'readFile',
+          (file) => renameFailed && file === inventory,
+          () => recoveryNeeded(object.update(DETAILS, writeB)),
+          'EACCES',
+        ),
+      );
+
+      assert.strictEqual((error.cause as NodeJS.ErrnoException).code, 'EIO');
+      assert.ok(fs.existsSync(path.join(objectRoot, 'v2', 'content', 'b.txt')));
+      assert.ok(fs.existsSync(lock));
+
+      await root.recover(ID);
+      assert.deepStrictEqual(await snapshot(objectRoot), before);
+      assert.strictEqual((await root.open(ID)).head.number, 1);
     });
   });
 

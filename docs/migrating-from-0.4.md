@@ -119,7 +119,7 @@ try {
 | `OBJECT_NOT_FOUND`            | The object doesn't exist; thrown as an `ObjectNotFoundError` (see [Errors for missing objects](#errors-for-missing-objects)) |
 | `OBJECT_NOT_LOADED`           | `getFile()` is called before the inventory has been read; thrown as an `ObjectNotLoadedError`                                |
 | `UPDATE_IN_PROGRESS`          | The object's lock is taken: another update of it is running, or one was interrupted; `lockedAt` is when it was taken         |
-| `RECOVERY_NEEDED`             | An update failed after the root inventory was replaced, or couldn't remove what it made; the lock is kept until `recover()`  |
+| `RECOVERY_NEEDED`             | An update failed at or after replacing the root inventory, couldn't remove what it made, or found an earlier one's leftovers |
 | `OBJECT_OUT_OF_DATE`          | An update finds a later version committed since the object was loaded, at its start or when it commits                       |
 | `OBJECT_EXISTS`               | An update making an object's first version finds that another writer has created the object                                  |
 | `DIRECTORY_NOT_EMPTY`         | An object or storage root is created in a non-empty directory                                                                |
@@ -269,7 +269,9 @@ An update now removes only what it created:
 - A failed first version also removes the conformance declaration it wrote, and the object root if the update created it.
 - A workspace directory is removed only when it's left empty, along with any of its parents, up to the storage root, that it leaves empty.
 
-Each object has one lock, held from the start of an update until it is committed or rolled back. Starting an update while another update of the same object is open now throws `UPDATE_IN_PROGRESS` straight away, with the time the lock was taken as `lockedAt`. Previously it was detected only once the first update had written a file, and only between updates making the same version.
+Each object has one lock, held from the start of an update until it is committed or rolled back. Starting an update while another update of the same object is open now throws `UPDATE_IN_PROGRESS` straight away, with the time the lock was taken as `lockedAt`, which is absent if the lock can't be read. Previously it was detected only once the first update had written a file, and only between updates making the same version.
+
+An update that finds a version directory already in the object's workspace directory, left by an interrupted update whose lock has gone, now throws `RECOVERY_NEEDED` before the updater runs, and leaves the object unlocked. Its files are never made part of a version. Call `recover(id)` to clear it.
 
 An update of an object that another writer has since updated now throws `OBJECT_OUT_OF_DATE` before the updater runs. Previously it failed at commit with a raw `ENOTEMPTY`. Load the object again and retry.
 
@@ -277,6 +279,7 @@ An update is committed at one moment, when the root `inventory.json` is replaced
 
 - A failure before that discards the update, releases the lock and throws the original error, as before.
 - A failure after it, such as replacing the inventory's sidecar, now throws `RECOVERY_NEEDED` with the failure as its `cause`. The new version stays committed and the lock is kept. Previously the old root inventory was put back.
+- A failure of the replacement itself is checked against the disk, because a rename on NFS can take effect and still report a failure. If the root inventory names the new version, or can't be read, the update throws `RECOVERY_NEEDED`, keeps the lock and undoes nothing.
 - A failed update, or a `rollback()`, that can't remove what the update made now throws `RECOVERY_NEEDED` and keeps the lock. Its `cause` is the update's original failure, or for `rollback()` what stopped the removal. Previously the removal's own error was thrown, or was dropped.
 
 While the lock is kept, later updates of the object throw `UPDATE_IN_PROGRESS`. The same happens when a process dies during an update: its lock stays, and the library never decides for itself that a writer is dead.
@@ -291,6 +294,10 @@ await root.recover(id);
 ```
 
 `recover` discards an update that wasn't committed, finishes one that was by writing the root inventory's sidecar, and releases the lock. With nothing to clear it does nothing, and it throws `OBJECT_NOT_FOUND` only when there is neither an object nor anything left of one.
+
+`recover` removes only what an interrupted update can have left: the unfinished version in the workspace, staged inventory files, and the directory of the version after the head. For an object that never got a root inventory it removes the declaration and first version, but only while the lock is still there. A declaration with no root inventory and no lock, or with any later version beside it, is treated as a damaged object: `recover` throws `INVALID_OBJECT` and changes nothing. It also changes nothing for an object root inside another object.
+
+While an object is being created, or after its creator died before committing, `root.open(id)` throws `OBJECT_NOT_FOUND` and `root.create(id)` throws `UPDATE_IN_PROGRESS`, for as long as the lock is held.
 
 **Warning:** only call `recover` when no writer of the object is alive. It trusts you on that: a live writer's update is destroyed. `lockedAt` on `UPDATE_IN_PROGRESS` says how long the lock has been held.
 

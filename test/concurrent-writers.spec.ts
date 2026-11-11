@@ -2,9 +2,9 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
-import type { OcflObject } from '../src/index.ts';
+import { OcflError, type OcflObject } from '../src/index.ts';
 import { emptyDirectoriesUnder } from './empty-directories.ts';
-import { beforeOpening, fsError, withFsFailure } from './fs-failures.ts';
+import { beforeOpening, beforeRenamingTo, fsError, withFsFailure } from './fs-failures.ts';
 import {
   assertNoWorkspace,
   createObject,
@@ -12,6 +12,7 @@ import {
   lockOf,
   objectAtV1,
   objectRootOf,
+  placesOf,
   snapshot,
   textFiles,
   useTempRoots,
@@ -19,7 +20,7 @@ import {
   writeB,
   writeC,
 } from './helpers/drafts.ts';
-import { rewriteInventory } from './helpers/storage-roots.ts';
+import { rewriteInventory, writeFiles } from './helpers/storage-roots.ts';
 import { ocflError, rejection } from './ocfl-error.ts';
 
 const ID = 'contended';
@@ -157,6 +158,134 @@ describe('concurrent writers', () => {
       assert.strictEqual(code, 'UPDATE_IN_PROGRESS');
       assert.deepStrictEqual(lockedAt, longAgo);
       assert.strictEqual(await fs.promises.readFile(lock, 'utf8'), longAgo.toISOString());
+    });
+  });
+
+  describe('a create that has written its declaration and not yet its root inventory', () => {
+    it('is not found by a reader, and refuses a second create with UPDATE_IN_PROGRESS, until it commits', async () => {
+      const root = await newRoot();
+      const { objectRoot } = placesOf(root, ID);
+      const started = Date.now();
+
+      const created = await beforeRenamingTo(
+        path.join(objectRoot, 'inventory.json'),
+        async () => {
+          assert.ok(fs.existsSync(path.join(objectRoot, '0=ocfl_object_1.1')));
+          await assert.rejects(root.open(ID), ocflError('OBJECT_NOT_FOUND'));
+          const { lockedAt } = await rejection(root.create(ID, DETAILS, writeC), 'UPDATE_IN_PROGRESS');
+          assert.ok(lockedAt instanceof Date);
+          assert.ok(lockedAt.getTime() >= started && lockedAt.getTime() <= Date.now(), lockedAt.toISOString());
+        },
+        () => root.create(ID, DETAILS, writeB),
+      );
+
+      assert.deepStrictEqual(await textFiles(created.head), { 'b.txt': 'b' });
+      assert.deepStrictEqual(await textFiles((await root.open(ID)).head), { 'b.txt': 'b' });
+      assertNoWorkspace(root);
+    });
+
+    it('is reported the same way after its writer died there, until the object is recovered', async () => {
+      const root = await newRoot();
+      const { objectRoot, lock } = placesOf(root, ID);
+      const inventory = path.join(objectRoot, 'inventory.json');
+      await withFsFailure('rename', inventory, () =>
+        withFsFailure('rm', `${inventory}.tmp`, () => assert.rejects(root.create(ID, DETAILS, writeB), ocflError('RECOVERY_NEEDED')), 'EACCES'),
+      );
+
+      await assert.rejects(root.open(ID), ocflError('OBJECT_NOT_FOUND'));
+      await assert.rejects(root.create(ID, DETAILS, writeC), ocflError('UPDATE_IN_PROGRESS'));
+
+      await fs.promises.rm(lock);
+      await assert.rejects(root.open(ID), ocflError('INVALID_OBJECT', 'E063'));
+      const { code, lockedAt } = await rejection(root.create(ID, DETAILS, writeC));
+      assert.deepStrictEqual({ code, lockedAt }, { code: 'OBJECT_EXISTS', lockedAt: undefined });
+    });
+
+    it('costs a reader of a healthy object no look at the workspace', async () => {
+      const { root } = await existingObject();
+      const looked: string[] = [];
+      for (const method of ['stat', 'readFile', 'readdir', 'open'] as const) {
+        const real = fs.promises[method] as (...args: unknown[]) => Promise<unknown>;
+        mock.method(fs.promises, method, (...args: unknown[]) => {
+          looked.push(String(args[0]));
+          return real.apply(fs.promises, args);
+        });
+      }
+
+      await root.open(ID);
+
+      assert.ok(looked.length > 0);
+      assert.deepStrictEqual(
+        looked.filter((file) => file.startsWith(workspaceOf(root))),
+        [],
+      );
+    });
+  });
+
+  describe('a version left in the workspace with no lock', () => {
+    /** {@link existingObject} with files in the workspace where its next version is assembled, as a dead writer whose lock was removed by hand leaves them */
+    async function leftoverVersion() {
+      const existing = await existingObject();
+      await writeFiles(path.join(existing.workspace, 'v2'), { 'content/stale.txt': 'stale', 'stray.txt': 'stray' });
+      return { ...existing, left: await snapshot(existing.root.path) };
+    }
+
+    it('refuses an update with RECOVERY_NEEDED before the callback runs, leaving everything as it was and the object unlocked', async () => {
+      const { root, object, lock, left } = await leftoverVersion();
+      let ran = false;
+
+      const error = await rejection(
+        object.update(DETAILS, async (draft) => {
+          ran = true;
+          await writeB(draft);
+        }),
+        'RECOVERY_NEEDED',
+      );
+
+      assert.match(error.message, /recover\(\)/);
+      assert.strictEqual(ran, false);
+      assert.deepStrictEqual(await snapshot(root.path), left);
+      assert.ok(!fs.existsSync(lock));
+    });
+
+    it('is never committed: once the object is recovered, an update holds only what its draft wrote', async () => {
+      const { root, object, objectRoot } = await leftoverVersion();
+      await assert.rejects(object.update(DETAILS, writeB), ocflError('RECOVERY_NEEDED'));
+
+      await root.recover(ID);
+      const updated = await (await root.open(ID)).update(DETAILS, writeB);
+
+      assert.deepStrictEqual(await textFiles(updated.head), { 'a.txt': 'a', 'b.txt': 'b' });
+      assert.deepStrictEqual(Object.keys(await snapshot(path.join(objectRoot, 'v2'))).sort(), [
+        path.join('content', 'b.txt'),
+        'inventory.json',
+        'inventory.json.sha512',
+      ]);
+      assertNoWorkspace(root);
+    });
+
+    it('refuses a create the same way', async () => {
+      const root = await newRoot();
+      const { workspace, objectRoot } = placesOf(root, ID);
+      await writeFiles(path.join(workspace, 'v1'), { 'content/stale.txt': 'stale' });
+
+      await assert.rejects(root.create(ID, DETAILS, writeB), ocflError('RECOVERY_NEEDED'));
+
+      assert.ok(!fs.existsSync(objectRoot));
+      await root.recover(ID);
+      assert.deepStrictEqual(await textFiles((await root.create(ID, DETAILS, writeB)).head), { 'b.txt': 'b' });
+    });
+
+    it('reports any other failure to make the directory of the new version, and releases the lock', async () => {
+      const { root, object, workspace, before, objectRoot } = await existingObject();
+
+      await assert.rejects(
+        withFsFailure('mkdir', path.join(workspace, 'v2'), () => object.update(DETAILS, writeB), 'EACCES'),
+        { code: 'EACCES' },
+      );
+
+      assert.deepStrictEqual(await snapshot(objectRoot), before);
+      assertNoWorkspace(root);
     });
   });
 
@@ -317,6 +446,15 @@ describe('concurrent writers', () => {
       assertNoWorkspace(root);
     });
 
+    it('gives up, leaving nothing behind, when the workspace keeps vanishing', async () => {
+      const root = await newRoot();
+
+      await withFsFailure('open', lockOf(root, ID), () => assert.rejects(root.create(ID, DETAILS, writeB), { code: 'ENOENT' }), 'ENOENT');
+
+      assert.ok(!fs.existsSync(objectRootOf(root, ID)));
+      assertNoWorkspace(root);
+    });
+
     it('reports any other failure to take it, leaving nothing behind', async () => {
       const root = await newRoot();
 
@@ -326,22 +464,54 @@ describe('concurrent writers', () => {
       assertNoWorkspace(root);
     });
 
-    it('is not left behind when the time it was taken cannot be written into it', async () => {
-      const root = await newRoot();
-      const real = fs.promises.open;
-      mock.method(fs.promises, 'open', async (...args: Parameters<typeof real>) => {
-        const handle = await real.apply(fs.promises, args);
-        if (String(args[0]) === lockOf(root, ID)) {
-          handle.writeFile = async () => {
-            throw fsError('ENOSPC');
-          };
-        }
-        return handle;
+    for (const [step, method] of [
+      ['the time it was taken cannot be written into it', 'writeFile'],
+      ['it cannot be closed once written', 'close'],
+    ] as const) {
+      it(`is not left behind when ${step}`, async () => {
+        const root = await newRoot();
+        const real = fs.promises.open;
+        mock.method(fs.promises, 'open', async (...args: Parameters<typeof real>) => {
+          const handle = await real.apply(fs.promises, args);
+          if (String(args[0]) === lockOf(root, ID)) {
+            const actual = handle[method].bind(handle) as (...rest: unknown[]) => Promise<unknown>;
+            handle[method] = async (...rest: unknown[]) => {
+              if (method === 'close') {
+                await actual(...rest);
+              }
+              throw fsError('ENOSPC');
+            };
+          }
+          return handle;
+        });
+
+        await assert.rejects(root.create(ID, DETAILS, writeB), { code: 'ENOSPC' });
+
+        assertNoWorkspace(root);
       });
+    }
 
-      await assert.rejects(root.create(ID, DETAILS, writeB), { code: 'ENOSPC' });
+    it('is reported as held, with no lockedAt, when it cannot be read', async () => {
+      const { root, object } = await existingObject();
+      const lock = lockOf(root, ID);
+      await fs.promises.mkdir(path.dirname(lock), { recursive: true });
+      await fs.promises.writeFile(lock, new Date().toISOString());
 
-      assertNoWorkspace(root);
+      const error = await withFsFailure('readFile', lock, () => rejection(object.update(DETAILS, writeB), 'UPDATE_IN_PROGRESS'), 'EACCES');
+
+      assert.ok(!('lockedAt' in error));
+      assert.ok(fs.existsSync(lock));
+    });
+
+    it('is not reported as held when a file is where its directory in the workspace would be', async () => {
+      const { root, object } = await existingObject();
+      const blocking = path.dirname(lockOf(root, ID));
+      await fs.promises.mkdir(path.dirname(blocking), { recursive: true });
+      await fs.promises.writeFile(blocking, 'not a directory');
+
+      await assert.rejects(object.update(DETAILS, writeB), (error: NodeJS.ErrnoException) => !(error instanceof OcflError) && error.code === 'EEXIST');
+
+      assert.strictEqual(await fs.promises.readFile(blocking, 'utf8'), 'not a directory');
     });
 
     it('leaves no empty directories once released, and keeps unrelated workspace content', async () => {

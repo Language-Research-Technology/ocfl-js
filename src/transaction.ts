@@ -13,6 +13,7 @@ import {
   createLimiter,
   findNamasteVersion,
   hasErrorCode,
+  isAlreadyExists,
   isDirEmpty,
   normaliseLogicalPath,
   parentDirectories,
@@ -119,6 +120,25 @@ function recoveryNeeded(objectRoot: string, state: string, cause: unknown) {
     `The update of the object at ${objectRoot} ${state}. The object stays locked until it is recovered: once no writer of it is alive, call recover() on its storage root, then open the object again before retrying.`,
     { cause },
   );
+}
+
+/**
+ * Makes the directory, in the workspace, that the new version of the object at `objectRoot` is assembled in.
+ * @throws {@link OcflError} `RECOVERY_NEEDED` if it is already there, so that what an earlier writer left in it never becomes part of a version
+ */
+async function createVersionDirectory(versionPath: string, objectRoot: string): Promise<void> {
+  try {
+    await fs.promises.mkdir(versionPath);
+  } catch (error) {
+    if (!isAlreadyExists(error)) {
+      throw error;
+    }
+    throw new OcflError(
+      'RECOVERY_NEEDED',
+      `The object at ${objectRoot} can't be updated: an earlier update left ${versionPath} behind. Once no writer of the object is alive, call recover() on its storage root, then open the object again before retrying.`,
+      { cause: error },
+    );
+  }
 }
 
 function invalidLogicalPath(logicalPath: string) {
@@ -272,8 +292,8 @@ type TrackedPromise<T> = Promise<T> & { done?: boolean };
  * If a failed operation's changes to the stored files can't be undone, the commit discards the transaction and throws that operation's error.
  *
  * The transaction is committed when the root inventory is replaced. A failure before that discards everything
- * the transaction made and releases the object's lock. A failure after it, or a failure to discard, throws
- * `RECOVERY_NEEDED` and keeps the lock.
+ * the transaction made and releases the object's lock. A failure after it, a failed replacement that may have
+ * happened all the same, or a failure to discard, throws `RECOVERY_NEEDED` and keeps the lock.
  */
 class OcflObjectTransaction {
   #versionPath: string;
@@ -286,7 +306,7 @@ class OcflObjectTransaction {
   #queue: TrackedPromise<unknown>[] = [];
   #lastTurn: Promise<unknown> = Promise.resolve();
   #stagedCount = 0;
-  #committed = false;
+  #ended = false;
   #commitBlocker: { error: unknown } | undefined;
   #limit = createLimiter(IMPORT_CONCURRENCY);
 
@@ -308,8 +328,10 @@ class OcflObjectTransaction {
       () => false,
     );
     await takeLock(target.workspace, target.storageRoot, rootExisted);
+    const versionPath = path.join(target.workspace, inventory.head);
     try {
       await assertUpToDate(target.root, inventory);
+      await createVersionDirectory(versionPath, target.root);
     } catch (error) {
       try {
         await releaseLock(target.workspace, target.storageRoot);
@@ -318,7 +340,7 @@ class OcflObjectTransaction {
       }
       throw error;
     }
-    return new OcflObjectTransaction(target, inventory, path.join(target.workspace, inventory.head), rootExisted);
+    return new OcflObjectTransaction(target, inventory, versionPath, rootExisted);
   }
 
   #getRealPath(logicalPath: string) {
@@ -348,11 +370,12 @@ class OcflObjectTransaction {
 
   /** @param failure - Holds the `cause` of the `RECOVERY_NEEDED` thrown, which is otherwise what stopped the undo */
   async #discard(failure?: { error: unknown }): Promise<void> {
-    if (this.#committed) {
+    if (this.#ended) {
       return;
     }
+    // Before waiting, so no operation started meanwhile is accepted and then overlaps the undo
+    this.#ended = true;
     await Promise.allSettled(this.#queue);
-    this.#committed = true;
     try {
       await this.#undo();
     } catch (undoFailure) {
@@ -363,7 +386,7 @@ class OcflObjectTransaction {
   /**
    * Commit all the changes made in this transaction to the actual OCFL Object.
    * @param options - Commit options. message and user will be included in the version entry of the inventory.json
-   * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if the commit failed after the root inventory was replaced, or failed earlier and what it made can't be removed; `cause` is the failure
+   * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if the commit failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made can't be removed; `cause` is the failure
    */
   async commit(options?: CommitOptions): Promise<void> {
     await this._commit(options);
@@ -374,7 +397,8 @@ class OcflObjectTransaction {
    * @internal
    */
   async _commit(options?: CommitOptions): Promise<OcflObjectInventory | undefined> {
-    if (!this.#committed) {
+    if (!this.#ended) {
+      let unconfirmed: { error: unknown } | undefined;
       try {
         const count = this.#queue.filter((p) => !p.done).length;
         if (count > 0) {
@@ -389,12 +413,15 @@ class OcflObjectTransaction {
           await this.rollback();
           return;
         }
-        await this.#replaceRootInventory(options);
+        unconfirmed = await this.#replaceRootInventory(options);
       } catch (error) {
         await this._discardAfter(error);
         throw error;
       }
-      this.#committed = true;
+      this.#ended = true;
+      if (unconfirmed) {
+        throw recoveryNeeded(this.#target.root, 'may have been committed: replacing its root inventory failed, but may have taken effect', unconfirmed.error);
+      }
       try {
         const rootInv = this.#rootInventoryPaths;
         await store.move(rootInv.stagedSidecar, rootInv.sidecar);
@@ -432,8 +459,11 @@ class OcflObjectTransaction {
     return rootInventoryPaths(this.#target.root, this.#inventory.digestAlgorithm);
   }
 
-  /** Every step of the commit up to its commit point, the replacement of the root inventory, which is the last thing this does */
-  async #replaceRootInventory(options: CommitOptions = {}) {
+  /**
+   * Every step of the commit up to its commit point, the replacement of the root inventory, which is the last thing this does.
+   * @returns The failure of a replacement that may have happened all the same, which mustn't be undone
+   */
+  async #replaceRootInventory(options: CommitOptions = {}): Promise<{ error: unknown } | undefined> {
     const inventory = this.#inventory;
     const digestAlgorithm = inventory.digestAlgorithm;
     inventory._stamp(new Date().toISOString(), options.message, options.user);
@@ -470,7 +500,19 @@ class OcflObjectTransaction {
     this.#rootInventoryStaged = true;
     await store.copyFile(invPath, rootInv.stagedInventory);
     await store.copyFile(invDigestPath, rootInv.stagedSidecar);
-    await store.move(rootInv.stagedInventory, rootInv.inventory);
+    try {
+      await store.move(rootInv.stagedInventory, rootInv.inventory);
+    } catch (error) {
+      // On NFS a rename can be applied though its reply is lost. An unreadable root inventory may be the new one.
+      const replaced = await headOnDisk(this.#target.root).then(
+        (head) => head === inventory.head,
+        () => true,
+      );
+      if (!replaced) {
+        throw error;
+      }
+      return { error };
+    }
   }
 
   /** Content waits here, outside the content directory, until its digest decides whether it's kept */
@@ -827,7 +869,7 @@ class OcflObjectTransaction {
    * earlier has finished.
    */
   async #inTurn<T>(prepare: () => Promise<() => Promise<T>>): Promise<T> {
-    if (this.#committed) {
+    if (this.#ended) {
       throw new Error('Transaction already commited');
     }
     const prepared = prepare();

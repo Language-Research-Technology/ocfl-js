@@ -244,7 +244,7 @@ class OcflObject {
    * which takes the message and user, or {@link OcflObjectTransaction.rollback}.
    * @throws `TypeError` if `options` isn't an object, has an unknown mode, or has a message or user without an `updater`
    * @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE` if the object has an active mutable head (extension 0005); nothing is written
-   * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if the update failed after the root inventory was replaced, or failed earlier and what it made couldn't all be removed; `cause` is the failure
+   * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if the update failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made couldn't all be removed; `cause` is the failure. Also thrown, leaving the object unlocked, if an earlier update left an unfinished version in the workspace
    */
   async update(updater?: (transaction: OcflObjectTransaction) => Promise<unknown>, options: UpdateOptions = {}): Promise<OcflObjectTransaction | undefined> {
     if (typeof options !== 'object' || options === null) {

@@ -32,8 +32,9 @@ or updated, that directory holds:
 - \`<version>/\`: the new version being assembled, which is then moved into the object root.
 
 The directories exist only while an update is in progress. Anything left in them afterwards is
-from an update that was interrupted, and is not part of any OCFL object. A lock left behind
-keeps the object from being updated, until the library's \`recover\` is called for the object.
+from an update that was interrupted, and is not part of any OCFL object. A lock or a version
+left behind keeps the object from being updated, until the library's \`recover\` is called for
+the object.
 `;
 
 const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1.1': 'ocfl_1.1.md' };
@@ -147,7 +148,7 @@ interface StorageRoot {
   /**
    * Reads an object's inventory and returns the object as it is now. It does not change when later versions are committed.
    *
-   * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id.
+   * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id, or another writer is creating it and hasn't committed it.
    * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is missing, corrupt or inconsistent, or the object has no declaration.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds another object.
    * @example
@@ -165,9 +166,9 @@ interface StorageRoot {
    *
    * @throws {@link OcflError} `OBJECT_EXISTS` if an object with this id already exists.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds something else or is inside another object.
-   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object; `lockedAt` says since when.
+   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object, or died creating it; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
-   * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Don't simply repeat the create: call {@link StorageRoot.recover}, then open the object to see whether it was created.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs and leaving the object unlocked, if an earlier create left an unfinished version in the workspace. Don't simply repeat the create: call {@link StorageRoot.recover}, then open the object to see whether it was created.
    * @throws `TypeError` if the id, the message or the user's name is missing or empty.
    * @throws Whatever `build` or a draft operation throws; nothing of the object is left, and it isn't locked.
    * @example
@@ -185,16 +186,17 @@ interface StorageRoot {
    * **Only call this when no writer of the object is alive: a live writer's update is destroyed**, and the library can't tell
    * a live writer from a dead one. `lockedAt` on `UPDATE_IN_PROGRESS` says when the lock was taken.
    *
-   * An update that wasn't committed is discarded: the unfinished version in the workspace, a version directory in the object that the
-   * root inventory doesn't name, and staged inventory files are removed. So are the declaration of an object that never got an inventory,
-   * and its directory if the create made it. An update that was committed is completed by writing the root inventory's sidecar. A version
-   * is never made the head by `recover`.
+   * An update that wasn't committed is discarded: the unfinished version in the workspace, the directory of the version after the head
+   * in the object, and staged inventory files are removed. A create that wasn't committed is discarded while its lock is still there:
+   * the declaration and first version of an object that never got an inventory, and its directory if the create made it. An update that
+   * was committed is completed by writing the root inventory's sidecar. A version is never made the head by `recover`, and no other
+   * version directory is ever removed.
    *
    * After `RECOVERY_NEEDED`, call `recover` and then open the object again before retrying: the head shows whether the update was committed.
    *
    * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id and nothing left over for it.
-   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is corrupt or inconsistent; nothing is changed.
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds another object; nothing is changed.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is corrupt or inconsistent, or the object is inside another object; or if it has a declaration and no inventory, and either no lock or a version other than the first, which a dead create never leaves. Nothing is changed.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds another object, or holds no object and is inside one; nothing is changed.
    * @throws `TypeError` if the id is missing or empty.
    * @throws The file system error that stopped it; the object stays locked, and `recover` can be called again.
    * @example
