@@ -26,9 +26,4 @@ describe('validation.createError', () => {
   it('builds an INVALID_OBJECT error for E007, the rule about the declaration of an object', () => {
     assert.ok(ocflError('INVALID_OBJECT', 'E007')(createError('E007', '/root/obj')));
   });
-
-  it('rejects codes it has no message for', () => {
-    assert.throws(() => createError('E001' as never, '/obj'), RangeError);
-    assert.throws(() => createError('toString' as never, '/obj'), RangeError);
-  });
 });

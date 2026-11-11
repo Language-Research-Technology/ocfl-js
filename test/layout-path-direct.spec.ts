@@ -23,7 +23,6 @@ describe('the 000N path direct layout', () => {
     ];
     for (const c of cases) {
       assert.strictEqual(layout.map(c[0]), c[1]);
-      //assert.strictEqual(layout.map(c[0].replace(/(^http:\/\/)|(^\/+)/, '')), c[1]);
     }
     // no scheme urls, eg: www.ausnc.org.au/corpora/md
   });

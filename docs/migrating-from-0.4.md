@@ -17,7 +17,7 @@ After removing it, change the package name in your imports:
 
 ## Node.js 22.12 or later
 
-`@ocfl/ocfl-fs` now requires Node.js 22.12 or later (previously 18). Digests are computed with `node:crypto` and `node:zlib`, and `zlib.crc32` was added in Node.js 22.2.
+`@ocfl/ocfl-fs` now requires Node.js 22.12 or later (previously 18). Digests are computed with `node:crypto`.
 
 ## ES modules
 
@@ -66,11 +66,11 @@ Optional config properties (`OcflStorageConfig`, commit options) accept an expli
 
 Option values used to be matched case-insensitively. They now have to match exactly:
 
-| Option                                              | Accepted values                                                                                 |
-| --------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `digestAlgorithm` for objects and storage           | `'sha256'`, `'sha512'`                                                                          |
-| `digestAlgorithm` for storage layouts 0003 and 0004 | `'md5'`, `'sha1'`, `'sha256'`, `'sha512'`, `'sha512/256'`, `'blake2b-512'`, `'crc32'`, `'size'` |
-| `update()` / `import()` mode                        | `'MERGE'`, `'REPLACE'`                                                                          |
+| Option                                              | Accepted values                                                            |
+| --------------------------------------------------- | -------------------------------------------------------------------------- |
+| `digestAlgorithm` for objects and storage           | `'sha256'`, `'sha512'`                                                     |
+| `digestAlgorithm` for storage layouts 0003 and 0004 | `'md5'`, `'sha1'`, `'sha256'`, `'sha512'`, `'sha512/256'`, `'blake2b-512'` |
+| `update()` / `import()` mode                        | `'MERGE'`, `'REPLACE'`                                                     |
 
 For example, `digestAlgorithm: 'SHA512'` and `update(fn, { mode: 'replace' })` now throw. A layout configured with `digestAlgorithm: 'MD5'` used to pass validation and then fail on the first `map()`. It is now rejected when the layout is created.
 

@@ -81,7 +81,7 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   }
 
   map(id: string): string {
-    var suffix = this.parameters.suffix;
+    const { suffix } = this.parameters;
     if (suffix && id.endsWith(suffix)) {
       throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `Identifier cannot end with '${suffix}'`);
     }
@@ -111,8 +111,7 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
       );
     }
     p = path.join(p).replace(/^\/+/, '').replace(/\/+$/, '');
-    return path.join(p, this.parameters.suffix);
-    //if (/^\w+:/.test(id)) {
+    return path.join(p, suffix);
   }
 }
 

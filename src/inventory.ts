@@ -1,7 +1,7 @@
 import nodePath from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { ocflError } from './error.ts';
-import type { ContentAlgorithm, DeepReadonly, Digests, Inventory, InventoryDigests, InventoryVersion } from './types.ts';
+import type { ContentAlgorithm, DeepReadonly, Inventory, InventoryDigests, InventoryVersion } from './types.ts';
 import { normaliseLogicalPath, parentDirectories } from './utils.ts';
 import { createError } from './validation.ts';
 
@@ -9,12 +9,8 @@ const { INVENTORY_NAME } = OcflConstants;
 
 interface InventoryFile {
   logicalPath: string;
-  version: string;
   digest: string;
   contentPath: string;
-  fixity: Digests;
-  size?: number;
-  lastModified?: number;
 }
 
 /** Content paths are relative to the object root */
@@ -115,12 +111,21 @@ function isStagedRootInventory(name: string): boolean {
   return /^inventory\.json(\.[^.]+)?\.tmp$/.test(name);
 }
 
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Whether `block` maps each digest to an array of content paths, as a manifest does */
+function isDigestBlock(block: unknown): boolean {
+  return isJsonObject(block) && Object.values(block).every((paths) => Array.isArray(paths) && paths.every((path) => typeof path === 'string'));
+}
+
 /**
  * Checks an inventory read from storage, before its values are used as paths in the object root.
  * The constructor checks that `head` is one of the versions.
  * @param file - The inventory's path, for the error
  * @throws {@link OcflError} `INVALID_OBJECT` with `E036` or `E040` for a missing or empty head, `E104` for a version name,
- * `E017` or `E018` for the contentDirectory, or `E099` or `E100` for a content path
+ * `E017` or `E018` for the contentDirectory, `E099` or `E100` for a content path, or `E111` or `E057` for the fixity block
  */
 function validateStoredInventory(data: Inventory, file: string): void {
   if (data.head === undefined) {
@@ -143,6 +148,16 @@ function validateStoredInventory(data: Inventory, file: string): void {
       throw createError('E018', file, `contentDirectory "${contentDirectory}"`);
     }
   }
+  const fixity: unknown = data.fixity;
+  if (fixity !== undefined && fixity !== null) {
+    if (!isJsonObject(fixity)) {
+      throw createError('E111', file, 'fixity is not an object');
+    }
+    const malformed = Object.keys(fixity).find((algorithm) => !isDigestBlock(fixity[algorithm]));
+    if (malformed !== undefined) {
+      throw createError('E057', file, `fixity "${malformed}"`);
+    }
+  }
   for (const contentPaths of Object.values(data.manifest)) {
     for (const contentPath of contentPaths) {
       if (contentPath.startsWith('/') || contentPath.endsWith('/')) {
@@ -159,7 +174,6 @@ interface Transfer {
   src: string;
   dest: string;
   digest: string;
-  digests: Digests;
 }
 
 /** A copy or rename resolved to its files */
@@ -176,7 +190,7 @@ export interface DeletePlan {
 
 /** A copy, rename or reinstate: the paths it unlists, then the files it lists */
 export interface RelistPlan extends DeletePlan {
-  files: { logicalPath: string; digest: string; digests: Digests }[];
+  files: { logicalPath: string; digest: string }[];
 }
 
 /**
@@ -184,12 +198,10 @@ export interface RelistPlan extends DeletePlan {
  */
 class OcflObjectInventory {
   #data: Inventory;
-  #fileIndex: { [version: string]: { [logicalPath: string]: Digests } } = {};
-  #fixityIndex = new Map<string, Digests>();
+  /** The digest of each file of each version, by version name then logical path */
+  #fileIndex = new Map<string, Map<string, string>>();
   /** How many files each directory of the head state contains, at any depth */
   #headDirectories = new Map<string, number>();
-
-  metadata: { [contentPath: string]: { size: number; lastModified: number } } | undefined;
 
   /**
    * Digest of this inventory's bytes in storage, as recorded in its sidecar
@@ -203,25 +215,27 @@ class OcflObjectInventory {
    */
   _madeFrom: string | undefined;
 
-  /** The digests the index holds for a logical path */
-  #indexGet(logicalPath: string, versionName?: string): Digests | undefined {
-    return this.#fileIndex[this.#resolveVersion(versionName)]?.[logicalPath];
+  /** The index of a version, made if it has none yet */
+  #versionIndex(version: string): Map<string, string> {
+    let index = this.#fileIndex.get(version);
+    if (!index) {
+      index = new Map();
+      this.#fileIndex.set(version, index);
+    }
+    return index;
   }
 
-  #indexAdd(logicalPath: string, version: string, digests: Digests) {
-    this.#fileIndex[version] ??= {};
-    const index = this.#fileIndex[version];
-    if (version === this.head && !index[logicalPath]) {
+  #indexAdd(logicalPath: string, version: string, digest: string) {
+    const index = this.#versionIndex(version);
+    if (version === this.head && !index.has(logicalPath)) {
       this.#adjustDirectoryCounts(logicalPath, 1);
     }
-    index[logicalPath] = digests;
+    index.set(logicalPath, digest);
   }
 
   #indexRemove(logicalPath: string) {
-    const index = this.#fileIndex[this.head];
-    if (index?.[logicalPath]) {
+    if (this.#fileIndex.get(this.head)?.delete(logicalPath)) {
       this.#adjustDirectoryCounts(logicalPath, -1);
-      delete index[logicalPath];
     }
   }
 
@@ -236,68 +250,29 @@ class OcflObjectInventory {
     }
   }
 
-  #indexGetFixity(contentPath: string): Digests {
-    return this.#fixityIndex.get(contentPath) ?? {};
-  }
-
-  /**
-   * A digest's file index entry, with the fixity of all its content paths
-   */
-  #indexDigests(digest: string): Digests {
-    const digests: Digests = { [this.digestAlgorithm]: digest };
-    for (const cp of this.#requireContentPaths(digest)) {
-      Object.assign(digests, this.#indexGetFixity(cp));
+  /** @throws {@link OcflError} `INVALID_OBJECT` with `E050` if a version's state has a digest the manifest doesn't */
+  #checkStatesInManifest() {
+    for (const { state } of Object.values(this.versions)) {
+      for (const digest of Object.keys(state)) {
+        this.#requireContentPaths(digest);
+      }
     }
-    return digests;
-  }
-
-  #indexAddFixity(contentPath: string, algorithm: string, value: string) {
-    let digests = this.#fixityIndex.get(contentPath);
-    if (!digests) {
-      digests = Object.create(null) as Digests;
-      this.#fixityIndex.set(contentPath, digests);
-    }
-    digests[algorithm] = value;
-  }
-
-  #indexRemoveFixity(contentPath: string) {
-    this.#fixityIndex.delete(contentPath);
   }
 
   #indexBuild() {
-    this.#fixityIndex.clear();
-    for (const [algorithm, digestBlock] of Object.entries(this.fixity ?? {})) {
-      for (const [value, cps] of Object.entries(digestBlock)) {
-        for (const cp of cps) {
-          this.#indexAddFixity(cp, algorithm, value);
-        }
-      }
-    }
-    // index logicalPaths
-    // { v1: { 'dir/file.txt': { sha512: 'abcdef' } } }
-    this.#fileIndex = {};
-    this.#headDirectories.clear();
     for (const [verName, ver] of Object.entries(this.versions)) {
-      this.#fileIndex[verName] = {};
+      this.#versionIndex(verName);
       for (const [digest, lps] of Object.entries(ver.state)) {
-        const digests = this.#indexDigests(digest);
         for (const lp of lps) {
-          this.#indexAdd(lp, verName, digests);
+          this.#indexAdd(lp, verName, digest);
         }
       }
     }
   }
 
-  #indexFindPaths(prefix: string, versionName?: string) {
-    const res: string[] = [];
-    const index = this.#fileIndex[this.#resolveVersion(versionName)];
+  #indexFindPaths(prefix: string, versionName = this.head) {
     const prefixWithSlash = prefix.endsWith('/') ? prefix : `${prefix}/`;
-    for (const lp in index) {
-      if (index[lp] && (lp === prefix || lp.startsWith(prefixWithSlash))) {
-        res.push(lp);
-      }
-    }
-    return res;
+    return [...this.#versionIndex(versionName).keys()].filter((lp) => lp === prefix || lp.startsWith(prefixWithSlash));
   }
 
   /**
@@ -310,14 +285,12 @@ class OcflObjectInventory {
       throw headNotInVersionsError(data.id, data.head);
     }
     this.#data = data;
+    this.#checkStatesInManifest();
     this.#indexBuild();
   }
 
   get id(): string {
     return this.#data.id;
-  }
-  get type(): Inventory['type'] {
-    return this.#data.type;
   }
   get digestAlgorithm(): ContentAlgorithm {
     return this.#data.digestAlgorithm;
@@ -338,28 +311,9 @@ class OcflObjectInventory {
   get versions(): DeepReadonly<Inventory['versions']> {
     return this.#data.versions;
   }
-  /** The current head version. Throws if the head is not in versions. */
-  get version(): DeepReadonly<InventoryVersion> {
-    return headVersion(this.#data);
-  }
-  get fixity(): DeepReadonly<Inventory['fixity']> {
-    return this.#data.fixity;
-  }
-  /** The state of the current version */
+  /** The state of the head version. Throws if the head is not in versions. */
   get state(): DeepReadonly<InventoryDigests> {
-    return this.version.state;
-  }
-
-  /**
-   * Return the state of the specified version
-   * @param versionName - The inventory version, default to the latest
-   */
-  versionState(versionName?: string): DeepReadonly<InventoryDigests> | undefined {
-    return this.versions[this.#resolveVersion(versionName)]?.state;
-  }
-
-  #resolveVersion(versionName?: string): string {
-    return versionName === undefined || versionName === 'latest' ? this.head : versionName;
+    return headVersion(this.#data).state;
   }
 
   /** The name of committed version `version`, if there is one */
@@ -375,123 +329,32 @@ class OcflObjectInventory {
     return JSON.parse(this.toString());
   }
 
-  /**
-   * @param versionName - The version name
-   */
-  *files(versionName?: string): Generator<InventoryFile> {
-    const version = this.#resolveVersion(versionName);
-    const state = version === this.head ? this.state : this.versionState(version);
-    for (const [digest, files] of Object.entries(state ?? {})) {
+  /** The files of a version, which has none if it doesn't exist */
+  *files(versionName: string): Generator<InventoryFile> {
+    for (const [digest, files] of Object.entries(this.versions[versionName]?.state ?? {})) {
       const [contentPath] = this.#requireContentPaths(digest);
       for (const logicalPath of files) {
-        yield {
-          logicalPath,
-          version,
-          digest,
-          contentPath,
-          fixity: this.getFixity(logicalPath, version),
-          ...this.metadata?.[contentPath],
-        };
+        yield { logicalPath, digest, contentPath };
       }
     }
   }
 
-  /**
-   * Get the first content path found with the given digest from the manifest.
-   * Also can be used to check the existance of an entry with the specified digest in the manifest.
-   * @returns The first content path found in the array
-   */
+  /** The first content path the manifest lists for a digest, or `undefined` if it lists none */
   getContentPath(digest: string): string | undefined {
-    const cp = this.manifest[digest];
-    if (cp && cp.length > 0) {
-      return cp[0];
-    }
+    return Object.hasOwn(this.manifest, digest) ? this.manifest[digest]?.[0] : undefined;
   }
 
   #requireContentPaths(digest: string): readonly [string, ...string[]] {
-    const cps = this.manifest[digest];
+    const cps = Object.hasOwn(this.manifest, digest) ? this.manifest[digest] : undefined;
     if (!isNonEmpty(cps)) {
       throw createError('E050', this.id, `digest "${digest}" is not in the manifest`);
     }
     return cps;
   }
 
-  /**
-   * Get the digest of a content represented by the logicalPath of the specified version
-   */
-  getDigest(logicalPath: string, versionName?: string): string | undefined {
-    return this.#indexGet(logicalPath, versionName)?.[this.digestAlgorithm];
-  }
-
-  /**
-   * Get the file information by the logicalPath of the specified version
-   */
-  getFile(logicalPath: string, versionName?: string): InventoryFile | undefined {
-    const version = this.#resolveVersion(versionName);
-    const digest = this.getDigest(logicalPath, version);
-    if (digest) {
-      const [contentPath] = this.#requireContentPaths(digest);
-      return {
-        logicalPath,
-        version,
-        digest,
-        contentPath,
-        fixity: this.getFixity(logicalPath, version),
-        ...this.metadata?.[contentPath],
-      };
-    }
-  }
-
-  getFileByDigest(digest: string, versionName?: string): InventoryFile | undefined {
-    if (versionName !== undefined) {
-      const logicalPath = this.versionState(versionName)?.[digest]?.[0];
-      return logicalPath ? this.getFile(logicalPath, versionName) : undefined;
-    }
-    for (const [version, { state }] of Object.entries(this.versions)) {
-      const logicalPath = state[digest]?.[0];
-      if (logicalPath) {
-        return this.getFile(logicalPath, version);
-      }
-    }
-  }
-
-  getFileByContentPath(contentPath: string, versionName?: string): InventoryFile | undefined {
-    for (const digest in this.manifest) {
-      if (this.manifest[digest]?.includes(contentPath)) {
-        return this.getFileByDigest(digest, versionName);
-      }
-    }
-  }
-
-  /**
-   * Get the fixity of a content represented by the logicalPath of the specified version
-   */
-  getFixity(logicalPath: string, versionName?: string): Digests {
-    const { [this.digestAlgorithm]: digest, ...fixity } = this.#indexGet(logicalPath, versionName) || {};
-    return fixity;
-  }
-
-  /**
-   * Compare the differences between the state of two versions
-   * @returns A tuple of [A, B] where A contains files
-   *     that are in `version0` but not in `version1` and B contains files
-   *     that are in `version1` but not in `version0`
-   */
-  diffState(version0: string, version1: string): [InventoryDigests, InventoryDigests] {
-    const state1 = this.versionState(version0) ?? {};
-    const state2 = this.versionState(version1) ?? {};
-    const diff = (s1: DeepReadonly<InventoryDigests>, s2: DeepReadonly<InventoryDigests>) => {
-      const r: InventoryDigests = {};
-      for (const [d, d1] of Object.entries(s1)) {
-        const d2 = s2[d];
-        const files = d2?.length ? d1.filter((f) => !d2.includes(f)) : d1.slice();
-        if (files.length > 0) {
-          r[d] = files;
-        }
-      }
-      return r;
-    };
-    return [diff(state1, state2), diff(state2, state1)];
+  /** The digest of the file at a logical path in a version, the head by default */
+  getDigest(logicalPath: string, versionName: string = this.head): string | undefined {
+    return this.#fileIndex.get(versionName)?.get(logicalPath);
   }
 
   /**
@@ -499,7 +362,7 @@ class OcflObjectInventory {
    * If data.head is undefined, starts from v1.
    * @internal
    */
-  static newVersion(data: Partial<Inventory> | OcflObjectInventory, cleanState?: boolean): OcflObjectInventory {
+  static newVersion(data: Partial<Inventory> | OcflObjectInventory): OcflObjectInventory {
     const madeFrom = data instanceof OcflObjectInventory ? data._digest : undefined;
     if (data instanceof OcflObjectInventory) {
       data = JSON.parse(JSON.stringify(data.#data)) as Inventory;
@@ -511,13 +374,11 @@ class OcflObjectInventory {
     data.versions = data.versions || {};
     let state: InventoryDigests = {};
     if (data.head) {
-      if (!cleanState) {
-        const prev = data.versions[data.head];
-        if (!prev) {
-          throw headNotInVersionsError(data.id, data.head);
-        }
-        state = JSON.parse(JSON.stringify(prev.state));
+      const prev = data.versions[data.head];
+      if (!prev) {
+        throw headNotInVersionsError(data.id, data.head);
       }
+      state = JSON.parse(JSON.stringify(prev.state));
       data.head = VersionNumber._among(data.head, Object.keys(data.versions)).next().toString();
     } else {
       data.head = 'v1';
@@ -555,8 +416,17 @@ class OcflObjectInventory {
     if (!prev) {
       return true;
     }
-    const diff = this.diffState(this.head, prev);
-    return Object.keys(diff[0]).length > 0 || Object.keys(diff[1]).length > 0;
+    const head = this.#versionIndex(this.head);
+    const previous = this.#versionIndex(prev);
+    if (head.size !== previous.size) {
+      return true;
+    }
+    for (const [logicalPath, digest] of head) {
+      if (previous.get(logicalPath) !== digest) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** The digest of a logical path and the head state entry listing it */
@@ -586,11 +456,11 @@ class OcflObjectInventory {
   }
 
   /** Append a logical path to its digest's list in the head version state */
-  #list(logicalPath: string, digest: string, digests: Digests) {
+  #list(logicalPath: string, digest: string) {
     const { state } = headVersion(this.#data);
     state[digest] ??= [];
     state[digest].push(logicalPath);
-    this.#indexAdd(logicalPath, this.head, digests);
+    this.#indexAdd(logicalPath, this.head, digest);
   }
 
   /**
@@ -606,12 +476,13 @@ class OcflObjectInventory {
       this.#unlist(logicalPath);
       this.#applyContentReleases(releases);
     }
-    const existingPath = this.getContentPath(digest);
-    const digests = existingPath ? this.#indexDigests(digest) : this.#addContent(logicalPath, digest);
+    if (!this.getContentPath(digest)) {
+      this.#data.manifest[digest] = [this.#ownContentPath(logicalPath)];
+    }
     if (this.getDigest(logicalPath) === digest) {
       return false;
     }
-    this.#list(logicalPath, digest, digests);
+    this.#list(logicalPath, digest);
     return true;
   }
 
@@ -653,64 +524,13 @@ class OcflObjectInventory {
   }
 
   #applyContentReleases(releases: ContentRelease[]) {
-    // Every `from` is read and forgotten first: a release can move content to a path another vacates
-    const released = releases.map((release) => ({ ...release, fixity: Object.entries(this.#indexGetFixity(release.from)) }));
-    for (const { from } of released) {
-      this.#forgetFixity(from);
-    }
-    for (const { digest, to, fixity } of released) {
+    for (const { digest, to } of releases) {
       if (to === undefined) {
         delete this.#data.manifest[digest];
-        continue;
-      }
-      this.#data.manifest[digest] = [to];
-      for (const [algorithm, value] of fixity) {
-        this.#addFixity(to, algorithm, value);
+      } else {
+        this.#data.manifest[digest] = [to];
       }
     }
-  }
-
-  #forgetFixity(contentPath: string) {
-    const { fixity } = this.#data;
-    for (const [algorithm, value] of Object.entries(this.#indexGetFixity(contentPath))) {
-      const block = fixity?.[algorithm];
-      const contentPaths = block?.[value]?.filter((p) => p !== contentPath);
-      if (block && contentPaths?.length) {
-        block[value] = contentPaths;
-      } else if (block) {
-        delete block[value];
-      }
-      if (block && Object.keys(block).length === 0) {
-        delete fixity?.[algorithm];
-      }
-    }
-    this.#indexRemoveFixity(contentPath);
-  }
-
-  #addContent(logicalPath: string, digest: string): Digests {
-    this.#data.manifest[digest] = [this.#ownContentPath(logicalPath)];
-    return { [this.digestAlgorithm]: digest };
-  }
-
-  /**
-   * Low-level method to add a set of digest entries associated to file into the fixity block
-   */
-  #addFixity(contentPath: string, digestName: string, digestValue: string) {
-    if (!digestValue || !digestName) {
-      return;
-    }
-    const data = this.#data;
-    data.fixity ??= {};
-    data.fixity[digestName] ??= {};
-    const digestBlock = data.fixity[digestName];
-    if (digestBlock[digestValue]) {
-      if (!digestBlock[digestValue].includes(contentPath)) {
-        digestBlock[digestValue].push(contentPath);
-      }
-    } else {
-      digestBlock[digestValue] = [contentPath];
-    }
-    this.#indexAddFixity(contentPath, digestName, digestValue);
   }
 
   /** True if the path is inside a file in the head state */
@@ -771,9 +591,8 @@ class OcflObjectInventory {
       }
     }
     const transfers = sources.flatMap((file) => {
-      const digests = this.#indexGet(file, this.head);
-      const digest = digests?.[this.digestAlgorithm];
-      return digests && digest ? [{ src: file, dest: `${dest}${file.slice(src.length)}`, digest, digests }] : [];
+      const digest = this.getDigest(file);
+      return digest ? [{ src: file, dest: `${dest}${file.slice(src.length)}`, digest }] : [];
     });
     for (const transfer of transfers) {
       this._checkFilePath(transfer.dest);
@@ -796,7 +615,7 @@ class OcflObjectInventory {
     const paths = [...leaving];
     const files = transfers
       .filter(({ dest, digest }) => leaving.has(dest) || this.getDigest(dest) !== digest)
-      .map(({ dest, digest, digests }) => ({ logicalPath: dest, digest, digests }));
+      .map(({ dest, digest }) => ({ logicalPath: dest, digest }));
     return { paths, files, releases: this._contentReleases(paths, transfers) };
   }
 
@@ -829,22 +648,14 @@ class OcflObjectInventory {
    */
   _applyRelist({ paths, files, releases }: RelistPlan): void {
     this._applyDelete({ paths, releases });
-    for (const { logicalPath, digest, digests } of files) {
-      this.#list(logicalPath, digest, digests);
+    for (const { logicalPath, digest } of files) {
+      this.#list(logicalPath, digest);
     }
   }
 
   /**
-   * Delete a file or directory. Content the head version stored moves to a remaining logical path
-   * that uses it, or leaves the manifest if none does.
-   * @internal
-   */
-  _delete(logicalPath: string): number {
-    return this._applyDelete(this._planDelete(logicalPath));
-  }
-
-  /**
-   * Resolve a delete to the paths it unlists and what happens to their content, changing nothing
+   * Resolve the delete of a file or directory to the paths it unlists and what happens to their content, changing
+   * nothing. Content the head version stored moves to a remaining logical path that uses it, or leaves the manifest if none does.
    * @internal
    */
   _planDelete(logicalPath: string): DeletePlan {
@@ -897,13 +708,12 @@ class OcflObjectInventory {
       throw ocflError('FILE_NOT_FOUND', `Version ${version} of object [${this.id}] has nothing at logical path "${logicalPath}"`);
     }
     const files = found.flatMap((filePath) => {
-      const digests = this.#indexGet(filePath, versionName);
-      const digest = digests?.[this.digestAlgorithm];
-      if (!digests || !digest || this.getDigest(filePath) === digest) {
+      const digest = this.getDigest(filePath, versionName);
+      if (!digest || this.getDigest(filePath) === digest) {
         return [];
       }
       this._checkFilePath(filePath);
-      return [{ logicalPath: filePath, digest, digests }];
+      return [{ logicalPath: filePath, digest }];
     });
     const paths = files.map((file) => file.logicalPath).filter((filePath) => this.getDigest(filePath) !== undefined);
     return { files, paths, releases: this._contentReleases(paths) };

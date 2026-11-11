@@ -72,11 +72,6 @@ describe('Hashing', () => {
       hash = await Hashing.digest('sha512/256', new TextEncoder().encode(inputData));
       assert.strictEqual(hash, hash2);
     });
-    it('can correctly calculate crc32', async () => {
-      const hash = await Hashing.digest('crc32', 'a');
-      assert.strictEqual(hash, 'e8b7be43');
-      assert.strictEqual(await Hashing.digest('crc32', ''), '00000000');
-    });
     it('can digest an ArrayBuffer and typed array views', async () => {
       const bytes = new TextEncoder().encode(inputData);
       assert.strictEqual(await Hashing.digest('sha512', bytes.buffer), controlDigest);
@@ -87,11 +82,6 @@ describe('Hashing', () => {
     });
     it('rejects unsupported algorithms', async () => {
       await assert.rejects(Hashing.digest('blake2b-256', inputData), /Unsupported digest algorithm/);
-    });
-    it('can correctly calculate byte size', async () => {
-      const hash = await Hashing.digest('size', inputData);
-      const hash2 = `${new TextEncoder().encode(inputData).length}`;
-      assert.strictEqual(hash, hash2);
     });
   });
 });

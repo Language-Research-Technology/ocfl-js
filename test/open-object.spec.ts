@@ -341,6 +341,34 @@ describe('opening an object', () => {
         },
       ],
       [
+        'a state digest that is only an inherited property of the manifest',
+        'E050',
+        (inventory) => {
+          inventory.versions!.v1!.state = { constructor: ['a.txt'] };
+        },
+      ],
+      [
+        'a fixity block that is not an object',
+        'E111',
+        (inventory) => {
+          inventory.fixity = ['md5'] as never;
+        },
+      ],
+      [
+        'a fixity block whose algorithm does not map digests to content paths',
+        'E057',
+        (inventory) => {
+          inventory.fixity = { md5: { abc: 5 } } as never;
+        },
+      ],
+      [
+        'a fixity block with no digests for an algorithm',
+        'E057',
+        (inventory) => {
+          inventory.fixity = { md5: null } as never;
+        },
+      ],
+      [
         'a head that is not a string',
         'E040',
         (inventory) => {
