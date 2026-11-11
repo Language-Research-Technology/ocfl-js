@@ -7,7 +7,6 @@ import { after, before } from 'node:test';
 import {
   createStorageRoot,
   type Draft,
-  type Inventory,
   type LayoutConfig,
   type OcflErrorCode,
   type OcflObject,
@@ -15,8 +14,9 @@ import {
   type Version,
   type VersionDetails,
 } from '../../src/index.ts';
-import { emptyDirectoriesUnder } from '../empty-directories.ts';
-import { ocflError } from '../ocfl-error.ts';
+import type { Inventory } from '../../src/types.ts';
+import { emptyDirectoriesUnder } from './empty-directories.ts';
+import { ocflError } from './ocfl-error.ts';
 
 /** With this layout an object root is `<root>/<id>`, and a new storage root has no `extensions` directory */
 export const FLAT: LayoutConfig = { extensionName: '0002-flat-direct-storage-layout' };
@@ -133,8 +133,8 @@ export async function storedFiles(objectRoot: string, versionName: string): Prom
 }
 
 /**
- * Checks what a committed version must satisfy: its stored files are exactly the manifest's, each under its own digest,
- * and it has no empty directories.
+ * Checks what a committed version must satisfy: its stored files are exactly the manifest's, each under its own digest
+ * and used by some version, and it has no empty directories.
  * @returns The root inventory
  */
 export async function assertVersionValid(objectRoot: string, versionName: string): Promise<Inventory> {
@@ -142,7 +142,9 @@ export async function assertVersionValid(objectRoot: string, versionName: string
   const contentPaths = Object.values(inventory.manifest).flat();
   assert.strictEqual(new Set(contentPaths).size, contentPaths.length, 'a content path appears under two digests');
   assert.deepStrictEqual(await storedFiles(objectRoot, versionName), contentPaths.filter((p) => p.startsWith(`${versionName}/`)).sort());
+  const usedDigests = new Set(Object.values(inventory.versions).flatMap((version) => Object.keys(version.state)));
   for (const [digest, paths] of Object.entries(inventory.manifest)) {
+    assert.ok(usedDigests.has(digest), `${digest} is in the manifest but no version uses it`);
     for (const contentPath of paths) {
       const content = await fs.promises.readFile(path.join(objectRoot, contentPath));
       assert.strictEqual(createHash(inventory.digestAlgorithm).update(content).digest('hex'), digest, contentPath);

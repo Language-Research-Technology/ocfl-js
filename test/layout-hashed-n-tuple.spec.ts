@@ -1,14 +1,13 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { storageLayout } from '../../src/index.ts';
-import { ocflError } from '../ocfl-error.ts';
+import { createLayout } from '../src/extensions/index.ts';
 
 const NAME = '0004-hashed-n-tuple-storage-layout';
-const configured = (params: Record<string, unknown>) => storageLayout({ extensionName: NAME, ...params });
+const configured = (params: Record<string, unknown>) => createLayout({ extensionName: NAME, ...params });
 
 describe('the 0004 hashed n-tuple layout', () => {
   it('can use default config', () => {
-    const layout = storageLayout(NAME);
+    const layout = createLayout({ extensionName: NAME });
     const cases: [string, string][] = [
       ['object-01', '3c0/ff4/240/3c0ff4240c1e116dba14c7627f2319b58aa3d77606d0d90dfc6161608ac987d4'],
       ['..hor/rib:le-$id', '487/326/d8c/487326d8c2a3c0b885e23da1469b4d6671fd4e76978924b4443e9e3c316cda6d'],
@@ -30,11 +29,11 @@ describe('the 0004 hashed n-tuple layout', () => {
   });
 
   it('rejects a digestAlgorithm that is not lowercase', () => {
-    assert.throws(() => configured({ digestAlgorithm: 'MD5' }), ocflError('INVALID_LAYOUT_CONFIG'));
+    assert.throws(() => configured({ digestAlgorithm: 'MD5' }), TypeError);
   });
 
   it('rejects an unknown digestAlgorithm', () => {
-    assert.throws(() => configured({ digestAlgorithm: 'sha3' }), ocflError('INVALID_LAYOUT_CONFIG'));
+    assert.throws(() => configured({ digestAlgorithm: 'sha3' }), TypeError);
   });
 
   it('can use custom config, edge case', () => {

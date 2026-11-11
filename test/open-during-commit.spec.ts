@@ -4,8 +4,8 @@ import path from 'node:path';
 import { describe, it, mock } from 'node:test';
 import type { StorageRoot } from '../src/index.ts';
 import { createObject, DETAILS, objectRootOf, readInventory, textFiles, useTempRoots } from './helpers/drafts.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 import { writeInventory } from './helpers/storage-roots.ts';
-import { ocflError } from './ocfl-error.ts';
 
 const SIDECAR = 'inventory.json.sha512';
 

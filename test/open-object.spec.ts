@@ -4,21 +4,22 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { createStorageRoot, type LayoutConfig, type OcflError, openStorageRoot, type StorageRoot, type ValidationError } from '../src/index.ts';
-import { withFsFailure } from './fs-failures.ts';
+import { createStorageRoot, type LayoutConfig, type OcflError, openStorageRoot, type StorageRoot } from '../src/index.ts';
+import { DIGESTS_OF_ABC } from './helpers/digests-of-abc.ts';
+import { withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 import {
   rewriteInventory,
   SPEC_EX_FULL_ID,
   STORAGE_FIXTURE,
   writeFiles,
+  writeForeignObject,
   writeInventory,
   writeSpecExFullRoot,
   writeStorageRoot,
   writeVersions,
 } from './helpers/storage-roots.ts';
-import { ocflError } from './ocfl-error.ts';
-import { DIGESTS_OF_ABC } from './shared/digests-of-abc.ts';
 
 const FLAT: LayoutConfig = { extensionName: '0002-flat-direct-storage-layout' };
 
@@ -205,7 +206,7 @@ describe('opening an object', () => {
 
   it('opens an object whose inventory uses sha256', async () => {
     const root = await newRoot();
-    await writeVersions(root.path, 'sha256-object', [{ 'a.txt': 'abc' }], { digestAlgorithm: 'sha256' });
+    await writeForeignObject(path.join(root.path, 'sha256-object'), 'sha256-object', { 'a.txt': 'abc' }, { digestAlgorithm: 'sha256' });
     const object = await root.open('sha256-object');
     assert.strictEqual(object.digestAlgorithm, 'sha256');
     const file = object.head.files.get('a.txt')!;
@@ -413,13 +414,16 @@ describe('opening an object', () => {
       });
     }
 
-    it('keeps the original error as the cause', async () => {
-      await damaged('cause', (inventory) => {
+    it('says in its message which rule is broken, where and how', async () => {
+      await damaged('broken-rule', (inventory) => {
         inventory.head = 'v2';
       });
-      await assert.rejects(root.open('cause'), (error: OcflError) => {
-        const { name, code, detail } = error.cause as ValidationError;
-        assert.deepStrictEqual({ name, code, detail }, { name: 'ValidationError', code: 'E040', detail: 'head "v2" is not in versions' });
+      await assert.rejects(root.open('broken-rule'), (error: OcflError) => {
+        assert.ok(invalid('E040')(error));
+        assert.match(
+          error.message,
+          /^E040: \[head\] MUST be the version directory name with the highest version number\. At .*\(head "v2" is not in versions\)$/,
+        );
         return true;
       });
     });

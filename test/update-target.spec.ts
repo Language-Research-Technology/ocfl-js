@@ -5,8 +5,9 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { OcflObjectInventory } from '../src/inventory.ts';
 import { OcflObjectTransaction, type UpdateTarget, updateTarget } from '../src/transaction.ts';
+import { DIGESTS_OF_ABC } from './helpers/digests-of-abc.ts';
+import { DETAILS } from './helpers/drafts.ts';
 import { writeFiles } from './helpers/storage-roots.ts';
-import { DIGESTS_OF_ABC } from './shared/digests-of-abc.ts';
 
 describe('OcflObjectTransaction driven from an update target', () => {
   let storageRoot: string;
@@ -33,11 +34,11 @@ describe('OcflObjectTransaction driven from an update target', () => {
     await transaction.write('a.txt', 'abc');
     assert.strictEqual(fs.readFileSync(path.join(target.workspace, 'v1', 'content', 'a.txt'), 'utf8'), 'abc');
 
-    const committed = await transaction._commit({ message: 'first' });
+    const committed = await transaction._commit(DETAILS);
 
     assert.ok(committed);
     assert.strictEqual(committed.head, 'v1');
-    assert.strictEqual(committed.version.message, 'first');
+    assert.strictEqual(committed.version.message, DETAILS.message);
     assert.strictEqual(committed.getDigest('a.txt'), DIGESTS_OF_ABC.sha512);
     assert.deepStrictEqual(fs.readdirSync(target.root).sort(), ['0=ocfl_object_1.0', 'inventory.json', 'inventory.json.sha512', 'v1']);
     assert.strictEqual(fs.readFileSync(path.join(target.root, '0=ocfl_object_1.0'), 'utf8'), 'ocfl_object_1.0\n');
@@ -50,14 +51,23 @@ describe('OcflObjectTransaction driven from an update target', () => {
   it('returns nothing from a commit with no changes, and leaves the object at its version', async () => {
     const first = await OcflObjectTransaction.create(target, firstVersion());
     await first.write('a.txt', 'abc');
-    const v1 = await first._commit();
+    const v1 = await first._commit(DETAILS);
     assert.ok(v1);
 
     const second = await OcflObjectTransaction.create(target, OcflObjectInventory.newVersion(v1));
 
-    assert.strictEqual(await second._commit(), undefined);
+    assert.strictEqual(await second._commit(DETAILS), undefined);
     assert.deepStrictEqual(fs.readdirSync(target.root).sort(), ['0=ocfl_object_1.0', 'inventory.json', 'inventory.json.sha512', 'v1']);
     assert.deepStrictEqual(fs.readdirSync(storageRoot), ['objects']);
+  });
+
+  it('refuses an operation once it has been committed', async () => {
+    const transaction = await OcflObjectTransaction.create(target, firstVersion());
+    await transaction.write('a.txt', 'abc');
+    await transaction._commit(DETAILS);
+
+    await assert.rejects(transaction.write('b.txt', 'b'), /already commited/);
+    assert.ok(!fs.existsSync(path.join(target.root, 'v1', 'content', 'b.txt')));
   });
 
   it('refuses a root that holds something other than an object', async () => {
@@ -65,7 +75,7 @@ describe('OcflObjectTransaction driven from an update target', () => {
     const transaction = await OcflObjectTransaction.create(target, firstVersion());
     await transaction.write('a.txt', 'abc');
 
-    await assert.rejects(transaction.commit(), { code: 'DIRECTORY_NOT_EMPTY' });
+    await assert.rejects(transaction._commit(DETAILS), { code: 'DIRECTORY_NOT_EMPTY' });
     assert.deepStrictEqual(fs.readdirSync(target.root), ['stray.txt']);
   });
 });

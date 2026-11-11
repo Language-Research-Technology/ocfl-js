@@ -1,17 +1,12 @@
 import path from 'node:path';
 import { inspect } from 'node:util';
-import { OcflError } from '../error.ts';
+import { ocflError } from '../error.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
-
-export type PathDirectStorageLayoutConfig = {
-  omitScheme?: boolean;
-  replace?: [string, string][];
-  suffix?: string;
-};
+import type { PathDirectLayoutConfig } from '../types.ts';
 
 const isReplacePair = (pair: unknown) => Array.isArray(pair) && pair.length === 2 && typeof pair[0] === 'string' && typeof pair[1] === 'string';
 
-const DefaultConfig: Required<PathDirectStorageLayoutConfig> = {
+const DefaultConfig: Required<Omit<PathDirectLayoutConfig, 'extensionName'>> = {
   omitScheme: false,
   replace: [],
   suffix: '/__object__',
@@ -76,19 +71,19 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
 
   constructor(config?: OcflExtensionConfig) {
     super(config, DefaultConfig);
-    const invalid = this.parameters.replace.find((pair) => !isReplacePair(pair));
-    if (invalid !== undefined) {
-      throw new OcflError('INVALID_LAYOUT_CONFIG', `Each replace entry must be a [pattern, replacement] pair of strings, not ${inspect(invalid)}.`);
+    const invalid = this.parameters.replace.findIndex((pair) => !isReplacePair(pair));
+    if (invalid !== -1) {
+      throw new TypeError(`Each replace entry must be a [pattern, replacement] pair of strings, not ${inspect(this.parameters.replace[invalid])}.`);
     }
     if (hasDotSegment(this.parameters.suffix)) {
-      throw new OcflError('INVALID_LAYOUT_CONFIG', `The suffix '${this.parameters.suffix}' has a . or .. segment.`);
+      throw new TypeError(`The suffix '${this.parameters.suffix}' has a . or .. segment.`);
     }
   }
 
   map(id: string): string {
     var suffix = this.parameters.suffix;
     if (suffix && id.endsWith(suffix)) {
-      throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `Identifier cannot end with '${suffix}'`);
+      throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `Identifier cannot end with '${suffix}'`);
     }
     let replaced = id ?? '';
     for (const r of this.parameters.replace) {
@@ -110,7 +105,7 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     }
     // the URL parser resolves dot segments in the id, and rewriting the hostname can add one
     if (hasDotSegment(afterScheme) || hasDotSegment(p)) {
-      throw new OcflError(
+      throw ocflError(
         'ID_INCOMPATIBLE_WITH_LAYOUT',
         `The object id <${id}> is incompatible with layout extension ${this.name} because it has a . or .. segment.`,
       );

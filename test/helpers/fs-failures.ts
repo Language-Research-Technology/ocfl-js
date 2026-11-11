@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { mock } from 'node:test';
-import { isErrnoException } from '../src/utils.ts';
+import { isErrnoException } from '../../src/utils.ts';
 
 type FsMethod = 'mkdir' | 'open' | 'rename' | 'copyFile' | 'writeFile' | 'readFile' | 'readdir' | 'rmdir' | 'rm' | 'opendir' | 'stat';
 type Fails = (source: string, target: string) => boolean;

@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, before, describe, it, mock } from 'node:test';
 import type { Draft, OcflObject, StorageRoot } from '../src/index.ts';
-import { withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
   assertVersionValid,
@@ -19,12 +18,13 @@ import {
   useTempRoots,
   workspaceOf,
 } from './helpers/drafts.ts';
+import { withFsFailure } from './helpers/fs-failures.ts';
 import { makeTree } from './helpers/import-sources.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 import { writeFiles } from './helpers/storage-roots.ts';
-import { ocflError } from './ocfl-error.ts';
 
 const CONCURRENCY_LIMIT = 10;
-const FIXTURES = path.join(import.meta.dirname, 'shared/test-data');
+const FIXTURES = path.join(import.meta.dirname, 'fixtures');
 
 /** Counts the files `fs.createReadStream` has open, and with `copies` those `fs.promises.copyFile` is copying, returning the most open at once */
 function trackOpenFiles({ copies = false } = {}) {
@@ -129,7 +129,7 @@ describe('importing into a draft', () => {
     });
 
     it('imports a tree of text, empty and binary files byte for byte', async () => {
-      const source = path.join(FIXTURES, 'fixtures/1.1/content/spec-ex-full/v3');
+      const source = path.join(FIXTURES, 'ocfl/1.1/content/spec-ex-full/v3');
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.import(source);
       });
@@ -146,8 +146,8 @@ describe('importing into a draft', () => {
     });
 
     it('imports several sources into one version', async () => {
-      const full = path.join(FIXTURES, 'fixtures/1.1/content/spec-ex-full/v3');
-      const diffPaths = path.join(FIXTURES, 'fixtures/1.1/content/spec-ex-diff-paths/v1');
+      const full = path.join(FIXTURES, 'ocfl/1.1/content/spec-ex-full/v3');
+      const diffPaths = path.join(FIXTURES, 'ocfl/1.1/content/spec-ex-diff-paths/v1');
       const source = await newSource({ 'metadata.json': '{}', 'data/a/a.txt': 'data a', 'data/a/aa/aa.txt': 'data aa', 'data/b/b.txt': 'data b' });
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.import(full);
@@ -178,7 +178,7 @@ describe('importing into a draft', () => {
     it('adds a version to an object that has files, keeping them', async () => {
       const object = await createObject(root, newId(), { 'test.txt': 'test' });
       const updated = await object.update(DETAILS, async (draft) => {
-        await draft.import(path.join(FIXTURES, 'fixtures/1.1/content/spec-ex-full/v3'));
+        await draft.import(path.join(FIXTURES, 'ocfl/1.1/content/spec-ex-full/v3'));
       });
       assert.deepStrictEqual([...updated.head.files.keys()].sort(), ['empty2.txt', 'foo/bar.xml', 'image.tiff', 'test.txt']);
       assert.strictEqual(await fs.promises.readFile(path.join(objectRootOf(root, object.id), 'v1/content/test.txt'), 'utf8'), 'test');

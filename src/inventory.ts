@@ -1,13 +1,13 @@
 import nodePath from 'node:path';
 import { OcflConstants } from './constants.ts';
-import { OcflError } from './error.ts';
+import { ocflError } from './error.ts';
 import type { ContentAlgorithm, DeepReadonly, Digests, Inventory, InventoryDigests, InventoryVersion } from './types.ts';
 import { normaliseLogicalPath, parentDirectories } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 
-export interface InventoryFile {
+interface InventoryFile {
   logicalPath: string;
   version: string;
   digest: string;
@@ -32,9 +32,6 @@ class VersionNumber {
     this.value = num;
     this.zeroPaddingLength = zeroPaddingLength;
   }
-  valueOf(): number {
-    return this.value;
-  }
   toString(): string {
     return `v${this.zeroPaddingLength ? `${this.value}`.padStart(this.zeroPaddingLength, '0') : this.value}`;
   }
@@ -42,7 +39,7 @@ class VersionNumber {
   next(): VersionNumber {
     const next = new VersionNumber(this.value + 1, this.zeroPaddingLength);
     if (this.zeroPaddingLength && `${next.value}`.length >= this.zeroPaddingLength) {
-      throw new OcflError(
+      throw ocflError(
         'VERSION_LIMIT_REACHED',
         `There can be no version after ${this}: a zero-padded version name must start with a zero (E011), and one of ${this.zeroPaddingLength} digits can't for ${next.value}.`,
       );
@@ -72,14 +69,6 @@ class VersionNumber {
   static _among(versionLabel: string, versionNames: string[]): VersionNumber {
     const padded = versionNames.find((name) => name.startsWith('v0'));
     return new VersionNumber(VersionNumber.fromString(versionLabel).value, padded ? VersionNumber.fromString(padded).zeroPaddingLength : undefined);
-  }
-}
-
-function findKey(file: string, obj: DeepReadonly<InventoryDigests>): string | undefined {
-  for (const digest in obj) {
-    if (obj[digest]?.includes(file)) {
-      return digest;
-    }
   }
 }
 
@@ -130,7 +119,7 @@ function isStagedRootInventory(name: string): boolean {
  * Checks an inventory read from storage, before its values are used as paths in the object root.
  * The constructor checks that `head` is one of the versions.
  * @param file - The inventory's path, for the error
- * @throws `ValidationError` `E036` or `E040` for a missing or empty head, `E104` for a version name,
+ * @throws {@link OcflError} `INVALID_OBJECT` with `E036` or `E040` for a missing or empty head, `E104` for a version name,
  * `E017` or `E018` for the contentDirectory, or `E099` or `E100` for a content path
  */
 function validateStoredInventory(data: Inventory, file: string): void {
@@ -214,30 +203,9 @@ class OcflObjectInventory {
    */
   _madeFrom: string | undefined;
 
-  /**
-   * Helper function to find the digest by logical file path and cached it by indexing
-   */
-  #indexGet(logicalPath: string, versionName?: string, onlyUsecache?: boolean): Digests | undefined {
-    const version = this.#resolveVersion(versionName);
-    let digests = this.#fileIndex[version]?.[logicalPath];
-    if (!digests && !onlyUsecache) {
-      // search and then index
-      const algo = this.digestAlgorithm;
-      const digestArr: [string, string][] = [];
-      const mainDigest = findKey(logicalPath, this.versionState(version) ?? {});
-      if (mainDigest) {
-        digestArr.push([algo, mainDigest]);
-        const cp = this.getContentPath(mainDigest);
-        if (cp) {
-          digestArr.push(...Object.entries(this.#indexGetFixity(cp)));
-        }
-      }
-      if (digestArr.length > 0) {
-        digests = Object.fromEntries(digestArr);
-        this.#indexAdd(logicalPath, version, digests);
-      }
-    }
-    return digests;
+  /** The digests the index holds for a logical path */
+  #indexGet(logicalPath: string, versionName?: string): Digests | undefined {
+    return this.#fileIndex[this.#resolveVersion(versionName)]?.[logicalPath];
   }
 
   #indexAdd(logicalPath: string, version: string, digests: Digests) {
@@ -381,17 +349,6 @@ class OcflObjectInventory {
   get state(): DeepReadonly<InventoryDigests> {
     return this.version.state;
   }
-  get created(): string {
-    return this.version.created;
-  }
-  get message(): InventoryVersion['message'] {
-    return this.version.message;
-  }
-  get user(): DeepReadonly<InventoryVersion['user']> {
-    return this.version.user;
-  }
-  //get nextVersion() { return this.versionNumber.next().toString(); }
-  //get prevVersion() { return this.versionNumber.previous()?.toString(); }
 
   /**
    * Return the state of the specified version
@@ -439,14 +396,6 @@ class OcflObjectInventory {
     }
   }
 
-  *find(fn: (file: InventoryFile) => boolean, version?: string): Generator<InventoryFile, void, unknown> {
-    for (const f of this.files(version)) {
-      if (fn(f)) {
-        yield f;
-      }
-    }
-  }
-
   /**
    * Get the first content path found with the given digest from the manifest.
    * Also can be used to check the existance of an entry with the specified digest in the manifest.
@@ -471,7 +420,7 @@ class OcflObjectInventory {
    * Get the digest of a content represented by the logicalPath of the specified version
    */
   getDigest(logicalPath: string, versionName?: string): string | undefined {
-    return this.#indexGet(logicalPath, versionName, true)?.[this.digestAlgorithm];
+    return this.#indexGet(logicalPath, versionName)?.[this.digestAlgorithm];
   }
 
   /**
@@ -518,7 +467,7 @@ class OcflObjectInventory {
    * Get the fixity of a content represented by the logicalPath of the specified version
    */
   getFixity(logicalPath: string, versionName?: string): Digests {
-    const { [this.digestAlgorithm]: digest, ...fixity } = this.#indexGet(logicalPath, versionName, true) || {};
+    const { [this.digestAlgorithm]: digest, ...fixity } = this.#indexGet(logicalPath, versionName) || {};
     return fixity;
   }
 
@@ -772,7 +721,7 @@ class OcflObjectInventory {
   /** @throws {@link OcflError} `FILE_EXISTS` if the path is inside a file in the head state */
   #checkNotInsideFile(logicalPath: string) {
     if (this.#isInsideFile(logicalPath)) {
-      throw new OcflError('FILE_EXISTS', `Logical path "${logicalPath}" is inside an existing file in object [${this.id}]`);
+      throw ocflError('FILE_EXISTS', `Logical path "${logicalPath}" is inside an existing file in object [${this.id}]`);
     }
   }
 
@@ -785,7 +734,7 @@ class OcflObjectInventory {
     const target = normaliseLogicalPath(logicalPath);
     this.#checkNotInsideFile(target);
     if (this.#headDirectories.has(target)) {
-      throw new OcflError('FILE_EXISTS', `Logical path "${logicalPath}" is an existing directory in object [${this.id}]`);
+      throw ocflError('FILE_EXISTS', `Logical path "${logicalPath}" is an existing directory in object [${this.id}]`);
     }
   }
 
@@ -798,31 +747,31 @@ class OcflObjectInventory {
     const dest = normaliseLogicalPath(target);
     for (const logicalPath of [src, dest]) {
       if (logicalPath === '.') {
-        throw new OcflError('INVALID_LOGICAL_PATH', "A logical path can't be empty");
+        throw ocflError('INVALID_LOGICAL_PATH', "A logical path can't be empty");
       }
     }
     const isFile = this.getDigest(src) !== undefined;
     const sources = isFile ? [src] : this.#indexFindPaths(src);
     if (sources.length === 0) {
-      throw new OcflError('FILE_NOT_FOUND', `Source logical path "${source}" does not exist in object [${this.id}]`);
+      throw ocflError('FILE_NOT_FOUND', `Source logical path "${source}" does not exist in object [${this.id}]`);
     }
     if (src === dest) {
       return { transfers: [], replaced: [] };
     }
     if (dest.startsWith(`${src}/`)) {
-      throw new OcflError('INVALID_LOGICAL_PATH', `Target logical path "${target}" is inside the source "${source}"`);
+      throw ocflError('INVALID_LOGICAL_PATH', `Target logical path "${target}" is inside the source "${source}"`);
     }
     if (!isFile) {
       this.#checkNotInsideFile(dest);
       if (this.getDigest(dest) !== undefined) {
-        throw new OcflError('FILE_EXISTS', `Target logical path "${target}" is an existing file in object [${this.id}]`);
+        throw ocflError('FILE_EXISTS', `Target logical path "${target}" is an existing file in object [${this.id}]`);
       }
       if (!merge && this.#headDirectories.has(dest)) {
-        throw new OcflError('FILE_EXISTS', `Target logical path "${target}" already has files in object [${this.id}]`);
+        throw ocflError('FILE_EXISTS', `Target logical path "${target}" already has files in object [${this.id}]`);
       }
     }
     const transfers = sources.flatMap((file) => {
-      const digests = this.#indexGet(file, this.head, true);
+      const digests = this.#indexGet(file, this.head);
       const digest = digests?.[this.digestAlgorithm];
       return digests && digest ? [{ src: file, dest: `${dest}${file.slice(src.length)}`, digest, digests }] : [];
     });
@@ -945,10 +894,10 @@ class OcflObjectInventory {
     const versionName = this.#committedVersionName(version);
     const found = versionName === undefined ? [] : this.#indexFindPaths(path, versionName);
     if (found.length === 0) {
-      throw new OcflError('FILE_NOT_FOUND', `Version ${version} of object [${this.id}] has nothing at logical path "${logicalPath}"`);
+      throw ocflError('FILE_NOT_FOUND', `Version ${version} of object [${this.id}] has nothing at logical path "${logicalPath}"`);
     }
     const files = found.flatMap((filePath) => {
-      const digests = this.#indexGet(filePath, versionName, true);
+      const digests = this.#indexGet(filePath, versionName);
       const digest = digests?.[this.digestAlgorithm];
       if (!digests || !digest || this.getDigest(filePath) === digest) {
         return [];

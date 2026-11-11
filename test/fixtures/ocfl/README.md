@@ -6,7 +6,6 @@ Only the fixtures the test suite uses are included:
 
 - `1.1/good-objects/spec-ex-full`
 - `1.1/content/spec-ex-full/v3`
-- `1.1/content/spec-ex-minimal/v1`
 - `1.1/content/spec-ex-diff-paths/v1`
 
 "Oxford Common File Layout - Fixtures" by the OCFL editors and community is licensed under

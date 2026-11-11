@@ -1,8 +1,8 @@
 {
   "include": ["src/**"],
   "checkCoverage": true,
-  "lines": 89,
-  "branches": 94,
-  "functions": 72,
-  "statements": 89
+  "lines": 98,
+  "branches": 98,
+  "functions": 98,
+  "statements": 98
 }

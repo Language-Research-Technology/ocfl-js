@@ -3,9 +3,9 @@ import nodePath from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import { checkedDetails, type Draft, type VersionDetails } from './draft.ts';
-import { OcflError } from './error.ts';
-import type { BuiltInLayout, OcflExtensionConfig } from './extension.ts';
-import { createLayout, type LayoutClass, supportedLayoutClass } from './extensions/index.ts';
+import { type OcflError, ocflError } from './error.ts';
+import type { BuiltInLayout } from './extension.ts';
+import { builtInLayoutClass, createLayout } from './extensions/index.ts';
 import { listObjects } from './list.ts';
 import { LOCK_NAME, NO_OBJECT_ROOT, REMOVING } from './lock.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
@@ -14,7 +14,7 @@ import { removeObject } from './remove.ts';
 import * as store from './store.ts';
 import type { Layout, LayoutConfig, OcflVersion } from './types.ts';
 import { deepFreeze, findNamasteVersion, isDirEmpty, isNonEmptyString, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
-import { createError, ValidationError } from './validation.ts';
+import { createError } from './validation.ts';
 
 const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, NAMASTE_PREFIX_STORAGE, NAMASTE_T } = OcflConstants;
 
@@ -40,16 +40,9 @@ version left behind keeps the object from being updated or removed, until the li
 \`recover\` is called for the object.
 `;
 
-const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1.1': 'ocfl_1.1.md' };
+const SPEC_TEXT_FILE = 'ocfl_1.1.md';
 
-type SpecText = { file: string; content: Buffer };
-
-async function readSpecText(ocflVersion: OcflVersion): Promise<SpecText> {
-  const file = SPEC_TEXT_FILES[ocflVersion];
-  return { file, content: await fs.promises.readFile(new URL(`../resources/${file}`, import.meta.url)) };
-}
-
-/** @throws `ValidationError` `E070` if `content` has no string `extension` */
+/** @throws {@link OcflError} `INVALID_STORAGE_ROOT` (`E070`) if `content` has no string `extension` */
 function declaredLayoutName(file: string, content: string): string {
   const extension = parseJsonObject(content)?.extension;
   if (typeof extension !== 'string') {
@@ -58,36 +51,14 @@ function declaredLayoutName(file: string, content: string): string {
   return extension;
 }
 
-/** @throws {@link OcflError} `INVALID_LAYOUT_CONFIG` if `content` isn't a JSON object */
-function parseLayoutConfig(file: string, content: string): OcflExtensionConfig {
-  const config = parseJsonObject(content);
-  if (!config) {
-    throw new OcflError('INVALID_LAYOUT_CONFIG', `The layout config ${file} is not a JSON object.`);
-  }
-  return config;
-}
-
-/** @throws {@link OcflError} `INVALID_LAYOUT_CONFIG`, naming `file`, if the layout rejects `config` */
-function layoutFromConfigFile(layoutClass: LayoutClass, config: OcflExtensionConfig | undefined, file: string): BuiltInLayout {
-  try {
-    return new layoutClass(config);
-  } catch (error) {
-    if (error instanceof OcflError && error.code === 'INVALID_LAYOUT_CONFIG') {
-      throw new OcflError('INVALID_LAYOUT_CONFIG', `The layout config ${file} is invalid: ${error.message}`);
-    }
-    throw error;
-  }
-}
-
 /**
- * Read the OCFL version and layout a storage root declares. The layout is `undefined` if it has no `ocfl_layout.json`.
- * @throws `ValidationError` `E069` if the storage root has no declaration, `E080` if its declaration is invalid.
- * @throws `ValidationError` `E070` if `ocfl_layout.json` has no string `extension`.
+ * Read the OCFL version and layout a storage root declares.
+ * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if the storage root has no declaration (`E069`) or an invalid one (`E080`), has no `ocfl_layout.json` or one
+ * with no string `extension` (`E070`), or its layout's `config.json` isn't a JSON object, is for another layout or has parameters the layout rejects.
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if `ocfl_layout.json` names a layout this library doesn't implement.
- * @throws {@link OcflError} `INVALID_LAYOUT_CONFIG` if the layout's `config.json` isn't a JSON object or has parameters the layout rejects.
  * @throws The file system error if the storage root declaration, `ocfl_layout.json` or the layout's `config.json` exists but can't be read.
  */
-async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion; layout: BuiltInLayout | undefined }> {
+async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion; layout: BuiltInLayout }> {
   const layoutPath = nodePath.join(root, OCFL_LAYOUT);
   const [namaste, layoutRead] = await Promise.allSettled([findNamasteVersion(NAMASTE_PREFIX_STORAGE, root), readIfExists(layoutPath)]);
   if (namaste.status === 'rejected') {
@@ -104,28 +75,40 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion
     throw layoutRead.reason;
   }
   if (layoutRead.value === undefined) {
-    return { ocflVersion, layout: undefined };
+    throw ocflError('INVALID_STORAGE_ROOT', `The storage root ${root} has no ${OCFL_LAYOUT}, so the layout of its objects is unknown.`);
   }
   const declaredName = declaredLayoutName(layoutPath, layoutRead.value);
   // Checked before the config is read: a declared name that is a path must not reach outside the root
-  const layoutClass = supportedLayoutClass(declaredName);
+  const layoutClass = builtInLayoutClass(declaredName);
+  if (!layoutClass) {
+    throw ocflError('UNSUPPORTED_LAYOUT', `Layout "${declaredName}", which the storage root ${root} declares, is not supported.`);
+  }
   const configPath = nodePath.join(root, EXTENSIONS_DIR, declaredName, EXTENSION_CONFIG);
   const content = await readIfExists(configPath);
-  const config = content === undefined ? undefined : parseLayoutConfig(configPath, content);
+  const config = content === undefined ? undefined : parseJsonObject(content);
+  if (content !== undefined && !config) {
+    throw ocflError('INVALID_STORAGE_ROOT', `The layout config ${configPath} is not a JSON object.`);
+  }
   if (config?.extensionName !== undefined && config.extensionName !== declaredName) {
-    throw new OcflError(
-      'INVALID_LAYOUT_CONFIG',
+    throw ocflError(
+      'INVALID_STORAGE_ROOT',
       `The layout config ${configPath} is for ${inspect(config.extensionName)}, not the layout "${declaredName}" that ${OCFL_LAYOUT} declares.`,
     );
   }
-  return { ocflVersion, layout: layoutFromConfigFile(layoutClass, config, configPath) };
+  try {
+    // Not createLayout: a parameter the layout doesn't have is ignored in a root another tool may have written
+    return { ocflVersion, layout: new layoutClass(config) };
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw ocflError('INVALID_STORAGE_ROOT', `The layout config ${configPath} is invalid: ${error.message}`, { cause: error });
+    }
+    throw error;
+  }
 }
 
-/** Write the files that make the empty directory `root` a storage root */
-async function writeStorageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayout, specText?: SpecText): Promise<void> {
-  if (specText) {
-    await store.writeFile(nodePath.join(root, specText.file), specText.content);
-  }
+/** Write the files that make the empty directory `root` an OCFL 1.1 storage root */
+async function writeStorageRoot(root: string, layout: BuiltInLayout, specText: Buffer): Promise<void> {
+  await store.writeFile(nodePath.join(root, SPEC_TEXT_FILE), specText);
   await store.writeFile(nodePath.join(root, `${WORKSPACE_EXTENSION}.md`), WORKSPACE_EXTENSION_TEXT);
   if (layout.documentation) {
     await store.writeFile(nodePath.join(root, `${layout.name}.md`), layout.documentation);
@@ -135,7 +118,7 @@ async function writeStorageRoot(root: string, ocflVersion: OcflVersion, layout: 
   }
   await store.writeFile(nodePath.join(root, OCFL_LAYOUT), JSON.stringify({ extension: layout.name, description: layout.description }, null, 2));
   // Last, so that a root left half-written can't be opened, least of all with the default parameters of its layout
-  const declaration = NAMASTE_PREFIX_STORAGE + ocflVersion;
+  const declaration = NAMASTE_PREFIX_STORAGE + OCFL_VERSION;
   await store.writeFile(nodePath.join(root, NAMASTE_T + declaration), `${declaration}\n`);
 }
 
@@ -256,24 +239,17 @@ interface StorageRoot {
 }
 
 /**
- * @returns `relObjectRoot` normalised
- * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it's the storage root, outside it, or in its extensions directory
- */
-function checkedObjectPath(root: string, relObjectRoot: string, label: string): string {
-  const relative = relativeWithin(root, nodePath.join(root, relObjectRoot));
-  // Case-insensitive, so a case-insensitive filesystem can't map an object root into extensions/
-  if (!relative || relative.split(nodePath.sep)[0]?.toLowerCase() === EXTENSIONS_DIR) {
-    throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${label} maps to "${relObjectRoot}", which can't hold an object in this storage root.`);
-  }
-  return relative;
-}
-
-/**
  * @returns The object root of `id`, relative to the storage root
  * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id, or maps it to the storage root, outside it, or into its extensions directory
  */
 function mappedObjectPath(root: string, layout: BuiltInLayout, id: string): string {
-  return checkedObjectPath(root, layout.map(id), `The object id <${id}>`);
+  const mapped = layout.map(id);
+  const relative = relativeWithin(root, nodePath.join(root, mapped));
+  // Case-insensitive, so a case-insensitive filesystem can't map an object root into extensions/
+  if (!relative || relative.split(nodePath.sep)[0]?.toLowerCase() === EXTENSIONS_DIR) {
+    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> maps to "${mapped}", which can't hold an object in this storage root.`);
+  }
+  return relative;
 }
 
 function checkedId(id: string): string {
@@ -316,31 +292,6 @@ function absolutePath(rootPath: string): string {
   return nodePath.resolve(rootPath);
 }
 
-/** @throws `TypeError` if `layout` isn't `{ extensionName, ...parameters }` for a layout this library implements, with parameters it accepts */
-function chosenLayout(layout: LayoutConfig): BuiltInLayout {
-  if (typeof layout !== 'object' || layout === null) {
-    throw new TypeError('A layout must be a config object with an extensionName.');
-  }
-  try {
-    // A copy, so the layout can't change under the caller's hands after it has been checked
-    const config = structuredClone(layout);
-    const created = createLayout(config);
-    const unknown = Object.keys(config).filter((name) => name !== 'extensionName' && !Object.hasOwn(created.parameters, name));
-    if (unknown.length > 0) {
-      throw new TypeError(`Layout ${created.name} has no parameter ${unknown.map((name) => inspect(name)).join(' or ')}.`);
-    }
-    return created;
-  } catch (error) {
-    if (error instanceof OcflError && (error.code === 'UNSUPPORTED_LAYOUT' || error.code === 'INVALID_LAYOUT_CONFIG')) {
-      throw new TypeError(error.message, { cause: error });
-    }
-    if (error instanceof DOMException && error.name === 'DataCloneError') {
-      throw new TypeError('A layout must hold only strings, numbers, booleans and arrays of them.', { cause: error });
-    }
-    throw error;
-  }
-}
-
 /**
  * Creates a new OCFL 1.1 storage root in an empty or missing directory.
  *
@@ -355,14 +306,14 @@ function chosenLayout(layout: LayoutConfig): BuiltInLayout {
  */
 async function createStorageRoot(path: string, options: { layout: LayoutConfig }): Promise<StorageRoot> {
   const root = absolutePath(path);
-  const layout = chosenLayout(options?.layout);
+  const layout = createLayout(options?.layout);
   await fs.promises.mkdir(root, { recursive: true });
   if (!(await isDirEmpty(root))) {
-    throw new OcflError('DIRECTORY_NOT_EMPTY', `Cannot create a storage root in ${root}, which is not empty.`);
+    throw ocflError('DIRECTORY_NOT_EMPTY', `Cannot create a storage root in ${root}, which is not empty.`);
   }
   // Read before the first write: a failed create can't be retried once the root is non-empty
-  const specText = await readSpecText(OCFL_VERSION);
-  await writeStorageRoot(root, OCFL_VERSION, layout, specText);
+  const specText = await fs.promises.readFile(new URL(`../resources/${SPEC_TEXT_FILE}`, import.meta.url));
+  await writeStorageRoot(root, layout, specText);
   return storageRoot(root, OCFL_VERSION, layout);
 }
 
@@ -378,18 +329,8 @@ async function createStorageRoot(path: string, options: { layout: LayoutConfig }
  */
 async function openStorageRoot(path: string): Promise<StorageRoot> {
   const root = absolutePath(path);
-  try {
-    const { ocflVersion, layout } = await readStorageRoot(root);
-    if (!layout) {
-      throw new OcflError('INVALID_STORAGE_ROOT', `The storage root ${root} has no ${OCFL_LAYOUT}, so the layout of its objects is unknown.`);
-    }
-    return storageRoot(root, ocflVersion, layout);
-  } catch (error) {
-    if (error instanceof ValidationError || (error instanceof OcflError && error.code === 'INVALID_LAYOUT_CONFIG')) {
-      throw new OcflError('INVALID_STORAGE_ROOT', error.message, { ocflCode: error.ocflCode, cause: error });
-    }
-    throw error;
-  }
+  const { ocflVersion, layout } = await readStorageRoot(root);
+  return storageRoot(root, ocflVersion, layout);
 }
 
-export { checkedObjectPath, createStorageRoot, mappedObjectPath, openStorageRoot, readSpecText, readStorageRoot, type StorageRoot, writeStorageRoot };
+export { createStorageRoot, openStorageRoot, type StorageRoot };

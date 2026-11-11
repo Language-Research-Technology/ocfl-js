@@ -122,7 +122,7 @@ describe('choosing the layout of a new storage root', () => {
     const root = await createStorageRoot(rootPath, { layout: { extensionName: PATH_DIRECT } });
     assert.ok(root.layout.extensionName === PATH_DIRECT);
     const { replace } = root.layout;
-    assert.throws(() => replace.push(['x', 'y']), TypeError);
+    assert.throws(() => (replace as unknown as string[][]).push(['x', 'y']), TypeError);
     const later = await createStorageRoot(path.join(dir, 'later'), { layout: { extensionName: PATH_DIRECT } });
     assert.deepStrictEqual(later.layout, { extensionName: PATH_DIRECT, omitScheme: false, replace: [], suffix: '/__object__' });
   });
@@ -211,6 +211,14 @@ describe('choosing the layout of a new storage root', () => {
 
     it('rejects null', async () => {
       await rejects(null);
+    });
+
+    it('rejects a config whose extensionName is inherited, rather than dropping the parameters inherited with it', async () => {
+      await rejects(Object.create({ extensionName: HASHED, tupleSize: 2, numberOfTuples: 2 }));
+    });
+
+    it('rejects an array carrying an extensionName', async () => {
+      await rejects(Object.assign([], { extensionName: HASHED }));
     });
   });
 

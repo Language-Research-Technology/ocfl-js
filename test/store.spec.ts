@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import * as store from '../src/store.ts';
-import { failRename, fsError, mountSeparately } from './fs-failures.ts';
+import { failRename, fsError, mountSeparately } from './helpers/fs-failures.ts';
 
 describe('store', () => {
   afterEach(() => {

@@ -3,7 +3,7 @@
   // Treat anything tagged @lintignore as intentional.
   "tags": ["-lintignore"],
   // Typechecked only, by test/tsconfig.json.
-  "entry": ["test/*.ts", "test/types/*.ts"],
+  "entry": ["test/types/*.ts"],
   // Loaded by semantic-release from the `preset` option, the plugins release.config.mjs drops on beta,
   // and the tools scripts/check-consumer.sh runs.
   "ignoreDependencies": [

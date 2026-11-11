@@ -20,8 +20,7 @@ Single-context: one glossary and ADR set covering the single package at the repo
 ├── resources/
 ├── scripts/
 ├── src/
-├── test/
-└── test-data/
+└── test/
 ```
 
 ## Use the glossary's vocabulary

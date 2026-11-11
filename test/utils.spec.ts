@@ -3,6 +3,24 @@ import { describe, it } from 'node:test';
 import { setTimeout } from 'node:timers/promises';
 import * as utils from '../src/utils.ts';
 
+describe('utils.relativeWithin', () => {
+  it('gives a path inside the root relative to it, and the root itself as empty', () => {
+    assert.strictEqual(utils.relativeWithin('/srv/ocfl', 'a/b'), 'a/b');
+    assert.strictEqual(utils.relativeWithin('/srv/ocfl', '/srv/ocfl/a/../b'), 'b');
+    assert.strictEqual(utils.relativeWithin('/srv/ocfl', '.'), '');
+  });
+
+  it('gives nothing for a path outside the root', () => {
+    assert.strictEqual(utils.relativeWithin('/srv/ocfl', '..'), undefined);
+    assert.strictEqual(utils.relativeWithin('/srv/ocfl', '../ocfl-other/a'), undefined);
+    assert.strictEqual(utils.relativeWithin('/srv/ocfl', '/srv'), undefined);
+  });
+
+  it('keeps a name inside the root that only starts with two dots', () => {
+    assert.strictEqual(utils.relativeWithin('/srv/ocfl', '..a'), '..a');
+  });
+});
+
 describe('utils.createLimiter', () => {
   it('runs at most the given number of functions at once', async () => {
     const limit = utils.createLimiter(3);

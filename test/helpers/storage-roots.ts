@@ -1,11 +1,14 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { type Inventory, loadStorage, type OcflStorageConfig } from '../../src/index.ts';
+import { type Draft, openStorageRoot } from '../../src/index.ts';
+import type { Inventory } from '../../src/types.ts';
+import { DETAILS } from './drafts.ts';
 import { PATH_DIRECT } from './layouts.ts';
+import { ocflError } from './ocfl-error.ts';
 
 /** A storage root holding one object, <http://example.org/minimal_no_content>, laid out path-direct with no description of that layout */
-export const STORAGE_FIXTURE: string = path.join(import.meta.dirname, '../shared/test-data/storage');
+export const STORAGE_FIXTURE: string = path.join(import.meta.dirname, '../fixtures/storage');
 
 /** Names of the OCFL spec text files directly in `root` */
 export async function specFiles(root: string): Promise<string[]> {
@@ -34,7 +37,7 @@ export async function writeStorageRoot(root: string, ocflVersion: '1.0' | '1.1')
 }
 
 /**
- * Writes an object into a storage root through the old API, as a `StorageRoot` can't create objects.
+ * Writes a one-file object into a storage root.
  * @returns The object's directory, relative to the storage root
  */
 export async function writeObject(root: string, id: string): Promise<string> {
@@ -42,7 +45,7 @@ export async function writeObject(root: string, id: string): Promise<string> {
 }
 
 /** The OCFL fixture object, which has three versions */
-export const SPEC_EX_FULL: string = path.join(import.meta.dirname, '../shared/test-data/fixtures/1.1/good-objects/spec-ex-full');
+export const SPEC_EX_FULL: string = path.join(import.meta.dirname, '../fixtures/ocfl/1.1/good-objects/spec-ex-full');
 export const SPEC_EX_FULL_ID = 'ark:/12345/bcd987';
 
 /** Writes a storage root at `root` holding a copy of {@link SPEC_EX_FULL} in the directory `spec-ex-full` */
@@ -57,33 +60,84 @@ export async function writeSpecExFullRoot(root: string): Promise<void> {
 
 type VersionFiles = Record<string, string | Uint8Array | null>;
 
-/**
- * Writes one version per entry of `versions` through the old API, as a `StorageRoot` can't write objects.
- * A `null` removes the file.
- * @returns The absolute path of the object's directory
- */
-export async function writeVersions(
-  root: string,
-  id: string,
-  versions: VersionFiles[],
-  config: Omit<OcflStorageConfig, 'root' | 'layout'> = {},
-): Promise<string> {
-  const object = (await loadStorage({ ...config, root })).object(id);
-  for (const files of versions) {
-    await object.update(async (t) => {
-      for (const [logicalPath, content] of Object.entries(files)) {
-        await (content === null ? t.remove(logicalPath) : t.write(logicalPath, content));
+/** The directory of the object `id`, found in `root` by its declaration and inventory rather than by the layout */
+async function findObjectRoot(root: string, id: string): Promise<string> {
+  for (const entry of await fs.promises.readdir(root, { recursive: true, withFileTypes: true })) {
+    if (entry.isFile() && entry.name.startsWith('0=ocfl_object_')) {
+      const inventory = await fs.promises.readFile(path.join(entry.parentPath, 'inventory.json'), 'utf8').catch(() => '');
+      // Other objects in the root may have been damaged on purpose
+      if (inventory.includes(JSON.stringify(id))) {
+        return entry.parentPath;
       }
-    });
+    }
   }
-  return object.root;
+  throw new Error(`No object <${id}> in ${root}`);
 }
 
-/** Writes `content` as the root inventory of the object at `objectRoot`, with a sha512 sidecar that matches */
-export async function writeInventory(objectRoot: string, content: string): Promise<void> {
-  await writeFiles(objectRoot, {
+/**
+ * Adds one version per entry of `versions` to the object `id`, creating it if need be. A `null` removes the file.
+ * @returns The absolute path of the object's directory
+ */
+export async function writeVersions(root: string, id: string, versions: VersionFiles[]): Promise<string> {
+  const storageRoot = await openStorageRoot(root);
+  let object = await storageRoot.open(id).catch((error: unknown) => {
+    if (ocflError('OBJECT_NOT_FOUND')(error)) {
+      return undefined;
+    }
+    throw error;
+  });
+  for (const files of versions) {
+    const change = async (draft: Draft) => {
+      for (const [logicalPath, content] of Object.entries(files)) {
+        await (content === null ? draft.remove(logicalPath) : draft.write(logicalPath, content));
+      }
+    };
+    object = await (object ? object.update(DETAILS, change) : storageRoot.create(id, DETAILS, change));
+  }
+  return findObjectRoot(root, id);
+}
+
+/**
+ * Writes a one-version OCFL 1.1 object at `objectRoot` by hand, as another tool might: the library itself only
+ * creates sha512 objects with a `content` directory.
+ */
+export async function writeForeignObject(
+  objectRoot: string,
+  id: string,
+  files: Record<string, string>,
+  { digestAlgorithm, contentDirectory = 'content' }: { digestAlgorithm: 'sha256' | 'sha512'; contentDirectory?: string },
+): Promise<void> {
+  const digestOf = (content: string) => createHash(digestAlgorithm).update(content).digest('hex');
+  const manifest: Record<string, string[]> = {};
+  const state: Record<string, string[]> = {};
+  const stored: Record<string, string> = {};
+  for (const [logicalPath, content] of Object.entries(files)) {
+    const digest = digestOf(content);
+    if (!manifest[digest]) {
+      manifest[digest] = [`v1/${contentDirectory}/${logicalPath}`];
+      stored[`v1/${contentDirectory}/${logicalPath}`] = content;
+    }
+    state[digest] = [...(state[digest] ?? []), logicalPath];
+  }
+  const inventory = JSON.stringify({
+    id,
+    type: 'https://ocfl.io/1.1/spec/#inventory',
+    digestAlgorithm,
+    head: 'v1',
+    contentDirectory,
+    manifest,
+    versions: { v1: { created: '2026-01-02T03:04:05Z', message: DETAILS.message, user: DETAILS.user, state } },
+  });
+  await writeFiles(objectRoot, { '0=ocfl_object_1.1': 'ocfl_object_1.1\n', ...stored });
+  await writeInventory(objectRoot, inventory, digestAlgorithm);
+  await writeInventory(path.join(objectRoot, 'v1'), inventory, digestAlgorithm);
+}
+
+/** Writes `content` as the inventory in `dir`, an object root or version directory, with a sidecar that matches */
+export async function writeInventory(dir: string, content: string, digestAlgorithm: 'sha256' | 'sha512' = 'sha512'): Promise<void> {
+  await writeFiles(dir, {
     'inventory.json': content,
-    'inventory.json.sha512': `${createHash('sha512').update(content).digest('hex')} inventory.json\n`,
+    [`inventory.json.${digestAlgorithm}`]: `${createHash(digestAlgorithm).update(content).digest('hex')} inventory.json\n`,
   });
 }
 

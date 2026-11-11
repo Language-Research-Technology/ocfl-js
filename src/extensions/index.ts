@@ -1,7 +1,6 @@
 import { inspect } from 'node:util';
-import { OcflError } from '../error.ts';
 import type { BuiltInLayout, OcflExtensionConfig } from '../extension.ts';
-import type { OcflLayoutConfig, OcflLayoutName } from '../types.ts';
+import type { LayoutConfig, OcflLayoutName } from '../types.ts';
 import { PathDirectStorageLayout } from './000N-path-direct-storage-layout.ts';
 import { FlatDirectStorageLayout } from './0002-flat-direct-storage-layout.ts';
 import { HashAndIdNTupleStorageLayout } from './0003-hash-and-id-n-tuple-storage-layout.ts';
@@ -16,25 +15,32 @@ const BUILT_IN_LAYOUTS = {
   '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayout,
 } satisfies Record<OcflLayoutName, LayoutClass>;
 
-/** @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if the library doesn't implement the layout */
-function supportedLayoutClass(name: unknown): LayoutClass {
-  if (typeof name !== 'string') {
-    throw new OcflError('UNSUPPORTED_LAYOUT', `A layout name must be a string, not ${inspect(name)}.`);
-  }
-  if (!Object.hasOwn(BUILT_IN_LAYOUTS, name)) {
-    throw new OcflError('UNSUPPORTED_LAYOUT', `Layout "${name}" is not supported.`);
-  }
-  return BUILT_IN_LAYOUTS[name as OcflLayoutName];
+/** The class of the layout with the official extension name `name`, or `undefined` if the library doesn't implement it */
+function builtInLayoutClass(name: string): LayoutClass | undefined {
+  return Object.hasOwn(BUILT_IN_LAYOUTS, name) ? BUILT_IN_LAYOUTS[name as OcflLayoutName] : undefined;
 }
 
-/** Create the layout chosen by an official extension name or `{ extensionName, ...params }` */
-function createLayout(selection: OcflLayoutName | OcflLayoutConfig): BuiltInLayout {
-  const name = typeof selection === 'string' ? selection : selection?.extensionName;
+/**
+ * Create the layout chosen by `{ extensionName, ...parameters }`
+ * @throws `TypeError` if `config` isn't that, the library doesn't implement the layout, or the layout doesn't have or rejects a parameter
+ */
+function createLayout(config: LayoutConfig): BuiltInLayout {
+  // Only its own properties: the name and the parameters must come from the same place
+  const own: OcflExtensionConfig = typeof config === 'object' && !Array.isArray(config) ? { ...config } : {};
+  const name: unknown = own.extensionName;
   if (typeof name !== 'string') {
-    throw new OcflError('UNSUPPORTED_LAYOUT', 'A layout must be an official extension name or a config object with an extensionName.');
+    throw new TypeError('A layout must be a config object with an extensionName.');
   }
-  const layoutClass = supportedLayoutClass(name);
-  return new layoutClass(typeof selection === 'string' ? undefined : selection);
+  const layoutClass = builtInLayoutClass(name);
+  if (!layoutClass) {
+    throw new TypeError(`Layout "${name}" is not supported.`);
+  }
+  const layout = new layoutClass(own);
+  const unknown = Object.keys(own).filter((parameter) => parameter !== 'extensionName' && !Object.hasOwn(layout.parameters, parameter));
+  if (unknown.length > 0) {
+    throw new TypeError(`Layout ${name} has no parameter ${unknown.map((parameter) => inspect(parameter)).join(' or ')}.`);
+  }
+  return layout;
 }
 
-export { createLayout, type LayoutClass, supportedLayoutClass };
+export { builtInLayoutClass, createLayout };

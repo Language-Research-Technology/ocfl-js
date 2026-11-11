@@ -3,8 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
 import { createStorageRoot, type LayoutConfig, openStorageRoot, type StorageRoot } from '../src/index.ts';
-import { emptyDirectoriesUnder } from './empty-directories.ts';
-import { withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
   assertNoWorkspace,
@@ -20,9 +18,11 @@ import {
   writeB,
   writeC,
 } from './helpers/drafts.ts';
+import { emptyDirectoriesUnder } from './helpers/empty-directories.ts';
+import { withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
+import { ocflError, rejection } from './helpers/ocfl-error.ts';
 import { writeFiles } from './helpers/storage-roots.ts';
-import { ocflError, rejection } from './ocfl-error.ts';
 
 const ID = 'removing';
 const NESTED: LayoutConfig = { extensionName: PATH_DIRECT };

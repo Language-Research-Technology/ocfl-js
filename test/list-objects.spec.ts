@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
 import { OcflError, type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
-import { stillOpen, trackOpendir, withFsFailure } from './fs-failures.ts';
 import { createObject, DETAILS, objectRootOf, placesOf, textFiles, useTempRoots, writeB } from './helpers/drafts.ts';
+import { stillOpen, trackOpendir, withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
 import { rewriteInventory, STORAGE_FIXTURE, writeFiles } from './helpers/storage-roots.ts';
 

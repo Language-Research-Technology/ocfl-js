@@ -4,59 +4,16 @@
 
 ```ts
 
-import fs from 'node:fs';
-
-// @public (undocumented)
-const api: {
-    OCFL_VERSIONS: typeof OCFL_VERSIONS;
-    createStorage: typeof createStorage;
-    loadStorage: typeof loadStorage;
-    storage: typeof storage;
-    storageLayout: typeof storageLayout;
-};
-export default api;
-
-// @public (undocumented)
-export type BinaryOptions = {
-    encoding?: null | undefined;
-    [key: string]: unknown;
-};
-
 // @public
 export interface ByteRange {
     readonly end?: number;
     readonly start?: number;
 }
 
-// @public (undocumented)
-export interface CommitOptions {
-    message?: string | undefined;
-    user?: {
-        name: string;
-        address?: string;
-    } | undefined;
-}
-
-// @public
-export type ContentAlgorithm = 'sha256' | 'sha512';
-
-// @public
-export function createStorage(config: OcflStorageConfig): Promise<OcflStorage>;
-
 // @public
 export function createStorageRoot(path: string, options: {
     layout: LayoutConfig;
 }): Promise<StorageRoot>;
-
-// @public
-export type DeepReadonly<T> = {
-    readonly [K in keyof T]: DeepReadonly<T[K]>;
-};
-
-// @public
-export type Digests = {
-    [algorithm: string]: string;
-};
 
 // @public
 export interface Draft {
@@ -71,49 +28,6 @@ export interface Draft {
         merge: boolean;
     }): Promise<void>;
     write(path: string, content: WriteContent): Promise<void>;
-}
-
-// @public (undocumented)
-export type EncodingOptions = BufferEncoding | {
-    encoding: BufferEncoding;
-    [key: string]: unknown;
-};
-
-// @public (undocumented)
-export interface FileRef {
-    contentPath?: string;
-    digest?: string;
-    fixity?: Digests;
-    lastModified?: number;
-    logicalPath?: string;
-    size?: number;
-    version?: string | undefined;
-}
-
-// @public (undocumented)
-export type FileRefContent = {
-    contentPath: string;
-    version?: string | undefined;
-};
-
-// @public (undocumented)
-export type FileRefDigest = {
-    digest: string;
-    version?: string | undefined;
-};
-
-// @public (undocumented)
-export type FileRefLogical = {
-    logicalPath: string;
-    version?: string | undefined;
-};
-
-// @public (undocumented)
-export interface FileStat {
-    atime?: Date;
-    ctime?: Date;
-    mtime?: Date;
-    size?: number;
 }
 
 // @public
@@ -137,13 +51,6 @@ export interface HashAndIdNTupleLayoutConfig {
     tupleSize?: number;
 }
 
-// @public (undocumented)
-export type HashAndIdNTupleStorageLayoutConfig = {
-    digestAlgorithm?: string;
-    tupleSize?: number;
-    numberOfTuples?: number;
-};
-
 // @public
 export interface HashedNTupleLayoutConfig {
     digestAlgorithm?: string;
@@ -153,80 +60,6 @@ export interface HashedNTupleLayoutConfig {
     tupleSize?: number;
 }
 
-// @public (undocumented)
-export type HashedNTupleStorageLayoutConfig = {
-    digestAlgorithm?: string;
-    tupleSize?: number;
-    numberOfTuples?: number;
-    shortObjectRoot?: boolean;
-};
-
-// @public
-export interface ImportSource {
-    source: string;
-    target?: string | undefined;
-}
-
-// @public (undocumented)
-export interface Inventory {
-    contentDirectory?: string;
-    digestAlgorithm: ContentAlgorithm;
-    // (undocumented)
-    fixity?: {
-        [key: string]: {
-            [key: string]: string[];
-        };
-    };
-    head: string;
-    id: string;
-    // (undocumented)
-    manifest: InventoryDigests;
-    type: 'https://ocfl.io/1.0/spec/#inventory' | 'https://ocfl.io/1.1/spec/#inventory';
-    // (undocumented)
-    versions: {
-        [key: string]: InventoryVersion;
-    };
-}
-
-// @public (undocumented)
-export interface InventoryDigests {
-    // (undocumented)
-    [key: string]: string[];
-}
-
-// @public (undocumented)
-export interface InventoryFile {
-    // (undocumented)
-    contentPath: string;
-    // (undocumented)
-    digest: string;
-    // (undocumented)
-    fixity: Digests;
-    // (undocumented)
-    lastModified?: number;
-    // (undocumented)
-    logicalPath: string;
-    // (undocumented)
-    size?: number;
-    // (undocumented)
-    version: string;
-}
-
-// @public (undocumented)
-export interface InventoryVersion {
-    // (undocumented)
-    created: string;
-    // (undocumented)
-    message?: string;
-    // (undocumented)
-    state: InventoryDigests;
-    // (undocumented)
-    user?: {
-        name: string;
-        address?: string;
-    };
-}
-
 // @public
 export type Layout = Readonly<Required<LayoutConfig>>;
 
@@ -234,82 +67,14 @@ export type Layout = Readonly<Required<LayoutConfig>>;
 export type LayoutConfig = FlatDirectLayoutConfig | HashAndIdNTupleLayoutConfig | HashedNTupleLayoutConfig | PathDirectLayoutConfig;
 
 // @public
-export class LegacyOcflObject {
-    get contentDirectory(): string;
-    count(version?: string): Promise<number>;
-    // (undocumented)
-    createReadable(filePath: string, options?: unknown): Promise<ReadableStream>;
-    get digestAlgorithm(): ContentAlgorithm;
-    exists(): Promise<boolean>;
-    files(version?: string): Promise<Generator<OcflObjectFile, void, unknown>>;
-    getFile(opt: LogicalPath | FileRefLogical | FileRefDigest | FileRefContent, version?: string, lazy?: boolean): OcflObjectFile | undefined;
-    getInventory(version?: string): Promise<OcflObjectInventory | undefined>;
-    get headVersion(): VersionNumber | undefined;
-    get id(): string | undefined;
-    import(source: string, target?: string, options?: UpdateOptions): Promise<void>;
-    import(source: string, options: UpdateOptions): Promise<void>;
-    import(sources: ImportSource[], options?: UpdateOptions): Promise<void>;
-    get inventory(): OcflObjectInventory | undefined;
-    load(input?: {
-        filesMetadata?: boolean | undefined;
-    }): Promise<void>;
-    get ocflVersion(): OcflVersion;
-    readFile(relPath: string, options: EncodingOptions): Promise<string>;
-    // (undocumented)
-    readFile(relPath: string, options?: BinaryOptions): Promise<Uint8Array>;
-    // (undocumented)
-    readFile(relPath: string, options?: EncodingOptions | BinaryOptions): Promise<string | Uint8Array>;
-    refresh(): Promise<void>;
-    get root(): string;
-    stat(relPath: string): Promise<fs.Stats>;
-    // (undocumented)
-    toJSON(): {
-        root: string;
-        id: string | undefined;
-    };
-    // (undocumented)
-    toString(): string;
-    update(updater?: (transaction: OcflObjectTransaction) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObjectTransaction | undefined>;
-    get versions(): VersionNumber[];
-}
-
-// @public
-export function loadStorage(config: OcflStorageConfig): Promise<OcflStorage>;
-
-// @public (undocumented)
-export type LogicalPath = string;
-
-// @public (undocumented)
-export class ObjectNotFoundError extends OcflError {
-    constructor(label: string);
-    // (undocumented)
-    readonly code: 'OBJECT_NOT_FOUND';
-}
-
-// @public (undocumented)
-export class ObjectNotLoadedError extends OcflError {
-    constructor(label: string);
-    // (undocumented)
-    readonly code: 'OBJECT_NOT_LOADED';
-}
-
-// @public (undocumented)
-export const OCFL_VERSIONS: readonly ['1.1', '1.0'];
-
-// @public
 export class OcflError extends Error {
-    constructor(code: OcflErrorCode, message: string, options?: {
-        ocflCode?: string | undefined;
-        lockedAt?: Date | undefined;
-        cause?: unknown;
-    });
     readonly code: OcflErrorCode;
     readonly lockedAt?: Date;
     readonly ocflCode?: string;
 }
 
 // @public
-export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_OF_DATE' | 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT' | 'OBJECT_NOT_LOADED' | 'UPDATE_IN_PROGRESS' | 'RECOVERY_NEEDED' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | 'CROSS_FILESYSTEM_MOVE' | 'VERSION_LIMIT_REACHED' | ValidationErrorCode;
+export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_OF_DATE' | 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT' | 'UNSUPPORTED_LAYOUT' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'DIRECTORY_NOT_EMPTY' | 'UPDATE_IN_PROGRESS' | 'RECOVERY_NEEDED' | 'MUTABLE_HEAD_ACTIVE' | 'CROSS_FILESYSTEM_MOVE' | 'VERSION_LIMIT_REACHED' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'INVALID_LOGICAL_PATH' | 'SOURCE_CHANGED' | 'UNSUPPORTED_FILE_TYPE';
 
 // @public
 export interface OcflFile {
@@ -319,26 +84,6 @@ export interface OcflFile {
     size(): Promise<number>;
     stream(range?: ByteRange): ReadableStream<Uint8Array>;
     text(): Promise<string>;
-}
-
-// @public
-export type OcflLayoutConfig<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? {
-    extensionName: N;
-} & OcflLayoutParameters[N] : never;
-
-// @public
-export type OcflLayoutName = keyof OcflLayoutParameters;
-
-// @public
-export interface OcflLayoutParameters {
-    // (undocumented)
-    '0002-flat-direct-storage-layout': Record<never, never>;
-    // (undocumented)
-    '0003-hash-and-id-n-tuple-storage-layout': HashAndIdNTupleStorageLayoutConfig;
-    // (undocumented)
-    '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayoutConfig;
-    // (undocumented)
-    '000N-path-direct-storage-layout': PathDirectStorageLayoutConfig;
 }
 
 // @public
@@ -353,159 +98,15 @@ export interface OcflObject {
 }
 
 // @public
-export class OcflObjectFile {
-    constructor(ocflObject: LegacyOcflObject, fileRef: FileRef);
-    buffer(options?: BinaryOptions): Promise<Uint8Array>;
-    // (undocumented)
-    contentPath?: string;
-    // (undocumented)
-    digest?: string;
-    // (undocumented)
-    fixity?: Digests;
-    get lastModified(): number | undefined;
-    // (undocumented)
-    logicalPath?: string;
-    get size(): number | undefined;
-    stat(_options?: unknown): Promise<FileStat>;
-    stream(options?: unknown): Promise<ReadableStream>;
-    text(encoding?: BufferEncoding): Promise<string>;
-    // (undocumented)
-    toString(): string;
-    // (undocumented)
-    version?: string;
-}
-
-// @public
-export class OcflObjectInventory {
-    constructor(data: Inventory);
-    // (undocumented)
-    get contentDirectory(): string;
-    // (undocumented)
-    get created(): string;
-    diffState(version0: string, version1: string): [InventoryDigests, InventoryDigests];
-    // (undocumented)
-    get digestAlgorithm(): ContentAlgorithm;
-    // (undocumented)
-    files(versionName?: string): Generator<InventoryFile>;
-    // (undocumented)
-    find(fn: (file: InventoryFile) => boolean, version?: string): Generator<InventoryFile, void, unknown>;
-    // (undocumented)
-    get fixity(): DeepReadonly<Inventory['fixity']>;
-    getContentPath(digest: string): string | undefined;
-    getDigest(logicalPath: string, versionName?: string): string | undefined;
-    getFile(logicalPath: string, versionName?: string): InventoryFile | undefined;
-    // (undocumented)
-    getFileByContentPath(contentPath: string, versionName?: string): InventoryFile | undefined;
-    // (undocumented)
-    getFileByDigest(digest: string, versionName?: string): InventoryFile | undefined;
-    getFixity(logicalPath: string, versionName?: string): Digests;
-    // (undocumented)
-    get head(): string;
-    // (undocumented)
-    get id(): string;
-    // (undocumented)
-    get manifest(): DeepReadonly<InventoryDigests>;
-    // (undocumented)
-    get message(): InventoryVersion['message'];
-    // (undocumented)
-    metadata: {
-        [contentPath: string]: {
-            size: number;
-            lastModified: number;
-        };
-    } | undefined;
-    get state(): DeepReadonly<InventoryDigests>;
-    // (undocumented)
-    toJSON(): Inventory;
-    // (undocumented)
-    toString(): string;
-    // (undocumented)
-    get type(): Inventory['type'];
-    // (undocumented)
-    get user(): DeepReadonly<InventoryVersion['user']>;
-    get version(): DeepReadonly<InventoryVersion>;
-    get versionNumber(): VersionNumber;
-    // (undocumented)
-    get versions(): DeepReadonly<Inventory['versions']>;
-    versionState(versionName?: string): DeepReadonly<InventoryDigests> | undefined;
-}
-
-// @public
-export class OcflObjectTransaction {
-    clear(): Promise<void>;
-    commit(options?: CommitOptions): Promise<void>;
-    copy(source: string, target: string, options?: {
-        merge: boolean;
-    }): Promise<void>;
-    import(source: string, target?: string): Promise<void>;
-    reinstate(logicalPath: string, version: number): Promise<void>;
-    remove(logicalPath: string): Promise<void>;
-    rename(source: string, target: string, options?: {
-        merge: boolean;
-    }): Promise<void>;
-    rollback(): Promise<void>;
-    write(logicalPath: string, data: WriteFileData): Promise<void>;
-}
-
-// @public
-export class OcflStorage {
-    constructor(config: OcflStorageConfig);
-    create(options?: {
-        ocflSpecText?: boolean | undefined;
-    }): Promise<OcflStorage>;
-    exists(): Promise<boolean>;
-    load(): Promise<OcflStorage>;
-    object(opt: string | {
-        id?: string | undefined;
-        root?: string | undefined;
-    }): LegacyOcflObject;
-    objectRoot(id: string): string;
-    // (undocumented)
-    ocflVersion: OcflVersion;
-    get root(): string;
-}
-
-// @public
-export type OcflStorageConfig = {
-    root: string;
-    layout?: OcflLayoutName | OcflLayoutConfig | undefined;
-    digestAlgorithm?: ContentAlgorithm | undefined;
-    contentDirectory?: string | undefined;
-};
-
-// @public
-export type OcflStorageLayout<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? {
-    readonly name: N;
-    readonly parameters: Readonly<Required<OcflLayoutParameters[N]>>;
-    map(id: string): string;
-} : never;
-
-// @public (undocumented)
-export type OcflVersion = '1.0' | '1.1';
-
-// @public
 export function openStorageRoot(path: string): Promise<StorageRoot>;
 
 // @public
 export interface PathDirectLayoutConfig {
     extensionName: '000N-path-direct-storage-layout';
     omitScheme?: boolean;
-    replace?: [find: string, replacement: string][];
+    replace?: readonly (readonly [find: string, replacement: string])[];
     suffix?: string;
 }
-
-// @public (undocumented)
-export type PathDirectStorageLayoutConfig = {
-    omitScheme?: boolean;
-    replace?: [string, string][];
-    suffix?: string;
-};
-
-// @public
-export function storage(config: OcflStorageConfig): OcflStorage;
-
-// @public
-export function storageLayout<N extends OcflLayoutName>(config: N | OcflLayoutConfig<N>): OcflStorageLayout<N>;
 
 // @public
 export interface StorageRoot {
@@ -519,46 +120,10 @@ export interface StorageRoot {
     remove(id: string): Promise<void>;
 }
 
-// @public (undocumented)
-export type UpdateMode = 'MERGE' | 'REPLACE';
-
-// @public
-export interface UpdateOptions extends CommitOptions {
-    mode?: UpdateMode | undefined;
-}
-
 // @public
 export interface User {
     readonly address?: string;
     readonly name: string;
-}
-
-// @public (undocumented)
-export class ValidationError extends OcflError {
-    constructor(options: ValidationErrorOptions);
-    // (undocumented)
-    code: ValidationErrorCode;
-    // (undocumented)
-    description: string;
-    // (undocumented)
-    detail?: string | undefined;
-    // (undocumented)
-    path: string;
-}
-
-// @public (undocumented)
-export type ValidationErrorCode = 'E007' | 'E017' | 'E018' | 'E036' | 'E040' | 'E050' | 'E058' | 'E060' | 'E069' | 'E070' | 'E080' | 'E082' | 'E099' | 'E100' | 'E104';
-
-// @public (undocumented)
-export interface ValidationErrorOptions {
-    // (undocumented)
-    code: ValidationErrorCode;
-    // (undocumented)
-    description: string;
-    // (undocumented)
-    detail?: string | undefined;
-    // (undocumented)
-    path: string;
 }
 
 // @public
@@ -576,27 +141,8 @@ export interface VersionDetails {
     readonly user: User;
 }
 
-// @public (undocumented)
-export class VersionNumber {
-    // (undocumented)
-    next(): VersionNumber;
-    // (undocumented)
-    previous(): VersionNumber | undefined;
-    // (undocumented)
-    toString(): string;
-    // (undocumented)
-    value: number;
-    // (undocumented)
-    valueOf(): number;
-    // (undocumented)
-    zeroPaddingLength: number | undefined;
-}
-
 // @public
 export type WriteContent = string | Uint8Array | AsyncIterable<string | Uint8Array>;
-
-// @public
-export type WriteFileData = string | ArrayBufferView | ArrayBuffer | Blob | AsyncIterable<string | ArrayBufferView | ArrayBuffer>;
 
 // (No @packageDocumentation comment for this package)
 

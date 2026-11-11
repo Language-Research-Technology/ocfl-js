@@ -3,15 +3,6 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { hasErrorCode } from './utils.ts';
 
-interface ListedFile {
-  /** Relative to the listed directory */
-  path: string;
-  size: number;
-  lastModified: Date;
-}
-
-const MAX_PENDING_STATS = 32;
-
 async function createParents(filePath: string) {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
 }
@@ -29,43 +20,6 @@ export async function writeFile(filePath: string, data: string | Uint8Array | As
 export async function copyFile(source: string, target: string): Promise<void> {
   await createParents(target);
   await fs.promises.copyFile(source, target);
-}
-
-/** Keeps a promise that is awaited later from being an unhandled rejection until then */
-function rejectLater<T>(promise: Promise<T>) {
-  promise.catch(() => {});
-  return promise;
-}
-
-/** List every file under `dirPath`, in no particular order */
-export async function* listFiles(dirPath: string): AsyncGenerator<ListedFile> {
-  const buffer: Promise<ListedFile>[] = [];
-  const dirQueue = [fs.promises.opendir(dirPath)];
-  try {
-    for (let dirp = dirQueue.shift(); dirp; dirp = dirQueue.shift()) {
-      const dir = await dirp;
-      for await (const de of dir) {
-        const cdp = path.join(dir.path, de.name);
-        if (de.isDirectory()) {
-          dirQueue.push(rejectLater(fs.promises.opendir(cdp)));
-        } else {
-          const f = fs.promises.stat(cdp).then((stats) => ({
-            path: path.relative(dirPath, cdp),
-            size: stats.size,
-            lastModified: stats.mtime,
-          }));
-          buffer.push(rejectLater(f));
-          if (buffer.length > MAX_PENDING_STATS) {
-            // biome-ignore lint/style/noNonNullAssertion: an item was just pushed
-            yield buffer.shift()!;
-          }
-        }
-      }
-    }
-    yield* buffer;
-  } finally {
-    await Promise.allSettled(dirQueue.map(async (dirp) => (await dirp).close()));
-  }
 }
 
 export async function move(source: string, target: string): Promise<void> {

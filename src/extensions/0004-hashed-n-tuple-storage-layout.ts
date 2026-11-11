@@ -1,17 +1,10 @@
 import path from 'node:path';
 import * as Hashing from '../digest.ts';
-import { OcflError } from '../error.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
+import type { HashedNTupleLayoutConfig } from '../types.ts';
 import { checkNTupleParameters } from './n-tuple.ts';
 
-export type HashedNTupleStorageLayoutConfig = {
-  digestAlgorithm?: string;
-  tupleSize?: number;
-  numberOfTuples?: number;
-  shortObjectRoot?: boolean;
-};
-
-const DefaultConfig: Required<HashedNTupleStorageLayoutConfig> = {
+const DefaultConfig: Required<Omit<HashedNTupleLayoutConfig, 'extensionName'>> = {
   digestAlgorithm: 'sha256',
   tupleSize: 3,
   numberOfTuples: 3,
@@ -30,7 +23,7 @@ class HashedNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     const digestLength = checkNTupleParameters(this.parameters);
     const c = this.parameters;
     if (c.tupleSize * c.numberOfTuples === digestLength && c.shortObjectRoot) {
-      throw new OcflError('INVALID_LAYOUT_CONFIG', 'shortObjectRoot cannot be set to true when the tuples use the whole digest.');
+      throw new TypeError('shortObjectRoot cannot be set to true when the tuples use the whole digest.');
     }
   }
 

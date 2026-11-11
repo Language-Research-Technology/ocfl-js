@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
 import type { Draft, StorageRoot } from '../src/index.ts';
-import { withFsFailure } from './fs-failures.ts';
 import { assertHolds, createObject, DETAILS, encode, objectRootOf, readInventory, sha512, streamOf, useTempRoots, workspaceOf } from './helpers/drafts.ts';
+import { withFsFailure } from './helpers/fs-failures.ts';
 
 describe('replacing a file within one draft', () => {
   const temp = useTempRoots('ocfl-draft-replace-');

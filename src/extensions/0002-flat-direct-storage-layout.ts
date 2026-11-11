@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { OcflConstants } from '../constants.ts';
-import { OcflError } from '../error.ts';
+import { ocflError } from '../error.ts';
 import { BuiltInLayout } from '../extension.ts';
 
 const { EXTENSIONS_DIR } = OcflConstants;
@@ -24,7 +24,7 @@ class FlatDirectStorageLayout extends BuiltInLayout {
       reason = 'it has more than 255 characters';
     }
     if (reason) {
-      throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> is incompatible with layout extension ${this.name} because ${reason}.`);
+      throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> is incompatible with layout extension ${this.name} because ${reason}.`);
     }
 
     return id;

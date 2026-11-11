@@ -34,7 +34,8 @@ cat >"$consumer/smoke.js" <<'EOF'
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createStorageRoot, loadStorage, openStorageRoot } from '@ocfl/ocfl-fs';
+import * as ocfl from '@ocfl/ocfl-fs';
+import { createStorageRoot, OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const resources = process.argv[2];
 const root = join(import.meta.dirname, 'storage');
@@ -48,19 +49,20 @@ assert(
 );
 assert.equal((await openStorageRoot(root)).layout.extensionName, layout.extensionName);
 
-const object = (await loadStorage({ root })).object('smoke');
-await object.update(async (transaction) => transaction.write('a.txt', 'written'));
-await object.getInventory();
-assert.equal(await object.getFile('a.txt')?.text(), 'written');
+assert.deepEqual(Object.keys(ocfl).sort(), ['OcflError', 'createStorageRoot', 'openStorageRoot'], 'the installed package exports something else');
 
-const opened = await (await openStorageRoot(root)).open('smoke');
-assert.equal(await opened.head.files.get('a.txt')?.text(), 'written');
-
+const opened = await openStorageRoot(root);
 const details = { message: 'Smoke test', user: { name: 'Consumer' } };
-const created = await (await openStorageRoot(root)).create('smoke-created', details, async (draft) => draft.write('a.txt', 'created'));
+const created = await opened.create('smoke', details, async (draft) => draft.write('a.txt', 'created'));
 const updated = await created.update(details, async (draft) => draft.write('a.txt', 'updated'));
 assert.equal(await created.head.files.get('a.txt')?.text(), 'created');
 assert.equal(await updated.head.files.get('a.txt')?.text(), 'updated');
+assert.equal(await (await opened.open('smoke')).head.files.get('a.txt')?.text(), 'updated');
+assert.deepEqual(await updated.checkFixity(), []);
+
+await assert.rejects(opened.open('missing'), (error) => error instanceof OcflError && error.code === 'OBJECT_NOT_FOUND');
+await opened.remove('smoke');
+await assert.rejects(opened.open('smoke'), { code: 'OBJECT_NOT_FOUND' });
 EOF
 
 pnpm -C "$consumer" install --prefer-offline --silent || fail "installing the tarball failed"

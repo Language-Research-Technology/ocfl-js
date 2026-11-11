@@ -3,8 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
 import { OcflError, type OcflObject } from '../src/index.ts';
-import { emptyDirectoriesUnder } from './empty-directories.ts';
-import { beforeOpening, beforeRenamingTo, fsError, withFsFailure } from './fs-failures.ts';
 import {
   assertNoWorkspace,
   createObject,
@@ -20,8 +18,10 @@ import {
   writeB,
   writeC,
 } from './helpers/drafts.ts';
+import { emptyDirectoriesUnder } from './helpers/empty-directories.ts';
+import { beforeOpening, beforeRenamingTo, fsError, withFsFailure } from './helpers/fs-failures.ts';
+import { ocflError, rejection } from './helpers/ocfl-error.ts';
 import { rewriteInventory, writeFiles } from './helpers/storage-roots.ts';
-import { ocflError, rejection } from './ocfl-error.ts';
 
 const ID = 'contended';
 
@@ -63,6 +63,30 @@ describe('concurrent writers', () => {
       assert.deepStrictEqual(await textFiles(updated.head), { 'a.txt': 'a', 'b.txt': 'b' });
       assert.deepStrictEqual((await fs.promises.readdir(objectRoot)).sort(), ['0=ocfl_object_1.1', 'inventory.json', 'inventory.json.sha512', 'v1', 'v2']);
       assertNoWorkspace(root);
+    });
+
+    it('is refused when two updates start at the same moment, so only one of them commits', async () => {
+      const { root, object } = await existingObject();
+
+      const results = await Promise.allSettled([object.update(DETAILS, writeB), object.update(DETAILS, writeC)]);
+
+      const refused = results.filter((result) => result.status === 'rejected').map((result) => result.reason);
+      assert.strictEqual(refused.length, 1);
+      assert.ok(ocflError('UPDATE_IN_PROGRESS')(refused[0]) || ocflError('OBJECT_OUT_OF_DATE')(refused[0]), String(refused[0]));
+      assert.deepStrictEqual([...(await root.open(ID)).versions.keys()], [1, 2]);
+      assertNoWorkspace(root);
+    });
+
+    it('is still refused when the first writer has removed the only file it wrote', async () => {
+      const { object } = await existingObject();
+
+      const returned = await object.update(DETAILS, async (draft) => {
+        await draft.write('x/b.txt', 'b');
+        await draft.remove('x/b.txt');
+        await assert.rejects(object.update(DETAILS, writeC), ocflError('UPDATE_IN_PROGRESS'));
+      });
+
+      assert.strictEqual(returned, object);
     });
 
     it('is told when the lock was taken', async () => {

@@ -10,11 +10,11 @@ The OCFL spec lets a storage root have an `extensions` directory containing only
 
 ## Decision
 
-- **No `workspace` option.** `OcflStorageConfig` doesn't accept a workspace path.
+- **No `workspace` option.** Neither `createStorageRoot()` nor `openStorageRoot()` accepts a workspace path.
 - **One workspace per storage root**, at `<storage root>/extensions/ocfl-js-workspace/`. Each object has one directory in it, `<workspace>/<object path>/`, where `<object path>` is the object root relative to the storage root.
 - **One lock per object**, the file `<workspace>/<object path>/lock`, created exclusively and holding the time it was taken, followed by a line `no-object-root` if the object root didn't exist then. It doesn't depend on the version number. A writer takes it before anything else and holds it until its update has ended cleanly (ADR 0004).
 - **The new version is built beside the lock**, at `<workspace>/<object path>/vN`, a directory the writer creates exclusively once it holds the lock. If it is already there the update is refused with `RECOVERY_NEEDED` (ADR 0004).
-- **The name is a local extension.** `ocfl-js-workspace` has no `NNNN-` prefix, so it can't collide with a registered extension. `create()` documents it with a plain-text file in the storage root (§4.5).
+- **The name is a local extension.** `ocfl-js-workspace` has no `NNNN-` prefix, so it can't collide with a registered extension. `createStorageRoot()` documents it with a plain-text file in the storage root (§4.5).
 - **No cross-filesystem moves.** If the rename into the object root fails with `EXDEV`, the update fails with an `OcflError` and nothing is copied.
 - **No empty directories are left behind.** The workspace directory, and `extensions/` when nothing else uses it, are removed once empty. So are an object root and its layout parents that a failed first version created.
 - **Objects stay out of `extensions/`.** An object root that would be the storage root, under `extensions/`, or outside the storage root is refused with `ID_INCOMPATIBLE_WITH_LAYOUT`, so no object can overlap a workspace. Listing a storage root's objects skips `extensions/`.

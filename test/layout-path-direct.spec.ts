@@ -1,13 +1,13 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { storageLayout } from '../../src/index.ts';
+import { createLayout } from '../src/extensions/index.ts';
 
 const NAME = '000N-path-direct-storage-layout';
-const configured = (params: Record<string, unknown>) => storageLayout({ extensionName: NAME, ...params });
+const configured = (params: Record<string, unknown>) => createLayout({ extensionName: NAME, ...params });
 
 describe('the 000N path direct layout', () => {
   it('can map valid URIs', () => {
-    const layout = storageLayout(NAME);
+    const layout = createLayout({ extensionName: NAME });
     const cases: [string, string][] = [
       ['https://www.ausnc.org.au/corpora', 'https_www.ausnc.org.au/corpora/__object__'],
       ['https://www.ausnc.org.au/corpora/md', 'https_www.ausnc.org.au/corpora/md/__object__'],
@@ -31,7 +31,7 @@ describe('the 000N path direct layout', () => {
   // suffix
   //
   it('can map valid arcp ids', () => {
-    const layout = storageLayout(NAME);
+    const layout = createLayout({ extensionName: NAME });
     const cases: [string, string][] = [
       ['arcp://name,md/corpus/root/a', 'arcp_name_md/corpus/root/a/__object__'],
       ['arcp://uuid,1234567/corpus/root/a', 'arcp_uuid_1234567/corpus/root/a/__object__'],
@@ -43,7 +43,7 @@ describe('the 000N path direct layout', () => {
     }
   });
   it('can catch invalid urls', () => {
-    const layout = storageLayout(NAME);
+    const layout = createLayout({ extensionName: NAME });
     const cases = [
       'https://www.ausnc.org.au/corpora/md/__object__',
       //':/abc',
@@ -55,7 +55,7 @@ describe('the 000N path direct layout', () => {
   });
 
   it('rejects an id with a . or .. segment instead of normalising it', () => {
-    const layout = storageLayout(NAME);
+    const layout = createLayout({ extensionName: NAME });
     for (const id of [
       '../x',
       'a/../../x',
@@ -73,7 +73,7 @@ describe('the 000N path direct layout', () => {
   });
 
   it('rejects a dot segment that only appears once the URL is parsed', () => {
-    const layout = storageLayout(NAME);
+    const layout = createLayout({ extensionName: NAME });
     for (const id of ['arcp://x;../y', 'https://h/a/.\t./b', 'https://h/a/.\n/b', 'file:..', 'doi:../x']) {
       assert.throws(() => layout.map(id), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' }, JSON.stringify(id));
     }
@@ -85,13 +85,13 @@ describe('the 000N path direct layout', () => {
   });
 
   it('still maps ids whose segments only start with dots', () => {
-    const layout = storageLayout(NAME);
+    const layout = createLayout({ extensionName: NAME });
     assert.strictEqual(layout.map('a/..b/.c'), 'a/..b/.c/__object__');
   });
 
   it('rejects a suffix with a . or .. segment', () => {
     for (const suffix of ['/../x', '..', '/./x']) {
-      assert.throws(() => configured({ suffix }), { name: 'OcflError', code: 'INVALID_LAYOUT_CONFIG' }, suffix);
+      assert.throws(() => configured({ suffix }), TypeError, suffix);
     }
   });
 

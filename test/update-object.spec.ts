@@ -16,8 +16,8 @@ import {
   workspaceOf,
 } from './helpers/drafts.ts';
 import { HASHED } from './helpers/layouts.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 import { writeFiles, writeStorageRoot, writeVersions } from './helpers/storage-roots.ts';
-import { ocflError } from './ocfl-error.ts';
 
 describe('updating an object', () => {
   const temp = useTempRoots('ocfl-update-object-');
@@ -130,6 +130,19 @@ describe('updating an object', () => {
     await assertVersionValid(objectRoot, 'v2');
     assert.deepStrictEqual(await textFiles(updated.head), { 'a.txt': 'same', 'copy.txt': 'same', 'new-1.txt': 'new', 'new-2.txt': 'new' });
     assert.deepStrictEqual(await textFiles((await root.open('deduplicated')).head), await textFiles(updated.head));
+  });
+
+  it('stores nothing for content that only an earlier version holds', async () => {
+    const root = await newRoot();
+    const first = await createObject(root, 'back-again', { 'a.txt': 'one' });
+    const second = await first.update(DETAILS, async (draft) => draft.write('a.txt', 'two'));
+    const third = await second.update(DETAILS, async (draft) => draft.write('a.txt', 'one'));
+    const objectRoot = objectRootOf(root, 'back-again');
+    assert.deepStrictEqual(await storedFiles(objectRoot, 'v2'), ['v2/content/a.txt']);
+    assert.deepStrictEqual(await storedFiles(objectRoot, 'v3'), []);
+    await assertVersionValid(objectRoot, 'v3');
+    assert.deepStrictEqual(await textFiles(third.head), { 'a.txt': 'one' });
+    assert.deepStrictEqual(await textFiles((await root.open('back-again')).head), { 'a.txt': 'one' });
   });
 
   describe('with no net change', () => {
