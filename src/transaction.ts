@@ -677,15 +677,19 @@ class OcflObjectTransaction {
   }
 
   /**
-   * Makes content from a version earlier than the previous version available in the current version of an OCFL Object.
-   * A reinstated file replaces a file or directory at its logical path.
-   * @throws {@link OcflError} `FILE_EXISTS` if a reinstated file would be inside an existing file. To replace that file, remove it first.
+   * Put a file, or every file below a directory, back as it was in an earlier version, at the same logical path.
+   * Files now at the same paths are replaced; other files below a directory stay.
+   * @param logicalPath - The logical path of a file or directory in `version`
+   * @param version - The number of an existing version, which can be the latest
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the version doesn't exist or has nothing at `logicalPath`
+   * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `logicalPath` is empty or leaves the object
    */
-  async reinstate(logicalPath: string, versionName: string): Promise<number> {
+  async reinstate(logicalPath: string, version: number): Promise<void> {
     return this.#transact(async () => {
-      const plan = this.#inventory._planReinstate(logicalPath, versionName);
+      const plan = this.#inventory._planReinstate(fileLogicalPath(logicalPath), version);
       await this.#applyContentReleases(plan.releases);
-      return this.#inventory._applyReinstate(plan);
+      this.#inventory._applyReinstate(plan);
     });
   }
 

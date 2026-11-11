@@ -61,6 +61,15 @@ interface Draft {
    */
   remove(path: string): Promise<void>;
 
+  /**
+   * Puts a file, or every file below a directory, back as it was in an earlier version, at the same path.
+   *
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the version doesn't exist or has nothing at `path`.
+   * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory.
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
+   */
+  reinstate(path: string, version: number): Promise<void>;
+
   /** Removes every file from the draft. */
   clear(): Promise<void>;
 }
@@ -148,6 +157,10 @@ class ObjectDraft implements Draft {
 
   async remove(path: string): Promise<void> {
     return this.#open.remove(path);
+  }
+
+  async reinstate(path: string, version: number): Promise<void> {
+    return this.#open.reinstate(path, version);
   }
 
   async clear(): Promise<void> {

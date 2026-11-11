@@ -512,14 +512,14 @@ describe('OcflObject with a malformed or missing inventory', () => {
       await o.update(async (t) => {
         await t.remove('d');
         await t.write('d', 'file');
-        await assert.rejects(t.reinstate('d/x', 'v1'), ocflError('FILE_EXISTS'));
-        await assert.rejects(t.reinstate('d', 'v1'), ocflError('FILE_EXISTS'));
+        await assert.rejects(t.reinstate('d/x', 1), ocflError('FILE_EXISTS'));
+        await assert.rejects(t.reinstate('d', 1), ocflError('FILE_EXISTS'));
       });
       assert.strictEqual(o.inventory?.head, 'v2');
       await assertFiles(o, { a: 'a', d: 'file' });
     });
 
-    it('reinstate() replaces a directory with the file an earlier version had there', async () => {
+    it('reinstate() throws FILE_EXISTS for a file an earlier version had where a directory is now, changing nothing', async () => {
       const o = testObject({ id: 'conflict-reinstate-file', root: path.join(tempdir, 'conflict-reinstate-file') });
       await o.update(async (t) => t.write('x', 'file'));
       await o.update(async (t) => {
@@ -527,9 +527,10 @@ describe('OcflObject with a malformed or missing inventory', () => {
         await t.write('x/y', 'y');
       });
       await o.update(async (t) => {
-        assert.strictEqual(await t.reinstate('x', 'v1'), 1);
+        await assert.rejects(t.reinstate('x', 1), ocflError('FILE_EXISTS'));
       });
-      await assertFiles(o, { x: 'file' });
+      assert.strictEqual(o.inventory?.head, 'v2');
+      await assertFiles(o, { 'x/y': 'y' });
     });
   });
 

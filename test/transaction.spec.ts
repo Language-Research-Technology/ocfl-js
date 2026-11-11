@@ -123,7 +123,7 @@ describe('OcflObjectTransaction against a temporary directory', () => {
       });
       await object.update(async (t) => {
         await t.remove('a-copy.txt');
-        await t.reinstate('a.txt', 'v1');
+        await t.reinstate('a.txt', 1);
       });
       const read = storage.object('an-object');
       await read.load();

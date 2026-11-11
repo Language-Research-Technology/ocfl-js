@@ -170,8 +170,6 @@ export interface DeletePlan {
 
 interface ReinstatePlan extends DeletePlan {
   files: { logicalPath: string; digest: string; digests: Digests }[];
-  /** Paths found in the earlier version, including those already the same in the head */
-  count: number;
 }
 
 /**
@@ -381,6 +379,11 @@ class OcflObjectInventory {
 
   #resolveVersion(versionName?: string): string {
     return versionName === undefined || versionName === 'latest' ? this.head : versionName;
+  }
+
+  /** The name of committed version `version`, if there is one */
+  #committedVersionName(version: number): string | undefined {
+    return Object.keys(this.versions).find((name) => name !== this.head && VersionNumber.fromString(name).value === version);
   }
 
   toString(): string {
@@ -925,46 +928,44 @@ class OcflObjectInventory {
     return count;
   }
 
-  /** @internal */
-  _reinstate(logicalPath: string, versionName: string): number {
-    return this._applyReinstate(this._planReinstate(logicalPath, versionName));
-  }
-
   /**
-   * Resolve a reinstate to the files it lists, the paths they replace and what happens to the
-   * replaced paths' content, changing nothing
-   * @throws {@link OcflError} `FILE_EXISTS` if a file it lists is inside a file in the head state
+   * Resolve a reinstate to the files it lists, the files they replace and what happens to the
+   * replaced files' content, changing nothing
+   * @param version - The number of a committed version
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the version doesn't exist or has nothing at the path,
+   * `FILE_EXISTS` if a file it lists is a directory or inside a file in the head state
    * @internal
    */
-  _planReinstate(logicalPath: string, versionName: string): ReinstatePlan {
-    const files: ReinstatePlan['files'] = [];
-    let count = 0;
-    for (const lp of this.#indexFindPaths(logicalPath, versionName)) {
-      const digests = this.#indexGet(lp, versionName);
-      const digest = digests?.[this.digestAlgorithm];
-      if (digests && digest) {
-        if (this.getDigest(lp) !== digest) {
-          this.#checkNotInsideFile(lp);
-          files.push({ logicalPath: lp, digest, digests });
-        }
-        count++;
-      }
+  _planReinstate(logicalPath: string, version: number): ReinstatePlan {
+    const path = normaliseLogicalPath(logicalPath);
+    const versionName = this.#committedVersionName(version);
+    const found = versionName === undefined ? [] : this.#indexFindPaths(path, versionName);
+    if (found.length === 0) {
+      throw new OcflError('FILE_NOT_FOUND', `Version ${version} of object [${this.id}] has nothing at logical path "${logicalPath}"`);
     }
-    const paths = [...new Set(files.flatMap((file) => this.#indexFindPaths(file.logicalPath)))];
-    return { files, paths, releases: this._contentReleases(paths), count };
+    const files = found.flatMap((lp) => {
+      const digests = this.#indexGet(lp, versionName, true);
+      const digest = digests?.[this.digestAlgorithm];
+      if (!digests || !digest || this.getDigest(lp) === digest) {
+        return [];
+      }
+      this._checkFilePath(lp);
+      return [{ logicalPath: lp, digest, digests }];
+    });
+    const paths = files.map((file) => file.logicalPath).filter((lp) => this.getDigest(lp) !== undefined);
+    return { files, paths, releases: this._contentReleases(paths) };
   }
 
   /**
    * Apply a plan from {@link _planReinstate}, which must be from the current state
    * @internal
    */
-  _applyReinstate({ files, paths, releases, count }: ReinstatePlan) {
+  _applyReinstate({ files, paths, releases }: ReinstatePlan): void {
     this.#delist(paths);
     this.#applyContentReleases(releases);
     for (const { logicalPath, digest, digests } of files) {
       this.#list(logicalPath, digest, digests);
     }
-    return count;
   }
 }
 

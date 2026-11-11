@@ -63,6 +63,7 @@ export interface Draft {
     clear(): Promise<void>;
     copy(source: string, target: string): Promise<void>;
     import(source: string, target?: string): Promise<void>;
+    reinstate(path: string, version: number): Promise<void>;
     remove(path: string): Promise<void>;
     write(path: string, content: WriteContent): Promise<void>;
 }
@@ -421,7 +422,7 @@ export class OcflObjectTransaction {
     commit(options?: CommitOptions): Promise<void>;
     copy(source: string, target: string): Promise<void>;
     import(source: string, target?: string): Promise<void>;
-    reinstate(logicalPath: string, versionName: string): Promise<number>;
+    reinstate(logicalPath: string, version: number): Promise<void>;
     remove(logicalPath: string): Promise<void>;
     rename(source: string, target: string): Promise<void>;
     rollback(): Promise<void>;

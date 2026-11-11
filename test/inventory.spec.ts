@@ -47,7 +47,7 @@ function assertMatchesRebuilt(inv: OcflObjectInventory) {
 
 const copy = (inv: OcflObjectInventory, source: string, target: string) => inv._applyCopy(inv._planCopy(source, target));
 const rename = (inv: OcflObjectInventory, source: string, target: string) => inv._applyRename(inv._planRename(source, target));
-const reinstate = (inv: OcflObjectInventory, logicalPath: string, version: string) => inv._applyReinstate(inv._planReinstate(logicalPath, version));
+const reinstate = (inv: OcflObjectInventory, logicalPath: string, version: number) => inv._applyReinstate(inv._planReinstate(logicalPath, version));
 
 describe('OcflObjectInventory class', () => {
   let data: Inventory;
@@ -208,7 +208,7 @@ describe('OcflObjectInventory class', () => {
     inv._delete('test.txt');
     assert(!inv.versions.v2!.state.aabbccddeeff);
     inv = OcflObjectInventory.newVersion(inv);
-    reinstate(inv, 'test.txt', 'v1');
+    reinstate(inv, 'test.txt', 1);
     assert(inv.versions.v3!.state.aabbccddeeff);
     assertHeadStateValid(inv);
   });
@@ -246,8 +246,8 @@ describe('OcflObjectInventory class', () => {
       assert.strictEqual(inv.getFileByDigest('d1', 'latest'), undefined);
     });
 
-    it('resolves to head in reinstate', () => {
-      assert.strictEqual(reinstate(inv, 'a', 'latest'), 1);
+    it('does not make the head a version to reinstate', () => {
+      assert.throws(() => reinstate(inv, 'a', 2), { name: 'OcflError', code: 'FILE_NOT_FOUND' });
       assert.deepStrictEqual(inv.state, { d2: ['a'] });
     });
 
@@ -259,8 +259,6 @@ describe('OcflObjectInventory class', () => {
       assert.strictEqual(inv.getFile('a', ''), undefined);
       assert.strictEqual(inv.getFileByDigest('d2', ''), undefined);
       assert.strictEqual(inv.getFileByContentPath('v2/content/a', ''), undefined);
-      assert.strictEqual(reinstate(inv, 'a', ''), 0);
-      assert.deepStrictEqual(inv.state, { d2: ['a'] });
     });
 
     it('leaves explicit older versions unchanged', () => {
@@ -518,7 +516,7 @@ describe('OcflObjectInventory class', () => {
       inv._delete('x');
       inv._add('y', 'd1');
       inv = OcflObjectInventory.newVersion(inv);
-      assert.strictEqual(reinstate(inv, 'x', 'v1'), 1);
+      reinstate(inv, 'x', 1);
       assert.deepStrictEqual(inv.state, { d1: ['y', 'x'] });
       assert.strictEqual(inv.getDigest('y'), 'd1');
       assertHeadStateValid(inv);
@@ -531,7 +529,7 @@ describe('OcflObjectInventory class', () => {
       inv._add('x', 'd2');
       inv._add('z', 'd2');
       inv = OcflObjectInventory.newVersion(inv);
-      reinstate(inv, 'x', 'v1');
+      reinstate(inv, 'x', 1);
       assert.deepStrictEqual(inv.state, { d2: ['z'], d1: ['x'] });
       assertHeadStateValid(inv);
     });
@@ -551,7 +549,7 @@ describe('OcflObjectInventory class', () => {
       inv._add('x', 'd1');
       inv._add('y', 'd1');
       inv = OcflObjectInventory.newVersion(inv);
-      reinstate(inv, 'x', 'v1');
+      reinstate(inv, 'x', 1);
       assert.deepStrictEqual(inv.state, { d1: ['x', 'y'] });
       assertHeadStateValid(inv);
     });
@@ -599,21 +597,81 @@ describe('OcflObjectInventory class', () => {
         inv._delete('d');
         inv._add('d', 'd3');
         const before = inv.toJSON();
-        assert.throws(() => reinstate(inv, logicalPath, 'v1'), { name: 'OcflError', code: 'FILE_EXISTS' });
+        assert.throws(() => reinstate(inv, logicalPath, 1), { name: 'OcflError', code: 'FILE_EXISTS' });
         assert.deepStrictEqual(inv.toJSON(), before);
         assertHeadStateValid(inv);
       });
     }
 
-    it('reinstates a file over a directory, replacing the paths under it', () => {
+    it('throws FILE_EXISTS reinstating a file where a directory is, changing nothing', () => {
       let inv = OcflObjectInventory.newVersion(data);
       inv._add('x', 'd1');
       inv = OcflObjectInventory.newVersion(inv);
       inv._delete('x');
       inv._add('x/y', 'd2');
       inv = OcflObjectInventory.newVersion(inv);
-      reinstate(inv, 'x', 'v1');
+      const before = inv.toJSON();
+      assert.throws(() => reinstate(inv, 'x', 1), { name: 'OcflError', code: 'FILE_EXISTS' });
+      assert.deepStrictEqual(inv.toJSON(), before);
+      assertHeadStateValid(inv);
+    });
+
+    it('reinstates a directory file by file, replacing files at the same paths and keeping the rest', () => {
+      let inv = OcflObjectInventory.newVersion(data);
+      inv._add('d/a', 'd1');
+      inv._add('d/b', 'd2');
+      inv._add('d/same', 'd3');
+      inv = OcflObjectInventory.newVersion(inv);
+      inv._delete('d/a');
+      inv._add('d/b', 'd4');
+      inv._add('d/new', 'd5');
+      reinstate(inv, 'd', 1);
+      assert.deepStrictEqual(inv.state, { d3: ['d/same'], d5: ['d/new'], d1: ['d/a'], d2: ['d/b'] });
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/d/a'], d2: ['v1/content/d/b'], d3: ['v1/content/d/same'], d5: ['v2/content/d/new'] });
+      assertHeadStateValid(inv);
+    });
+
+    for (const version of [2, 3, 0, -1, 1.5, Number.NaN]) {
+      it(`throws FILE_NOT_FOUND reinstating from version ${version}, which is not a committed version`, () => {
+        let inv = OcflObjectInventory.newVersion(data);
+        inv._add('x', 'd1');
+        inv = OcflObjectInventory.newVersion(inv);
+        inv._add('x', 'd2');
+        const before = inv.toJSON();
+        assert.throws(() => reinstate(inv, 'x', version), { name: 'OcflError', code: 'FILE_NOT_FOUND' });
+        assert.deepStrictEqual(inv.toJSON(), before);
+      });
+    }
+
+    for (const logicalPath of ['missing', 'x/y', 'xy', '']) {
+      it(`throws FILE_NOT_FOUND reinstating "${logicalPath}", which the version did not have`, () => {
+        let inv = OcflObjectInventory.newVersion(data);
+        inv._add('x', 'd1');
+        inv = OcflObjectInventory.newVersion(inv);
+        inv._add('xy', 'd2');
+        const before = inv.toJSON();
+        assert.throws(() => reinstate(inv, logicalPath, 1), { name: 'OcflError', code: 'FILE_NOT_FOUND' });
+        assert.deepStrictEqual(inv.toJSON(), before);
+      });
+    }
+
+    it('finds a version by its number whatever the width of its name', () => {
+      const version = (state: Record<string, string[]>) => ({ created: '2026-01-02T03:04:05Z', state });
+      const inv = OcflObjectInventory.newVersion(
+        new OcflObjectInventory({
+          ...data,
+          head: 'v003',
+          manifest: { d1: ['v001/content/x'], d2: ['v2/content/x'] },
+          versions: { v001: version({ d1: ['x'] }), v2: version({ d2: ['x'] }), v003: version({}) },
+        }),
+      );
+      assert.strictEqual(inv.head, 'v004');
+      reinstate(inv, './x', 1);
       assert.deepStrictEqual(inv.state, { d1: ['x'] });
+      reinstate(inv, 'x', 2);
+      assert.deepStrictEqual(inv.state, { d2: ['x'] });
+      reinstate(inv, 'x', 2);
+      assert.deepStrictEqual(inv.state, { d2: ['x'] });
       assertHeadStateValid(inv);
     });
   });
@@ -702,7 +760,7 @@ describe('OcflObjectInventory class', () => {
     it('drops the manifest entry of content nothing else uses', () => {
       const inv = committedA();
       inv._add('a', 'd2');
-      assert.strictEqual(reinstate(inv, 'a', 'v1'), 1);
+      reinstate(inv, 'a', 1);
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
       assertHeadStateValid(inv);
     });
@@ -711,18 +769,18 @@ describe('OcflObjectInventory class', () => {
       const inv = committedA();
       inv._add('a', 'd2');
       copy(inv, 'a', 'b');
-      reinstate(inv, 'a', 'v1');
+      reinstate(inv, 'a', 1);
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d2: ['v2/content/b'] });
       assertHeadStateValid(inv);
     });
 
-    it('drops content stored under a directory the reinstated file replaces', () => {
+    it('keeps content stored under a directory that a reinstated file is refused for', () => {
       const inv = committedA();
       inv._delete('a');
       inv._add('a/x', 'd2');
       inv._add('a/y', 'd3');
-      reinstate(inv, 'a', 'v1');
-      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'] });
+      assert.throws(() => reinstate(inv, 'a', 1), { name: 'OcflError', code: 'FILE_EXISTS' });
+      assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d2: ['v2/content/a/x'], d3: ['v2/content/a/y'] });
       assertHeadStateValid(inv);
     });
   });
