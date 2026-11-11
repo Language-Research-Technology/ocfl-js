@@ -1,6 +1,7 @@
 import type { OcflObjectInventory } from './inventory.ts';
 import type { User } from './ocfl-object.ts';
-import { OcflObjectTransaction, type UpdateTarget } from './transaction.ts';
+import { isAsyncIterable, OcflObjectTransaction, type UpdateTarget } from './transaction.ts';
+import { isNonEmptyString } from './utils.ts';
 
 /** What a new version records about why and by whom it was made. */
 interface VersionDetails {
@@ -55,10 +56,6 @@ interface Draft {
   clear(): Promise<void>;
 }
 
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value !== '';
-}
-
 /**
  * @returns A copy of `details` holding only what a version records
  * @throws `TypeError` if the message or the user's name is missing or empty, or the user's address isn't a string
@@ -79,8 +76,7 @@ function checkedDetails(details: VersionDetails): VersionDetails {
 
 /** @throws `TypeError` if `content` is not a {@link WriteContent}. What a stream yields is checked as it is read. */
 function checkContent(content: unknown): void {
-  const isStream = typeof (content as AsyncIterable<unknown> | null)?.[Symbol.asyncIterator] === 'function';
-  if (typeof content !== 'string' && !(content instanceof Uint8Array) && !isStream) {
+  if (typeof content !== 'string' && !(content instanceof Uint8Array) && !isAsyncIterable(content)) {
     throw new TypeError(`Unsupported data type: ${Object.prototype.toString.call(content)}`);
   }
 }

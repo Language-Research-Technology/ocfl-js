@@ -7,14 +7,13 @@ import type { FileRef } from './file.ts';
 import { OcflObjectFile } from './file.ts';
 import { type InventoryFile, isVersionName, OcflObjectInventory, VersionNumber, validateStoredInventory } from './inventory.ts';
 import * as store from './store.ts';
-import { type CommitOptions, type ImportSource, OcflObjectTransaction } from './transaction.ts';
+import { assertNoMutableHead, type CommitOptions, type ImportSource, OcflObjectTransaction } from './transaction.ts';
 import type { BinaryOptions, ContentAlgorithm, EncodingOptions, Inventory, OcflObjectConfig, OcflVersion } from './types.ts';
-import { findNamasteVersion, isDirEmpty, isNotFound, pathExists, relativeWithin } from './utils.ts';
+import { findNamasteVersion, isDirEmpty, isNotFound, relativeWithin } from './utils.ts';
 import { createError } from './validation.ts';
 
-const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, EXTENSIONS_DIR } = OcflConstants;
+const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
 const INVENTORY_TYPE = /^https:\/\/ocfl\.io\/([^/]+)\/spec\/#inventory$/;
-const MUTABLE_HEAD_INVENTORY = path.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
 
 export type UpdateMode = 'MERGE' | 'REPLACE';
 
@@ -260,12 +259,10 @@ class OcflObject {
     const inv = (await this.getInventory()) ?? this.#baseInventory();
     const newInv = OcflObjectInventory.newVersion(inv, mode === 'REPLACE');
     await this._validateObjectPath();
-    if (await pathExists(path.join(this.root, MUTABLE_HEAD_INVENTORY))) {
-      throw new OcflError(
-        'MUTABLE_HEAD_ACTIVE',
-        `OCFL Object "${this.#label}" has an active mutable head (extension 0005), which this library doesn't support; new versions can't be created until it is committed or removed`,
-      );
-    }
+    await assertNoMutableHead(
+      this.root,
+      `OCFL Object "${this.#label}" has an active mutable head (extension 0005), which this library doesn't support; new versions can't be created until it is committed or removed`,
+    );
     const t = await OcflObjectTransaction.create(
       { root: this.root, workspace: this._workspace, storageRoot: this._storageRoot, ocflVersion: this.ocflVersion },
       newInv,

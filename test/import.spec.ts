@@ -5,21 +5,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
 import type { OcflObject } from '../src/object.ts';
+import { makeTree } from './helpers/import-sources.ts';
 import { ocflError } from './ocfl-error.ts';
 import { testObject } from './test-object.ts';
 
 const CONCURRENCY_LIMIT = 10;
-
-async function makeTree(dir: string, depth: number, width: number) {
-  for (let i = 0; i < width; i++) {
-    if (depth === 1) {
-      await fs.promises.mkdir(dir, { recursive: true });
-      await fs.promises.writeFile(path.join(dir, `f${i}.txt`), `${dir}/f${i}`);
-    } else {
-      await makeTree(path.join(dir, `d${i}`), depth - 1, width);
-    }
-  }
-}
 
 const logicalPaths = async (o: OcflObject) => [...(await o.files())].map((f) => f.logicalPath).sort();
 

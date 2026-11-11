@@ -1,46 +1,30 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { after, afterEach, before, describe, it, mock } from 'node:test';
-import { createStorageRoot, type Draft, type LayoutConfig, type OcflObject, type StorageRoot } from '../src/index.ts';
+import { afterEach, before, describe, it, mock } from 'node:test';
+import type { Draft, OcflObject, StorageRoot } from '../src/index.ts';
 import { withFsFailure } from './fs-failures.ts';
 import {
+  assertHolds,
   assertVersionValid,
   createObject,
   DETAILS,
-  FLAT,
+  encode,
   objectRootOf,
   readInventory,
   snapshot,
   storedFiles,
+  streamOf,
   textFiles,
+  useTempRoots,
   workspaceOf,
 } from './helpers/drafts.ts';
+import { makeTree } from './helpers/import-sources.ts';
+import { writeFiles } from './helpers/storage-roots.ts';
 import { ocflError } from './ocfl-error.ts';
 
 const CONCURRENCY_LIMIT = 10;
 const FIXTURES = path.join(import.meta.dirname, 'shared/test-data');
-
-const encode = (text: string) => new TextEncoder().encode(text);
-const streamOf = (content: string) =>
-  new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(encode(content));
-      controller.close();
-    },
-  });
-
-async function makeTree(dir: string, depth: number, width: number) {
-  for (let i = 0; i < width; i++) {
-    if (depth === 1) {
-      await fs.promises.mkdir(dir, { recursive: true });
-      await fs.promises.writeFile(path.join(dir, `f${i}.txt`), `${dir}/f${i}`);
-    } else {
-      await makeTree(path.join(dir, `d${i}`), depth - 1, width);
-    }
-  }
-}
 
 /** Counts the files `fs.createReadStream` has open, and with `copies` those `fs.promises.copyFile` is copying, returning the most open at once */
 function trackOpenFiles({ copies = false } = {}) {
@@ -68,27 +52,16 @@ function trackOpenFiles({ copies = false } = {}) {
 }
 
 describe('importing into a draft', () => {
-  let tempdir: string;
+  const temp = useTempRoots('ocfl-draft-import-');
   let root: StorageRoot;
   let count = 0;
   const newId = () => `object-${count++}`;
 
   /** Writes `files`, keyed by relative path, under a new directory and returns it */
   async function newSource(files: Record<string, string>) {
-    const source = path.join(tempdir, `source-${count++}`);
-    await fs.promises.mkdir(source);
-    for (const [file, content] of Object.entries(files)) {
-      await fs.promises.mkdir(path.dirname(path.join(source, file)), { recursive: true });
-      await fs.promises.writeFile(path.join(source, file), content);
-    }
+    const source = path.join(temp.dir, `source-${count++}`);
+    await writeFiles(source, files);
     return source;
-  }
-
-  /** Asserts that `object` reads the same as returned and when opened afresh, and that its head version is valid on disk */
-  async function assertHolds(object: OcflObject, expected: Record<string, string>) {
-    assert.deepStrictEqual(await textFiles(object.head), expected);
-    assert.deepStrictEqual(await textFiles((await root.open(object.id)).head), expected);
-    return assertVersionValid(objectRootOf(root, object.id), `v${object.head.number}`);
   }
 
   /** Asserts that the object is still the one version `files` made, with nothing left in the workspace */
@@ -96,7 +69,7 @@ describe('importing into a draft', () => {
     assert.strictEqual((await readInventory(objectRootOf(root, object.id))).head, 'v1');
     assert.ok(!fs.existsSync(path.join(objectRootOf(root, object.id), 'v2')));
     assert.deepStrictEqual(await snapshot(workspaceOf(root)), {});
-    await assertHolds(await root.open(object.id), files);
+    await assertHolds(root, await root.open(object.id), files);
   }
 
   async function assertNothingCreated(id: string) {
@@ -105,15 +78,10 @@ describe('importing into a draft', () => {
   }
 
   before(async () => {
-    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-draft-import-'));
-    const layout: LayoutConfig = FLAT;
-    root = await createStorageRoot(path.join(tempdir, 'root'), { layout });
+    root = await temp.newRoot();
   });
   afterEach(() => {
     mock.restoreAll();
-  });
-  after(async () => {
-    await fs.promises.rm(tempdir, { recursive: true, force: true });
   });
 
   describe('where the source goes', () => {
@@ -124,7 +92,7 @@ describe('importing into a draft', () => {
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.import(source);
       });
-      await assertHolds(object, { 'a.txt': 'a', 'sub/b.txt': 'b', '.hidden': 'h' });
+      await assertHolds(root, object, { 'a.txt': 'a', 'sub/b.txt': 'b', '.hidden': 'h' });
     });
 
     it("puts a directory's contents under the target", async () => {
@@ -132,7 +100,7 @@ describe('importing into a draft', () => {
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.import(source, 'x/y');
       });
-      await assertHolds(object, { 'x/y/a.txt': 'a', 'x/y/sub/b.txt': 'b', 'x/y/.hidden': 'h' });
+      await assertHolds(root, object, { 'x/y/a.txt': 'a', 'x/y/sub/b.txt': 'b', 'x/y/.hidden': 'h' });
     });
 
     it('keeps a file at its own name without a target', async () => {
@@ -140,7 +108,7 @@ describe('importing into a draft', () => {
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.import(path.join(source, 'sub', 'b.txt'));
       });
-      await assertHolds(object, { 'b.txt': 'b' });
+      await assertHolds(root, object, { 'b.txt': 'b' });
     });
 
     it('puts a file at the target', async () => {
@@ -148,7 +116,7 @@ describe('importing into a draft', () => {
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.import(path.join(source, 'a.txt'), 'docs/renamed.txt');
       });
-      await assertHolds(object, { 'docs/renamed.txt': 'a' });
+      await assertHolds(root, object, { 'docs/renamed.txt': 'a' });
     });
 
     it('normalises the target', async () => {
@@ -157,7 +125,7 @@ describe('importing into a draft', () => {
         await draft.import(path.join(source, 'a.txt'), './docs//a.txt');
         await draft.import(path.join(source, 'sub'), 'more/');
       });
-      await assertHolds(object, { 'docs/a.txt': 'a', 'more/b.txt': 'b' });
+      await assertHolds(root, object, { 'docs/a.txt': 'a', 'more/b.txt': 'b' });
     });
 
     it('imports a tree of text, empty and binary files byte for byte', async () => {
@@ -250,13 +218,13 @@ describe('importing into a draft', () => {
         });
         assert.strictEqual(returned, object);
         await assertUnchanged(object, { a: 'a' });
-        assert.ok(!fs.existsSync(path.join(tempdir, 'escape.txt')));
+        assert.ok(!fs.existsSync(path.join(temp.dir, 'escape.txt')));
         assert.ok(!fs.existsSync(path.join(root.path, 'escape.txt')));
       });
     }
 
     it('throws before any source is read', async () => {
-      const missing = path.join(tempdir, 'no-such-source');
+      const missing = path.join(temp.dir, 'no-such-source');
       const id = newId();
       await assert.rejects(
         root.create(id, DETAILS, async (draft) => {
@@ -275,7 +243,7 @@ describe('importing into a draft', () => {
       const updated = await object.update(DETAILS, async (draft) => {
         await draft.import(source);
       });
-      await assertHolds(updated, { 'a.txt': 'new a', 'kept.txt': 'kept', 'sub/b.txt': 'new b', 'sub/kept.txt': 'kept too', 'added.txt': 'added' });
+      await assertHolds(root, updated, { 'a.txt': 'new a', 'kept.txt': 'kept', 'sub/b.txt': 'new b', 'sub/kept.txt': 'kept too', 'added.txt': 'added' });
       assert.deepStrictEqual(await textFiles(updated.versions.get(1)!), {
         'a.txt': 'old a',
         'kept.txt': 'kept',
@@ -291,7 +259,7 @@ describe('importing into a draft', () => {
         await draft.import(first);
         await draft.import(second);
       });
-      await assertHolds(object, { 'a.txt': 'second a', 'only-first.txt': 'first' });
+      await assertHolds(root, object, { 'a.txt': 'second a', 'only-first.txt': 'first' });
       assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v1'), ['v1/content/a.txt', 'v1/content/only-first.txt']);
     });
 
@@ -302,7 +270,7 @@ describe('importing into a draft', () => {
         await draft.import(source);
         await draft.import(path.join(other, 'other.txt'), './a.txt');
       });
-      await assertHolds(object, { 'a.txt': 'other' });
+      await assertHolds(root, object, { 'a.txt': 'other' });
     });
 
     it('replaces a file written earlier in the same draft', async () => {
@@ -312,7 +280,7 @@ describe('importing into a draft', () => {
         await draft.write('b.txt', 'kept');
         await draft.import(source);
       });
-      await assertHolds(object, { 'a.txt': 'imported', 'b.txt': 'kept' });
+      await assertHolds(root, object, { 'a.txt': 'imported', 'b.txt': 'kept' });
     });
 
     it('keeps the content of a file it replaces when it also imports that content elsewhere', async () => {
@@ -399,8 +367,8 @@ describe('importing into a draft', () => {
 
     it('throws UNSUPPORTED_FILE_TYPE for a source that is itself a symlink', async () => {
       const source = await newSource({ 'a.txt': 'a' });
-      const dirLink = path.join(tempdir, `link-${count++}`);
-      const fileLink = path.join(tempdir, `link-${count++}`);
+      const dirLink = path.join(temp.dir, `link-${count++}`);
+      const fileLink = path.join(temp.dir, `link-${count++}`);
       await fs.promises.symlink(source, dirLink);
       await fs.promises.symlink(path.join(source, 'a.txt'), fileLink);
       const object = await createObject(root, newId(), { a: 'a' });
@@ -527,7 +495,7 @@ describe('importing into a draft', () => {
     it('throws the file system error for a source that does not exist', async () => {
       const object = await createObject(root, newId(), { a: 'a' });
       const returned = await object.update(DETAILS, async (draft) => {
-        await assert.rejects(draft.import(path.join(tempdir, 'no-such-source')), { code: 'ENOENT' });
+        await assert.rejects(draft.import(path.join(temp.dir, 'no-such-source')), { code: 'ENOENT' });
       });
       assert.strictEqual(returned, object);
       await assertUnchanged(object, { a: 'a' });
@@ -546,7 +514,7 @@ describe('importing into a draft', () => {
         await draft.import(source);
       });
       assert.strictEqual(copies.mock.calls.filter((call) => String(call.arguments[0]).startsWith(source)).length, 0);
-      await assertHolds(updated, { 'a.txt': 'same', 'b.txt': 'same' });
+      await assertHolds(root, updated, { 'a.txt': 'same', 'b.txt': 'same' });
       assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v2'), []);
     });
 
@@ -558,7 +526,7 @@ describe('importing into a draft', () => {
         await draft.import(source);
         await draft.import(source, 'test2.txt');
       });
-      const inventory = await assertHolds(updated, { 'test.txt': text, 'test_input.txt': text, 'test2.txt': text });
+      const inventory = await assertHolds(root, updated, { 'test.txt': text, 'test_input.txt': text, 'test2.txt': text });
       assert.deepStrictEqual(Object.values(inventory.manifest), [['v1/content/test.txt']]);
       assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v2'), []);
     });
@@ -578,7 +546,7 @@ describe('importing into a draft', () => {
 
   describe('the limit on open files', () => {
     it('keeps open files within one limit however deep the tree is', async () => {
-      const source = path.join(tempdir, `tree-${count++}`);
+      const source = path.join(temp.dir, `tree-${count++}`);
       await makeTree(source, 3, 4);
       const maxOpen = trackOpenFiles();
       const object = await root.create(newId(), DETAILS, async (draft) => {
@@ -589,8 +557,8 @@ describe('importing into a draft', () => {
     });
 
     it('keeps reads and copies within one limit across concurrent imports in one draft', async () => {
-      const first = path.join(tempdir, `tree-${count++}`);
-      const second = path.join(tempdir, `tree-${count++}`);
+      const first = path.join(temp.dir, `tree-${count++}`);
+      const second = path.join(temp.dir, `tree-${count++}`);
       await makeTree(first, 2, 8);
       await makeTree(second, 2, 8);
       const maxOpen = trackOpenFiles({ copies: true });
@@ -613,7 +581,7 @@ describe('importing into a draft', () => {
       const smallFirst = await root.create(newId(), DETAILS, async (draft) => {
         await Promise.all([draft.import(small), draft.import(large)]);
       });
-      await assertHolds(largeFirst, { 'a.txt': 'small', 'large.txt': 'large' });
+      await assertHolds(root, largeFirst, { 'a.txt': 'small', 'large.txt': 'large' });
       assert.strictEqual((await smallFirst.head.files.get('a.txt')!.text()).length, 2_000_000);
       await assertVersionValid(objectRootOf(root, smallFirst.id), 'v1');
     });
@@ -637,8 +605,8 @@ describe('importing into a draft', () => {
         await Promise.all(steps.map((step) => settle(step(draft))));
       });
       const expected = { 'a.txt': 'imported a', 'b.txt': 'written after', 'sub/c.txt': 'imported c', 'd.txt': 'imported c' };
-      await assertHolds(sequential, expected);
-      await assertHolds(concurrent, expected);
+      await assertHolds(root, sequential, expected);
+      await assertHolds(root, concurrent, expected);
     });
   });
 
@@ -654,7 +622,7 @@ describe('importing into a draft', () => {
       await assert.rejects(leaked!.import(source), (e) => e instanceof Error && !ocflError('INVALID_LOGICAL_PATH')(e) && !(e instanceof TypeError));
       await assert.rejects(leaked!.import(source, 'target'), Error);
       assert.deepStrictEqual(await snapshot(root.path), before);
-      await assertHolds(object, { a: 'a' });
+      await assertHolds(root, object, { a: 'a' });
     });
 
     it('throws an Error from import once the update has failed', async () => {
@@ -703,7 +671,7 @@ describe('importing into a draft', () => {
           const object = await root.create(newId(), DETAILS, async (draft) => {
             await draft.import(source);
           });
-          const inventory = await assertHolds(object, {
+          const inventory = await assertHolds(root, object, {
             'a.txt': 'identical',
             'b.txt': 'identical',
             'sub/c.txt': 'identical',
@@ -726,7 +694,7 @@ describe('importing into a draft', () => {
             const object = await root.create(newId(), DETAILS, async (draft) => {
               await Promise.all(['a', 'b', 'c', 'd'].map((p, i) => write(draft, p, i)));
             });
-            await assertHolds(object, { a: 'same', b: 'same', c: 'same', d: 'same' });
+            await assertHolds(root, object, { a: 'same', b: 'same', c: 'same', d: 'same' });
             assert.strictEqual((await storedFiles(objectRootOf(root, object.id), 'v1')).length, 1);
           });
         }
@@ -739,7 +707,7 @@ describe('importing into a draft', () => {
             assert.strictEqual(first.status, 'rejected');
             assert.strictEqual(second.status, 'fulfilled');
           });
-          await assertHolds(object, { b: 'same' });
+          await assertHolds(root, object, { b: 'same' });
           assert.deepStrictEqual(await storedFiles(objectRootOf(root, id), 'v1'), ['v1/content/b']);
         });
       });

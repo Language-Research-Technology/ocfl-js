@@ -1,10 +1,8 @@
 import assert from 'node:assert';
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { after, before, describe, it } from 'node:test';
-import { createStorageRoot, type Draft, type LayoutConfig, type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
+import { describe, it } from 'node:test';
+import { type Draft, type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
 import { withFsFailure } from './fs-failures.ts';
 import {
   assertVersionValid,
@@ -13,16 +11,16 @@ import {
   FLAT,
   objectRootOf,
   readInventory,
+  sha512,
   snapshot,
   storedFiles,
   textFiles,
+  useTempRoots,
   workspaceOf,
 } from './helpers/drafts.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
 import { writeFiles, writeStorageRoot } from './helpers/storage-roots.ts';
 import { ocflError } from './ocfl-error.ts';
-
-const sha512 = (content: string) => createHash('sha512').update(content).digest('hex');
 
 /** What an object shows of itself and its versions, for comparing two views of one object */
 async function described(object: OcflObject): Promise<unknown> {
@@ -45,16 +43,8 @@ async function described(object: OcflObject): Promise<unknown> {
 }
 
 describe('creating an object', () => {
-  let tempdir: string;
-  let rootCount = 0;
-  const newRoot = (layout: LayoutConfig = FLAT) => createStorageRoot(path.join(tempdir, `root-${rootCount++}`), { layout });
-
-  before(async () => {
-    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-create-object-'));
-  });
-  after(async () => {
-    await fs.promises.rm(tempdir, { recursive: true, force: true });
-  });
+  const temp = useTempRoots('ocfl-create-object-');
+  const { newRoot } = temp;
 
   it('writes version 1 with the files the draft was given', async () => {
     const root = await newRoot();
@@ -161,7 +151,7 @@ describe('creating an object', () => {
       [
         '1.0',
         async () => {
-          const rootPath = path.join(tempdir, 'root-1.0');
+          const rootPath = path.join(temp.dir, 'root-1.0');
           await writeStorageRoot(rootPath, '1.0');
           await writeFiles(rootPath, { 'ocfl_layout.json': JSON.stringify({ extension: FLAT.extensionName }) });
           return openStorageRoot(rootPath);

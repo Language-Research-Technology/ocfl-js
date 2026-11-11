@@ -16,11 +16,13 @@ import {
   isNotFound,
   normaliseLogicalPath,
   parentDirectories,
+  pathExists,
   relativeWithin,
 } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T, WORKSPACE_EXTENSION } = OcflConstants;
+const MUTABLE_HEAD_INVENTORY = path.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
 
 export interface UpdateTarget {
   /** Absolute path of the object root */
@@ -41,6 +43,13 @@ function updateTarget(root: string, objectRoot: string, ocflVersion: OcflVersion
     storageRoot: root,
     ocflVersion,
   };
+}
+
+/** @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE`, with `message`, if the object has an active mutable head (extension 0005) */
+async function assertNoMutableHead(objectRoot: string, message: string): Promise<void> {
+  if (await pathExists(path.join(objectRoot, MUTABLE_HEAD_INVENTORY))) {
+    throw new OcflError('MUTABLE_HEAD_ACTIVE', message);
+  }
 }
 
 /** @returns The path of the declaration file, if this call wrote one */
@@ -740,4 +749,4 @@ class OcflObjectTransaction {
   }
 }
 
-export { OcflObjectTransaction, updateTarget };
+export { assertNoMutableHead, isAsyncIterable, OcflObjectTransaction, updateTarget };

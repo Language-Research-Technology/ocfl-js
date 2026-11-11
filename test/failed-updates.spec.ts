@@ -1,13 +1,23 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { after, afterEach, before, describe, it, mock } from 'node:test';
-import { createStorageRoot, type Draft, type LayoutConfig, type OcflObject, type StorageRoot, type WriteContent } from '../src/index.ts';
+import { afterEach, describe, it, mock } from 'node:test';
+import type { Draft, OcflObject, StorageRoot, WriteContent } from '../src/index.ts';
 import { emptyDirectoriesUnder } from './empty-directories.ts';
 import { mountSeparately, withFsFailure } from './fs-failures.ts';
-import { assertVersionValid, createObject, DETAILS, FLAT, objectRootOf, snapshot, storedFiles, textFiles, workspaceOf } from './helpers/drafts.ts';
+import {
+  assertVersionValid,
+  createObject,
+  DETAILS,
+  FLAT,
+  objectRootOf,
+  snapshot,
+  storedFiles,
+  textFiles,
+  useTempRoots,
+  workspaceOf,
+} from './helpers/drafts.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
 import { ocflError } from './ocfl-error.ts';
 
@@ -109,16 +119,8 @@ const failingPartway: [string, () => WriteContent][] = [
 ];
 
 describe('an update that fails or finishes early', () => {
-  let tempdir: string;
-  let rootCount = 0;
-  const newRoot = (layout: LayoutConfig = FLAT) => createStorageRoot(path.join(tempdir, `root-${rootCount++}`), { layout });
-
-  before(async () => {
-    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-failed-updates-'));
-  });
-  after(async () => {
-    await fs.promises.rm(tempdir, { recursive: true, force: true });
-  });
+  const temp = useTempRoots('ocfl-failed-updates-');
+  const { newRoot } = temp;
   afterEach(() => {
     mock.restoreAll();
   });

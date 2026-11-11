@@ -1,20 +1,19 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { after, before, describe, it } from 'node:test';
-import { createStorageRoot, type LayoutConfig, type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
+import { describe, it } from 'node:test';
+import { type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
 import { withFsFailure } from './fs-failures.ts';
 import {
   assertVersionValid,
   createObject,
   DETAILS,
-  FLAT,
   objectRootOf,
   readInventory,
   snapshot,
   storedFiles,
   textFiles,
+  useTempRoots,
   workspaceOf,
 } from './helpers/drafts.ts';
 import { PATH_DIRECT } from './helpers/layouts.ts';
@@ -23,16 +22,8 @@ import { ocflError } from './ocfl-error.ts';
 import { DIGESTS_OF_ABC } from './shared/digests-of-abc.ts';
 
 describe('updating an object made by another tool', () => {
-  let tempdir: string;
-  let rootCount = 0;
-  const newRoot = (layout: LayoutConfig = FLAT) => createStorageRoot(path.join(tempdir, `root-${rootCount++}`), { layout });
-
-  before(async () => {
-    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-update-foreign-objects-'));
-  });
-  after(async () => {
-    await fs.promises.rm(tempdir, { recursive: true, force: true });
-  });
+  const temp = useTempRoots('ocfl-update-foreign-objects-');
+  const { newRoot } = temp;
 
   /** Tries an update that would write a file, and reports whether its callback ran */
   async function attemptUpdate(object: OcflObject): Promise<{ result: Promise<OcflObject>; called: () => boolean }> {
@@ -145,7 +136,7 @@ describe('updating an object made by another tool', () => {
   });
 
   it('keeps the fixity block of an inventory unchanged in the new version', async () => {
-    const rootPath = path.join(tempdir, 'spec-ex-full-root');
+    const rootPath = path.join(temp.dir, 'spec-ex-full-root');
     await writeSpecExFullRoot(rootPath);
     const objectRoot = path.join(rootPath, 'spec-ex-full');
     const { fixity } = await readInventory(objectRoot);

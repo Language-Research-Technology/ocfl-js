@@ -9,7 +9,7 @@ import { createLayout, type LayoutClass, supportedLayoutClass } from './extensio
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import * as store from './store.ts';
 import type { Layout, LayoutConfig, OcflVersion } from './types.ts';
-import { deepFreeze, findNamasteVersion, isDirEmpty, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
+import { deepFreeze, findNamasteVersion, isDirEmpty, isNonEmptyString, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
 import { createError, ValidationError } from './validation.ts';
 
 const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, NAMASTE_PREFIX_STORAGE, NAMASTE_T } = OcflConstants;
@@ -190,7 +190,7 @@ function mappedObjectPath(root: string, layout: BuiltInLayout, id: string): stri
 }
 
 function checkedId(id: string): string {
-  if (typeof id !== 'string' || id === '') {
+  if (!isNonEmptyString(id)) {
     throw new TypeError('The id of the object is required.');
   }
   return id;
@@ -213,7 +213,7 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
 }
 
 function absolutePath(rootPath: string): string {
-  if (typeof rootPath !== 'string' || rootPath === '') {
+  if (!isNonEmptyString(rootPath)) {
     throw new TypeError('The path of the storage root is required.');
   }
   return nodePath.resolve(rootPath);

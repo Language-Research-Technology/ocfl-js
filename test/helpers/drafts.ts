@@ -1,14 +1,51 @@
 import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import type { Inventory, LayoutConfig, OcflObject, StorageRoot, Version, VersionDetails } from '../../src/index.ts';
+import { after, before } from 'node:test';
+import { createStorageRoot, type Inventory, type LayoutConfig, type OcflObject, type StorageRoot, type Version, type VersionDetails } from '../../src/index.ts';
 import { emptyDirectoriesUnder } from '../empty-directories.ts';
 
 /** With this layout an object root is `<root>/<id>`, and a new storage root has no `extensions` directory */
 export const FLAT: LayoutConfig = { extensionName: '0002-flat-direct-storage-layout' };
 
 export const DETAILS: VersionDetails = { message: 'A test version', user: { name: 'Tester', address: 'mailto:tester@example.org' } };
+
+export const sha512 = (content: string | Uint8Array): string => createHash('sha512').update(content).digest('hex');
+export const encode = (text: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(text);
+export const streamOf = (content: string): ReadableStream<Uint8Array> =>
+  new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(encode(content));
+      controller.close();
+    },
+  });
+
+interface TempRoots {
+  /** The suite's temp directory, once the suite has started */
+  readonly dir: string;
+  /** Creates a storage root in a new directory of `dir` */
+  newRoot(layout?: LayoutConfig): Promise<StorageRoot>;
+}
+
+/** Gives the enclosing suite a temp directory, named from `prefix`, that is removed when the suite ends */
+export function useTempRoots(prefix: string): TempRoots {
+  let dir = '';
+  let count = 0;
+  before(async () => {
+    dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), prefix));
+  });
+  after(async () => {
+    await fs.promises.rm(dir, { recursive: true, force: true });
+  });
+  return {
+    get dir() {
+      return dir;
+    },
+    newRoot: (layout = FLAT) => createStorageRoot(path.join(dir, `root-${count++}`), { layout }),
+  };
+}
 
 /** The object root of `id` in a storage root with the {@link FLAT} layout */
 export function objectRootOf(root: StorageRoot, id: string): string {
@@ -66,6 +103,16 @@ export async function assertVersionValid(objectRoot: string, versionName: string
   }
   assert.deepStrictEqual(await emptyDirectoriesUnder(path.join(objectRoot, versionName)), []);
   return inventory;
+}
+
+/**
+ * Asserts that `object` reads the same as given and when opened afresh from `root`, and that its head version is valid on disk
+ * @returns The root inventory
+ */
+export async function assertHolds(root: StorageRoot, object: OcflObject, expected: Record<string, string>): Promise<Inventory> {
+  assert.deepStrictEqual(await textFiles(object.head), expected);
+  assert.deepStrictEqual(await textFiles((await root.open(object.id)).head), expected);
+  return assertVersionValid(objectRootOf(root, object.id), `v${object.head.number}`);
 }
 
 /** The content of every file under `dir`, keyed by its path relative to `dir`. Empty if `dir` doesn't exist. */

@@ -1,44 +1,32 @@
 import assert from 'node:assert';
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { after, before, describe, it } from 'node:test';
-import { createStorageRoot, type LayoutConfig, type OcflObject, type StorageRoot, type WriteContent } from '../src/index.ts';
-import { assertVersionValid, createObject, DETAILS, FLAT, objectRootOf, readInventory, storedFiles, textFiles } from './helpers/drafts.ts';
+import { before, describe, it } from 'node:test';
+import type { StorageRoot, WriteContent } from '../src/index.ts';
+import {
+  assertHolds,
+  createObject,
+  DETAILS,
+  encode,
+  objectRootOf,
+  readInventory,
+  sha512,
+  storedFiles,
+  streamOf,
+  textFiles,
+  useTempRoots,
+} from './helpers/drafts.ts';
 import { ocflError } from './ocfl-error.ts';
 
-const sha512 = (content: string | Uint8Array) => createHash('sha512').update(content).digest('hex');
-const encode = (text: string) => new TextEncoder().encode(text);
-const streamOf = (content: string) =>
-  new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(encode(content));
-      controller.close();
-    },
-  });
-
 describe('writing a file to a draft', () => {
-  let tempdir: string;
+  const temp = useTempRoots('ocfl-draft-write-');
   let root: StorageRoot;
   let objectCount = 0;
   const newId = () => `object-${objectCount++}`;
 
-  /** Asserts that the object `id` reads the same from `object` and when opened afresh, and that its head version is valid on disk */
-  async function assertHolds(object: OcflObject, expected: Record<string, string>) {
-    assert.deepStrictEqual(await textFiles(object.head), expected);
-    assert.deepStrictEqual(await textFiles((await root.open(object.id)).head), expected);
-    return assertVersionValid(objectRootOf(root, object.id), `v${object.head.number}`);
-  }
-
   before(async () => {
-    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-draft-write-'));
-    const layout: LayoutConfig = FLAT;
-    root = await createStorageRoot(path.join(tempdir, 'root'), { layout });
-  });
-  after(async () => {
-    await fs.promises.rm(tempdir, { recursive: true, force: true });
+    root = await temp.newRoot();
   });
 
   describe('what it accepts', () => {
@@ -49,7 +37,7 @@ describe('writing a file to a draft', () => {
       [
         'a Node Readable',
         () => {
-          const source = path.join(tempdir, `source-${objectCount}`);
+          const source = path.join(temp.dir, `source-${objectCount}`);
           fs.writeFileSync(source, 'héllo');
           return fs.createReadStream(source);
         },
@@ -72,7 +60,7 @@ describe('writing a file to a draft', () => {
         const object = await root.create(id, DETAILS, async (draft) => {
           await draft.write('a', content());
         });
-        const inventory = await assertHolds(object, { a: 'héllo' });
+        const inventory = await assertHolds(root, object, { a: 'héllo' });
         assert.deepStrictEqual(inventory.manifest, { [sha512('héllo')]: ['v1/content/a'] });
         assert.strictEqual(object.head.files.get('a')!.digest, sha512('héllo'));
       });
@@ -83,14 +71,14 @@ describe('writing a file to a draft', () => {
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.write('part', new Uint8Array(bytes.buffer, 5, 5));
       });
-      await assertHolds(object, { part: '56789' });
+      await assertHolds(root, object, { part: '56789' });
     });
 
     it('stores a file with no content', async () => {
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.write('empty', '');
       });
-      await assertHolds(object, { empty: '' });
+      await assertHolds(root, object, { empty: '' });
     });
 
     const unsupported: [string, () => unknown, RegExp][] = [
@@ -110,7 +98,7 @@ describe('writing a file to a draft', () => {
           await assert.rejects(draft.write('bad', content() as never), (e) => e instanceof TypeError && message.test(e.message));
           await draft.write('ok', 'ok');
         });
-        await assertHolds(object, { ok: 'ok' });
+        await assertHolds(root, object, { ok: 'ok' });
         assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v1'), ['v1/content/ok']);
       });
     }
@@ -122,7 +110,7 @@ describe('writing a file to a draft', () => {
         await draft.write('buffer', Buffer.from('héllo'));
         await draft.write('stream', streamOf('héllo'));
       });
-      const inventory = await assertHolds(object, { string: 'héllo', bytes: 'héllo', buffer: 'héllo', stream: 'héllo' });
+      const inventory = await assertHolds(root, object, { string: 'héllo', bytes: 'héllo', buffer: 'héllo', stream: 'héllo' });
       assert.deepStrictEqual(inventory.manifest, { [sha512('héllo')]: ['v1/content/string'] });
       assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v1'), ['v1/content/string']);
     });
@@ -136,7 +124,7 @@ describe('writing a file to a draft', () => {
         await draft.write('b/test.txt', Readable.toWeb(fs.createReadStream(source)) as ReadableStream<Uint8Array>);
       });
       const text = content.toString();
-      await assertHolds(object, { 'test.txt': text, 'a/test.txt': text, 'b/test.txt': text });
+      await assertHolds(root, object, { 'test.txt': text, 'a/test.txt': text, 'b/test.txt': text });
     });
   });
 
@@ -146,7 +134,7 @@ describe('writing a file to a draft', () => {
       const updated = await object.update(DETAILS, async (draft) => {
         await draft.write('d/x', 'changed');
       });
-      await assertHolds(updated, { a: 'a', 'd/x': 'changed' });
+      await assertHolds(root, updated, { a: 'a', 'd/x': 'changed' });
       assert.deepStrictEqual(await textFiles(updated.versions.get(1)!), { a: 'a', 'd/x': 'x' });
     });
 
@@ -155,7 +143,7 @@ describe('writing a file to a draft', () => {
         await draft.write('a', 'first');
         await draft.write('a', 'second');
       });
-      const inventory = await assertHolds(object, { a: 'second' });
+      const inventory = await assertHolds(root, object, { a: 'second' });
       assert.deepStrictEqual(inventory.manifest, { [sha512('second')]: ['v1/content/a'] });
     });
   });
@@ -176,7 +164,7 @@ describe('writing a file to a draft', () => {
         });
         assert.strictEqual(returned, object);
         assert.strictEqual((await readInventory(objectRootOf(root, object.id))).head, 'v1');
-        await assertHolds(object, files);
+        await assertHolds(root, object, files);
       });
     }
 
@@ -186,7 +174,7 @@ describe('writing a file to a draft', () => {
         await assert.rejects(draft.write('d', 'new'), ocflError('FILE_EXISTS'));
         await assert.rejects(draft.write('d/x/y', 'new'), ocflError('FILE_EXISTS'));
       });
-      await assertHolds(object, { 'd/x': 'x' });
+      await assertHolds(root, object, { 'd/x': 'x' });
     });
   });
 
@@ -200,7 +188,7 @@ describe('writing a file to a draft', () => {
         await assert.rejects(draft.write('e/y/z', 'new'), ocflError('FILE_EXISTS'));
         await draft.write('d/x', 'replaced');
       });
-      await assertHolds(object, { 'raw/1.wav': 'wav', 'd/x': 'replaced', 'e/y': 'y' });
+      await assertHolds(root, object, { 'raw/1.wav': 'wav', 'd/x': 'replaced', 'e/y': 'y' });
       assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v1'), ['v1/content/d/x', 'v1/content/e/y', 'v1/content/raw/1.wav']);
     });
 
@@ -220,8 +208,8 @@ describe('writing a file to a draft', () => {
           await assert.rejects(draft.write(logicalPath, 'new'), ocflError('INVALID_LOGICAL_PATH'));
         });
         assert.strictEqual(returned, object);
-        await assertHolds(object, { a: 'a' });
-        assert.ok(!fs.existsSync(path.join(tempdir, 'escape.txt')));
+        await assertHolds(root, object, { a: 'a' });
+        assert.ok(!fs.existsSync(path.join(temp.dir, 'escape.txt')));
         assert.ok(!fs.existsSync(path.join(root.path, 'escape.txt')));
       });
     }
@@ -231,7 +219,7 @@ describe('writing a file to a draft', () => {
         await draft.write('..notes.txt', 'x');
         await draft.write('dir/..hidden', 'y');
       });
-      await assertHolds(object, { '..notes.txt': 'x', 'dir/..hidden': 'y' });
+      await assertHolds(root, object, { '..notes.txt': 'x', 'dir/..hidden': 'y' });
     });
   });
 });

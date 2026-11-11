@@ -67,7 +67,7 @@ class VersionNumber {
    */
   static _among(versionLabel: string, versionNames: string[]): VersionNumber {
     const padded = versionNames.find((name) => name.startsWith('v0'));
-    return new VersionNumber(VersionNumber.fromString(versionLabel).value, padded ? padded.length - 1 : undefined);
+    return new VersionNumber(VersionNumber.fromString(versionLabel).value, padded ? VersionNumber.fromString(padded).zeroPaddingLength : undefined);
   }
 }
 
@@ -279,8 +279,9 @@ class OcflObjectInventory {
     for (const [verName, ver] of Object.entries(this.versions)) {
       this.#fileIndex[verName] = {};
       for (const [digest, lps] of Object.entries(ver.state)) {
+        const digests = this.#indexDigests(digest);
         for (const lp of lps) {
-          this.#indexAdd(lp, verName, this.#indexDigests(digest));
+          this.#indexAdd(lp, verName, digests);
         }
       }
     }
@@ -513,7 +514,7 @@ class OcflObjectInventory {
    */
   static newVersion(data: Partial<Inventory> | OcflObjectInventory, cleanState?: boolean): OcflObjectInventory {
     if (data instanceof OcflObjectInventory) {
-      data = data.toJSON();
+      data = JSON.parse(JSON.stringify(data.#data)) as Inventory;
     }
     if (!data.id || !data.digestAlgorithm || !data.type) {
       throw new Error('Inventory must have an id, digestAlgorithm and type.');
@@ -616,7 +617,7 @@ class OcflObjectInventory {
       this.#applyContentReleases(releases);
     }
     const existingPath = this.getContentPath(digest);
-    const digests = existingPath ? this.#fillFixity(existingPath, digest) : this.#addContent(logicalPath, digest);
+    const digests = existingPath ? this.#indexDigests(digest) : this.#addContent(logicalPath, digest);
     if (this.getDigest(logicalPath) === digest) {
       return false;
     }
@@ -649,7 +650,6 @@ class OcflObjectInventory {
     });
   }
 
-  /** The state must already be free of any digest a release removes, because recording fixity can rebuild the index from it */
   #applyContentReleases(releases: ContentRelease[]) {
     for (const { digest, from, to } of releases) {
       if (to === undefined) {
@@ -687,31 +687,9 @@ class OcflObjectInventory {
     this.#indexRemoveFixity(contentPath);
   }
 
-  #addContent(logicalPath: string, digest: string, fixity: Digests = {}): Digests {
-    const contentPath = this.#ownContentPath(logicalPath);
-    this.#data.manifest[digest] = [contentPath];
-    for (const [digestName, digestValue] of Object.entries(fixity)) {
-      this.#addFixity(contentPath, digestName, digestValue);
-    }
-    return { [this.digestAlgorithm]: digest, ...fixity };
-  }
-
-  /** Record values for the algorithms a content path has none for, keeping any it already has */
-  #fillFixity(contentPath: string, digest: string, fixity: Digests = {}): Digests {
-    const recorded = this.#indexGetFixity(contentPath);
-    const missing = Object.entries(fixity).filter(([digestName]) => !recorded[digestName]);
-    for (const [digestName, digestValue] of missing) {
-      this.#addFixity(contentPath, digestName, digestValue);
-    }
-    const digests = this.#indexDigests(digest);
-    if (missing.length > 0) {
-      for (const [version, { state }] of Object.entries(this.versions)) {
-        for (const logicalPath of state[digest] ?? []) {
-          this.#indexAdd(logicalPath, version, digests);
-        }
-      }
-    }
-    return digests;
+  #addContent(logicalPath: string, digest: string): Digests {
+    this.#data.manifest[digest] = [this.#ownContentPath(logicalPath)];
+    return { [this.digestAlgorithm]: digest };
   }
 
   /**

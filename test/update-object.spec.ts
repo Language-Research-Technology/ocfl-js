@@ -1,19 +1,18 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { after, before, describe, it } from 'node:test';
-import { createStorageRoot, type LayoutConfig, openStorageRoot } from '../src/index.ts';
+import { describe, it } from 'node:test';
+import { openStorageRoot } from '../src/index.ts';
 import {
   assertVersionValid,
   createObject,
   DETAILS,
-  FLAT,
   objectRootOf,
   readInventory,
   snapshot,
   storedFiles,
   textFiles,
+  useTempRoots,
   workspaceOf,
 } from './helpers/drafts.ts';
 import { HASHED } from './helpers/layouts.ts';
@@ -21,16 +20,8 @@ import { writeFiles, writeStorageRoot, writeVersions } from './helpers/storage-r
 import { ocflError } from './ocfl-error.ts';
 
 describe('updating an object', () => {
-  let tempdir: string;
-  let rootCount = 0;
-  const newRoot = (layout: LayoutConfig = FLAT) => createStorageRoot(path.join(tempdir, `root-${rootCount++}`), { layout });
-
-  before(async () => {
-    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-update-object-'));
-  });
-  after(async () => {
-    await fs.promises.rm(tempdir, { recursive: true, force: true });
-  });
+  const temp = useTempRoots('ocfl-update-object-');
+  const { newRoot } = temp;
 
   it('starts the draft with the files of the head version and writes one new version', async () => {
     const root = await newRoot();
@@ -178,7 +169,7 @@ describe('updating an object', () => {
 
   describe('OCFL version', () => {
     it('keeps a 1.0 object at 1.0 in a storage root that now declares 1.1', async () => {
-      const rootPath = path.join(tempdir, 'root-1.1-object-1.0');
+      const rootPath = path.join(temp.dir, 'root-1.1-object-1.0');
       await writeStorageRoot(rootPath, '1.0');
       const objectRoot = await writeVersions(rootPath, 'http://example.org/object-1.0', [{ 'a.txt': 'abc' }]);
       await fs.promises.rm(path.join(rootPath, '0=ocfl_1.0'));

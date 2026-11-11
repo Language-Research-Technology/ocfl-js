@@ -1,39 +1,29 @@
 import assert from 'node:assert';
-import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { after, before, describe, it } from 'node:test';
-import { createStorageRoot, type Draft, type LayoutConfig, type OcflObject, type StorageRoot } from '../src/index.ts';
+import { before, describe, it } from 'node:test';
+import type { Draft, OcflObject, StorageRoot } from '../src/index.ts';
 import { withFsFailure } from './fs-failures.ts';
 import {
-  assertVersionValid,
+  assertHolds,
   createObject,
   DETAILS,
-  FLAT,
   objectRootOf,
   readInventory,
+  sha512,
   snapshot,
   storedFiles,
   textFiles,
+  useTempRoots,
   workspaceOf,
 } from './helpers/drafts.ts';
 import { ocflError } from './ocfl-error.ts';
 
-const sha512 = (content: string) => createHash('sha512').update(content).digest('hex');
-
 describe('removing from a draft', () => {
-  let tempdir: string;
+  const temp = useTempRoots('ocfl-draft-remove-');
   let root: StorageRoot;
   let objectCount = 0;
   const newId = () => `object-${objectCount++}`;
-
-  /** Asserts that the object reads the same from `object` and when opened afresh, and that its head version is valid on disk */
-  async function assertHolds(object: OcflObject, expected: Record<string, string>) {
-    assert.deepStrictEqual(await textFiles(object.head), expected);
-    assert.deepStrictEqual(await textFiles((await root.open(object.id)).head), expected);
-    return assertVersionValid(objectRootOf(root, object.id), `v${object.head.number}`);
-  }
 
   /** Asserts that `update` on `object` wrote nothing: no version, no workspace, the disk as it was */
   async function assertWritesNothing(object: OcflObject, update: () => Promise<unknown>) {
@@ -46,12 +36,7 @@ describe('removing from a draft', () => {
   }
 
   before(async () => {
-    tempdir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-draft-remove-'));
-    const layout: LayoutConfig = FLAT;
-    root = await createStorageRoot(path.join(tempdir, 'root'), { layout });
-  });
-  after(async () => {
-    await fs.promises.rm(tempdir, { recursive: true, force: true });
+    root = await temp.newRoot();
   });
 
   describe('remove', () => {
@@ -62,7 +47,7 @@ describe('removing from a draft', () => {
         await draft.remove('test.txt');
         await draft.remove('bar');
       });
-      const inventory = await assertHolds(updated, { 'keep.txt': 'keep' });
+      const inventory = await assertHolds(root, updated, { 'keep.txt': 'keep' });
       assert.strictEqual(updated.head.number, 2);
       assert.deepStrictEqual(await textFiles(updated.versions.get(1)!), files);
       assert.deepStrictEqual(await textFiles(object.head), files);
@@ -76,7 +61,7 @@ describe('removing from a draft', () => {
         await draft.write('keep', 'KKK');
         await draft.remove('a');
       });
-      const inventory = await assertHolds(object, { keep: 'KKK' });
+      const inventory = await assertHolds(root, object, { keep: 'KKK' });
       assert.deepStrictEqual(inventory.manifest, { [sha512('KKK')]: ['v1/content/keep'] });
     });
 
@@ -85,7 +70,7 @@ describe('removing from a draft', () => {
         await draft.write('a', 'AAA');
         await draft.remove('a');
       });
-      const inventory = await assertHolds(object, {});
+      const inventory = await assertHolds(root, object, {});
       assert.deepStrictEqual(inventory.manifest, {});
       assert.ok(!fs.existsSync(path.join(objectRootOf(root, object.id), 'v1/content')));
     });
@@ -132,7 +117,7 @@ describe('removing from a draft', () => {
             await step(draft);
           }
         });
-        const inventory = await assertHolds(object, expected);
+        const inventory = await assertHolds(root, object, expected);
         assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v1'), files);
         assert.deepStrictEqual(Object.values(inventory.manifest).flat().sort(), files);
       });
@@ -144,7 +129,7 @@ describe('removing from a draft', () => {
       const updated = await object.update(DETAILS, async (draft) => {
         await draft.remove('a');
       });
-      const inventory = await assertHolds(updated, { b: 'AAA' });
+      const inventory = await assertHolds(root, updated, { b: 'AAA' });
       assert.deepStrictEqual(inventory.manifest, v1.manifest);
     });
 
@@ -156,7 +141,7 @@ describe('removing from a draft', () => {
         await draft.write('d/new', 'NEW');
         await draft.remove('d');
       });
-      const inventory = await assertHolds(updated, { keep: 'KKK' });
+      const inventory = await assertHolds(root, updated, { keep: 'KKK' });
       assert.deepStrictEqual(await storedFiles(objectRoot, 'v2'), []);
       assert.deepStrictEqual(inventory.manifest, v1.manifest);
       assert.deepStrictEqual(inventory.versions.v1, v1.versions.v1);
@@ -168,7 +153,7 @@ describe('removing from a draft', () => {
         await draft.remove('d');
         await draft.write('d', 'file');
       });
-      await assertHolds(updated, { a: 'a', d: 'file' });
+      await assertHolds(root, updated, { a: 'a', d: 'file' });
     });
 
     it('removes a path given un-normalised', async () => {
@@ -177,7 +162,7 @@ describe('removing from a draft', () => {
         await draft.remove('./raw//1.wav');
         await draft.remove('.//d/');
       });
-      await assertHolds(updated, { 'raw/2.wav': 'wav2' });
+      await assertHolds(root, updated, { 'raw/2.wav': 'wav2' });
     });
 
     it('does not remove a file whose name merely starts with the path', async () => {
@@ -185,7 +170,7 @@ describe('removing from a draft', () => {
       const updated = await object.update(DETAILS, async (draft) => {
         await draft.remove('raw');
       });
-      await assertHolds(updated, { 'raw.txt': 'text', 'rawer/x': 'x' });
+      await assertHolds(root, updated, { 'raw.txt': 'text', 'rawer/x': 'x' });
     });
 
     for (const [name, logicalPath] of [
@@ -203,7 +188,7 @@ describe('removing from a draft', () => {
           });
           assert.strictEqual(returned, object);
         });
-        await assertHolds(object, { a: 'a' });
+        await assertHolds(root, object, { a: 'a' });
       });
     }
 
@@ -218,7 +203,7 @@ describe('removing from a draft', () => {
           ocflError('FILE_NOT_FOUND'),
         ),
       );
-      await assertHolds(object, { a: 'a' });
+      await assertHolds(root, object, { a: 'a' });
     });
 
     for (const [name, logicalPath] of [
@@ -238,7 +223,7 @@ describe('removing from a draft', () => {
           });
           assert.strictEqual(returned, object);
         });
-        await assertHolds(object, { a: 'a', 'd/x': 'x' });
+        await assertHolds(root, object, { a: 'a', 'd/x': 'x' });
       });
     }
 
@@ -268,7 +253,7 @@ describe('removing from a draft', () => {
       const updated = await object.update(DETAILS, async (draft) => {
         await draft.clear();
       });
-      const inventory = await assertHolds(updated, {});
+      const inventory = await assertHolds(root, updated, {});
       assert.strictEqual(updated.head.number, 2);
       assert.deepStrictEqual(inventory.versions.v2!.state, {});
       assert.deepStrictEqual(await textFiles(updated.versions.get(1)!), files);
@@ -284,7 +269,7 @@ describe('removing from a draft', () => {
         await draft.write('d/c', 'c');
         await draft.clear();
       });
-      const inventory = await assertHolds(updated, {});
+      const inventory = await assertHolds(root, updated, {});
       assert.deepStrictEqual(inventory.manifest, v1.manifest);
       assert.deepStrictEqual(await storedFiles(objectRoot, 'v2'), []);
     });
@@ -296,7 +281,7 @@ describe('removing from a draft', () => {
         await draft.clear();
         await draft.clear();
       });
-      const inventory = await assertHolds(object, {});
+      const inventory = await assertHolds(root, object, {});
       assert.deepStrictEqual(inventory.manifest, {});
     });
 
@@ -305,7 +290,7 @@ describe('removing from a draft', () => {
       const object = await root.create(id, DETAILS, async (draft) => {
         await draft.clear();
       });
-      const inventory = await assertHolds(object, {});
+      const inventory = await assertHolds(root, object, {});
       assert.strictEqual(inventory.head, 'v1');
       assert.deepStrictEqual(inventory.versions.v1!.state, {});
       assert.ok(!fs.existsSync(path.join(objectRootOf(root, id), 'v1/content')));
@@ -320,7 +305,7 @@ describe('removing from a draft', () => {
         await draft.write('d', 'now a file');
         await draft.write('same', 'same');
       });
-      await assertHolds(updated, { new: 'new', d: 'now a file', same: 'same' });
+      await assertHolds(root, updated, { new: 'new', d: 'now a file', same: 'same' });
       assert.deepStrictEqual(await storedFiles(objectRoot, 'v2'), ['v2/content/d', 'v2/content/new']);
     });
 
@@ -329,7 +314,7 @@ describe('removing from a draft', () => {
       const updated = await object.update(DETAILS, async (draft) => {
         await Promise.all([draft.write('before', 'before'), draft.clear(), draft.write('after', 'after')]);
       });
-      await assertHolds(updated, { after: 'after' });
+      await assertHolds(root, updated, { after: 'after' });
     });
   });
 
@@ -346,7 +331,7 @@ describe('removing from a draft', () => {
           assert.strictEqual(await object.update(DETAILS, change), object);
         });
         assert.strictEqual((await readInventory(objectRootOf(root, object.id))).head, 'v1');
-        await assertHolds(object, { a: 'AAA', 'd/x': 'XXX' });
+        await assertHolds(root, object, { a: 'AAA', 'd/x': 'XXX' });
       });
     }
   });
@@ -367,7 +352,7 @@ describe('removing from a draft', () => {
         const before = await snapshot(root.path);
         await assert.rejects(operation(kept!), (e) => e instanceof Error && !('code' in e));
         assert.deepStrictEqual(await snapshot(root.path), before);
-        await assertHolds(object, { a: 'a' });
+        await assertHolds(root, object, { a: 'a' });
       });
 
       it(`throws an Error from ${name} after the update was discarded`, async () => {
@@ -397,7 +382,7 @@ describe('removing from a draft', () => {
             /^Error: Unfinished operations detected/,
           ),
         );
-        await assertHolds(object, { a: 'a' });
+        await assertHolds(root, object, { a: 'a' });
       });
     }
   });

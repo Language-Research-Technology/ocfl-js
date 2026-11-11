@@ -6,13 +6,12 @@ import { checkedDetails, commitDraft, type Draft, type VersionDetails } from './
 import { OcflError } from './error.ts';
 import { OcflObjectInventory, VersionNumber, validateStoredInventory } from './inventory.ts';
 import { type OcflFile, StoredFile } from './ocfl-file.ts';
-import { updateTarget } from './transaction.ts';
+import { assertNoMutableHead, updateTarget } from './transaction.ts';
 import type { ContentAlgorithm, Inventory, OcflVersion } from './types.ts';
 import { findNamasteVersion, hasErrorCode, isDirEmpty, pathExists } from './utils.ts';
 import { createError, ValidationError } from './validation.ts';
 
-const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
-const MUTABLE_HEAD_INVENTORY = nodePath.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
+const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
 
 /** The person or system responsible for a version. */
 interface User {
@@ -108,12 +107,10 @@ class OpenedObject implements OcflObject {
   async update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject> {
     const checked = checkedDetails(details);
     await declaredVersion(this.#storageRoot, this.#root);
-    if (await pathExists(nodePath.join(this.#root, MUTABLE_HEAD_INVENTORY))) {
-      throw new OcflError(
-        'MUTABLE_HEAD_ACTIVE',
-        `The object <${this.id}> has an active mutable head (extension 0005), which this library doesn't support; it can't be updated until the head is committed or removed.`,
-      );
-    }
+    await assertNoMutableHead(
+      this.#root,
+      `The object <${this.id}> has an active mutable head (extension 0005), which this library doesn't support; it can't be updated until the head is committed or removed.`,
+    );
     const inventory = OcflObjectInventory.newVersion(this.#inventory);
     const committed = await commitDraft(updateTarget(this.#storageRoot, this.#root, this.ocflVersion), inventory, checked, change);
     return committed ? new OpenedObject(this.#storageRoot, this.#root, this.ocflVersion, committed) : this;
