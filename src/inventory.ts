@@ -34,8 +34,16 @@ class VersionNumber {
   toString(): string {
     return `v${this.zeroPaddingLength ? `${this.value}`.padStart(this.zeroPaddingLength, '0') : this.value}`;
   }
+  /** @throws {@link OcflError} `VERSION_LIMIT_REACHED` if the next name, padded, wouldn't start with a zero (E011) */
   next(): VersionNumber {
-    return new VersionNumber(this.value + 1, this.zeroPaddingLength);
+    const next = new VersionNumber(this.value + 1, this.zeroPaddingLength);
+    if (this.zeroPaddingLength && `${next.value}`.length >= this.zeroPaddingLength) {
+      throw new OcflError(
+        'VERSION_LIMIT_REACHED',
+        `There can be no version after ${this}: a zero-padded version name must start with a zero (E011), and one of ${this.zeroPaddingLength} digits can't for ${next.value}.`,
+      );
+    }
+    return next;
   }
   previous(): VersionNumber | undefined {
     const n = this.value - 1;
@@ -53,9 +61,13 @@ class VersionNumber {
     return new VersionNumber(parseInt(label, 10), zeroPaddingLength);
   }
 
-  /** @internal */
-  static next(versionLabel: string): VersionNumber {
-    return VersionNumber.fromString(versionLabel).next();
+  /**
+   * The number of `versionLabel` among `versionNames`, which are padded to one width if any of them has a leading zero
+   * @internal
+   */
+  static _among(versionLabel: string, versionNames: string[]): VersionNumber {
+    const padded = versionNames.find((name) => name.startsWith('v0'));
+    return new VersionNumber(VersionNumber.fromString(versionLabel).value, padded ? VersionNumber.fromString(padded).zeroPaddingLength : undefined);
   }
 }
 
@@ -140,7 +152,7 @@ interface RenamePlan {
   releases: ContentRelease[];
 }
 
-interface DeletePlan {
+export interface DeletePlan {
   paths: string[];
   releases: ContentRelease[];
 }
@@ -267,8 +279,9 @@ class OcflObjectInventory {
     for (const [verName, ver] of Object.entries(this.versions)) {
       this.#fileIndex[verName] = {};
       for (const [digest, lps] of Object.entries(ver.state)) {
+        const digests = this.#indexDigests(digest);
         for (const lp of lps) {
-          this.#indexAdd(lp, verName, this.#indexDigests(digest));
+          this.#indexAdd(lp, verName, digests);
         }
       }
     }
@@ -313,7 +326,7 @@ class OcflObjectInventory {
   }
   /** The version number of the current head */
   get versionNumber(): VersionNumber {
-    return VersionNumber.fromString(this.head);
+    return VersionNumber._among(this.head, Object.keys(this.#data.versions));
   }
   get contentDirectory(): string {
     return this.#data.contentDirectory || 'content';
@@ -501,7 +514,7 @@ class OcflObjectInventory {
    */
   static newVersion(data: Partial<Inventory> | OcflObjectInventory, cleanState?: boolean): OcflObjectInventory {
     if (data instanceof OcflObjectInventory) {
-      data = data.toJSON();
+      data = JSON.parse(JSON.stringify(data.#data)) as Inventory;
     }
     if (!data.id || !data.digestAlgorithm || !data.type) {
       throw new Error('Inventory must have an id, digestAlgorithm and type.');
@@ -517,7 +530,7 @@ class OcflObjectInventory {
         }
         state = JSON.parse(JSON.stringify(prev.state));
       }
-      data.head = VersionNumber.next(data.head).toString();
+      data.head = VersionNumber._among(data.head, Object.keys(data.versions)).next().toString();
     } else {
       data.head = 'v1';
     }
@@ -596,7 +609,7 @@ class OcflObjectInventory {
    * @throws {@link OcflError} `FILE_EXISTS` if the path is a directory, or is inside a file
    * @internal
    */
-  _add(logicalPath: string, digest: string, fixity?: { [x: string]: string }): boolean {
+  _add(logicalPath: string, digest: string): boolean {
     this._checkFilePath(logicalPath);
     if (this.getDigest(logicalPath) !== digest) {
       const releases = this._contentReleases([logicalPath]);
@@ -604,7 +617,7 @@ class OcflObjectInventory {
       this.#applyContentReleases(releases);
     }
     const existingPath = this.getContentPath(digest);
-    const digests = existingPath ? this.#fillFixity(existingPath, digest, fixity) : this.#addContent(logicalPath, digest, fixity);
+    const digests = existingPath ? this.#indexDigests(digest) : this.#addContent(logicalPath, digest);
     if (this.getDigest(logicalPath) === digest) {
       return false;
     }
@@ -637,7 +650,6 @@ class OcflObjectInventory {
     });
   }
 
-  /** The state must already be free of any digest a release removes, because recording fixity can rebuild the index from it */
   #applyContentReleases(releases: ContentRelease[]) {
     for (const { digest, from, to } of releases) {
       if (to === undefined) {
@@ -675,31 +687,9 @@ class OcflObjectInventory {
     this.#indexRemoveFixity(contentPath);
   }
 
-  #addContent(logicalPath: string, digest: string, fixity: Digests = {}): Digests {
-    const contentPath = this.#ownContentPath(logicalPath);
-    this.#data.manifest[digest] = [contentPath];
-    for (const [digestName, digestValue] of Object.entries(fixity)) {
-      this.#addFixity(contentPath, digestName, digestValue);
-    }
-    return { [this.digestAlgorithm]: digest, ...fixity };
-  }
-
-  /** Record values for the algorithms a content path has none for, keeping any it already has */
-  #fillFixity(contentPath: string, digest: string, fixity: Digests = {}): Digests {
-    const recorded = this.#indexGetFixity(contentPath);
-    const missing = Object.entries(fixity).filter(([digestName]) => !recorded[digestName]);
-    for (const [digestName, digestValue] of missing) {
-      this.#addFixity(contentPath, digestName, digestValue);
-    }
-    const digests = this.#indexDigests(digest);
-    if (missing.length > 0) {
-      for (const [version, { state }] of Object.entries(this.versions)) {
-        for (const logicalPath of state[digest] ?? []) {
-          this.#indexAdd(logicalPath, version, digests);
-        }
-      }
-    }
-    return digests;
+  #addContent(logicalPath: string, digest: string): Digests {
+    this.#data.manifest[digest] = [this.#ownContentPath(logicalPath)];
+    return { [this.digestAlgorithm]: digest };
   }
 
   /**
@@ -849,7 +839,16 @@ class OcflObjectInventory {
   }
 
   /**
-   * Apply a plan from {@link _planDelete}, which must be from the current state
+   * {@link _planDelete} for every file
+   * @internal
+   */
+  _planClear(): DeletePlan {
+    const paths = Object.values(this.state).flat();
+    return { paths, releases: this._contentReleases(paths) };
+  }
+
+  /**
+   * Apply a plan from {@link _planDelete} or {@link _planClear}, which must be from the current state
    * @internal
    */
   _applyDelete({ paths, releases }: DeletePlan) {

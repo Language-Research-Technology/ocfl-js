@@ -3,6 +3,7 @@ import { createLayout } from './extensions/index.ts';
 import { OcflStorage } from './storage.ts';
 import type { OcflLayoutConfig, OcflLayoutName, OcflStorageConfig, OcflStorageLayout } from './types.ts';
 
+export type { Draft, VersionDetails, WriteContent } from './draft.ts';
 export type { OcflErrorCode } from './error.ts';
 export { ObjectNotFoundError, ObjectNotLoadedError, OcflError } from './error.ts';
 export type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direct-storage-layout.ts';

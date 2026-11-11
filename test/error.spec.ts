@@ -39,6 +39,13 @@ describe('error.OcflError', () => {
     assert.equal('ocflCode' in e, false);
   });
 
+  it('has a code for an object whose zero-padded version names are used up, which is not a damaged object', () => {
+    const e = new error.OcflError('VERSION_LIMIT_REACHED', 'full');
+    assert.ok(ocflError('VERSION_LIMIT_REACHED')(e));
+    assert.equal(ocflError('INVALID_OBJECT')(e), false);
+    assert.equal('ocflCode' in e, false);
+  });
+
   it('is the base of the object errors, which carry their codes', () => {
     const notFound = new error.ObjectNotFoundError('obj');
     const notLoaded = new error.ObjectNotLoadedError('obj');

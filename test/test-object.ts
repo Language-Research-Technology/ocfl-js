@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { OcflConstants } from '../src/constants.ts';
 import { OcflObject } from '../src/object.ts';
-import { updateTarget } from '../src/storage-root.ts';
+import { updateTarget } from '../src/transaction.ts';
 import type { OcflObjectConfig, OcflVersion } from '../src/types.ts';
 
 const { OCFL_VERSION } = OcflConstants;

@@ -60,6 +60,10 @@ function parentDirectories(logicalPath: string): string[] {
   return directories;
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value !== '';
+}
+
 /** `content` parsed as a JSON object, or `undefined` if it isn't one */
 function parseJsonObject(content: string): Record<string, unknown> | undefined {
   try {
@@ -170,6 +174,7 @@ export {
   isAlreadyExists,
   isDirEmpty,
   isErrnoException,
+  isNonEmptyString,
   isNotFound,
   normaliseLogicalPath,
   parentDirectories,

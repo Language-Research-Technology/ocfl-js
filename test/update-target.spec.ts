@@ -4,8 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { OcflObjectInventory } from '../src/inventory.ts';
-import { updateTarget } from '../src/storage-root.ts';
-import { OcflObjectTransaction, type UpdateTarget } from '../src/transaction.ts';
+import { OcflObjectTransaction, type UpdateTarget, updateTarget } from '../src/transaction.ts';
 import { writeFiles } from './helpers/storage-roots.ts';
 import { DIGESTS_OF_ABC } from './shared/digests-of-abc.ts';
 
@@ -59,15 +58,6 @@ describe('OcflObjectTransaction driven from an update target', () => {
     assert.strictEqual(await second._commit(), undefined);
     assert.deepStrictEqual(fs.readdirSync(target.root).sort(), ['0=ocfl_object_1.0', 'inventory.json', 'inventory.json.sha512', 'v1']);
     assert.deepStrictEqual(fs.readdirSync(storageRoot), ['objects']);
-  });
-
-  it('records the fixity algorithms it is given', async () => {
-    const transaction = await OcflObjectTransaction.create(target, firstVersion(), ['md5']);
-    await transaction.write('a.txt', 'abc');
-
-    const committed = await transaction._commit();
-
-    assert.deepStrictEqual(committed?.toJSON().fixity, { md5: { [DIGESTS_OF_ABC.md5]: ['v1/content/a.txt'] } });
   });
 
   it('refuses a root that holds something other than an object', async () => {

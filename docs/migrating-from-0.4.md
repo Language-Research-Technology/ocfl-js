@@ -123,9 +123,9 @@ try {
 | `ID_INCOMPATIBLE_WITH_LAYOUT` | The storage layout can't map the object id, or the id or `root` maps to the storage root, outside it, or into `extensions`   |
 | `UNSUPPORTED_LAYOUT`          | `layout` isn't a supported name or config, or a root's `ocfl_layout.json` names an unsupported layout                        |
 | `INVALID_LAYOUT_CONFIG`       | A layout rejects its parameters, or a root's layout extension `config.json` isn't a JSON object or names another layout      |
-| `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`, or a path to write is empty                    |
+| `INVALID_LOGICAL_PATH`        | A logical path is absolute or has a `..` segment, such as `a/../b` or `..\b`, or a path to write or remove is empty          |
 | `INVALID_PATH`                | A path given to `object.readFile()`, `stat()` or `createReadable()` is absolute or leaves the object root                    |
-| `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()` or `rename()` names a source the object doesn't contain               |
+| `FILE_NOT_FOUND`              | A lazy file's content isn't in the object, or `copy()`, `rename()` or `remove()` names a path the object doesn't contain     |
 | `FILE_EXISTS`                 | `copy()` or `rename()` names a target that exists; see [Other behaviour changes](#other-behaviour-changes)                   |
 | `FILE_EXISTS`                 | Two sources of one `object.import()` produce the same logical path, or one inside a file                                     |
 | `FILE_EXISTS`                 | A written, imported or reinstated file would be inside a file, or a written or imported file would be a directory            |
@@ -134,11 +134,12 @@ try {
 | `MUTABLE_HEAD_ACTIVE`         | An update or import finds an active mutable head (extension 0005); see [Other behaviour changes](#other-behaviour-changes)   |
 | `NOT_AN_OBJECT`               | `storage.remove()` finds something with no OCFL object declaration at the object's path, and deletes nothing                 |
 | `CROSS_FILESYSTEM_MOVE`       | An update can't rename its new version into the object, because part of the storage root is on another filesystem            |
+| `VERSION_LIMIT_REACHED`       | An update or import finds zero-padded version names used up: the next must still start with a zero (E011), so `v09` is last  |
 | `E007`, `E036`, …             | The content violates the OCFL spec; see below                                                                                |
 
 Other errors, such as invalid configuration or arguments, are programming mistakes and remain a plain `Error` or `TypeError`. Invalid layout parameters are the exception: they throw `INVALID_LAYOUT_CONFIG`, because a storage root's `config.json` can hold them too.
 
-An import checks its targets and walks its sources before reading any file, and throws `INVALID_LOGICAL_PATH`, `UNSUPPORTED_FILE_TYPE` or `FILE_EXISTS` directly. If files then fail to import, it throws an `AggregateError` whose `errors` holds the error for each failed file, with its `code` where it has one.
+An import checks its targets and walks its sources before reading any file, and throws `INVALID_LOGICAL_PATH`, `UNSUPPORTED_FILE_TYPE` or `FILE_EXISTS` directly. If a file then fails to import, it throws the error of the first file that failed, as it is: an `OcflError` such as `SOURCE_CHANGED`, or the file system's error. An import that fails adds none of its files, so an update that catches the error and carries on commits nothing of that import.
 
 ## Errors for invalid OCFL content
 
@@ -182,12 +183,12 @@ To check an object or storage root against the spec, use a dedicated OCFL valida
 
 ## Deprecated methods removed
 
-| Removed                                     | Use instead        |
-| ------------------------------------------- | ------------------ |
-| `OcflObjectFile.asBuffer()`                 | `buffer()`         |
-| `OcflObjectFile.asString()`                 | `text()`           |
-| `OcflObjectFile.asStream()`                 | `stream()`         |
-| `OcflObjectTransaction.createWriteStream()` | `createWritable()` |
+| Removed                                     | Use instead |
+| ------------------------------------------- | ----------- |
+| `OcflObjectFile.asBuffer()`                 | `buffer()`  |
+| `OcflObjectFile.asString()`                 | `text()`    |
+| `OcflObjectFile.asStream()`                 | `stream()`  |
+| `OcflObjectTransaction.createWriteStream()` | `write()`   |
 
 The `OcflObjectFile` replacements behave the same as the methods they replace. `OcflObjectTransaction.createWriteStream()` only ever threw `Not Implemented`.
 
@@ -270,7 +271,6 @@ Starting an update while another update of the same version is open now throws `
 
 Operations called concurrently in one update, such as with `Promise.all`, now give the same result as awaiting them one after another in the order they were called:
 
-- A stream from `createWritable()` takes its place in that order once its queued writes finish and it closes, and doesn't hold up other operations while it's open.
 - Each operation waits for the ones called before it. A stream passed to `write()` that's still waiting for input holds up later operations, so finish it before awaiting one of them.
 - A failed operation rejects its own promise and leaves nothing behind. Later operations carry on, so a later write of the same content stores it.
 - Every operation has to be awaited. `copy()` and `reinstate()` calls left unawaited used to take effect, but now count as unfinished operations and roll back the update.
@@ -281,8 +281,8 @@ Operations called concurrently in one update, such as with `Promise.all`, now gi
 
 When a logical path is replaced within the update that added its content:
 
-- Content no other logical path uses is removed, along with its manifest and fixity entries.
-- Content another logical path still uses moves to that path's content path, and its manifest and fixity entries follow it.
+- Content no other logical path uses is removed, along with its manifest entry.
+- Content another logical path still uses moves to that path's content path, and its manifest entry follows it.
 - Writing content identical to what's stored leaves the stored file in place.
 
 Content from earlier versions is never changed.
@@ -293,8 +293,8 @@ Content from earlier versions is never changed.
 
 For content stored by the update in progress:
 
-- `rename()` moves the file to the new logical path's content path, and its manifest and fixity entries follow it. If the content is stored at another logical path's content path, no file moves.
-- `remove()` follows the rules for [replacing a file](#replacing-a-file-within-one-update): content another logical path still uses moves to that path's content path, and content nothing uses is removed along with its manifest and fixity entries.
+- `rename()` moves the file to the new logical path's content path, and its manifest entry follows it. If the content is stored at another logical path's content path, no file moves.
+- `remove()` follows the rules for [replacing a file](#replacing-a-file-within-one-update): content another logical path still uses moves to that path's content path, and content nothing uses is removed along with its manifest entry.
 - Directories are handled file by file, so one can mix committed and new files.
 
 Renaming or removing a file from an earlier version still changes only the logical path.
@@ -367,12 +367,13 @@ Each public member now corresponds to something the OCFL specification or the li
 | `RemoveOptions`                                                                                          | Nothing: `remove()` takes only a logical path                                                                       |
 | `CommitOptions.force`                                                                                    | Nothing: a commit with no changes rolls back                                                                        |
 | The `options` argument of `write(path, data, options)`                                                   | Nothing: decode first, e.g. `Buffer.from(text, 'base64')`; strings are written as UTF-8                             |
-| The `options` argument of `createWritable(path, options)`                                                | Nothing: string chunks are written as UTF-8                                                                         |
+| `OcflObjectTransaction.createWritable()`                                                                 | `write(path, stream)`, which takes a stream or any async iterable                                                   |
 | `OcflObjectInventory.newVersion()`                                                                       | `object.update()`, which creates each new version                                                                   |
 | `inventory.isChanged`                                                                                    | `inventory.diffState(version0, version1)`; see [Read-only inventories](#read-only-inventories)                      |
 | `inventory.clone()`                                                                                      | `inventory.toJSON()`, which gives a plain copy of the inventory data                                                |
 | The `inventory.created`, `message` and `user` setters                                                    | `transaction.commit({ message, user })`; `created` is set when a version is committed                               |
-| The `inventory.fixity` setter                                                                            | The `fixityAlgorithms` option of an object or storage                                                               |
+| The `inventory.fixity` setter                                                                            | Nothing: fixity values are no longer written                                                                        |
+| The `fixityAlgorithms` option of an object or storage                                                    | Nothing: an existing `fixity` block is kept as it is                                                                |
 | The `OcflObjectInventoryMut` type                                                                        | `OcflObjectInventory`                                                                                               |
 | `OcflObject.export()`                                                                                    | `object.files(version)` and `file.stream()`; see [Writing a version out](#writing-a-version-out)                    |
 | `extensions.DigestAlgorithm`                                                                             | Nothing to replace: to add an algorithm from extension 0009, send a pull request to this library                    |
@@ -628,7 +629,7 @@ Loading a storage root that declares either of them, or any other layout this li
 
 Members used only inside their own class, such as `object._inventory`, `object._readInventory()`, `transaction._commit()` and `transaction._queue`, are now JavaScript private fields. They're gone from the published types and can't be reached at runtime. `Object.keys()` and `console.log()` or `util.inspect()` of an object or transaction no longer show them, and `JSON.stringify()` of a transaction now gives `{}`. Because a `Proxy` can't reach private fields, calling a method on an object or transaction wrapped in one, such as Vue's `reactive()` or a MobX observable, now throws a `TypeError`. Keep them out of reactive state, for example with Vue's `markRaw()`.
 
-The remaining `_` members, such as `object._setInventory()`, `object._requireInventory()` and `inventory._digest`, are shared between the library's classes. They're no longer in the published types, and neither are `OcflObjectTransaction.create()`, `VersionNumber.fromString()` and `VersionNumber.next()`. They still exist at runtime, but they aren't part of the API and can change in any release. The `OcflObjectTransaction` and `VersionNumber` constructors are private, and `VersionNumber.fromInt()` and the static `VersionNumber.previous()` have been removed.
+The remaining `_` members, such as `object._setInventory()`, `object._requireInventory()` and `inventory._digest`, are shared between the library's classes. They're no longer in the published types, and neither are `OcflObjectTransaction.create()` and `VersionNumber.fromString()`. They still exist at runtime, but they aren't part of the API and can change in any release. The `OcflObjectTransaction` and `VersionNumber` constructors are private, and `VersionNumber.fromInt()` and the static `VersionNumber.next()` and `VersionNumber.previous()` have been removed; the `next()` and `previous()` methods of a version number remain.
 
 ## Other behaviour changes
 
@@ -636,14 +637,15 @@ The remaining `_` members, such as `object._setInventory()`, `object._requireInv
 - `'latest'` now works as a version name in `getFile()` and the inventory methods that take a version. It previously matched nothing, and looking up a file by digest or content path threw a `TypeError`.
 - An empty-string version is now always a version that doesn't exist. `inventory.versionState('')`, `inventory.files('')` and reading a lazy file looked up by logical path used to mean the head version, and looking up a file by digest or content path with an empty version used to search every version.
 - `object.import()` no longer empties the array of sources passed to it.
-- Importing a directory fails if any of its files fails. Previously the other files were committed and the failures were dropped.
-- An update that leaves a stream from `createWritable()` open now rolls back and rejects with "Unfinished operations detected" instead of never settling.
+- Importing a directory fails if any of its files fails, with the error of the first file that failed. Previously the other files were committed and the failures were dropped.
 - When an `update()` callback throws after one of its operations failed, the update now rolls back fully and rethrows the callback's error. Previously it rethrew the operation's error and left the workspace behind, so the next update of that object failed with `UPDATE_IN_PROGRESS`.
+- When an operation fails and its changes to the stored files can't be undone, `update()` throws that operation's own error once the callback returns, so `error.code` is the operation's. Previously it threw a plain `Error` with the operation's error as its `cause`.
 - `update()` and `import()` throw `MUTABLE_HEAD_ACTIVE` and write nothing when the object has an active mutable head. Previously they created a new version, which extension 0005 forbids. See [Mutable head](../README.md#mutable-head-extension-0005).
+- **Breaking:** `remove()` throws `FILE_NOT_FOUND` when nothing is at the path, instead of doing nothing, and `INVALID_LOGICAL_PATH` for an empty path. Its path is normalised first, so `./raw//1.wav` removes `raw/1.wav`.
 - `rename()` throws `FILE_NOT_FOUND` when the source doesn't exist, instead of doing nothing.
 - **Breaking:** `rename()` and `copy()` throw `FILE_EXISTS` when the target exists, even with identical content or when the target is the source. A target exists if it's a file, if it's a directory with anything in it (directories are never merged), or if it's inside a file. When they throw, nothing has changed. `rename()` used to replace the target, and `copy()` onto an existing target wrote an invalid object. To replace a target, remove it first in the same update, then copy or rename onto it.
-- **Breaking:** `write()`, a `createWritable()` stream when it closes, and `reinstate()` throw `FILE_EXISTS` for a file that would be inside an existing file. `write()` and the stream also throw it for a file that would be an existing directory with anything in it; `reinstate()` replaces the directory. When they throw, nothing has changed. They used to write an invalid object, in which one logical path was both a file and a directory. Writing over an existing file still replaces it. To put a file where a directory is, remove the directory first in the same update.
-- `write()` and `createWritable()` store a logical path in its normalised form, as `copy()`, `rename()` and `import()` do, so `./a//b.txt` is `a/b.txt`. An empty path, such as `''` or `.`, throws `INVALID_LOGICAL_PATH`.
+- **Breaking:** `write()` and `reinstate()` throw `FILE_EXISTS` for a file that would be inside an existing file. `write()` also throws it for a file that would be an existing directory with anything in it; `reinstate()` replaces the directory. When they throw, nothing has changed. They used to write an invalid object, in which one logical path was both a file and a directory. Writing over an existing file still replaces it. To put a file where a directory is, remove the directory first in the same update.
+- `write()` stores a logical path in its normalised form, as `copy()`, `rename()` and `import()` do, so `./a//b.txt` is `a/b.txt`. An empty path, such as `''` or `.`, throws `INVALID_LOGICAL_PATH`.
 - A logical path with a `..` segment, such as `a/../b`, is rejected instead of being normalised. A name that only starts with two dots, such as `..notes.txt`, is now accepted.
 - **Breaking:** an object id or `root` that maps to the storage root, outside it, or into its `extensions` directory throws `ID_INCOMPATIBLE_WITH_LAYOUT` from `objectRoot()`, `object()`, `has()` and `remove()`, and nothing is written. Previously objects could be written outside the storage root.
 - **Breaking:** the path-direct layout rejects an id with a `.` or `..` segment, such as `a/./b`, `../x` or `https://h/a/../b`, with `ID_INCOMPATIBLE_WITH_LAYOUT` instead of normalising it. This includes the encoded forms a URL parser resolves, such as `%2e%2e`, and `\` as a separator. A layout `suffix` with such a segment throws `INVALID_LAYOUT_CONFIG`. The flat-direct layout rejects the ids `.` and `..`.

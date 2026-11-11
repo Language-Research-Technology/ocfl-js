@@ -15,7 +15,7 @@ import ocfl, {
 } from '../../src/index.ts';
 import type { OcflObject } from '../../src/object.ts';
 import { emptyDirectoriesUnder } from '../empty-directories.ts';
-import { withFileWriteFailure, withFsFailure, withSlowOpens } from '../fs-failures.ts';
+import { withFsFailure } from '../fs-failures.ts';
 import { testObject } from '../test-object.ts';
 
 let objcount = 0;
@@ -122,14 +122,13 @@ describe('update', () => {
   let objectx: OcflObject;
 
   function createObject(id: string, ocflVersion?: OcflVersion) {
-    return testObject({ id, root: path.join(tempdir, id), ocflVersion, fixityAlgorithms: ['md5', 'crc32'] });
+    return testObject({ id, root: path.join(tempdir, id), ocflVersion });
   }
 
   async function readInventory(object: OcflObject): Promise<Inventory> {
     return JSON.parse(await fs.promises.readFile(path.join(object.root, 'inventory.json'), 'utf8'));
   }
 
-  const md5 = (content: string) => createHash('md5').update(content).digest('hex');
   const sha512 = (content: string | Uint8Array) => createHash('sha512').update(content).digest('hex');
   const encode = (text: string) => new TextEncoder().encode(text);
   const streamOf = (content: string) =>
@@ -187,11 +186,6 @@ describe('update', () => {
         assert.strictEqual(sha512(await fs.promises.readFile(path.join(o.root, contentPath))), digest, contentPath);
       }
     }
-    for (const [algorithm, block] of Object.entries(inventory.fixity ?? {})) {
-      const fixityPaths = Object.values(block).flat();
-      assert.strictEqual(new Set(fixityPaths).size, fixityPaths.length, `a content path has two ${algorithm} values`);
-    }
-    await assertFixityPathsExist(o, inventory);
     await assertReads(o, expected);
     return inventory;
   }
@@ -483,81 +477,33 @@ describe('update', () => {
 
   //@todo: check delete, rename, reinstate non existant logical path
 
-  it('can add and list files with fixity', async () => {
-    const content = 'test test test';
-    await objectx.update(async (t) => {
-      await t.write('test.txt', content);
-    });
-    for (const f of await objectx.files()) {
-      assert(f.fixity!.md5);
-      assert(f.fixity!.crc32);
-      const fc = await f.text();
-      assert.strictEqual(f.fixity!.md5, createHash('md5').update(fc).digest('hex'));
-    }
-    const file = await objectx.getFile('test.txt');
-    assert.strictEqual(file!.fixity!.md5, createHash('md5').update(content).digest('hex'));
-  });
-
-  async function assertFixityPathsExist(object: OcflObject, inventory: Inventory) {
-    const manifestPaths = Object.values(inventory.manifest).flat();
-    for (const block of Object.values(inventory.fixity ?? {})) {
-      for (const contentPath of Object.values(block).flat()) {
-        assert.ok(manifestPaths.includes(contentPath), `${contentPath} is not in the manifest`);
-        await fs.promises.access(path.join(object.root, contentPath));
-      }
-    }
-  }
-
   describe('fixity block on disk', () => {
-    it('adds no content path when content is duplicated or rewritten unchanged', async () => {
-      const object = createObject('object-fixity-duplicate');
-      const source = path.join(tempdir, 'fixity-duplicate-source.txt');
-      await fs.promises.writeFile(source, 'same');
+    it('is carried forward untouched by an update', async () => {
+      const root = path.join(tempdir, 'object-fixity-carried');
+      await fs.promises.cp(fixture, root, { recursive: true });
+      const source = path.join(tempdir, 'fixity-carried-source.txt');
+      await fs.promises.writeFile(source, 'imported');
+      const before = await fs.promises.readFile(path.join(root, 'inventory.json'), 'utf8');
+      const object = testObject({ root });
       await object.update(async (t) => {
-        await t.write('a.txt', 'same');
-      });
-      await object.update(async (t) => {
-        await t.write('a.txt', 'same');
-        await t.write('b.txt', 'same');
-        await t.import(source, 'c.txt');
-        const writable = await t.createWritable('d.txt');
-        const writer = writable.getWriter();
-        await writer.write(new TextEncoder().encode('same'));
-        await writer.close();
+        await t.write('new.txt', 'new');
+        await t.copy('image.tiff', 'image-copy.tiff');
+        await t.write('empty3.txt', await fs.promises.readFile(path.join(root, 'v1/content/empty.txt')));
+        await t.import(source, 'imported.txt');
+        await t.remove('foo/bar.xml');
       });
       const inventory = await readInventory(object);
-      assert.strictEqual(inventory.head, 'v2');
-      assert.deepStrictEqual(inventory.fixity!.md5, { [md5('same')]: ['v1/content/a.txt'] });
-      await assertFixityPathsExist(object, inventory);
+      assert.strictEqual(inventory.head, 'v4');
+      assert.deepStrictEqual(inventory.fixity, JSON.parse(before).fixity);
+      assert.deepStrictEqual(Object.keys(inventory.fixity ?? {}), ['md5', 'sha1']);
     });
 
-    it('attaches fixity to content first written without it, in an update that creates a version', async () => {
-      const root = path.join(tempdir, 'object-fixity-attach');
-      await testObject({ id: 'object-fixity-attach', root }).update(async (t) => {
-        await t.write('a.txt', 'first');
-      });
-      const object = testObject({ id: 'object-fixity-attach', root, fixityAlgorithms: ['md5'] });
-      await object.update(async (t) => {
-        await t.write('b.txt', 'first');
-      });
-      const inventory = await readInventory(object);
-      assert.strictEqual(inventory.head, 'v2');
-      assert.deepStrictEqual(inventory.fixity, { md5: { [md5('first')]: ['v1/content/a.txt'] } });
-      await assertFixityPathsExist(object, inventory);
-    });
-
-    it('creates no version for an update whose only effect is new fixity', async () => {
-      const root = path.join(tempdir, 'object-fixity-only');
-      await testObject({ id: 'object-fixity-only', root }).update(async (t) => {
-        await t.write('a.txt', 'first');
-      });
-      const object = testObject({ id: 'object-fixity-only', root, fixityAlgorithms: ['md5'] });
+    it('is not written for a new object', async () => {
+      const object = createObject('object-no-fixity');
       await object.update(async (t) => {
         await t.write('a.txt', 'first');
       });
-      const inventory = await readInventory(object);
-      assert.strictEqual(inventory.head, 'v1');
-      assert.strictEqual(inventory.fixity, undefined);
+      assert.ok(!('fixity' in (await readInventory(object))));
     });
   });
 
@@ -873,7 +819,7 @@ describe('update', () => {
 
           const inventory = await assertManifestMatchesFiles(o);
           assert.strictEqual(Object.keys(inventory.manifest).length, 1);
-          assert.deepStrictEqual(Object.values(inventory.fixity!.md5!), [['v1/content/a']]);
+          assert.deepStrictEqual(Object.values(inventory.manifest), [['v1/content/a']]);
           await assertReads(o, { a: 'BBB' });
         });
 
@@ -908,44 +854,6 @@ describe('update', () => {
           await assertManifestMatchesFiles(concurrent, 'v2');
         });
 
-        it('streams from createWritable take effect when closed, in either order, without blocking', async () => {
-          for (const [first, second] of [
-            ['X', 'Y'],
-            ['Y', 'X'],
-          ] as const) {
-            const o = newObject();
-            await o.update(async (t) => {
-              const writers = {
-                X: (await t.createWritable('a')).getWriter(),
-                Y: (await t.createWritable('a')).getWriter(),
-              };
-              await writers.X.write(encode('X'));
-              await writers.Y.write(encode('Y'));
-              await t.write('during', 'written while the streams are open');
-              await writers[first].close();
-              await t.write('after-first', `${first} closed first`);
-              await writers[second].close();
-            });
-
-            await assertManifestMatchesFiles(o);
-            await assertReads(o, { a: second, 'after-first': `${first} closed first`, during: 'written while the streams are open' });
-          }
-        });
-
-        it('streams from createWritable closed together take effect in the order they were closed', async () => {
-          const o = newObject();
-          await o.update(async (t) => {
-            const first = (await t.createWritable('a')).getWriter();
-            const second = (await t.createWritable('a')).getWriter();
-            await first.write(encode('X'.repeat(100_000)));
-            await second.write(encode('Y'));
-            await Promise.all([first.close(), second.close()]);
-          });
-
-          await assertManifestMatchesFiles(o);
-          await assertReads(o, { a: 'Y' });
-        });
-
         it('a failed write rejects, leaves nothing behind, and a later write of that content stores it', async () => {
           const o = newObject();
           await o.update(async (t) => {
@@ -970,84 +878,6 @@ describe('update', () => {
           },
         });
         await assert.rejects(t.write('broken', broken), /source failed/);
-        await t.write('ok', 'ok');
-      });
-
-      await assertManifestMatchesFiles(o);
-      await assertReads(o, { ok: 'ok' });
-    });
-
-    it('aborting a stream from createWritable leaves nothing behind', async () => {
-      const o = newObject();
-      await o.update(async (t) => {
-        const writer = (await t.createWritable('aborted')).getWriter();
-        await writer.write(encode('partial'));
-        await writer.abort(new Error('changed my mind'));
-        await t.write('ok', 'ok');
-      });
-
-      await assertManifestMatchesFiles(o);
-      await assertReads(o, { ok: 'ok' });
-    });
-
-    /** The staged file's open completes 50ms from now, well after an abort's cleanup would otherwise have run */
-    const withSlowStagedOpen = (fn: (opened: Promise<void>) => Promise<void>) =>
-      withSlowOpens((filePath) => path.basename(filePath).startsWith('.staged-'), 50, fn);
-
-    it('aborting a stream from createWritable whose file opens slowly leaves nothing behind', async () => {
-      const o = newObject();
-      await withSlowStagedOpen(async (opened) => {
-        await o.update(async (t) => {
-          const writer = (await t.createWritable('aborted')).getWriter();
-          await writer.write(encode('partial'));
-          await writer.abort(new Error('changed my mind'));
-          await opened;
-          await t.write('ok', 'ok');
-        });
-      });
-
-      await assertManifestMatchesFiles(o);
-      await assertReads(o, { ok: 'ok' });
-    });
-
-    it('an update that ends by aborting a stream from createWritable commits without it', async () => {
-      const o = newObject();
-      await o.update(async (t) => {
-        await t.write('ok', 'ok');
-        const writer = (await t.createWritable('aborted')).getWriter();
-        await writer.write(encode('partial'));
-        await writer.abort(new Error('changed my mind'));
-      });
-
-      await assertManifestMatchesFiles(o);
-      await assertReads(o, { ok: 'ok' });
-    });
-
-    it('rolling back with an unwritten stream from createWritable whose file opens slowly leaves nothing behind', async () => {
-      const o = newObject();
-      await withSlowStagedOpen(async (opened) => {
-        await assert.rejects(
-          o.update(async (t) => {
-            await t.createWritable('never-written');
-            throw new Error('gave up');
-          }),
-          /gave up/,
-        );
-        await opened;
-      });
-
-      await assert.rejects(fs.promises.access(o._workspace));
-      await assert.rejects(fs.promises.access(o.root));
-    });
-
-    it('a stream from createWritable whose disk write fails leaves nothing behind', async () => {
-      const o = newObject();
-      await o.update(async (t) => {
-        const writer = (await t.createWritable('broken')).getWriter();
-        await assert.rejects(
-          withFileWriteFailure(() => writer.write(encode('partial'))),
-          /injected failure/,
-        );
         await t.write('ok', 'ok');
       });
 
@@ -1116,19 +946,6 @@ describe('update', () => {
       });
     }
 
-    it('createWritable stores string, typed array, ArrayBuffer and DataView chunks as bytes', async () => {
-      const o = newObject();
-      await o.update(async (t) => {
-        const writer = (await t.createWritable('a')).getWriter();
-        await writer.write('h');
-        await writer.write(new Uint16Array(encode('éll').buffer, 0, 2));
-        await writer.write(encode('o').buffer);
-        await writer.write(new DataView(encode('X!X').buffer, 1, 1));
-        await writer.close();
-      });
-      await assertValid(o, 'v1', { a: 'héllo!' });
-    });
-
     const failingPartway: [string, () => WriteFileData][] = [
       [
         'an async generator',
@@ -1172,17 +989,6 @@ describe('update', () => {
       });
     }
 
-    it('createWritable rejects a chunk that is not bytes or a string and records nothing', async () => {
-      const o = newObject();
-      await o.update(async (t) => {
-        const writer = (await t.createWritable('bad')).getWriter();
-        await assert.rejects(writer.write(42), (e) => e instanceof TypeError && /Unsupported data type: \[object Number\]/.test(e.message));
-        await t.write('ok', 'ok');
-      });
-      await assertManifestMatchesFiles(o);
-      await assertReads(o, { ok: 'ok' });
-    });
-
     it('stores the same content written as different types once', async () => {
       const o = newObject();
       await o.update(async (t) => {
@@ -1206,14 +1012,6 @@ describe('update', () => {
       ['a string', (t, p, c) => t.write(p, c)],
       ['a buffer', (t, p, c) => t.write(p, encode(c))],
       ['a stream', (t, p, c) => t.write(p, streamOf(c))],
-      [
-        'createWritable',
-        async (t, p, c) => {
-          const writer = (await t.createWritable(p)).getWriter();
-          await writer.write(encode(c));
-          await writer.close();
-        },
-      ],
       [
         'import',
         async (t, p, c) => {
@@ -1257,7 +1055,7 @@ describe('update', () => {
       });
     }
 
-    it('leaves only the new content in the manifest and one md5 value for the content path', async () => {
+    it('leaves only the new content in the manifest', async () => {
       const o = newObject();
       await o.update(async (t) => {
         await t.write('a', 'AAA');
@@ -1265,14 +1063,13 @@ describe('update', () => {
       });
       const inventory = await readInventory(o);
       assert.deepStrictEqual(inventory.manifest, { [sha512('BBB')]: ['v1/content/a'] });
-      assert.deepStrictEqual(inventory.fixity!.md5, { [md5('BBB')]: ['v1/content/a'] });
     });
 
     for (const [how, share] of [
       ['write', (t: OcflObjectTransaction) => t.write('b', 'AAA')],
       ['copy', (t: OcflObjectTransaction) => t.copy('a', 'b')],
     ] as const) {
-      it(`stores shared content at the path of a logical path made with ${how}, with the manifest and fixity`, async () => {
+      it(`stores shared content at the path of a logical path made with ${how}, with the manifest`, async () => {
         const o = newObject();
         await o.update(async (t) => {
           await t.write('a', 'AAA');
@@ -1281,7 +1078,6 @@ describe('update', () => {
         });
         const inventory = await assertValid(o, 'v1', { a: 'BBB', b: 'AAA' });
         assert.deepStrictEqual(inventory.manifest, { [sha512('AAA')]: ['v1/content/b'], [sha512('BBB')]: ['v1/content/a'] });
-        assert.deepStrictEqual(inventory.fixity!.md5, { [md5('AAA')]: ['v1/content/b'], [md5('BBB')]: ['v1/content/a'] });
       });
     }
 
@@ -1302,7 +1098,6 @@ describe('update', () => {
       });
       const inventory = await assertValid(o, 'v2', { a: 'CCC', b: 'AAA', c: 'BBB' });
       assert.deepStrictEqual(inventory.manifest[sha512('AAA')], v1.manifest[sha512('AAA')]);
-      assert.deepStrictEqual(inventory.fixity!.md5![md5('AAA')], v1.fixity!.md5![md5('AAA')]);
       assert.deepStrictEqual(inventory.versions.v1, v1.versions.v1);
       assert.deepStrictEqual(await fs.promises.readFile(path.join(o.root, 'v1/content/a')), v1File);
     });
@@ -1358,7 +1153,7 @@ describe('update', () => {
 
     const newObject = () => createObject(`rename-remove-${++scenario}`);
 
-    it('moves a file renamed in the version that added it, with its manifest and fixity entries', async () => {
+    it('moves a file renamed in the version that added it, with its manifest entry', async () => {
       const o = newObject();
       await o.update(async (t) => {
         await t.write('a', 'AAA');
@@ -1366,10 +1161,9 @@ describe('update', () => {
       });
       const inventory = await assertValid(o, 'v1', { b: 'AAA' });
       assert.deepStrictEqual(inventory.manifest, { [sha512('AAA')]: ['v1/content/b'] });
-      assert.deepStrictEqual(inventory.fixity!.md5, { [md5('AAA')]: ['v1/content/b'] });
     });
 
-    it('removes the file, manifest entry and fixity entry of content nothing else uses', async () => {
+    it('removes the file and manifest entry of content nothing else uses', async () => {
       const o = newObject();
       await o.update(async (t) => {
         await t.write('a', 'AAA');
@@ -1378,10 +1172,9 @@ describe('update', () => {
       });
       const inventory = await assertValid(o, 'v1', { keep: 'KKK' });
       assert.deepStrictEqual(inventory.manifest, { [sha512('KKK')]: ['v1/content/keep'] });
-      assert.deepStrictEqual(inventory.fixity!.md5, { [md5('KKK')]: ['v1/content/keep'] });
     });
 
-    it('leaves no manifest entry, fixity entry or content directory when the only file is removed', async () => {
+    it('leaves no manifest entry or content directory when the only file is removed', async () => {
       const o = newObject();
       await o.update(async (t) => {
         await t.write('a', 'AAA');
@@ -1389,7 +1182,6 @@ describe('update', () => {
       });
       const inventory = await assertValid(o, 'v1', {});
       assert.deepStrictEqual(inventory.manifest, {});
-      assert.deepStrictEqual(inventory.fixity?.md5, undefined);
       await assert.rejects(fs.promises.access(path.join(o.root, 'v1/content')), { code: 'ENOENT' });
     });
 
@@ -1473,12 +1265,7 @@ describe('update', () => {
         });
         const inventory = await assertValid(o, 'v1', expected);
         assert.deepStrictEqual(await contentFiles(o, 'v1'), files);
-        assert.deepStrictEqual(
-          Object.values(inventory.fixity?.md5 ?? {})
-            .flat()
-            .sort(),
-          files,
-        );
+        assert.deepStrictEqual(Object.values(inventory.manifest).flat().sort(), files);
       });
     }
 
@@ -1501,7 +1288,6 @@ describe('update', () => {
       const inventory = await assertValid(o, 'v2', { 'e/old': 'OLD', 'e/new': 'NEW' });
       assert.deepStrictEqual(await contentFiles(o, 'v2'), ['v2/content/e/new']);
       assert.deepStrictEqual(inventory.manifest[sha512('OLD')], v1.manifest[sha512('OLD')]);
-      assert.deepStrictEqual(inventory.fixity!.md5![md5('OLD')], v1.fixity!.md5![md5('OLD')]);
       assert.deepStrictEqual(inventory.versions.v1, v1.versions.v1);
     });
 
@@ -1524,7 +1310,6 @@ describe('update', () => {
       });
       const inventory = await assertValid(o, 'v2', { b: 'AAA' });
       assert.deepStrictEqual(inventory.manifest, v1.manifest);
-      assert.deepStrictEqual(inventory.fixity, v1.fixity);
       assert.deepStrictEqual(await contentFiles(o, 'v2'), []);
     });
 
@@ -1623,7 +1408,7 @@ describe('update', () => {
             () => assert.rejects(t.remove('d'), /injected failure/),
           );
         }),
-        /cannot be committed/,
+        /injected failure/,
       );
       await assert.rejects(fs.promises.access(path.join(o.root, 'inventory.json')), { code: 'ENOENT' });
     });
@@ -1640,7 +1425,7 @@ describe('update', () => {
             () => assert.rejects(t.rename('d', 'e'), /injected failure/),
           );
         }),
-        /cannot be committed/,
+        /injected failure/,
       );
       await assert.rejects(fs.promises.access(path.join(o.root, 'inventory.json')), { code: 'ENOENT' });
     });

@@ -55,6 +55,12 @@ assert.equal(await object.getFile('a.txt')?.text(), 'written');
 
 const opened = await (await openStorageRoot(root)).open('smoke');
 assert.equal(await opened.head.files.get('a.txt')?.text(), 'written');
+
+const details = { message: 'Smoke test', user: { name: 'Consumer' } };
+const created = await (await openStorageRoot(root)).create('smoke-created', details, async (draft) => draft.write('a.txt', 'created'));
+const updated = await created.update(details, async (draft) => draft.write('a.txt', 'updated'));
+assert.equal(await created.head.files.get('a.txt')?.text(), 'created');
+assert.equal(await updated.head.files.get('a.txt')?.text(), 'updated');
 EOF
 
 pnpm -C "$consumer" install --prefer-offline --silent || fail "installing the tarball failed"

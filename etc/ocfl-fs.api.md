@@ -58,6 +58,14 @@ export type Digests = {
     [algorithm: string]: string;
 };
 
+// @public
+export interface Draft {
+    clear(): Promise<void>;
+    import(source: string, target?: string): Promise<void>;
+    remove(path: string): Promise<void>;
+    write(path: string, content: WriteContent): Promise<void>;
+}
+
 // @public (undocumented)
 export type EncodingOptions = BufferEncoding | {
     encoding: BufferEncoding;
@@ -219,7 +227,6 @@ export class LegacyOcflObject {
     get digestAlgorithm(): ContentAlgorithm;
     exists(): Promise<boolean>;
     files(version?: string): Promise<Generator<OcflObjectFile, void, unknown>>;
-    fixityAlgorithms: string[] | undefined;
     getFile(opt: LogicalPath | FileRefLogical | FileRefDigest | FileRefContent, version?: string, lazy?: boolean): OcflObjectFile | undefined;
     getInventory(version?: string): Promise<OcflObjectInventory | undefined>;
     get headVersion(): VersionNumber | undefined;
@@ -287,7 +294,7 @@ export class OcflError extends Error {
 }
 
 // @public
-export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_OF_DATE' | 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'RECOVERY_NEEDED' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | 'CROSS_FILESYSTEM_MOVE' | ValidationErrorCode;
+export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_OF_DATE' | 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT' | 'OBJECT_NOT_LOADED' | 'NOT_AN_OBJECT' | 'UPDATE_IN_PROGRESS' | 'RECOVERY_NEEDED' | 'DIRECTORY_NOT_EMPTY' | 'ID_INCOMPATIBLE_WITH_LAYOUT' | 'INVALID_LOGICAL_PATH' | 'INVALID_PATH' | 'FILE_NOT_FOUND' | 'FILE_EXISTS' | 'UNSUPPORTED_LAYOUT' | 'INVALID_LAYOUT_CONFIG' | 'UNSUPPORTED_FILE_TYPE' | 'SOURCE_CHANGED' | 'MUTABLE_HEAD_ACTIVE' | 'CROSS_FILESYSTEM_MOVE' | 'VERSION_LIMIT_REACHED' | ValidationErrorCode;
 
 // @public
 export interface OcflFile {
@@ -325,6 +332,7 @@ export interface OcflObject {
     readonly head: Version;
     readonly id: string;
     readonly ocflVersion: '1.0' | '1.1';
+    update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject>;
     readonly versions: ReadonlyMap<number, Version>;
 }
 
@@ -408,9 +416,9 @@ export class OcflObjectInventory {
 
 // @public
 export class OcflObjectTransaction {
+    clear(): Promise<void>;
     commit(options?: CommitOptions): Promise<void>;
     copy(source: string, target: string): Promise<void>;
-    createWritable(logicalPath: string): Promise<WritableStream>;
     import(source: string, target?: string): Promise<void>;
     reinstate(logicalPath: string, versionName: string): Promise<number>;
     remove(logicalPath: string): Promise<void>;
@@ -444,7 +452,6 @@ export class OcflStorage {
 export type OcflStorageConfig = {
     root: string;
     layout?: OcflLayoutName | OcflLayoutConfig | undefined;
-    fixityAlgorithms?: string[] | undefined;
     digestAlgorithm?: ContentAlgorithm | undefined;
     contentDirectory?: string | undefined;
 };
@@ -485,6 +492,7 @@ export function storageLayout<N extends OcflLayoutName>(config: N | OcflLayoutCo
 
 // @public
 export interface StorageRoot {
+    create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>): Promise<OcflObject>;
     readonly layout: Layout;
     readonly ocflVersion: '1.0' | '1.1';
     open(id: string): Promise<OcflObject>;
@@ -542,6 +550,12 @@ export interface Version {
     readonly user?: User;
 }
 
+// @public
+export interface VersionDetails {
+    readonly message: string;
+    readonly user: User;
+}
+
 // @public (undocumented)
 export class VersionNumber {
     // (undocumented)
@@ -557,6 +571,9 @@ export class VersionNumber {
     // (undocumented)
     zeroPaddingLength: number | undefined;
 }
+
+// @public
+export type WriteContent = string | Uint8Array | AsyncIterable<string | Uint8Array>;
 
 // @public
 export type WriteFileData = string | ArrayBufferView | ArrayBuffer | Blob | AsyncIterable<string | ArrayBufferView | ArrayBuffer>;

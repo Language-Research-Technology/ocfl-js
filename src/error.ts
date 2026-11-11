@@ -23,6 +23,7 @@ type OcflErrorCode =
   | 'SOURCE_CHANGED'
   | 'MUTABLE_HEAD_ACTIVE'
   | 'CROSS_FILESYSTEM_MOVE'
+  | 'VERSION_LIMIT_REACHED'
   | ValidationErrorCode;
 
 /** Base class for errors a client can handle by their `code`. The message isn't part of the contract. */

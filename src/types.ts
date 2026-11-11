@@ -153,8 +153,6 @@ export type OcflStorageConfig = {
    * Only used to create a storage root: loading one always takes the layout the root declares.
    */
   layout?: OcflLayoutName | OcflLayoutConfig | undefined;
-  /** A default list of digest algorithm names to be added to the fixity block of objects under this storage. */
-  fixityAlgorithms?: string[] | undefined;
   /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
   digestAlgorithm?: ContentAlgorithm | undefined;
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
@@ -171,8 +169,6 @@ export type OcflObjectConfig = {
   workspace: string;
   /** Identifier for the object.  Only be used in a newly created object. */
   id?: string | undefined;
-  /** Additional digest algorithms to be calculated for each file and added to the fixity block. */
-  fixityAlgorithms?: string[] | undefined;
   /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
   digestAlgorithm?: ContentAlgorithm | undefined;
   /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
