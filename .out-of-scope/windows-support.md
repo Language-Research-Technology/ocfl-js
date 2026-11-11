@@ -1,6 +1,6 @@
 # Windows support
 
-The library runs on Linux and macOS. It isn't built or tested for Windows, and Windows bugs aren't fixed.
+The library runs on Linux. It isn't built or tested for Windows, and Windows bugs aren't fixed.
 
 ## Why this is out of scope
 
