@@ -207,8 +207,27 @@ async function readIfPresent(file: string): Promise<string | undefined> {
   }
 }
 
+/** The digest an inventory sidecar records, if it records one */
+function sidecarDigest(sidecar: string | undefined): string | undefined {
+  return sidecar?.match(/\S+/)?.[0];
+}
+
 /**
- * Reads the root inventory of the object at `objectRoot` and checks it against its sidecar.
+ * Whether the root inventory `text`, of digest `digest`, is the inventory of its head version `head`, as that version's own sidecar confirms.
+ * A commit replaces the root inventory and then its sidecar, so between the two the root inventory is right and its sidecar is not.
+ */
+async function isHeadVersionInventory(objectRoot: string, head: unknown, text: string, digestAlgorithm: ContentAlgorithm, digest: string): Promise<boolean> {
+  // Not yet validated, so it could name anything
+  if (typeof head !== 'string' || !/^v\d+$/.test(head)) {
+    return false;
+  }
+  const file = nodePath.join(objectRoot, head, INVENTORY_NAME);
+  const [inventory, sidecar] = await Promise.all([readIfPresent(file), readIfPresent(`${file}.${digestAlgorithm}`)]);
+  return inventory === text && sidecarDigest(sidecar) === digest;
+}
+
+/**
+ * Reads the root inventory of the object at `objectRoot` and checks it against its sidecar, or against its head version while a commit is replacing the sidecar.
  * @returns `undefined` if there is no inventory
  * @throws {@link OcflError} `INVALID_OBJECT` if the inventory or its sidecar is missing, corrupt or inconsistent
  */
@@ -229,15 +248,14 @@ async function readInventory(objectRoot: string): Promise<OcflObjectInventory | 
     throw invalidObject(`The inventory ${file} has a digestAlgorithm that is not sha256 or sha512.`, { ocflCode: 'E025' });
   }
   const sidecar = await readIfPresent(`${file}.${digestAlgorithm}`);
-  if (sidecar === undefined) {
-    throw invalidObject(`The inventory ${file} has no ${digestAlgorithm} sidecar.`, { ocflCode: 'E058' });
-  }
-  const recorded = sidecar.match(/\S+/)?.[0];
+  const recorded = sidecarDigest(sidecar);
   const actual = await Hashing.digest(digestAlgorithm, text);
   let inventory: OcflObjectInventory;
   try {
-    if (recorded !== actual) {
-      throw createError('E060', file, `recorded=${recorded} actual=${actual}`);
+    if (recorded !== actual && !(await isHeadVersionInventory(objectRoot, data.head, text, digestAlgorithm, actual))) {
+      throw sidecar === undefined
+        ? createError('E058', file, `no ${digestAlgorithm} sidecar`)
+        : createError('E060', file, `recorded=${recorded} actual=${actual}`);
     }
     validateStoredInventory(data, file);
     if (typeof data.head !== 'string') {

@@ -155,6 +155,7 @@ Spec violations now throw a `ValidationError`, an `OcflError` whose `code` is th
 | E036 | An inventory has no `head`                                                           |
 | E040 | An inventory's `head` is empty or isn't one of its versions                          |
 | E050 | An inventory's state lists a digest that isn't in its manifest                       |
+| E058 | An inventory has no sidecar                                                          |
 | E060 | The inventory sidecar digest doesn't match the inventory                             |
 | E069 | A storage root has no conformance declaration                                        |
 | E070 | A storage root's `ocfl_layout.json` has no string `extension`                        |

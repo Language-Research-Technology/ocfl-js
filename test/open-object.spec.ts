@@ -451,22 +451,28 @@ describe('opening an object', () => {
       });
     }
 
-    it('throws INVALID_OBJECT with E058 for an inventory with no sidecar', async () => {
-      const objectRoot = await writeVersions(root.path, 'no-sidecar', [{ 'a.txt': 'abc' }]);
+    /** A one-file object whose root inventory no longer matches its sidecar, or the inventory of its head version */
+    const tampered = async (id: string) => {
+      const objectRoot = await writeVersions(root.path, id, [{ 'a.txt': 'abc' }]);
+      const file = path.join(objectRoot, 'inventory.json');
+      await fs.promises.writeFile(file, (await fs.promises.readFile(file, 'utf8')).replace(`"${id}"`, `"${id}" `));
+      return objectRoot;
+    };
+
+    it('throws INVALID_OBJECT with E058 for a changed inventory with no sidecar', async () => {
+      const objectRoot = await tampered('no-sidecar');
       await fs.promises.rm(path.join(objectRoot, 'inventory.json.sha512'));
       await assert.rejects(root.open('no-sidecar'), invalid('E058'));
     });
 
-    it('throws INVALID_OBJECT with E060 for an inventory whose sidecar digest does not match', async () => {
-      const objectRoot = await writeVersions(root.path, 'bad-sidecar', [{ 'a.txt': 'abc' }]);
-      await writeFiles(objectRoot, { 'inventory.json.sha512': 'abc inventory.json\n' });
-      await assert.rejects(root.open('bad-sidecar'), invalid('E060'));
+    it('throws INVALID_OBJECT with E060 for a changed inventory whose sidecar records no digest', async () => {
+      const objectRoot = await tampered('empty-sidecar');
+      await writeFiles(objectRoot, { 'inventory.json.sha512': '' });
+      await assert.rejects(root.open('empty-sidecar'), invalid('E060'));
     });
 
     it('throws INVALID_OBJECT with E060 for an inventory changed after its sidecar was written', async () => {
-      const objectRoot = await writeVersions(root.path, 'tampered', [{ 'a.txt': 'abc' }]);
-      const file = path.join(objectRoot, 'inventory.json');
-      await fs.promises.writeFile(file, (await fs.promises.readFile(file, 'utf8')).replace('"tampered"', '"tampered" '));
+      await tampered('tampered');
       await assert.rejects(root.open('tampered'), invalid('E060'));
     });
 
