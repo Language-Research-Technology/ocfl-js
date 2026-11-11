@@ -23,15 +23,15 @@ Installing also sets up the [Lefthook](https://lefthook.dev/) Git hooks, which r
 
 CI runs all of these on every pull request to `main`:
 
-| Command              | What it checks                                                         |
-| -------------------- | ---------------------------------------------------------------------- |
-| `pnpm test`          | The test suite                                                         |
-| `pnpm coverage`      | The test suite, with coverage                                          |
-| `pnpm lint:types`    | Types, in the source and the tests                                     |
-| `pnpm lint:biome`    | Formatting and lint rules (`pnpm format` fixes what it can)            |
-| `pnpm lint:knip`     | Unused files, exports and dependencies                                 |
-| `pnpm lint:consumer` | That the packed package installs and type-checks in a consumer project |
-| `pnpm lint:api`      | That the public API matches the API report                             |
+| Command              | What it checks                                                      |
+| -------------------- | ------------------------------------------------------------------- |
+| `pnpm test`          | The test suite                                                      |
+| `pnpm coverage`      | The test suite, with coverage                                       |
+| `pnpm lint:types`    | Types, in the source and the tests                                  |
+| `pnpm lint:biome`    | Formatting and lint rules (`pnpm format` fixes what it can)         |
+| `pnpm lint:knip`     | Unused files, exports and dependencies                              |
+| `pnpm lint:consumer` | That the packed package passes publint and attw, installs and works |
+| `pnpm lint:api`      | That the public API matches the API report                          |
 
 Run a single test file with `node --test`, for example `node --test test/storage.spec.ts`. Specs for storage layouts are under `test/extensions/`.
 
