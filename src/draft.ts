@@ -51,6 +51,7 @@ interface Draft {
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
    * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a path would become both a file and a directory.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
+   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
    */
   copy(source: string, target: string, options?: { merge: boolean }): Promise<void>;
 
@@ -61,6 +62,7 @@ interface Draft {
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
    * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a path would become both a file and a directory.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
+   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
    */
   rename(source: string, target: string, options?: { merge: boolean }): Promise<void>;
 
@@ -70,6 +72,7 @@ interface Draft {
    * @throws {@link OcflError} `FILE_NOT_FOUND` if the version doesn't exist or has nothing at `path`.
    * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
+   * @throws `TypeError` if `version` is not a number.
    */
   reinstate(path: string, version: number): Promise<void>;
 

@@ -263,6 +263,34 @@ describe('reinstating in a draft', () => {
       });
     }
 
+    for (const [name, version, message] of [
+      ['a version name', 'v1', /The version must be a number, such as 1, not 'v1'/],
+      ['a numeric string', '1', /The version must be a number, such as 1, not '1'/],
+      ['no version', undefined, /The version must be a number, such as 1, not undefined/],
+      ['null', null, /The version must be a number, such as 1, not null/],
+      ['a bigint', 1n, /The version must be a number, such as 1, not 1n/],
+      ['a Number object', new Number(1), /The version must be a number, such as 1, not \[Number: 1\]/],
+    ] as const) {
+      it(`throws a TypeError for ${name} as the version, writing nothing`, async () => {
+        const object = await objectWith({ a: 'ONE' }, (draft) => draft.write('a', 'TWO'));
+        await assertWritesNothing(root, object, () =>
+          object.update(DETAILS, async (draft) => {
+            await assert.rejects(draft.reinstate('a', version as never), (e) => e instanceof TypeError && message.test(e.message));
+          }),
+        );
+        await assertHolds(root, object, { a: 'TWO' });
+      });
+    }
+
+    it('throws a TypeError for a version that is not a number before judging the path', async () => {
+      const object = await createObject(root, newId(), { a: 'ONE' });
+      await assertWritesNothing(root, object, () =>
+        object.update(DETAILS, async (draft) => {
+          await assert.rejects(draft.reinstate('', 'v1' as never), TypeError);
+        }),
+      );
+    });
+
     it('throws FILE_NOT_FOUND for the version being made, keeping what the draft wrote', async () => {
       const object = await createObject(root, newId(), { a: 'ONE' });
       const updated = await object.update(DETAILS, async (draft) => {

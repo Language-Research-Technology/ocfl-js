@@ -139,6 +139,20 @@ describe('OcflObjectTransaction against a temporary directory', () => {
     });
   });
 
+  it('rejects wrongly typed arguments in an update() callback with a TypeError', async () => {
+    const storage = await ocfl.createStorage({ root });
+    const object = storage.object('an-object');
+    await object.update(async (t) => {
+      await t.write('a.txt', 'a');
+    });
+    await object.update(async (t) => {
+      await assert.rejects(t.reinstate('a.txt', 'v1' as never), TypeError);
+      await assert.rejects(t.copy('a.txt', 'b.txt', true as never), TypeError);
+      await assert.rejects(t.rename('a.txt', 'b.txt', { merge: 'yes' } as never), TypeError);
+    });
+    assert.strictEqual(object.inventory?.head, 'v1');
+  });
+
   describe('with the workspace on another filesystem from the object', () => {
     let storage: OcflStorage;
     beforeEach(async () => {

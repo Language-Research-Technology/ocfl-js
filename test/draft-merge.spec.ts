@@ -230,6 +230,42 @@ describe('merging a directory into another in a draft', () => {
       }
     });
 
+    describe(`${op} with options of the wrong type`, () => {
+      for (const [name, options, message] of [
+        ['a boolean', true, /Options must be an object, such as \{ merge: true \}, not true/],
+        ['a string', 'merge', /Options must be an object, such as \{ merge: true \}, not 'merge'/],
+        ['null', null, /Options must be an object, such as \{ merge: true \}, not null/],
+        ['a merge that is a string', { merge: 'true' }, /The merge option must be a boolean, not 'true'/],
+        ['a merge that is a number', { merge: 1 }, /The merge option must be a boolean, not 1/],
+        ['a merge that is null', { merge: null }, /The merge option must be a boolean, not null/],
+      ] as const) {
+        it(`throws a TypeError for ${name}, writing nothing`, async () => {
+          const files = { 'src/a': 'A', 'dst/b': 'B', lone: 'L' };
+          const object = await createObject(root, newId(), files);
+          await assertWritesNothing(root, object, () =>
+            object.update(DETAILS, async (draft) => {
+              for (const [source, target] of [
+                ['src', 'dst'],
+                ['lone', 'elsewhere'],
+              ] as const) {
+                await assert.rejects(transfer(draft, source, target, options as never), (e) => e instanceof TypeError && message.test(e.message));
+              }
+            }),
+          );
+          await assertHolds(root, object, files);
+        });
+      }
+
+      it('accepts options without merge as not merging', async () => {
+        const object = await createObject(root, newId(), { 'src/a': 'A', 'dst/b': 'B' });
+        const updated = await object.update(DETAILS, async (draft) => {
+          await assert.rejects(transfer(draft, 'src', 'dst', {} as never), ocflError('FILE_EXISTS'));
+          await transfer(draft, 'src', 'new', { merge: undefined } as never);
+        });
+        await assertHolds(root, updated, { ...without({ 'src/a': 'A' }, sourceGone), 'dst/b': 'B', 'new/a': 'A' });
+      });
+    });
+
     describe(`${op} on a draft whose update has finished`, () => {
       it('throws an Error with { merge: true }, changing nothing', async () => {
         let kept: Draft | undefined;

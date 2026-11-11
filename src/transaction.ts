@@ -1,6 +1,7 @@
 /** Models a set of ocfl object modifying operations as a transaction that is as close as atomic as possible */
 import fs from 'node:fs';
 import path from 'node:path';
+import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { OcflError } from './error.ts';
@@ -89,6 +90,24 @@ function fileLogicalPath(logicalPath: string) {
     throw new OcflError('INVALID_LOGICAL_PATH', "A file's logical path can't be empty");
   }
   return normalised;
+}
+
+/**
+ * @returns Whether `options` asks for a merge
+ * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
+ */
+function mergeOption(options: unknown): boolean {
+  if (options === undefined) {
+    return false;
+  }
+  if (typeof options !== 'object' || options === null) {
+    throw new TypeError(`Options must be an object, such as { merge: true }, not ${inspect(options)}`);
+  }
+  const { merge } = options as { merge?: unknown };
+  if (merge !== undefined && typeof merge !== 'boolean') {
+    throw new TypeError(`The merge option must be a boolean, not ${inspect(merge)}`);
+  }
+  return merge === true;
 }
 
 function isAsyncIterable(data: unknown): data is AsyncIterable<unknown> {
@@ -661,10 +680,12 @@ class OcflObjectTransaction {
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
    * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set, or if a path would become both a file and a directory
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
+   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
    */
   async copy(source: string, target: string, options?: { merge: boolean }): Promise<void> {
     return this.#transact(async () => {
-      const plan = this.#inventory._planCopy(fileLogicalPath(source), fileLogicalPath(target), options?.merge === true);
+      const merge = mergeOption(options);
+      const plan = this.#inventory._planCopy(fileLogicalPath(source), fileLogicalPath(target), merge);
       await this.#applyContentReleases(plan.releases);
       this.#inventory._applyRelist(plan);
     });
@@ -680,10 +701,12 @@ class OcflObjectTransaction {
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
    * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set, or if a path would become both a file and a directory
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
+   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
    */
   async rename(source: string, target: string, options?: { merge: boolean }): Promise<void> {
     return this.#transact(async () => {
-      const plan = this.#inventory._planRename(fileLogicalPath(source), fileLogicalPath(target), options?.merge === true);
+      const merge = mergeOption(options);
+      const plan = this.#inventory._planRename(fileLogicalPath(source), fileLogicalPath(target), merge);
       await this.#applyContentReleases(plan.releases);
       this.#inventory._applyRelist(plan);
     });
@@ -697,9 +720,13 @@ class OcflObjectTransaction {
    * @throws {@link OcflError} `FILE_NOT_FOUND` if the version doesn't exist or has nothing at `logicalPath`
    * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `logicalPath` is empty or leaves the object
+   * @throws `TypeError` if `version` is not a number
    */
   async reinstate(logicalPath: string, version: number): Promise<void> {
     return this.#transact(async () => {
+      if (typeof version !== 'number') {
+        throw new TypeError(`The version must be a number, such as 1, not ${inspect(version)}`);
+      }
       const plan = this.#inventory._planReinstate(fileLogicalPath(logicalPath), version);
       await this.#applyContentReleases(plan.releases);
       this.#inventory._applyRelist(plan);
