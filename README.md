@@ -114,6 +114,18 @@ for await (const object of root.objects()) {
 await root.remove('test-object');
 ```
 
+Check that an object's stored files still match the digests in its inventory with `checkFixity()`, on an object from `open(id)` or `objects()`. It reads every stored file again and returns one entry for each that has changed or is missing, so an empty list means the object is intact:
+
+```js
+const object = await root.open('test-object');
+for (const { problem, contentPath, expected, actual } of await object.checkFixity()) {
+  // problem is 'changed' or 'missing'; contentPath is relative to the object, such as v1/content/audio/1.wav
+  console.warn(problem, contentPath, expected, actual);
+}
+```
+
+It doesn't look for files that aren't in the inventory, and doesn't read the inventory's `fixity` block. A file system error such as `EACCES` is thrown, not reported as a problem.
+
 ### Object
 
 An OCFL Object is always opened through its storage root, by its id, or by its path relative to the storage root:

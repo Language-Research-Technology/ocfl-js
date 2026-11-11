@@ -35,3 +35,7 @@ _Avoid_: Publish, finalise
 **Recover**:
 To clear what a dead writer left of an OCFL object and release its lock, on the caller's word that no writer is alive: an update that wasn't committed is discarded, one that was is completed, and a remove that had begun deleting is finished.
 _Avoid_: Repair, unlock, roll back
+
+**Fixity check**:
+Reading every stored file of an opened OCFL object again and comparing its digest with the one the inventory records. It reports each stored file that has changed or is missing; it does not look for extra files or read the inventory's `fixity` block.
+_Avoid_: Validation, verify, audit

@@ -8,12 +8,15 @@ import { isVersionName, OcflObjectInventory, sidecarDigest, VersionNumber, valid
 import { isLocked, updateInProgress } from './lock.ts';
 import { type OcflFile, StoredFile } from './ocfl-file.ts';
 import type { StorageRoot } from './storage-root.ts';
+import * as store from './store.ts';
 import { assertNoMutableHead, objectWorkspace, updateTarget } from './transaction.ts';
 import type { ContentAlgorithm, Inventory, OcflVersion } from './types.ts';
-import { findNamasteVersion, hasErrorCode, isDirEmpty, isNothingAtPath, pathExists } from './utils.ts';
+import { findNamasteVersion, hasErrorCode, isDirEmpty, isNotFound, isNothingAtPath, pathExists } from './utils.ts';
 import { createError, ValidationError } from './validation.ts';
 
 const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
+
+const FIXITY_CONCURRENCY = 10;
 
 /** The person or system responsible for a version. */
 interface User {
@@ -73,6 +76,26 @@ interface OcflObject {
    * ```
    */
   update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject>;
+
+  /**
+   * Reads every stored file again and compares its digest with the inventory. An empty list means the object is intact.
+   * Covers the versions this object knows about. Does not look for extra files or check the `fixity` block.
+   *
+   * @throws The file system error, such as `EACCES` or `EIO`, if a stored file can't be read for any reason but being missing.
+   */
+  checkFixity(): Promise<readonly FixityProblem[]>;
+}
+
+/** One stored file that failed {@link OcflObject.checkFixity}. */
+interface FixityProblem {
+  /** `changed` if the content no longer matches its digest, `missing` if the stored file is gone. */
+  readonly problem: 'changed' | 'missing';
+  /** Where the stored file is, relative to the object, such as `v1/content/audio/1.wav`. */
+  readonly contentPath: string;
+  /** The digest the inventory records. */
+  readonly expected: string;
+  /** The digest found on disk. Absent when the file is missing. */
+  readonly actual?: string;
 }
 
 class OpenedObject implements OcflObject {
@@ -122,6 +145,56 @@ class OpenedObject implements OcflObject {
     const committed = await commitDraft(updateTarget(this.#storageRoot, this.#root, this.ocflVersion), inventory, checked, change);
     return committed ? new OpenedObject(this.#storageRoot, this.#root, this.ocflVersion, committed) : this;
   }
+
+  async checkFixity(): Promise<readonly FixityProblem[]> {
+    const storedFiles = storedFilesOf(this.#inventory);
+    const problems: FixityProblem[] = [];
+    // A worker that throws closes the shared iterator, which stops the others after the file each is reading
+    const worker = async () => {
+      for (const [contentPath, expected] of storedFiles) {
+        const problem = await checkStoredFile(this.#root, contentPath, this.digestAlgorithm, expected);
+        if (problem) {
+          problems.push(problem);
+        }
+      }
+    };
+    // Settled, not raced, so no file is still being read when the check ends
+    const outcomes = await Promise.allSettled(Array.from({ length: FIXITY_CONCURRENCY }, worker));
+    const failure = outcomes.find((outcome) => outcome.status === 'rejected');
+    if (failure) {
+      throw failure.reason;
+    }
+    return problems.sort((a, b) => Number(a.contentPath > b.contentPath) - Number(a.contentPath < b.contentPath));
+  }
+}
+
+/** Each stored file the inventory's manifest lists, with the digest recorded for it */
+function* storedFilesOf(inventory: OcflObjectInventory): Generator<[contentPath: string, digest: string]> {
+  for (const [digest, contentPaths] of Object.entries(inventory.manifest)) {
+    for (const contentPath of contentPaths) {
+      yield [contentPath, digest];
+    }
+  }
+}
+
+/** The problem with the stored file at `contentPath` of the object at `objectRoot`, if it doesn't have the digest `expected` */
+async function checkStoredFile(
+  objectRoot: string,
+  contentPath: string,
+  digestAlgorithm: ContentAlgorithm,
+  expected: string,
+): Promise<FixityProblem | undefined> {
+  let actual: string;
+  try {
+    actual = await Hashing.digest(digestAlgorithm, store.createReadable(nodePath.join(objectRoot, contentPath)));
+  } catch (error) {
+    if (isNotFound(error)) {
+      return { problem: 'missing', contentPath, expected };
+    }
+    throw error;
+  }
+  // OCFL digests are case-insensitive
+  return actual === expected.toLowerCase() ? undefined : { problem: 'changed', contentPath, expected, actual };
 }
 
 /** Each version's number and name, oldest first */
@@ -451,6 +524,7 @@ export {
   createObject,
   declarationWithoutInventory,
   enclosingObject,
+  type FixityProblem,
   hasObjectDeclaration,
   holdsAnotherObject,
   insideAnotherObject,

@@ -13,7 +13,7 @@ export type { FileRef, FileStat, OcflObjectFile } from './file.ts';
 export type { InventoryFile, OcflObjectInventory, VersionNumber } from './inventory.ts';
 export type { FileRefContent, FileRefDigest, FileRefLogical, LogicalPath, OcflObject as LegacyOcflObject, UpdateMode, UpdateOptions } from './object.ts';
 export type { ByteRange, OcflFile } from './ocfl-file.ts';
-export type { OcflObject, User, Version } from './ocfl-object.ts';
+export type { FixityProblem, OcflObject, User, Version } from './ocfl-object.ts';
 export type { OcflStorage } from './storage.ts';
 export type { StorageRoot } from './storage-root.ts';
 export { createStorageRoot, openStorageRoot } from './storage-root.ts';
