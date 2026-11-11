@@ -7,6 +7,7 @@ import { after, before, describe, it } from 'node:test';
 import ocfl, { type Inventory, ObjectNotFoundError, ObjectNotLoadedError, type OcflVersion } from '../src/index.ts';
 import type { OcflObject } from '../src/object.ts';
 import { withFsFailure } from './fs-failures.ts';
+import { writeStorageRoot } from './helpers/storage-roots.ts';
 import { ocflError } from './ocfl-error.ts';
 import { testObject } from './test-object.ts';
 
@@ -618,8 +619,8 @@ describe('OcflObject.ocflVersion', () => {
 
   it('reports the version of a 1.0 object in a 1.1 storage root', async () => {
     const root = path.join(tempdir, 'mixed-root');
-    const created = ocfl.storage({ root, ocflVersion: '1.0', layout: '0004-hashed-n-tuple-storage-layout' });
-    await created.create();
+    await writeStorageRoot(root, '1.0');
+    const created = await ocfl.storage({ root }).load();
     await created.object('a').update(async (t) => t.write('a.txt', 'a'));
     await fs.promises.rm(path.join(root, '0=ocfl_1.0'));
     await fs.promises.writeFile(path.join(root, '0=ocfl_1.1'), 'ocfl_1.1\n');

@@ -1,80 +1,20 @@
-//@todo add default layout
 import fs from 'node:fs';
 import path from 'node:path';
-import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import { ObjectNotFoundError, OcflError } from './error.ts';
-import { type BuiltInLayout, differingParameters, type OcflExtensionConfig } from './extension.ts';
+import type { BuiltInLayout } from './extension.ts';
 import { HashedNTupleStorageLayout } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
-import { createLayout, type LayoutClass, supportedLayoutClass } from './extensions/index.ts';
+import { createLayout } from './extensions/index.ts';
 import { OcflObject } from './object.ts';
+import { readSpecText, readStorageRoot, writeStorageRoot } from './storage-root.ts';
 import * as store from './store.ts';
-import { findNamasteVersion, isDirEmpty, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
+import type { OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
+import { findNamasteVersion, isDirEmpty, relativeWithin } from './utils.ts';
 import { createError } from './validation.ts';
 
-const {
-  OCFL_VERSION,
-  OCFL_VERSIONS,
-  OCFL_LAYOUT,
-  EXTENSIONS_DIR,
-  EXTENSION_CONFIG,
-  WORKSPACE_EXTENSION,
-  NAMASTE_PREFIX_STORAGE,
-  NAMASTE_PREFIX_OBJECT,
-  NAMASTE_T,
-} = OcflConstants;
+const { OCFL_VERSION, EXTENSIONS_DIR, WORKSPACE_EXTENSION, NAMASTE_PREFIX_OBJECT } = OcflConstants;
 
 const DEFAULT_LAYOUT = HashedNTupleStorageLayout;
-
-import type { OcflObjectConfig, OcflStorageConfig, OcflVersion } from './types.ts';
-
-/** A local storage root extension, documented in the root as the OCFL spec (§4.5) allows */
-const WORKSPACE_EXTENSION_TEXT = `# ${WORKSPACE_EXTENSION}
-
-A local storage root extension used by the ocfl-js library (@ocfl/ocfl-fs).
-
-While an object is being updated, its new version is assembled in
-\`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<object path>/<version>\` and then moved into the object root.
-The directory exists only while an update is in progress. Anything left in it afterwards is
-from an update that was interrupted, and is not part of any OCFL object.
-`;
-
-const SPEC_TEXT_FILES: Record<OcflVersion, string> = { '1.0': 'ocfl_1.0.txt', '1.1': 'ocfl_1.1.md' };
-
-async function readSpecText(ocflVersion: OcflVersion) {
-  const file = SPEC_TEXT_FILES[ocflVersion];
-  return { file, content: await fs.promises.readFile(new URL(`../resources/${file}`, import.meta.url)) };
-}
-
-/** @throws `ValidationError` `E070` if `content` has no string `extension` */
-function declaredLayoutName(file: string, content: string): string {
-  const extension = parseJsonObject(content)?.extension;
-  if (typeof extension !== 'string') {
-    throw createError('E070', file, 'it has no string extension');
-  }
-  return extension;
-}
-
-/** @throws {@link OcflError} `INVALID_LAYOUT_CONFIG` if `content` isn't a JSON object */
-function parseLayoutConfig(file: string, content: string): OcflExtensionConfig {
-  const config = parseJsonObject(content);
-  if (!config) {
-    throw new OcflError('INVALID_LAYOUT_CONFIG', `The layout config ${file} is not a JSON object.`);
-  }
-  return config;
-}
-
-/** @throws {@link OcflError} `INVALID_LAYOUT_CONFIG`, naming `file`, if the layout rejects `config` */
-function layoutFromConfigFile(layoutClass: LayoutClass, config: OcflExtensionConfig | undefined, file: string): BuiltInLayout {
-  try {
-    return new layoutClass(config);
-  } catch (error) {
-    if (error instanceof OcflError && error.code === 'INVALID_LAYOUT_CONFIG') {
-      throw new OcflError('INVALID_LAYOUT_CONFIG', `The layout config ${file} is invalid: ${error.message}`);
-    }
-    throw error;
-  }
-}
 
 /**
  * An abstraction to represent the OCFL Storage Root, which is
@@ -85,50 +25,19 @@ class OcflStorage {
   #root: string;
   #workspace: string;
   #layout: BuiltInLayout | undefined;
-  #configuredLayout: BuiltInLayout | undefined;
   #objectConfig: Omit<OcflObjectConfig, 'root' | 'storageRoot' | 'workspace' | 'id' | 'ocflVersion'>;
-  #configuredOcflVersion: OcflVersion | undefined;
 
   constructor(config: OcflStorageConfig) {
     if (!config.root) {
       throw new TypeError('[OcflStorage] config.root is required.');
     }
-    const { root, layout, ocflVersion, ...objectConfig } = config;
+    const { root, layout, ...objectConfig } = config;
     this.#root = path.resolve(root);
     this.#workspace = path.join(this.#root, EXTENSIONS_DIR, WORKSPACE_EXTENSION);
     if (layout !== undefined) {
-      this.#configuredLayout = createLayout(layout);
-      this.#layout = this.#configuredLayout;
+      this.#layout = createLayout(layout);
     }
-    if (ocflVersion) {
-      this.ocflVersion = ocflVersion;
-    }
-    this.#configuredOcflVersion = ocflVersion;
     this.#objectConfig = objectConfig;
-  }
-
-  #resolveLayout(declaredName: string | undefined, rootLayoutConfig: OcflExtensionConfig | undefined) {
-    const configured = this.#configuredLayout;
-    if (declaredName === undefined) {
-      return configured;
-    }
-    const rootName = configured ? declaredName : (rootLayoutConfig?.extensionName ?? declaredName);
-    const rootLayoutClass = supportedLayoutClass(rootName);
-    if (configured && configured.name !== rootName) {
-      throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's layout "${rootName}".`);
-    }
-    const rootLayout = layoutFromConfigFile(rootLayoutClass, rootLayoutConfig, path.join(this.root, EXTENSIONS_DIR, declaredName, EXTENSION_CONFIG));
-    if (!configured) {
-      return rootLayout;
-    }
-    const configuredParameters = configured.parameters as OcflExtensionConfig;
-    const rootParameters = rootLayout.parameters as OcflExtensionConfig;
-    const differences = differingParameters(configuredParameters, rootParameters);
-    if (differences.length === 0) {
-      return configured;
-    }
-    const described = differences.map((name) => `configured ${name}: ${inspect(configuredParameters[name])}, root ${name}: ${inspect(rootParameters[name])}`);
-    throw new OcflError('LAYOUT_MISMATCH', `Configured layout "${configured.name}" differs from the storage root's: ${described.join('; ')}.`);
   }
 
   /**
@@ -221,50 +130,17 @@ class OcflStorage {
 
   /**
    * Check namaste, retrieve storage layout extension, and read its config file.
+   * The layout is always the storage root's own, and a configured layout is ignored: a root with no `ocfl_layout.json` loads with no layout.
    * @throws `ValidationError` `E069` if the storage root has no declaration, `E080` if its declaration is invalid.
-   * @throws `ValidationError` `E081` if the configured `ocflVersion` is later than the storage root's.
-   * @throws `ValidationError` `E070` if `ocfl_layout.json` exists but has no string `extension`.
+   * @throws `ValidationError` `E070` if `ocfl_layout.json` has no string `extension`.
    * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if `ocfl_layout.json` names a layout this library doesn't implement.
    * @throws {@link OcflError} `INVALID_LAYOUT_CONFIG` if the layout's `config.json` isn't a JSON object or has parameters the layout rejects.
    * @throws The file system error if the storage root declaration, `ocfl_layout.json` or the layout's `config.json` exists but can't be read.
    */
   async load(): Promise<OcflStorage> {
-    const prefix = NAMASTE_PREFIX_STORAGE;
-    const layoutPath = path.join(this.root, OCFL_LAYOUT);
-    const [namaste, layoutRead] = await Promise.allSettled([findNamasteVersion(prefix, this.root), readIfExists(layoutPath)]);
-    if (namaste.status === 'rejected') {
-      throw namaste.reason;
-    }
-    const ocflVersion = namaste.value;
-    if (ocflVersion === '') {
-      throw createError('E080', this.root);
-    }
-    if (!ocflVersion) {
-      throw createError('E069', this.root);
-    }
-    const rootVersion = ocflVersion as OcflVersion;
-    const configured = this.#configuredOcflVersion;
-    // OCFL_VERSIONS is ordered newest first
-    if (configured && OCFL_VERSIONS.indexOf(configured) < OCFL_VERSIONS.indexOf(rootVersion)) {
-      throw createError('E081', this.root, `configured ocflVersion ${configured} is later than the storage root's ${rootVersion}`);
-    }
-    this.ocflVersion = configured ?? rootVersion;
-    if (layoutRead.status === 'rejected') {
-      throw layoutRead.reason;
-    }
-    const layout = layoutRead.value;
-    const layoutName = layout === undefined ? undefined : declaredLayoutName(layoutPath, layout);
-    let layoutConfig: OcflExtensionConfig | undefined;
-    if (layoutName !== undefined) {
-      supportedLayoutClass(layoutName);
-      const configPath = path.join(this.root, EXTENSIONS_DIR, layoutName, EXTENSION_CONFIG);
-      const content = await readIfExists(configPath);
-      if (content !== undefined) {
-        layoutConfig = parseLayoutConfig(configPath, content);
-      }
-    }
-    this.#layout = this.#resolveLayout(layoutName, layoutConfig);
-
+    const { ocflVersion, layout } = await readStorageRoot(this.root);
+    this.ocflVersion = ocflVersion;
+    this.#layout = layout;
     return this;
   }
 
@@ -280,26 +156,8 @@ class OcflStorage {
     }
     // read before the first write: a failed create can't be retried once the root is non-empty
     const specText = options?.ocflSpecText ? await readSpecText(this.ocflVersion) : undefined;
-    // create namaste
-    const prefix = NAMASTE_PREFIX_STORAGE;
-    const filenamePrefix = NAMASTE_T + prefix;
-    const filePath = path.join(this.root, filenamePrefix + this.ocflVersion);
-    await store.writeFile(filePath, `${prefix + this.ocflVersion}\n`);
-
-    // create layout
-    if (!this.#layout) {
-      this.#layout = new DEFAULT_LAYOUT();
-    }
-    const layout = { extension: this.#layout.name, description: this.#layout.description };
-    await store.writeFile(path.join(this.root, OCFL_LAYOUT), JSON.stringify(layout, null, 2));
-    if (this.#layout.config) {
-      await store.writeFile(path.join(this.root, EXTENSIONS_DIR, this.#layout.name, EXTENSION_CONFIG), JSON.stringify(this.#layout.config, null, 2));
-    }
-
-    await store.writeFile(path.join(this.root, `${WORKSPACE_EXTENSION}.md`), WORKSPACE_EXTENSION_TEXT);
-    if (specText) {
-      await store.writeFile(path.join(this.root, specText.file), specText.content);
-    }
+    this.#layout ??= new DEFAULT_LAYOUT();
+    await writeStorageRoot(this.root, this.ocflVersion, this.#layout, specText);
     return this;
   }
 

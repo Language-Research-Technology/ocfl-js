@@ -4,7 +4,7 @@ import path from 'node:path';
 import { mock } from 'node:test';
 import { isErrnoException } from '../src/utils.ts';
 
-type FsMethod = 'rename' | 'copyFile' | 'writeFile' | 'readFile' | 'readdir' | 'rmdir' | 'rm' | 'opendir' | 'stat';
+type FsMethod = 'mkdir' | 'rename' | 'copyFile' | 'writeFile' | 'readFile' | 'readdir' | 'rmdir' | 'rm' | 'opendir' | 'stat';
 type Fails = (source: string, target: string) => boolean;
 
 export function fsError(code: string) {

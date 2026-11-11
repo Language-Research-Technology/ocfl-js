@@ -153,8 +153,18 @@ async function findNamasteVersion(prefix: string, rootPath: string): Promise<Ocf
   return version ?? undefined;
 }
 
+/** `value`, with it and everything nested in it frozen */
+function deepFreeze<T>(value: T): T {
+  if (typeof value === 'object' && value !== null) {
+    Object.values(value).forEach(deepFreeze);
+    Object.freeze(value);
+  }
+  return value;
+}
+
 export {
   createLimiter,
+  deepFreeze,
   findNamasteVersion,
   hasErrorCode,
   isAlreadyExists,

@@ -12,6 +12,8 @@ export type { FileRef, FileStat, OcflObjectFile } from './file.ts';
 export type { InventoryFile, OcflObjectInventory, VersionNumber } from './inventory.ts';
 export type { FileRefContent, FileRefDigest, FileRefLogical, LogicalPath, OcflObject, UpdateMode, UpdateOptions } from './object.ts';
 export type { OcflStorage } from './storage.ts';
+export type { StorageRoot } from './storage-root.ts';
+export { createStorageRoot, openStorageRoot } from './storage-root.ts';
 export type { CommitOptions, ImportSource, OcflObjectTransaction } from './transaction.ts';
 export type * from './types.ts';
 export type { ValidationErrorCode, ValidationErrorOptions } from './validation.ts';
