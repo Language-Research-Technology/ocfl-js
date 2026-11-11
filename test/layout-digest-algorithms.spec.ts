@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { storageLayout } from '../../src/index.ts';
+import { createLayout } from '../src/extensions/index.ts';
 
 const DIGESTS_OF_OBJECT_01 = {
   md5: 'ff75534492485eabb39f86356728884e',
@@ -13,17 +13,17 @@ const DIGESTS_OF_OBJECT_01 = {
   size: '9',
 };
 
-describe('hashed storage layouts without a loaded storage', () => {
+describe('the digest algorithms of the hashed layouts', () => {
   for (const [digestAlgorithm, digest] of Object.entries(DIGESTS_OF_OBJECT_01)) {
     const tuple = digest.slice(0, 32);
-    const config = { digestAlgorithm, tupleSize: tuple.length, numberOfTuples: 1 };
+    const config = { digestAlgorithm, tupleSize: tuple.length, numberOfTuples: 1 } as const;
 
     it(`0003 maps an id with ${digestAlgorithm}`, () => {
-      assert.strictEqual(storageLayout({ extensionName: '0003-hash-and-id-n-tuple-storage-layout', ...config }).map('object-01'), `${tuple}/object-01`);
+      assert.strictEqual(createLayout({ extensionName: '0003-hash-and-id-n-tuple-storage-layout', ...config }).map('object-01'), `${tuple}/object-01`);
     });
 
     it(`0004 maps an id with ${digestAlgorithm}`, () => {
-      assert.strictEqual(storageLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', ...config }).map('object-01'), `${tuple}/${digest}`);
+      assert.strictEqual(createLayout({ extensionName: '0004-hashed-n-tuple-storage-layout', ...config }).map('object-01'), `${tuple}/${digest}`);
     });
   }
 });

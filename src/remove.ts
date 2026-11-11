@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
-import { OcflError } from './error.ts';
+import { type OcflError, ocflError } from './error.ts';
 import { lockKept, markRemoving, releaseLock, takeLock } from './lock.ts';
 import { confirmedVersion, declarationWithoutInventory, hasObjectDeclaration, objectNotFound, readInventory } from './ocfl-object.ts';
 import * as store from './store.ts';
@@ -28,7 +28,7 @@ async function assertHoldsObject(storageRoot: string, objectRoot: string, id: st
     }
     throw (await hasObjectDeclaration(objectRoot))
       ? declarationWithoutInventory(objectRoot)
-      : new OcflError('INVALID_OBJECT', `${objectRoot}, where the storage root places <${id}>, is not an OCFL object.`);
+      : ocflError('INVALID_OBJECT', `${objectRoot}, where the storage root places <${id}>, is not an OCFL object.`);
   }
   await confirmedVersion(storageRoot, objectRoot, inventory, id);
 }

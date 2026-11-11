@@ -60,5 +60,6 @@ export const INVALID_LAYOUT_PARAMETERS: InvalidLayout[] = [
     ['a replace pair with a numeric replacement', { replace: [['a', 2]] }],
     ['a replace pair with three elements', { replace: [['a', 'b', 'c']] }],
     ['a replace entry that is not a pair', { replace: ['ab'] }],
+    ['a replace entry that is undefined', { replace: [undefined, ['a', 'b']] }],
   ]),
 ];

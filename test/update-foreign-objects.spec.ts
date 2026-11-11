@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
-import { withFsFailure } from './fs-failures.ts';
+import { DIGESTS_OF_ABC } from './helpers/digests-of-abc.ts';
 import {
   assertVersionValid,
   createObject,
@@ -16,10 +16,10 @@ import {
   useTempRoots,
   workspaceOf,
 } from './helpers/drafts.ts';
+import { withFsFailure } from './helpers/fs-failures.ts';
 import { PATH_DIRECT } from './helpers/layouts.ts';
-import { SPEC_EX_FULL_ID, writeFiles, writeInventory, writeSpecExFullRoot, writeVersions } from './helpers/storage-roots.ts';
-import { ocflError } from './ocfl-error.ts';
-import { DIGESTS_OF_ABC } from './shared/digests-of-abc.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
+import { SPEC_EX_FULL_ID, writeFiles, writeForeignObject, writeInventory, writeSpecExFullRoot } from './helpers/storage-roots.ts';
 
 describe('updating an object made by another tool', () => {
   const temp = useTempRoots('ocfl-update-foreign-objects-');
@@ -112,9 +112,25 @@ describe('updating an object made by another tool', () => {
     assert.deepStrictEqual(await snapshot(root.path), initial);
   });
 
+  it('throws INVALID_OBJECT with E007, committing nothing, when the version declaration comes to hold the wrong contents during the update', async () => {
+    const root = await newRoot();
+    const object = await createObject(root, 'declaration-changed', { 'a.txt': 'a' });
+    const objectRoot = objectRootOf(root, 'declaration-changed');
+    const declaration = path.join(objectRoot, '0=ocfl_object_1.1');
+    const result = object.update(DETAILS, async (draft) => {
+      await draft.write('b.txt', 'b');
+      await fs.promises.writeFile(declaration, 'not a declaration\n');
+    });
+    await assert.rejects(result, ocflError('INVALID_OBJECT', 'E007'));
+    assert.strictEqual((await readInventory(objectRoot)).head, 'v1');
+    assert.ok(!fs.existsSync(path.join(objectRoot, 'v2')));
+    assert.ok(!fs.existsSync(workspaceOf(root)));
+  });
+
   it('writes the new version of a sha256 object with a data content directory in sha256 and data', async () => {
     const root = await newRoot();
-    const objectRoot = await writeVersions(root.path, 'sha256-data', [{ 'a.txt': 'a' }], { digestAlgorithm: 'sha256', contentDirectory: 'data' });
+    const objectRoot = objectRootOf(root, 'sha256-data');
+    await writeForeignObject(objectRoot, 'sha256-data', { 'a.txt': 'a' }, { digestAlgorithm: 'sha256', contentDirectory: 'data' });
     const updated = await (await root.open('sha256-data')).update(DETAILS, async (draft) => draft.write('b.txt', 'abc'));
 
     assert.strictEqual(updated.digestAlgorithm, 'sha256');

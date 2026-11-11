@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { OcflError, openStorageRoot } from '../src/index.ts';
+import { DIGESTS_OF_ABC } from './helpers/digests-of-abc.ts';
 import { createObject, DETAILS, objectRootOf, sha512, snapshot, useTempRoots } from './helpers/drafts.ts';
-import { rewriteInventory, SPEC_EX_FULL_ID, writeFiles, writeSpecExFullRoot, writeVersions } from './helpers/storage-roots.ts';
-import { DIGESTS_OF_ABC } from './shared/digests-of-abc.ts';
+import { rewriteInventory, SPEC_EX_FULL_ID, writeFiles, writeForeignObject, writeSpecExFullRoot } from './helpers/storage-roots.ts';
 
 describe('checking the fixity of an object', () => {
   const temp = useTempRoots('ocfl-check-fixity-');
@@ -84,7 +84,8 @@ describe('checking the fixity of an object', () => {
 
   it('checks a sha256 object with sha256', async () => {
     const root = await temp.newRoot();
-    const objectRoot = await writeVersions(root.path, 'sha256-object', [{ 'a.txt': 'abc' }], { digestAlgorithm: 'sha256' });
+    const objectRoot = objectRootOf(root, 'sha256-object');
+    await writeForeignObject(objectRoot, 'sha256-object', { 'a.txt': 'abc' }, { digestAlgorithm: 'sha256' });
     const object = await root.open('sha256-object');
     assert.deepStrictEqual(await object.checkFixity(), []);
     await fs.promises.writeFile(path.join(objectRoot, 'v1/content/a.txt'), 'abd');

@@ -3,7 +3,7 @@ import nodePath from 'node:path';
 import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { checkedDetails, commitDraft, type Draft, type VersionDetails } from './draft.ts';
-import { OcflError } from './error.ts';
+import { type OcflError, ocflError } from './error.ts';
 import { isVersionName, OcflObjectInventory, sidecarDigest, VersionNumber, validateStoredInventory } from './inventory.ts';
 import { isLocked, updateInProgress } from './lock.ts';
 import { type OcflFile, StoredFile } from './ocfl-file.ts';
@@ -12,7 +12,7 @@ import * as store from './store.ts';
 import { assertNoMutableHead, objectWorkspace, updateTarget } from './transaction.ts';
 import type { ContentAlgorithm, Inventory, OcflVersion } from './types.ts';
 import { findNamasteVersion, hasErrorCode, isDirEmpty, isNotFound, isNothingAtPath, pathExists } from './utils.ts';
-import { createError, ValidationError } from './validation.ts';
+import { createError } from './validation.ts';
 
 const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
 
@@ -248,12 +248,7 @@ function versionsOf(inventory: OcflObjectInventory, objectRoot: string): Readonl
 }
 
 function invalidObject(message: string, options: { ocflCode?: string | undefined; cause?: unknown } = {}): OcflError {
-  return new OcflError('INVALID_OBJECT', message, options);
-}
-
-/** The `INVALID_OBJECT` for a broken OCFL rule */
-function asInvalidObject(violation: ValidationError): OcflError {
-  return invalidObject(violation.message, { ocflCode: violation.ocflCode, cause: violation });
+  return ocflError('INVALID_OBJECT', message, options);
 }
 
 /** @throws {@link OcflError} `INVALID_OBJECT` if the versions of `inventory`, read from `file`, can't be listed */
@@ -340,9 +335,6 @@ async function readInventory(objectRoot: string): Promise<OcflObjectInventory | 
     }
     inventory = new OcflObjectInventory(data);
   } catch (cause) {
-    if (cause instanceof ValidationError) {
-      throw asInvalidObject(cause);
-    }
     // The inventory isn't shaped as the checks assume
     if (cause instanceof TypeError) {
       throw invalidObject(`The inventory ${file} is malformed.`, { ocflCode: 'E033', cause });
@@ -356,7 +348,7 @@ async function readInventory(objectRoot: string): Promise<OcflObjectInventory | 
 
 /** For an `objectRoot` that the layout gives to the object `id`, and that holds the object `found` */
 function holdsAnotherObject(objectRoot: string, found: string, id: string): OcflError {
-  return new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot} holds the object <${found}>, not <${id}>.`);
+  return ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot} holds the object <${found}>, not <${id}>.`);
 }
 
 /** The nearest directory between the storage root and `objectRoot` that is itself an object, if any */
@@ -388,7 +380,7 @@ async function hasObjectDeclaration(dir: string): Promise<boolean> {
 async function declaredVersion(storageRoot: string, objectRoot: string): Promise<OcflVersion> {
   const [ocflVersion, outer] = await Promise.all([findNamasteVersion(NAMASTE_PREFIX_OBJECT, objectRoot), enclosingObject(storageRoot, objectRoot)]);
   if (ocflVersion === '') {
-    throw asInvalidObject(createError('E007', objectRoot));
+    throw createError('E007', objectRoot);
   }
   if (!ocflVersion) {
     throw invalidObject(`${objectRoot} has an inventory but no OCFL object declaration.`, { ocflCode: 'E003' });
@@ -414,16 +406,16 @@ async function confirmedVersion(storageRoot: string, objectRoot: string, invento
 
 /** For an object at `objectRoot`, which is inside the object at `outer` */
 function nestedObject(objectRoot: string, outer: string): OcflError {
-  return asInvalidObject(createError('E082', objectRoot, `nested under the object at ${outer}`));
+  return createError('E082', objectRoot, `nested under the object at ${outer}`);
 }
 
 /** For an `objectRoot` that the layout gives to the object `id`, and that is inside the object at `outer` */
 function insideAnotherObject(objectRoot: string, id: string, outer: string): OcflError {
-  return new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is inside the object at ${outer}.`);
+  return ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is inside the object at ${outer}.`);
 }
 
 function objectNotFound(storageRoot: string, id: string): OcflError {
-  return new OcflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}.`);
+  return ocflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}.`);
 }
 
 /** For an `objectRoot` with an object declaration and no inventory, which no writer is working on */
@@ -456,7 +448,7 @@ async function openObject(storageRoot: string, objectRoot: string, id: string): 
  */
 async function openDeclaredObject(storageRoot: string, objectRoot: string, declared: OcflVersion | ''): Promise<OcflObject | undefined> {
   if (declared === '') {
-    throw asInvalidObject(createError('E007', objectRoot));
+    throw createError('E007', objectRoot);
   }
   let inventory = await readInventory(objectRoot);
   if (!inventory) {
@@ -497,10 +489,10 @@ async function createObject(
     if (!hasInventory && (await isLocked(workspace))) {
       throw await updateInProgress(workspace);
     }
-    throw new OcflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}, where the storage root ${storageRoot} places <${id}>.`);
+    throw ocflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}, where the storage root ${storageRoot} places <${id}>.`);
   }
   if (!(await isDirEmpty(objectRoot))) {
-    throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is not empty.`);
+    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is not empty.`);
   }
   const outer = await enclosingObject(storageRoot, objectRoot);
   if (outer !== undefined) {

@@ -4,11 +4,12 @@ import path from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
-import { OcflError } from './error.ts';
+import type { VersionDetails, WriteContent } from './draft.ts';
+import { ocflError } from './error.ts';
 import { type ContentRelease, type DeletePlan, type OcflObjectInventory, type RelistPlan, rootInventoryPaths, sidecarContent } from './inventory.ts';
 import { lockKept, releaseLock, takeLock } from './lock.ts';
 import * as store from './store.ts';
-import type { OcflVersion, WriteFileData } from './types.ts';
+import type { OcflVersion } from './types.ts';
 import {
   createLimiter,
   findNamasteVersion,
@@ -16,7 +17,6 @@ import {
   isAlreadyExists,
   isDirEmpty,
   normaliseLogicalPath,
-  parentDirectories,
   parseJsonObject,
   pathExists,
   readIfExists,
@@ -59,7 +59,7 @@ function updateTarget(root: string, objectRoot: string, ocflVersion: OcflVersion
 /** @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE`, with `message`, if the object has an active mutable head (extension 0005) */
 async function assertNoMutableHead(objectRoot: string, message: string): Promise<void> {
   if (await pathExists(path.join(objectRoot, MUTABLE_HEAD_INVENTORY))) {
-    throw new OcflError('MUTABLE_HEAD_ACTIVE', message);
+    throw ocflError('MUTABLE_HEAD_ACTIVE', message);
   }
 }
 
@@ -73,7 +73,7 @@ async function ensureObjectDeclaration(root: string, ocflVersion: OcflVersion): 
     return;
   }
   if (!(await isDirEmpty(root))) {
-    throw new OcflError('DIRECTORY_NOT_EMPTY', 'Cannot create an OCFL Object in a non-empty directory');
+    throw ocflError('DIRECTORY_NOT_EMPTY', 'Cannot create an OCFL Object in a non-empty directory');
   }
   const declaration = NAMASTE_PREFIX_OBJECT + ocflVersion;
   const filePath = path.join(root, NAMASTE_T + declaration);
@@ -114,16 +114,16 @@ async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory
     if (content === undefined || madeFrom === undefined || (await Hashing.digest(inventory.digestAlgorithm, content)) === madeFrom) {
       return;
     }
-    throw new OcflError(
+    throw ocflError(
       'OBJECT_OUT_OF_DATE',
       `The object at ${objectRoot} was opened at ${expected}, and its root inventory has been replaced since. Open it again and retry.`,
     );
   }
   if (expected === undefined) {
-    throw new OcflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}.`);
+    throw ocflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}.`);
   }
   const found = actual === undefined ? 'no root inventory' : actual === null ? 'a root inventory with no head' : `the head ${actual}`;
-  throw new OcflError('OBJECT_OUT_OF_DATE', `The object at ${objectRoot} was opened at ${expected}, and now has ${found}. Open it again and retry.`);
+  throw ocflError('OBJECT_OUT_OF_DATE', `The object at ${objectRoot} was opened at ${expected}, and now has ${found}. Open it again and retry.`);
 }
 
 /**
@@ -145,7 +145,7 @@ async function createVersionDirectory(versionPath: string, objectRoot: string): 
     if (!isAlreadyExists(error)) {
       throw error;
     }
-    throw new OcflError(
+    throw ocflError(
       'RECOVERY_NEEDED',
       `The object at ${objectRoot} can't be updated: an earlier update left ${versionPath} behind. Once no writer of the object is alive, call recover() on its storage root, then open the object again before retrying.`,
       { cause: error },
@@ -154,7 +154,7 @@ async function createVersionDirectory(versionPath: string, objectRoot: string): 
 }
 
 function invalidLogicalPath(logicalPath: string) {
-  return new OcflError('INVALID_LOGICAL_PATH', `Logical path "${logicalPath}" must be a relative path without \`..\``);
+  return ocflError('INVALID_LOGICAL_PATH', `Logical path "${logicalPath}" must be a relative path without \`..\``);
 }
 
 // Backslash counts as a separator because path.normalize treats it as one on Windows
@@ -169,7 +169,7 @@ function fileLogicalPath(logicalPath: string) {
   checkLogicalPath(logicalPath);
   const normalised = normaliseLogicalPath(logicalPath);
   if (normalised === '.') {
-    throw new OcflError('INVALID_LOGICAL_PATH', "A file's logical path can't be empty");
+    throw ocflError('INVALID_LOGICAL_PATH', "A file's logical path can't be empty");
   }
   return normalised;
 }
@@ -202,28 +202,6 @@ async function* hashedBytes(source: AsyncIterable<unknown>, hash: ReturnType<typ
     hash.update(bytes);
     yield bytes;
   }
-}
-
-export interface CommitOptions {
-  /** Freeform text used to record the rationale for creating the current version */
-  message?: string | undefined;
-  /** Identify the user or agent that created the current Version */
-  user?:
-    | {
-        /** Any readable name of the user, e.g., a proper name, user ID, agent ID. */
-        name: string;
-        /** A URI: either a mailto URI [RFC6068] with the e-mail address of the user or a URL to a personal identifier, e.g., an ORCID iD. */
-        address?: string;
-      }
-    | undefined;
-}
-
-/** A file or directory to import, and where it goes in the object */
-export interface ImportSource {
-  /** A path to a file or directory in the local filesystem */
-  source: string;
-  /** The logical path the source becomes. Without one, a directory's contents go at the object root and a file keeps its own name there. */
-  target?: string | undefined;
 }
 
 /** Files imports read or copy at once, across all the imports in a transaction */
@@ -265,30 +243,13 @@ function importTarget(target: string) {
   checkLogicalPath(target);
   const normalised = normaliseLogicalPath(target);
   if (normalised === '.') {
-    throw new OcflError('INVALID_LOGICAL_PATH', "An import target can't be empty; leave it out to import a directory's contents at the object root");
+    throw ocflError('INVALID_LOGICAL_PATH', "An import target can't be empty; leave it out to import a directory's contents at the object root");
   }
   return normalised;
 }
 
-/** @throws {@link OcflError} `FILE_EXISTS` if two files have one logical path, or one is inside another */
-function checkImportConflicts(files: ImportFile[]) {
-  const logicalPaths = new Set<string>();
-  for (const { logicalPath } of files) {
-    if (logicalPaths.has(logicalPath)) {
-      throw new OcflError('FILE_EXISTS', `More than one source imports to "${logicalPath}"`);
-    }
-    logicalPaths.add(logicalPath);
-  }
-  for (const logicalPath of logicalPaths) {
-    const parent = parentDirectories(logicalPath).find((directory) => logicalPaths.has(directory));
-    if (parent !== undefined) {
-      throw new OcflError('FILE_EXISTS', `"${parent}" is imported both as a file and as a directory`);
-    }
-  }
-}
-
 function unsupportedFileType(filePath: string) {
-  return new OcflError('UNSUPPORTED_FILE_TYPE', `"${filePath}" is not a regular file or directory`);
+  return ocflError('UNSUPPORTED_FILE_TYPE', `"${filePath}" is not a regular file or directory`);
 }
 
 type TrackedPromise<T> = Promise<T> & { done?: boolean };
@@ -364,15 +325,7 @@ class OcflObjectTransaction {
   }
 
   /**
-   * Discard all the changes made in this transaction,
-   * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if something the transaction made can't be removed; `cause` is what stopped it
-   */
-  async rollback(): Promise<void> {
-    await this.#discard();
-  }
-
-  /**
-   * {@link OcflObjectTransaction.rollback} for a transaction that failed with `failure`, which the caller then throws.
+   * Discards all the changes made in this transaction, which failed with `failure`; the caller then throws it.
    * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if something the transaction made can't be removed; `cause` is `failure`
    * @internal
    */
@@ -397,18 +350,12 @@ class OcflObjectTransaction {
 
   /**
    * Commit all the changes made in this transaction to the actual OCFL Object.
-   * @param options - Commit options. message and user will be included in the version entry of the inventory.json
-   * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if the commit failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made can't be removed; `cause` is the failure
-   */
-  async commit(options?: CommitOptions): Promise<void> {
-    await this._commit(options);
-  }
-
-  /**
+   * @param details - Recorded in the version entry of the inventory
    * @returns The committed inventory, or `undefined` if nothing was committed: there were no changes, or the transaction had already ended
+   * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if the commit failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made can't be removed; `cause` is the failure
    * @internal
    */
-  async _commit(options?: CommitOptions): Promise<OcflObjectInventory | undefined> {
+  async _commit(details: VersionDetails): Promise<OcflObjectInventory | undefined> {
     if (!this.#ended) {
       let unconfirmed: { error: unknown } | undefined;
       try {
@@ -422,10 +369,10 @@ class OcflObjectTransaction {
         // if there is no changes, abort commit
         if (!this.#inventory._isChanged) {
           // If this throws, the discard below does nothing: the transaction has ended
-          await this.rollback();
+          await this.#discard();
           return;
         }
-        unconfirmed = await this.#replaceRootInventory(options);
+        unconfirmed = await this.#replaceRootInventory(details);
       } catch (error) {
         await this._discardAfter(error);
         throw error;
@@ -475,10 +422,10 @@ class OcflObjectTransaction {
    * Every step of the commit up to its commit point, the replacement of the root inventory, which is the last thing this does.
    * @returns The failure of a replacement that may have happened all the same, which mustn't be undone
    */
-  async #replaceRootInventory(options: CommitOptions = {}): Promise<{ error: unknown } | undefined> {
+  async #replaceRootInventory(details: VersionDetails): Promise<{ error: unknown } | undefined> {
     const inventory = this.#inventory;
     const digestAlgorithm = inventory.digestAlgorithm;
-    inventory._stamp(new Date().toISOString(), options.message, options.user);
+    inventory._stamp(new Date().toISOString(), details.message, details.user);
 
     const objectVersionPath = path.join(this.#target.root, inventory.head);
     /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json */
@@ -500,7 +447,7 @@ class OcflObjectTransaction {
       await store.move(this.#versionPath, objectVersionPath);
     } catch (error) {
       throw hasErrorCode(error, 'EXDEV')
-        ? new OcflError('CROSS_FILESYSTEM_MOVE', `Cannot move the new version into "${this.#target.root}": it is on a different filesystem from the workspace.`)
+        ? ocflError('CROSS_FILESYSTEM_MOVE', `Cannot move the new version into "${this.#target.root}": it is on a different filesystem from the workspace.`)
         : error;
     }
     this.#versionPath = objectVersionPath;
@@ -653,15 +600,14 @@ class OcflObjectTransaction {
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `logicalPath` is empty or absolute, or contains `..`
    * @throws {@link OcflError} `FILE_EXISTS` if `logicalPath` is an existing directory, or is inside an existing file. An existing file is replaced.
    */
-  async write(logicalPath: string, data: WriteFileData): Promise<void> {
+  async write(logicalPath: string, data: WriteContent): Promise<void> {
     return this.#inTurn(async () => {
       const target = fileLogicalPath(logicalPath);
       const digestAlgo = this.#inventory.digestAlgorithm;
       const staging = this.#stagingPath();
-      const chunks = data instanceof Blob ? data.stream() : data;
-      if (isAsyncIterable(chunks)) {
+      if (isAsyncIterable(data)) {
         const hash = Hashing.createHasher(digestAlgo);
-        await this.#removeStagedOnFailure(staging, () => store.writeFile(staging, hashedBytes(chunks, hash)));
+        await this.#removeStagedOnFailure(staging, () => store.writeFile(staging, hashedBytes(data, hash)));
         const digest = hash.digest();
         return () => this.#addContent(target, digest, staging);
       }
@@ -675,14 +621,13 @@ class OcflObjectTransaction {
   async #stageImportedFile(source: string, staging: string, digest: string) {
     await store.copyFile(source, staging);
     if ((await Hashing.digest(this.#inventory.digestAlgorithm, store.createReadable(staging))) !== digest) {
-      throw new OcflError('SOURCE_CHANGED', `"${source}" changed while it was being imported`);
+      throw ocflError('SOURCE_CHANGED', `"${source}" changed while it was being imported`);
     }
   }
 
   /** @returns the step that adds the prepared files, which must run in the import's turn */
-  async #prepareImport(sources: ImportSource[]): Promise<() => Promise<void>> {
-    const files = (await Promise.all(sources.map(({ source, target }) => listImportFiles(source, target)))).flat();
-    checkImportConflicts(files);
+  async #prepareImport(source: string, target: string | undefined): Promise<() => Promise<void>> {
+    const files = await listImportFiles(source, target);
     const algorithm = this.#inventory.digestAlgorithm;
     const hashed = await Promise.all(
       files.map((file) =>
@@ -766,15 +711,7 @@ class OcflObjectTransaction {
    * @throws The error of the first file that can't be imported, as it is. A failed import adds nothing, unless a copied file can't be put in place, which fails the commit.
    */
   async import(source: string, target?: string): Promise<void> {
-    return this._importAll([{ source, target }]);
-  }
-
-  /**
-   * Import several sources as one operation.
-   * @internal
-   */
-  async _importAll(sources: ImportSource[]): Promise<void> {
-    return this.#inTurn(() => this.#prepareImport(sources));
+    return this.#inTurn(() => this.#prepareImport(source, target));
   }
 
   /**
@@ -847,7 +784,7 @@ class OcflObjectTransaction {
       const inventory = this.#inventory;
       const plan = inventory._planDelete(fileLogicalPath(logicalPath));
       if (plan.paths.length === 0) {
-        throw new OcflError('FILE_NOT_FOUND', `Logical path "${logicalPath}" does not exist in object [${inventory.id}]`);
+        throw ocflError('FILE_NOT_FOUND', `Logical path "${logicalPath}" does not exist in object [${inventory.id}]`);
       }
       await this.#applyDelete(plan);
     });

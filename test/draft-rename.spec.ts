@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
 import type { Draft, StorageRoot } from '../src/index.ts';
-import { moving, withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
   assertRefusesWith,
@@ -19,8 +18,9 @@ import {
   useTempRoots,
   workspaceOf,
 } from './helpers/drafts.ts';
+import { moving, withFsFailure } from './helpers/fs-failures.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 import { writeFiles } from './helpers/storage-roots.ts';
-import { ocflError } from './ocfl-error.ts';
 
 describe('renaming in a draft', () => {
   const temp = useTempRoots('ocfl-draft-rename-');

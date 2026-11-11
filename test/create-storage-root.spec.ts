@@ -4,10 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it, mock } from 'node:test';
 import { createStorageRoot, openStorageRoot } from '../src/index.ts';
-import { fsError, stillOpen, trackOpendir, withFsFailure } from './fs-failures.ts';
+import { fsError, stillOpen, trackOpendir, withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED } from './helpers/layouts.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 import { specFiles, writeObject } from './helpers/storage-roots.ts';
-import { ocflError } from './ocfl-error.ts';
 
 describe('creating a storage root', () => {
   let tempdir: string;

@@ -1,5 +1,6 @@
 import assert from 'node:assert';
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { beforeEach, describe, it } from 'node:test';
 import { OcflObjectInventory } from '../src/inventory.ts';
 import type { Inventory } from '../src/types.ts';
@@ -73,7 +74,7 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can load inventory', async () => {
-    const data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
+    const data = JSON.parse(await readFile(path.join(import.meta.dirname, 'fixtures/inventory.json'), 'utf8'));
     const inv = new OcflObjectInventory(data);
     //assert.strictEqual(digest, await inv.digest());
     assert.strictEqual(data.id, inv.id);
@@ -88,8 +89,18 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(Object.keys(inv.versions.v1!.state).length, 0);
   });
 
+  it('refuses to make a version of an inventory with no id, digestAlgorithm or type', () => {
+    for (const missing of ['id', 'digestAlgorithm', 'type'] as const) {
+      assert.throws(() => OcflObjectInventory.newVersion({ ...data, [missing]: undefined }), /must have an id, digestAlgorithm and type/, missing);
+    }
+  });
+
+  it('refuses to make the next version of an inventory whose head is not one of its versions', () => {
+    assert.throws(() => OcflObjectInventory.newVersion({ ...data, head: 'v2' }), { code: 'INVALID_OBJECT', ocflCode: 'E040' });
+  });
+
   it('can create new version from existing', async () => {
-    const data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
+    const data = JSON.parse(await readFile(path.join(import.meta.dirname, 'fixtures/inventory.json'), 'utf8'));
     const inv = OcflObjectInventory.newVersion(data);
     //console.log(inv.toJSON());
     const data2 = inv.toJSON();
@@ -192,7 +203,7 @@ describe('OcflObjectInventory class', () => {
   });
 
   it('can iterate files', async () => {
-    const data = JSON.parse(await readFile('test-data/inventory.json', 'utf8'));
+    const data = JSON.parse(await readFile(path.join(import.meta.dirname, 'fixtures/inventory.json'), 'utf8'));
     const inv = new OcflObjectInventory(data);
     var files = [...inv.files()];
     assert.strictEqual(files[0]!.contentPath, 'v2/content/foo/bar.xml');
@@ -215,8 +226,8 @@ describe('OcflObjectInventory class', () => {
 
   it('rejects iterating the files of an inventory whose head is not in versions', () => {
     const inv = new OcflObjectInventory(data);
-    assert.throws(() => [...inv.files()], { code: 'E040' });
-    assert.throws(() => [...inv.files('latest')], { code: 'E040' });
+    assert.throws(() => [...inv.files()], { code: 'INVALID_OBJECT', ocflCode: 'E040' });
+    assert.throws(() => [...inv.files('latest')], { code: 'INVALID_OBJECT', ocflCode: 'E040' });
   });
 
   describe("'latest' version name", () => {

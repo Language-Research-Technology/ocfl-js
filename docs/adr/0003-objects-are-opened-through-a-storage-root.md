@@ -11,7 +11,7 @@ ocfl-java and rocfl open objects only through a repository, and accept a bare ob
 ## Decision
 
 - **No top-level `object()`.** The package exports no function that opens an OCFL object by its path.
-- **Objects come from a storage root.** `root.open(id)` opens an object by its id. In the older API, `storage.object(id)` does the same, and `storage.object({ root })` opens one by its object root relative to the storage root.
+- **Objects come from a storage root.** `root.open(id)` opens an object by its id, and `root.create(id, …)` makes one. Nothing opens an object by its path.
 - **New objects take their storage root's settings.** A new object's OCFL version and workspace come from the storage root that creates it.
 - **An existing object keeps its own OCFL version and digest algorithm.** An opened object reports the OCFL version its own declaration gives and the digest algorithm its inventory names, so a 1.0 object in a 1.1 storage root opens and reports 1.0.
 

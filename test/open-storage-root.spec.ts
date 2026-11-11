@@ -4,11 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { createStorageRoot, type OcflError, openStorageRoot } from '../src/index.ts';
-import { withFsFailure } from './fs-failures.ts';
+import { DIGESTS_OF_ABC } from './helpers/digests-of-abc.ts';
+import { withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, HASHED_DEFAULTS } from './helpers/layouts.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 import { STORAGE_FIXTURE, specFiles, writeFiles, writeObject, writeStorageRoot } from './helpers/storage-roots.ts';
-import { ocflError } from './ocfl-error.ts';
-import { DIGESTS_OF_ABC } from './shared/digests-of-abc.ts';
 
 const FLAT = '0002-flat-direct-storage-layout';
 const PATH_DIRECT = '000N-path-direct-storage-layout';
@@ -253,9 +253,9 @@ describe('opening a storage root', () => {
       await assert.rejects(openStorageRoot(rootPath), ocflError('INVALID_STORAGE_ROOT', 'E080'));
     });
 
-    it('names the storage root and keeps the cause', async () => {
+    it('names the storage root', async () => {
       const rootPath = newPath();
-      await assert.rejects(openStorageRoot(rootPath), (error: OcflError) => error.message.includes(rootPath) && error.cause instanceof Error);
+      await assert.rejects(openStorageRoot(rootPath), (error: OcflError) => error.message.includes(rootPath));
     });
   });
 

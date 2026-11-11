@@ -1,72 +1,48 @@
-import { OcflError } from './error.ts';
+import { type OcflError, ocflError } from './error.ts';
 
-// Messages for the OCFL 1.1 validation codes this library raises: https://ocfl.io/1.1/spec/validation-codes.html
-export type ValidationErrorCode =
-  | 'E007'
-  | 'E017'
-  | 'E018'
-  | 'E036'
-  | 'E040'
-  | 'E050'
-  | 'E058'
-  | 'E060'
-  | 'E069'
-  | 'E070'
-  | 'E080'
-  | 'E082'
-  | 'E099'
-  | 'E100'
-  | 'E104';
+// The OCFL 1.1 validation codes this library raises: https://ocfl.io/1.1/spec/validation-codes.html
+type ValidationCode = 'E007' | 'E017' | 'E018' | 'E036' | 'E040' | 'E050' | 'E058' | 'E060' | 'E069' | 'E070' | 'E080' | 'E082' | 'E099' | 'E100' | 'E104';
 
-const ERRORS: Record<ValidationErrorCode, string> = {
-  E007: 'The text contents of the [version declaration] file must be the same as dvalue, followed by a newline (\\n).',
-  E017: 'The contentDirectory value MUST NOT contain the forward slash (/) path separator.',
-  E018: 'The contentDirectory value MUST NOT be either one or two periods (. or ..).',
-  E036: 'An OCFL Object Inventory MUST include the following keys: [id, type, digestAlgorithm, head].',
-  E040: '[head] MUST be the version directory name with the highest version number.',
-  E050: 'The keys of [the state JSON object] are digest values, each of which MUST correspond to an entry in the manifest of the inventory.',
-  E058: 'Every occurrence of an inventory file MUST have an accompanying sidecar file stating its digest.',
-  E060: 'The digest sidecar file must contain the digest of the inventory file.',
-  E069: 'An OCFL Storage Root MUST contain a Root Conformance Declaration identifying it as such.',
-  E070: 'If present, [the ocfl_layout.json document] MUST include the following two keys in the root JSON object: [extension, description].',
-  E080: 'The text contents of [the OCFL version declaration file] MUST be the same as dvalue, followed by a newline (\\n).',
-  E082: 'OCFL Object Roots MUST be stored either as the terminal resource at the end of a directory storage hierarchy or as direct children of a containing OCFL Storage Root.',
-  E099: 'Path elements [of a content path] MUST NOT be ., .., or empty (//).',
-  E100: 'A content path MUST NOT begin or end with a forward slash (/).',
-  E104: 'Version directory names MUST be constructed by prepending v to the version number.',
+type Violated = 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT';
+
+const RULES: Record<ValidationCode, [violated: Violated, description: string]> = {
+  E007: ['INVALID_OBJECT', 'The text contents of the [version declaration] file must be the same as dvalue, followed by a newline (\\n).'],
+  E017: ['INVALID_OBJECT', 'The contentDirectory value MUST NOT contain the forward slash (/) path separator.'],
+  E018: ['INVALID_OBJECT', 'The contentDirectory value MUST NOT be either one or two periods (. or ..).'],
+  E036: ['INVALID_OBJECT', 'An OCFL Object Inventory MUST include the following keys: [id, type, digestAlgorithm, head].'],
+  E040: ['INVALID_OBJECT', '[head] MUST be the version directory name with the highest version number.'],
+  E050: [
+    'INVALID_OBJECT',
+    'The keys of [the state JSON object] are digest values, each of which MUST correspond to an entry in the manifest of the inventory.',
+  ],
+  E058: ['INVALID_OBJECT', 'Every occurrence of an inventory file MUST have an accompanying sidecar file stating its digest.'],
+  E060: ['INVALID_OBJECT', 'The digest sidecar file must contain the digest of the inventory file.'],
+  E069: ['INVALID_STORAGE_ROOT', 'An OCFL Storage Root MUST contain a Root Conformance Declaration identifying it as such.'],
+  E070: [
+    'INVALID_STORAGE_ROOT',
+    'If present, [the ocfl_layout.json document] MUST include the following two keys in the root JSON object: [extension, description].',
+  ],
+  E080: ['INVALID_STORAGE_ROOT', 'The text contents of [the OCFL version declaration file] MUST be the same as dvalue, followed by a newline (\\n).'],
+  E082: [
+    'INVALID_OBJECT',
+    'OCFL Object Roots MUST be stored either as the terminal resource at the end of a directory storage hierarchy or as direct children of a containing OCFL Storage Root.',
+  ],
+  E099: ['INVALID_OBJECT', 'Path elements [of a content path] MUST NOT be ., .., or empty (//).'],
+  E100: ['INVALID_OBJECT', 'A content path MUST NOT begin or end with a forward slash (/).'],
+  E104: ['INVALID_OBJECT', 'Version directory names MUST be constructed by prepending v to the version number.'],
 };
 
-export interface ValidationErrorOptions {
-  code: ValidationErrorCode;
-  description: string;
-  path: string;
-  detail?: string | undefined;
-}
-
-export class ValidationError extends OcflError {
-  declare code: ValidationErrorCode;
-  declare description: string;
-  declare path: string;
-  declare detail?: string | undefined;
-
-  constructor(options: ValidationErrorOptions) {
-    super(options.code, `${options.code}: ${options.description} At ${options.path}${options.detail ? ` (${options.detail})` : ''}`, {
-      ocflCode: options.code,
-    });
-    this.name = 'ValidationError';
-    Object.assign(this, options);
-  }
-}
-
 /**
- * @param code - OCFL validation code, eg 'E060'
+ * The `INVALID_OBJECT` or `INVALID_STORAGE_ROOT` error, whichever the rule is about, for a broken OCFL rule
+ * @param code - OCFL validation code, eg 'E060', which becomes the error's `ocflCode`
  * @param path - Path the problem was found at
  * @param detail - Extra context appended to the message
  */
-export const createError = (code: ValidationErrorCode, path: string, detail?: string): ValidationError => {
-  const description = Object.hasOwn(ERRORS, code) ? ERRORS[code] : undefined;
-  if (!description) {
+export function createError(code: ValidationCode, path: string, detail?: string): OcflError {
+  const rule = Object.hasOwn(RULES, code) ? RULES[code] : undefined;
+  if (!rule) {
     throw new RangeError(`Unknown OCFL validation code ${code}`);
   }
-  return new ValidationError({ code, description, path, detail });
-};
+  const [violated, description] = rule;
+  return ocflError(violated, `${code}: ${description} At ${path}${detail ? ` (${detail})` : ''}`, { ocflCode: code });
+}

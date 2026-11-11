@@ -17,8 +17,8 @@ import {
   textFiles,
   useTempRoots,
 } from './helpers/drafts.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 import { writeFiles, writeInventory } from './helpers/storage-roots.ts';
-import { ocflError } from './ocfl-error.ts';
 
 describe('reinstating in a draft', () => {
   const temp = useTempRoots('ocfl-draft-reinstate-');

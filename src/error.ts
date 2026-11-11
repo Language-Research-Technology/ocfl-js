@@ -1,5 +1,3 @@
-import type { ValidationErrorCode } from './validation.ts';
-
 /** Every value of {@link OcflError.code}. */
 type OcflErrorCode =
   | 'OBJECT_NOT_FOUND'
@@ -7,25 +5,31 @@ type OcflErrorCode =
   | 'OBJECT_OUT_OF_DATE'
   | 'INVALID_OBJECT'
   | 'INVALID_STORAGE_ROOT'
-  | 'OBJECT_NOT_LOADED'
+  | 'UNSUPPORTED_LAYOUT'
+  | 'ID_INCOMPATIBLE_WITH_LAYOUT'
+  | 'DIRECTORY_NOT_EMPTY'
   | 'UPDATE_IN_PROGRESS'
   | 'RECOVERY_NEEDED'
-  | 'DIRECTORY_NOT_EMPTY'
-  | 'ID_INCOMPATIBLE_WITH_LAYOUT'
-  | 'INVALID_LOGICAL_PATH'
-  | 'INVALID_PATH'
-  | 'FILE_NOT_FOUND'
-  | 'FILE_EXISTS'
-  | 'UNSUPPORTED_LAYOUT'
-  | 'INVALID_LAYOUT_CONFIG'
-  | 'UNSUPPORTED_FILE_TYPE'
-  | 'SOURCE_CHANGED'
   | 'MUTABLE_HEAD_ACTIVE'
   | 'CROSS_FILESYSTEM_MOVE'
   | 'VERSION_LIMIT_REACHED'
-  | ValidationErrorCode;
+  | 'FILE_NOT_FOUND'
+  | 'FILE_EXISTS'
+  | 'INVALID_LOGICAL_PATH'
+  | 'SOURCE_CHANGED'
+  | 'UNSUPPORTED_FILE_TYPE';
 
-/** Base class for errors a client can handle by their `code`. The message isn't part of the contract. */
+interface OcflErrorOptions {
+  ocflCode?: string | undefined;
+  lockedAt?: Date | undefined;
+  /** The error being wrapped */
+  cause?: unknown;
+}
+
+/**
+ * The error the library throws for anything a caller might handle; test `code`. The message isn't part of the contract.
+ * Misuse throws a plain `TypeError` or `Error`, and file system errors such as `ENOSPC` pass through untouched.
+ */
 class OcflError extends Error {
   /** What went wrong. */
   readonly code: OcflErrorCode;
@@ -36,12 +40,13 @@ class OcflError extends Error {
 
   /**
    * Makes an error; an option left out or `undefined` leaves its field absent.
-   *
-   * @param code - What went wrong
-   * @param message - Human-readable description; not part of the contract
-   * @param options - `ocflCode` and `lockedAt` as on the error; `cause` is the error being wrapped
+   * @internal
    */
-  constructor(code: OcflErrorCode, message: string, options: { ocflCode?: string | undefined; lockedAt?: Date | undefined; cause?: unknown } = {}) {
+  static _create(code: OcflErrorCode, message: string, options?: OcflErrorOptions): OcflError {
+    return new OcflError(code, message, options);
+  }
+
+  private constructor(code: OcflErrorCode, message: string, options: OcflErrorOptions = {}) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = 'OcflError';
     this.code = code;
@@ -54,23 +59,6 @@ class OcflError extends Error {
   }
 }
 
-class ObjectNotLoadedError extends OcflError {
-  declare readonly code: 'OBJECT_NOT_LOADED';
+const ocflError: (code: OcflErrorCode, message: string, options?: OcflErrorOptions) => OcflError = OcflError._create;
 
-  constructor(label: string) {
-    super('OBJECT_NOT_LOADED', `OCFL Object "${label}" is not loaded; call load() first`);
-    this.name = 'ObjectNotLoadedError';
-  }
-}
-
-class ObjectNotFoundError extends OcflError {
-  declare readonly code: 'OBJECT_NOT_FOUND';
-
-  constructor(label: string) {
-    super('OBJECT_NOT_FOUND', `OCFL Object "${label}" does not exist`);
-    this.name = 'ObjectNotFoundError';
-  }
-}
-
-export type { OcflErrorCode };
-export { ObjectNotFoundError, ObjectNotLoadedError, OcflError };
+export { OcflError, type OcflErrorCode, ocflError };

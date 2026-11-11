@@ -4,8 +4,6 @@ import path from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, describe, it, mock } from 'node:test';
 import type { Draft, OcflObject, StorageRoot, WriteContent } from '../src/index.ts';
-import { emptyDirectoriesUnder } from './empty-directories.ts';
-import { mountSeparately, withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
   assertNoWorkspace,
@@ -22,8 +20,10 @@ import {
   workspaceOf,
   writeB,
 } from './helpers/drafts.ts';
+import { emptyDirectoriesUnder } from './helpers/empty-directories.ts';
+import { mountSeparately, withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
-import { ocflError } from './ocfl-error.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 
 type Change = (draft: Draft) => Promise<void>;
 /** Starts a `create` or an `update` with the callback it is given */
@@ -491,6 +491,39 @@ describe('an update that fails or finishes early', () => {
       await assert.rejects(leaked!.write('late.txt', 'late'), isFinishedDraft);
 
       assert.deepStrictEqual(await snapshot(existing.root.path), before);
+    });
+
+    it('throws an Error while a failed update is still waiting for an earlier operation, and leaves nothing behind', async () => {
+      const root = await newRoot();
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let leaked: Draft | undefined;
+      let slow: Promise<void> | undefined;
+      const failing = root.create(ID, DETAILS, async (draft) => {
+        leaked = draft;
+        slow = draft.write(
+          'slow.txt',
+          (async function* () {
+            await gate;
+            yield 'slow';
+          })(),
+        );
+        throw new Error('stop');
+      });
+      failing.catch(() => {});
+      while (!leaked) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+
+      const stray = leaked.write('stray.txt', 'stray');
+      release();
+
+      await assert.rejects(stray, isFinishedDraft);
+      await slow;
+      await assert.rejects(failing, /stop/);
+      await assertNoPartialObject(root);
     });
 
     it('throws an Error once the update has been discarded', async () => {

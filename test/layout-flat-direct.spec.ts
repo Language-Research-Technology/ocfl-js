@@ -1,9 +1,9 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { storageLayout } from '../../src/index.ts';
+import { createLayout } from '../src/extensions/index.ts';
 
 describe('the 0002 flat direct layout', () => {
-  const layout = storageLayout('0002-flat-direct-storage-layout');
+  const layout = createLayout({ extensionName: '0002-flat-direct-storage-layout' });
 
   it('can map valid id', () => {
     const id1 = 'object-01';

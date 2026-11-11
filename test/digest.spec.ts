@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { describe, it } from 'node:test';
 import * as Hashing from '../src/digest.ts';
-import { DIGESTS_OF_ABC } from './shared/digests-of-abc.ts';
+import { DIGESTS_OF_ABC } from './helpers/digests-of-abc.ts';
 
 describe('Hashing', () => {
   const inputData =

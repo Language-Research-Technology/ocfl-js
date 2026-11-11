@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
 import type { Draft, StorageRoot } from '../src/index.ts';
-import { withFsFailure } from './fs-failures.ts';
 import {
   assertHolds,
   assertWritesNothing,
@@ -18,7 +17,8 @@ import {
   useTempRoots,
   workspaceOf,
 } from './helpers/drafts.ts';
-import { ocflError } from './ocfl-error.ts';
+import { withFsFailure } from './helpers/fs-failures.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 
 describe('removing from a draft', () => {
   const temp = useTempRoots('ocfl-draft-remove-');
@@ -230,6 +230,7 @@ describe('removing from a draft', () => {
             () => assert.rejects(draft.remove('d'), /injected failure/),
           );
         }),
+        /injected failure/,
       );
       assert.ok(!fs.existsSync(objectRootOf(root, id)));
       assert.ok(!fs.existsSync(workspaceOf(root)));

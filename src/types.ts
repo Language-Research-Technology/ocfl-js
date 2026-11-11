@@ -1,7 +1,3 @@
-import type { PathDirectStorageLayoutConfig } from './extensions/000N-path-direct-storage-layout.ts';
-import type { HashAndIdNTupleStorageLayoutConfig } from './extensions/0003-hash-and-id-n-tuple-storage-layout.ts';
-import type { HashedNTupleStorageLayoutConfig } from './extensions/0004-hashed-n-tuple-storage-layout.ts';
-
 /** A digest algorithm OCFL allows for content addressing */
 export type ContentAlgorithm = 'sha256' | 'sha512';
 
@@ -54,43 +50,7 @@ export interface Inventory {
   contentDirectory?: string;
 }
 
-export type EncodingOptions = BufferEncoding | { encoding: BufferEncoding; [key: string]: unknown };
-export type BinaryOptions = { encoding?: null | undefined; [key: string]: unknown };
-
-/**
- * Content for a transaction's `write()`. An async iterable covers a Node `Readable`, a web `ReadableStream` and
- * an async generator.
- */
-export type WriteFileData = string | ArrayBufferView | ArrayBuffer | Blob | AsyncIterable<string | ArrayBufferView | ArrayBuffer>;
-
 export type OcflVersion = '1.0' | '1.1';
-
-/** The parameters of each layout this library implements, by official extension name. */
-export interface OcflLayoutParameters {
-  '000N-path-direct-storage-layout': PathDirectStorageLayoutConfig;
-  '0002-flat-direct-storage-layout': Record<never, never>;
-  '0003-hash-and-id-n-tuple-storage-layout': HashAndIdNTupleStorageLayoutConfig;
-  '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayoutConfig;
-}
-
-/** The official extension name of a layout this library implements. */
-export type OcflLayoutName = keyof OcflLayoutParameters;
-
-/** An official layout name along with that layout's parameters; a union over every layout by default. */
-export type OcflLayoutConfig<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName ? { extensionName: N } & OcflLayoutParameters[N] : never;
-
-/** A storage layout: its official name, its effective parameters (defaults included), and its mapping; a union over every layout by default, narrowed by `name`. */
-export type OcflStorageLayout<N extends OcflLayoutName = OcflLayoutName> = N extends OcflLayoutName
-  ? {
-      readonly name: N;
-      readonly parameters: Readonly<Required<OcflLayoutParameters[N]>>;
-      /**
-       * Map an object identifier to a path
-       * @param id - The identifier of the OCFL Object
-       */
-      map(id: string): string;
-    }
-  : never;
 
 /** A storage layout to create a storage root with: its extension name plus any parameters, which default as its extension spec says. */
 export type LayoutConfig = FlatDirectLayoutConfig | HashAndIdNTupleLayoutConfig | HashedNTupleLayoutConfig | PathDirectLayoutConfig;
@@ -137,42 +97,10 @@ export interface PathDirectLayoutConfig {
   /** Leave the id's URI scheme out of the path. Defaults to `false`. */
   omitScheme?: boolean;
   /** Pairs of text to find in the id and what to put in its place. Defaults to none. */
-  replace?: [find: string, replacement: string][];
+  replace?: readonly (readonly [find: string, replacement: string])[];
   /** Text added to the end of the object directory's path. Defaults to `/__object__`. */
   suffix?: string;
 }
 
-/** Configuration options for an OCFL storage root and the objects opened through it. */
-export type OcflStorageConfig = {
-  /** Absolute path to the ocfl storage root. */
-  root: string;
-  /**
-   * A layout that identifies an arrangement of directories and OCFL objects under the storage root,
-   * as an official extension name or `{ extensionName, ...params }`. Anything else throws `UNSUPPORTED_LAYOUT`,
-   * and parameters the layout rejects throw `INVALID_LAYOUT_CONFIG`.
-   * Only used to create a storage root: loading one always takes the layout the root declares.
-   */
-  layout?: OcflLayoutName | OcflLayoutConfig | undefined;
-  /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
-  digestAlgorithm?: ContentAlgorithm | undefined;
-  /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
-  contentDirectory?: string | undefined;
-};
-
-/** @internal */
-export type OcflObjectConfig = {
-  /** Absolute path to the ocfl object root. */
-  root: string;
-  /** Absolute path to the storage root holding the object. */
-  storageRoot: string;
-  /** Absolute path where the object's updates are assembled, inside its storage root's workspace. */
-  workspace: string;
-  /** Identifier for the object.  Only be used in a newly created object. */
-  id?: string | undefined;
-  /** Digest algorithm for content-addressing, must use either sha512 or sha256. Defaults to 'sha512'. */
-  digestAlgorithm?: ContentAlgorithm | undefined;
-  /** Content directory name. Only applies to a newly created object. @defaultValue `"content"` */
-  contentDirectory?: string | undefined;
-  /** Ocfl version. Only applies to a newly created object. */
-  ocflVersion: OcflVersion;
-};
+/** The official extension name of a layout this library implements. */
+export type OcflLayoutName = LayoutConfig['extensionName'];

@@ -17,7 +17,7 @@ import {
   textFiles,
   useTempRoots,
 } from './helpers/drafts.ts';
-import { ocflError } from './ocfl-error.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 
 describe('writing a file to a draft', () => {
   const temp = useTempRoots('ocfl-draft-write-');
@@ -131,7 +131,7 @@ describe('writing a file to a draft', () => {
     });
 
     it('stores a file read from disk as text, as bytes and as a stream', async () => {
-      const source = path.join(import.meta.dirname, 'shared/test-data/test_input.txt');
+      const source = path.join(import.meta.dirname, 'fixtures/test_input.txt');
       const content = await fs.promises.readFile(source);
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.write('test.txt', content.toString());

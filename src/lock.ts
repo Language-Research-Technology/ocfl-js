@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { OcflError } from './error.ts';
+import { type OcflError, ocflError } from './error.ts';
 import * as store from './store.ts';
 import { isAlreadyExists, isNotFound, pathExists, readIfExists } from './utils.ts';
 
@@ -78,7 +78,7 @@ async function createLock(lock: string, content: string): Promise<boolean> {
 /** The `UPDATE_IN_PROGRESS` for an object whose lock is held, with `lockedAt` if the lock can still be read */
 async function updateInProgress(workspace: string): Promise<OcflError> {
   const lock = lockPath(workspace);
-  return new OcflError('UPDATE_IN_PROGRESS', `Another writer is updating the object, and holds its lock ${lock}.`, { lockedAt: await readLockedAt(lock) });
+  return ocflError('UPDATE_IN_PROGRESS', `Another writer is updating the object, and holds its lock ${lock}.`, { lockedAt: await readLockedAt(lock) });
 }
 
 /**
@@ -137,7 +137,7 @@ async function readLock(workspace: string): Promise<Lock | undefined> {
  * @param cause - What the writer failed with
  */
 function lockKept(outcome: string, advice: string, cause: unknown): OcflError {
-  return new OcflError(
+  return ocflError(
     'RECOVERY_NEEDED',
     `${outcome}. The object stays locked until it is recovered: once no writer of it is alive, call recover() on its storage root, ${advice}.`,
     { cause },

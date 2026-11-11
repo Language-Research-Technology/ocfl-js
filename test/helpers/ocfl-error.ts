@@ -1,5 +1,5 @@
 import assert from 'node:assert';
-import { OcflError, type OcflErrorCode } from '../src/index.ts';
+import { OcflError, type OcflErrorCode } from '../../src/index.ts';
 
 /** `assert.rejects` matcher for an `OcflError` with `code`, and with `ocflCode` when given */
 export const ocflError = (code: OcflErrorCode, ocflCode?: string) => (e: unknown) =>

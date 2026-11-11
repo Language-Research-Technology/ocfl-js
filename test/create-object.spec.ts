@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { type Draft, type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
-import { withFsFailure } from './fs-failures.ts';
 import {
   assertVersionValid,
   createObject,
@@ -18,9 +17,10 @@ import {
   useTempRoots,
   workspaceOf,
 } from './helpers/drafts.ts';
+import { withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 import { writeFiles, writeStorageRoot } from './helpers/storage-roots.ts';
-import { ocflError } from './ocfl-error.ts';
 
 /** What an object shows of itself and its versions, for comparing two views of one object */
 async function described(object: OcflObject): Promise<unknown> {
@@ -271,6 +271,15 @@ describe('creating an object', () => {
       await assertRefused(root, 'has/a/slash', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
       await assertRefused(root, 'extensions', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
     });
+
+    for (const id of ['../x', 'a/../../x', 'a/./b', 'extensions/foo']) {
+      it(`throws ID_INCOMPATIBLE_WITH_LAYOUT for the path-direct id ${id}, writing nothing in or beside the storage root`, async () => {
+        const root = await newRoot({ extensionName: PATH_DIRECT });
+        const beside = await fs.promises.readdir(path.dirname(root.path));
+        await assertRefused(root, id, ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+        assert.deepStrictEqual(await fs.promises.readdir(path.dirname(root.path)), beside);
+      });
+    }
 
     it('passes on the file system error when the place of the id cannot be read', async () => {
       const root = await newRoot();

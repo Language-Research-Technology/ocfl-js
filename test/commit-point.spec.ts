@@ -2,9 +2,9 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
-import { withFsFailure, withLostReply } from './fs-failures.ts';
 import { DETAILS, objectAtV1, placesOf, readInventory, sidecarMatches, snapshot, textFiles, useTempRoots, writeB } from './helpers/drafts.ts';
-import { ocflError, rejection } from './ocfl-error.ts';
+import { withFsFailure, withLostReply } from './helpers/fs-failures.ts';
+import { ocflError, rejection } from './helpers/ocfl-error.ts';
 
 const ID = 'committing';
 const INJECTED = /injected failure/;

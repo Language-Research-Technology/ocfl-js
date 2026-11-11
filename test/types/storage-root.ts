@@ -27,6 +27,29 @@ export function storageRootIsReadOnly(root: StorageRoot): void {
   root.layout.extensionName = '0002-flat-direct-storage-layout';
 }
 
+export function replacePairsAreReadOnly(layout: Layout): void {
+  if (layout.extensionName === '000N-path-direct-storage-layout') {
+    // @ts-expect-error read-only
+    layout.replace.push(['a', 'b']);
+    const [first] = layout.replace;
+    if (first) {
+      // @ts-expect-error read-only
+      first[1] = 'b';
+    }
+  }
+}
+
+export function replacePairsCanBeAnyArrayOfPairs(
+  path: string,
+  readOnly: readonly (readonly [string, string])[],
+  mutable: [string, string][],
+): Promise<StorageRoot>[] {
+  return [
+    createStorageRoot(path, { layout: { extensionName: '000N-path-direct-storage-layout', replace: readOnly } }),
+    createStorageRoot(path, { layout: { extensionName: '000N-path-direct-storage-layout', replace: mutable } }),
+  ];
+}
+
 /** Narrowing on the extension name gives that layout's parameters, all present */
 export function layoutNarrowsByName(layout: Layout): number | string {
   if (layout.extensionName === '0004-hashed-n-tuple-storage-layout') {

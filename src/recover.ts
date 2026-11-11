@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
-import { OcflError } from './error.ts';
+import { ocflError } from './error.ts';
 import { isStagedRootInventory, isVersionName, type OcflObjectInventory, rootInventoryPaths, sidecarContent, sidecarDigest } from './inventory.ts';
 import { isLock, LOCK_NAME, readLock, releaseLock } from './lock.ts';
 import { declarationWithoutInventory, enclosingObject, holdsAnotherObject, insideAnotherObject, nestedObject, readInventory } from './ocfl-object.ts';
@@ -106,7 +106,7 @@ async function recoverObject(storageRoot: string, objectRoot: string, id: string
   const unfinished = await unfinishedVersions(workspace, workspaceNames);
   const declarations = rootNames.filter((name) => name.startsWith(NAMASTE_T + NAMASTE_PREFIX_OBJECT));
   if (!inventory && !lock && unfinished.length === 0 && declarations.length === 0) {
-    throw new OcflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}, and nothing left of one to recover.`);
+    throw ocflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}, and nothing left of one to recover.`);
   }
   // A create writes the declaration before anything else in the object root, so without one nothing there is its
   const createLeft = !inventory && declarations.length > 0;

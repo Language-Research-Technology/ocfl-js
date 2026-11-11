@@ -1,6 +1,7 @@
 import path from 'node:path';
 import * as Hashing from '../digest.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
+import type { HashAndIdNTupleLayoutConfig } from '../types.ts';
 import { checkNTupleParameters } from './n-tuple.ts';
 
 const MAX_ENCODED_ID_LENGTH = 100;
@@ -12,13 +13,7 @@ function encapsulationDirectory(id: string, digest: string) {
   return encoded.length > MAX_ENCODED_ID_LENGTH ? `${encoded.slice(0, MAX_ENCODED_ID_LENGTH)}-${digest}` : encoded;
 }
 
-export type HashAndIdNTupleStorageLayoutConfig = {
-  digestAlgorithm?: string;
-  tupleSize?: number;
-  numberOfTuples?: number;
-};
-
-const DefaultConfig: Required<HashAndIdNTupleStorageLayoutConfig> = {
+const DefaultConfig: Required<Omit<HashAndIdNTupleLayoutConfig, 'extensionName'>> = {
   digestAlgorithm: 'sha256',
   tupleSize: 3,
   numberOfTuples: 3,
