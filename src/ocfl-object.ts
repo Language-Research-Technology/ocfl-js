@@ -2,11 +2,13 @@ import fs from 'node:fs';
 import nodePath from 'node:path';
 import { OcflConstants } from './constants.ts';
 import * as Hashing from './digest.ts';
+import { checkedDetails, commitDraft, type Draft, type VersionDetails } from './draft.ts';
 import { OcflError } from './error.ts';
 import { OcflObjectInventory, VersionNumber, validateStoredInventory } from './inventory.ts';
 import { type OcflFile, StoredFile } from './ocfl-file.ts';
+import { updateTarget } from './transaction.ts';
 import type { ContentAlgorithm, Inventory, OcflVersion } from './types.ts';
-import { findNamasteVersion, hasErrorCode } from './utils.ts';
+import { findNamasteVersion, hasErrorCode, isDirEmpty, pathExists } from './utils.ts';
 import { createError, ValidationError } from './validation.ts';
 
 const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
@@ -45,6 +47,22 @@ interface OcflObject {
   readonly versions: ReadonlyMap<number, Version>;
   /** The latest version. */
   readonly head: Version;
+
+  /**
+   * Commits one new version made from the draft changed by `change`. If `change` throws, everything is discarded.
+   * Returns the object with the new version, or this object if the draft ended the same as the head.
+   *
+   * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
+   * @throws `TypeError` if the message or the user's name is missing or empty.
+   * @throws Whatever `change` or a draft operation throws.
+   * @example
+   * ```ts
+   * const updated = await object.update({ message: 'Fix transcript', user: { name: 'Alice' } }, async (draft) => {
+   *   await draft.write('transcript.txt', corrected);
+   * });
+   * ```
+   */
+  update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject>;
 }
 
 class OpenedObject implements OcflObject {
@@ -55,9 +73,11 @@ class OpenedObject implements OcflObject {
   readonly head: Version;
   readonly #inventory: OcflObjectInventory;
   readonly #root: string;
+  readonly #storageRoot: string;
 
-  /** @param inventory - As {@link readInventory} returns it */
-  constructor(root: string, ocflVersion: OcflVersion, inventory: OcflObjectInventory) {
+  /** @param inventory - As {@link readInventory} returns it, or as a commit returns it */
+  constructor(storageRoot: string, root: string, ocflVersion: OcflVersion, inventory: OcflObjectInventory) {
+    this.#storageRoot = storageRoot;
     this.#root = root;
     this.#inventory = inventory;
     this.id = inventory.id;
@@ -79,6 +99,13 @@ class OpenedObject implements OcflObject {
    */
   get _root(): string {
     return this.#root;
+  }
+
+  async update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject> {
+    const checked = checkedDetails(details);
+    const inventory = OcflObjectInventory.newVersion(this.#inventory);
+    const committed = await commitDraft(updateTarget(this.#storageRoot, this.#root, this.ocflVersion), inventory, checked, change);
+    return committed ? new OpenedObject(this.#storageRoot, this.#root, this.ocflVersion, committed) : this;
   }
 }
 
@@ -275,7 +302,41 @@ async function openObject(storageRoot: string, objectRoot: string, id: string): 
   if (inventory.id !== id) {
     throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot} holds the object <${inventory.id}>, not <${id}>.`);
   }
-  return new OpenedObject(objectRoot, ocflVersion, inventory);
+  return new OpenedObject(storageRoot, objectRoot, ocflVersion, inventory);
 }
 
-export { type OcflObject, openObject, type User, type Version };
+/**
+ * Creates the object `id` at `objectRoot`, where the storage root's layout places it, with the draft `build` leaves as its first version.
+ * @param details - As {@link checkedDetails} returns them
+ * @throws {@link OcflError} `OBJECT_EXISTS` if `objectRoot` has an object declaration or an inventory
+ * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it holds anything else, or is inside another object
+ */
+async function createObject(
+  storageRoot: string,
+  objectRoot: string,
+  id: string,
+  ocflVersion: OcflVersion,
+  details: VersionDetails,
+  build: (draft: Draft) => Promise<void>,
+): Promise<OcflObject> {
+  if ((await hasObjectDeclaration(objectRoot)) || (await pathExists(nodePath.join(objectRoot, INVENTORY_NAME)))) {
+    throw new OcflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}, where the storage root ${storageRoot} places <${id}>.`);
+  }
+  if (!(await isDirEmpty(objectRoot))) {
+    throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is not empty.`);
+  }
+  const outer = await enclosingObject(storageRoot, objectRoot);
+  if (outer !== undefined) {
+    throw new OcflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is inside the object at ${outer}.`);
+  }
+  const inventory = OcflObjectInventory.newVersion({
+    id,
+    digestAlgorithm: 'sha512',
+    type: `https://ocfl.io/${ocflVersion}/spec/#inventory`,
+    contentDirectory: 'content',
+  });
+  const committed = await commitDraft(updateTarget(storageRoot, objectRoot, ocflVersion), inventory, details, build);
+  return new OpenedObject(storageRoot, objectRoot, ocflVersion, committed as OcflObjectInventory);
+}
+
+export { createObject, type OcflObject, openObject, type User, type Version };

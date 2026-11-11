@@ -4,8 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import { OcflObjectInventory } from '../src/inventory.ts';
-import { updateTarget } from '../src/storage-root.ts';
-import { OcflObjectTransaction, type UpdateTarget } from '../src/transaction.ts';
+import { OcflObjectTransaction, type UpdateTarget, updateTarget } from '../src/transaction.ts';
 import { writeFiles } from './helpers/storage-roots.ts';
 import { DIGESTS_OF_ABC } from './shared/digests-of-abc.ts';
 

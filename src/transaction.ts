@@ -20,7 +20,7 @@ import {
 } from './utils.ts';
 import { createError } from './validation.ts';
 
-const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
+const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T, WORKSPACE_EXTENSION } = OcflConstants;
 
 export interface UpdateTarget {
   /** Absolute path of the object root */
@@ -31,6 +31,16 @@ export interface UpdateTarget {
   readonly storageRoot: string;
   /** Declared when the first commit creates the object */
   readonly ocflVersion: OcflVersion;
+}
+
+/** @param objectRoot - Absolute, and inside the storage root at the absolute path `root` */
+function updateTarget(root: string, objectRoot: string, ocflVersion: OcflVersion): UpdateTarget {
+  return {
+    root: objectRoot,
+    workspace: path.join(root, EXTENSIONS_DIR, WORKSPACE_EXTENSION, path.relative(root, objectRoot)),
+    storageRoot: root,
+    ocflVersion,
+  };
 }
 
 /** @returns The path of the declaration file, if this call wrote one */
@@ -669,4 +679,4 @@ class OcflObjectTransaction {
   }
 }
 
-export { OcflObjectTransaction };
+export { OcflObjectTransaction, updateTarget };

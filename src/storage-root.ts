@@ -2,12 +2,12 @@ import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
+import { checkedDetails, type Draft, type VersionDetails } from './draft.ts';
 import { OcflError } from './error.ts';
 import type { BuiltInLayout, OcflExtensionConfig } from './extension.ts';
 import { createLayout, type LayoutClass, supportedLayoutClass } from './extensions/index.ts';
-import { type OcflObject, openObject } from './ocfl-object.ts';
+import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import * as store from './store.ts';
-import type { UpdateTarget } from './transaction.ts';
 import type { Layout, LayoutConfig, OcflVersion } from './types.ts';
 import { deepFreeze, findNamasteVersion, isDirEmpty, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
 import { createError, ValidationError } from './validation.ts';
@@ -147,6 +147,25 @@ interface StorageRoot {
    * ```
    */
   open(id: string): Promise<OcflObject>;
+
+  /**
+   * Creates an object with the draft built by `build` as its first version. If `build` throws, nothing is created.
+   * The object uses sha512 digests and the `content` directory, at the storage root's OCFL version.
+   *
+   * @throws {@link OcflError} `OBJECT_EXISTS` if an object with this id already exists.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds something else or is inside another object.
+   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object.
+   * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
+   * @throws `TypeError` if the id, the message or the user's name is missing or empty.
+   * @throws Whatever `build` or a draft operation throws.
+   * @example
+   * ```ts
+   * const object = await root.create(id, { message: 'Initial deposit', user: { name: 'Alice' } }, async (draft) => {
+   *   await draft.write('ro-crate-metadata.json', JSON.stringify(metadata));
+   * });
+   * ```
+   */
+  create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>): Promise<OcflObject>;
 }
 
 /**
@@ -170,14 +189,11 @@ function mappedObjectPath(root: string, layout: BuiltInLayout, id: string): stri
   return checkedObjectPath(root, layout.map(id), `The object id <${id}>`);
 }
 
-/** @param objectRoot - Absolute, and inside the storage root at the absolute path `root` */
-function updateTarget(root: string, objectRoot: string, ocflVersion: OcflVersion): UpdateTarget {
-  return {
-    root: objectRoot,
-    workspace: nodePath.join(root, EXTENSIONS_DIR, WORKSPACE_EXTENSION, nodePath.relative(root, objectRoot)),
-    storageRoot: root,
-    ocflVersion,
-  };
+function checkedId(id: string): string {
+  if (typeof id !== 'string' || id === '') {
+    throw new TypeError('The id of the object is required.');
+  }
+  return id;
 }
 
 function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayout): StorageRoot {
@@ -186,10 +202,12 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
     ocflVersion,
     layout: { extensionName: layout.name, ...layout.parameters } as Layout,
     async open(id: string) {
-      if (typeof id !== 'string' || id === '') {
-        throw new TypeError('The id of the object is required.');
-      }
-      return openObject(root, nodePath.join(root, mappedObjectPath(root, layout, id)), id);
+      return openObject(root, nodePath.join(root, mappedObjectPath(root, layout, checkedId(id))), id);
+    },
+    async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>) {
+      const objectId = checkedId(id);
+      const checked = checkedDetails(details);
+      return createObject(root, nodePath.join(root, mappedObjectPath(root, layout, objectId)), objectId, ocflVersion, checked, build);
     },
   });
 }
@@ -277,14 +295,4 @@ async function openStorageRoot(path: string): Promise<StorageRoot> {
   }
 }
 
-export {
-  checkedObjectPath,
-  createStorageRoot,
-  mappedObjectPath,
-  openStorageRoot,
-  readSpecText,
-  readStorageRoot,
-  type StorageRoot,
-  updateTarget,
-  writeStorageRoot,
-};
+export { checkedObjectPath, createStorageRoot, mappedObjectPath, openStorageRoot, readSpecText, readStorageRoot, type StorageRoot, writeStorageRoot };

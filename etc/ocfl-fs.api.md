@@ -58,6 +58,11 @@ export type Digests = {
     [algorithm: string]: string;
 };
 
+// @public
+export interface Draft {
+    write(path: string, content: WriteContent): Promise<void>;
+}
+
 // @public (undocumented)
 export type EncodingOptions = BufferEncoding | {
     encoding: BufferEncoding;
@@ -324,6 +329,7 @@ export interface OcflObject {
     readonly head: Version;
     readonly id: string;
     readonly ocflVersion: '1.0' | '1.1';
+    update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject>;
     readonly versions: ReadonlyMap<number, Version>;
 }
 
@@ -482,6 +488,7 @@ export function storageLayout<N extends OcflLayoutName>(config: N | OcflLayoutCo
 
 // @public
 export interface StorageRoot {
+    create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>): Promise<OcflObject>;
     readonly layout: Layout;
     readonly ocflVersion: '1.0' | '1.1';
     open(id: string): Promise<OcflObject>;
@@ -539,6 +546,12 @@ export interface Version {
     readonly user?: User;
 }
 
+// @public
+export interface VersionDetails {
+    readonly message: string;
+    readonly user: User;
+}
+
 // @public (undocumented)
 export class VersionNumber {
     // (undocumented)
@@ -554,6 +567,9 @@ export class VersionNumber {
     // (undocumented)
     zeroPaddingLength: number | undefined;
 }
+
+// @public
+export type WriteContent = string | Uint8Array | AsyncIterable<string | Uint8Array>;
 
 // @public
 export type WriteFileData = string | ArrayBufferView | ArrayBuffer | Blob | AsyncIterable<string | ArrayBufferView | ArrayBuffer>;
