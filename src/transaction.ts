@@ -37,11 +37,19 @@ export interface UpdateTarget {
   readonly ocflVersion: OcflVersion;
 }
 
+/**
+ * The directory, in the workspace of the storage root at the absolute path `root`, of the object at `objectRoot`
+ * @param objectRoot - Absolute, and inside the storage root
+ */
+function objectWorkspace(root: string, objectRoot: string): string {
+  return path.join(root, EXTENSIONS_DIR, WORKSPACE_EXTENSION, path.relative(root, objectRoot));
+}
+
 /** @param objectRoot - Absolute, and inside the storage root at the absolute path `root` */
 function updateTarget(root: string, objectRoot: string, ocflVersion: OcflVersion): UpdateTarget {
   return {
     root: objectRoot,
-    workspace: path.join(root, EXTENSIONS_DIR, WORKSPACE_EXTENSION, path.relative(root, objectRoot)),
+    workspace: objectWorkspace(root, objectRoot),
     storageRoot: root,
     ocflVersion,
   };
@@ -106,7 +114,11 @@ async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory
  * @param cause - What the update failed with
  */
 function recoveryNeeded(objectRoot: string, state: string, cause: unknown) {
-  return new OcflError('RECOVERY_NEEDED', `The update of the object at ${objectRoot} ${state}. The object stays locked until it is recovered.`, { cause });
+  return new OcflError(
+    'RECOVERY_NEEDED',
+    `The update of the object at ${objectRoot} ${state}. The object stays locked until it is recovered: once no writer of it is alive, call recover() on its storage root, then open the object again before retrying.`,
+    { cause },
+  );
 }
 
 function invalidLogicalPath(logicalPath: string) {
@@ -295,7 +307,7 @@ class OcflObjectTransaction {
       () => true,
       () => false,
     );
-    await takeLock(target.workspace, target.storageRoot);
+    await takeLock(target.workspace, target.storageRoot, rootExisted);
     try {
       await assertUpToDate(target.root, inventory);
     } catch (error) {
@@ -851,4 +863,4 @@ class OcflObjectTransaction {
   }
 }
 
-export { assertNoMutableHead, isAsyncIterable, OcflObjectTransaction, updateTarget };
+export { assertNoMutableHead, isAsyncIterable, OcflObjectTransaction, objectWorkspace, updateTarget };

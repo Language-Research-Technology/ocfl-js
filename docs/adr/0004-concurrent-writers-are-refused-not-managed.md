@@ -23,17 +23,25 @@ Committing an update takes several file system steps: the new version directory 
 - **A failure after the commit point throws `RECOVERY_NEEDED`**, with the failure as its `cause`, and keeps the lock. That covers replacing the sidecar and removing the lock. The version stays committed and nothing is undone.
 - **A failure to discard an update throws `RECOVERY_NEEDED`** too, with the update's original failure as its `cause`, and keeps the lock.
 - **The lock is released only when the update ends cleanly**: once it is committed and its sidecar is in place, or once it is discarded and everything it made is gone. An empty workspace directory that can't be removed is harmless, and doesn't count as a failure.
+- **`root.recover(id)` clears a lock on the caller's word that no writer is alive.** It applies the commit-point rule to what it finds:
+  - with no root inventory, or one that doesn't name what was left, the update wasn't committed, and is discarded: the unfinished version in the workspace, a version directory in the object root that the root inventory doesn't name, the staged inventory files, and for an object with no inventory its declaration;
+  - a root inventory whose sidecar is stale or missing is a committed update, and is completed by writing the sidecar.
+
+  The lock is released last. Recovery never makes a version the head, and with nothing to clear it does nothing.
+- **A lock records whether the object root existed when it was taken.** That is how recovery tells an object root a dead create made, which it removes along with the layout directories left empty above it, from one that was already there, which it keeps.
 
 ## Consequences
 
 - Retrying is the caller's choice. After `UPDATE_IN_PROGRESS` it can wait and try again; after `OBJECT_OUT_OF_DATE` it opens the object again and repeats the update.
 - A slow writer is never trampled, however long it takes.
-- A writer that dies leaves its lock, and the object can't be updated until someone who knows the writer is dead clears it. The library can't make that call; `lockedAt` is what it offers towards it.
+- A writer that dies leaves its lock, and the object can't be updated until someone who knows the writer is dead clears it with `root.recover(id)`. The library can't make that call; `lockedAt` is what it offers towards it.
+- Recovering an object whose writer is still alive destroys that writer's update, and lets a second writer in beside it. Nothing in the library guards against this.
+- Recovery can be repeated: if it fails part-way the lock is still there, and calling it again finishes the job.
 - `lockedAt` is the writer's own clock, so it is comparable across hosts only as far as their clocks agree.
 - Only writers that use this library's lock are kept apart. Another tool writing to the same object is caught only if it has moved the head by the time the update checks it.
 - Readers take no lock, so opening an object never waits on a writer.
 - "Was the update committed?" has one answer, which the root inventory on disk gives. Any error other than `RECOVERY_NEEDED` means it wasn't, and the update can be repeated without applying a change twice.
-- After `RECOVERY_NEEDED` the update may or may not be committed, and the caller must not simply repeat it. The object stays readable, and later updates of it throw `UPDATE_IN_PROGRESS` until the lock is cleared.
+- After `RECOVERY_NEEDED` the update may or may not be committed, and the caller must not simply repeat it. The object stays readable, and later updates of it throw `UPDATE_IN_PROGRESS` until it is recovered. The caller recovers it, opens it again, and repeats the update only if the head hasn't moved.
 - Between the commit point and the sidecar's replacement, and for as long as a failure leaves it so, the root inventory doesn't match its sidecar. Opening an object allows for that: it accepts a root inventory that is identical to the head version's own inventory.
 - An object that `RECOVERY_NEEDED` leaves locked holds one of a few things: a committed head whose sidecar is stale or missing, with the staged sidecar beside it; a complete object and only the lock; or an uncommitted update's files, in the workspace or in the object root, that the root inventory doesn't name.
 - The object `update` was called on is unchanged by a failed update, including one that was committed and then threw `RECOVERY_NEEDED`. Opening the object again shows what is on disk.

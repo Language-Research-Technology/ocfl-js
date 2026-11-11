@@ -134,6 +134,19 @@ describe('concurrent writers', () => {
       assertNoWorkspace(root);
     });
 
+    it('is told when the lock was taken by a writer creating the object', async () => {
+      const root = await newRoot();
+      const started = Date.now();
+
+      await root.create(ID, DETAILS, async (draft) => {
+        await writeB(draft);
+        const { code, lockedAt } = await rejection(root.create(ID, DETAILS, writeC));
+        assert.strictEqual(code, 'UPDATE_IN_PROGRESS');
+        assert.ok(lockedAt instanceof Date);
+        assert.ok(lockedAt.getTime() >= started && lockedAt.getTime() <= Date.now(), lockedAt.toISOString());
+      });
+    });
+
     it('is refused with OBJECT_EXISTS when the object is created just before it takes the lock', async () => {
       const root = await newRoot();
 

@@ -6,6 +6,7 @@ import { checkedDetails, commitDraft, type Draft, type VersionDetails } from './
 import { OcflError } from './error.ts';
 import { OcflObjectInventory, VersionNumber, validateStoredInventory } from './inventory.ts';
 import { type OcflFile, StoredFile } from './ocfl-file.ts';
+import type { StorageRoot } from './storage-root.ts';
 import { assertNoMutableHead, updateTarget } from './transaction.ts';
 import type { ContentAlgorithm, Inventory, OcflVersion } from './types.ts';
 import { findNamasteVersion, hasErrorCode, isDirEmpty, pathExists } from './utils.ts';
@@ -60,7 +61,7 @@ interface OcflObject {
    * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if a later version has been committed since this object was opened; open it again and retry.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another update of this object is running; `lockedAt` says since when. The update never waits for it.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
-   * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `UPDATE_IN_PROGRESS`.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `UPDATE_IN_PROGRESS`. Don't simply repeat the update: call {@link StorageRoot.recover}, then open the object again to see whether it was committed.
    * @throws `TypeError` if the message or the user's name is missing or empty.
    * @throws Whatever `change` or a draft operation throws; the update is discarded, and the object is as it was and isn't locked.
    * @example
@@ -382,4 +383,4 @@ async function createObject(
   return new OpenedObject(storageRoot, objectRoot, ocflVersion, committed);
 }
 
-export { createObject, type OcflObject, openObject, type User, type Version };
+export { createObject, type OcflObject, openObject, readInventory, sidecarDigest, type User, type Version };

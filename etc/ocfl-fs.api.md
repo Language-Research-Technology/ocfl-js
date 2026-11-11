@@ -508,6 +508,7 @@ export interface StorageRoot {
     readonly ocflVersion: '1.0' | '1.1';
     open(id: string): Promise<OcflObject>;
     readonly path: string;
+    recover(id: string): Promise<void>;
 }
 
 // @public (undocumented)

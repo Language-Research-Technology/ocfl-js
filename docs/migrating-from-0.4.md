@@ -119,7 +119,7 @@ try {
 | `OBJECT_NOT_FOUND`            | The object doesn't exist; thrown as an `ObjectNotFoundError` (see [Errors for missing objects](#errors-for-missing-objects)) |
 | `OBJECT_NOT_LOADED`           | `getFile()` is called before the inventory has been read; thrown as an `ObjectNotLoadedError`                                |
 | `UPDATE_IN_PROGRESS`          | The object's lock is taken: another update of it is running, or one was interrupted; `lockedAt` is when it was taken         |
-| `RECOVERY_NEEDED`             | An update failed after the root inventory was replaced, or couldn't remove what it made; the lock is kept, `cause` says why  |
+| `RECOVERY_NEEDED`             | An update failed after the root inventory was replaced, or couldn't remove what it made; the lock is kept until `recover()`  |
 | `OBJECT_OUT_OF_DATE`          | An update finds a later version committed since the object was loaded, at its start or when it commits                       |
 | `OBJECT_EXISTS`               | An update making an object's first version finds that another writer has created the object                                  |
 | `DIRECTORY_NOT_EMPTY`         | An object or storage root is created in a non-empty directory                                                                |
@@ -279,7 +279,22 @@ An update is committed at one moment, when the root `inventory.json` is replaced
 - A failure after it, such as replacing the inventory's sidecar, now throws `RECOVERY_NEEDED` with the failure as its `cause`. The new version stays committed and the lock is kept. Previously the old root inventory was put back.
 - A failed update, or a `rollback()`, that can't remove what the update made now throws `RECOVERY_NEEDED` and keeps the lock. Its `cause` is the update's original failure, or for `rollback()` what stopped the removal. Previously the removal's own error was thrown, or was dropped.
 
-While the lock is kept, later updates of the object throw `UPDATE_IN_PROGRESS`.
+While the lock is kept, later updates of the object throw `UPDATE_IN_PROGRESS`. The same happens when a process dies during an update: its lock stays, and the library never decides for itself that a writer is dead.
+
+To clear it, call `recover(id)` on the storage root from `openStorageRoot()`:
+
+```ts
+import { openStorageRoot } from '@ocfl/ocfl-fs';
+
+const root = await openStorageRoot('/srv/ocfl');
+await root.recover(id);
+```
+
+`recover` discards an update that wasn't committed, finishes one that was by writing the root inventory's sidecar, and releases the lock. With nothing to clear it does nothing, and it throws `OBJECT_NOT_FOUND` only when there is neither an object nor anything left of one.
+
+**Warning:** only call `recover` when no writer of the object is alive. It trusts you on that: a live writer's update is destroyed. `lockedAt` on `UPDATE_IN_PROGRESS` says how long the lock has been held.
+
+After `RECOVERY_NEEDED`, don't simply repeat the update, because it may have been committed. Call `recover`, load the object again, and retry only if the new version isn't there.
 
 ## Concurrent operations in one update
 
