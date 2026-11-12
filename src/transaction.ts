@@ -320,10 +320,11 @@ class OcflObjectTransaction {
   #getRealPath(logicalPath: string) {
     checkLogicalPath(logicalPath);
     // Defence in depth: only a Windows drive-relative path such as C:x gets past checkLogicalPath
-    /* node:coverage ignore next 3 */
+    /* node:coverage disable */
     if (relativeWithin(path.resolve(this.#contentRoot), logicalPath) === undefined) {
       throw invalidLogicalPath(logicalPath);
     }
+    /* node:coverage enable */
     return path.join(this.#contentRoot, path.normalize(logicalPath));
   }
 
