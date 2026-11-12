@@ -281,6 +281,17 @@ describe('creating an object', () => {
       });
     }
 
+    for (const [layout, id] of [
+      [FLAT.extensionName, 'é'.repeat(200)],
+      [PATH_DIRECT, 'é'.repeat(200)],
+      [PATH_DIRECT, `a/${'x'.repeat(300)}/b`],
+    ] as const) {
+      it(`throws ID_INCOMPATIBLE_WITH_LAYOUT for a ${layout} id ${id.length} characters long, which no file system can name`, async () => {
+        const root = await newRoot({ extensionName: layout });
+        await assertRefused(root, id, ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      });
+    }
+
     it('passes on the file system error when the place of the id cannot be read', async () => {
       const root = await newRoot();
       const objectRoot = objectRootOf(root, 'unreadable');

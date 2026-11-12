@@ -3,6 +3,7 @@ import { inspect } from 'node:util';
 import { ocflError } from '../error.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 import type { PathDirectLayoutConfig } from '../types.ts';
+import { hasOverlongSegment, MAX_NAME_BYTES } from '../utils.ts';
 
 const isReplacePair = (pair: unknown) => Array.isArray(pair) && pair.length === 2 && typeof pair[0] === 'string' && typeof pair[1] === 'string';
 
@@ -47,6 +48,7 @@ An identifier is refused if its last path segments are those of \`suffix\`, or i
 So is one whose path, once mapped, has \`suffix\` part-way through: one in which a directory above the object root ends with \`suffix\`,
 such as \`a/__object__/b\` with the default parameters. That directory would be the object root of another identifier, so no object root is ever inside another.
 These comparisons are of whole path segments, ignoring case and Unicode normalisation form, as a case-insensitive file system names them: \`a/__OBJECT__/b\` is refused too.
+So is one whose path, once mapped, has a segment longer than ${MAX_NAME_BYTES} bytes in UTF-8, which file systems cannot name.
 
 ## Examples
 
@@ -146,6 +148,12 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
       throw ocflError(
         'ID_INCOMPATIBLE_WITH_LAYOUT',
         `The object id <${id}> is incompatible with layout extension ${this.name} because its path has '${suffix}' part-way through, which would put it inside another object.`,
+      );
+    }
+    if (hasOverlongSegment(objectRoot)) {
+      throw ocflError(
+        'ID_INCOMPATIBLE_WITH_LAYOUT',
+        `The object id <${id}> is incompatible with layout extension ${this.name} because its path has a segment longer than ${MAX_NAME_BYTES} bytes in UTF-8.`,
       );
     }
     return objectRoot;

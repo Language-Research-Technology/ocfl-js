@@ -209,10 +209,16 @@ describe('root.remove', () => {
       assertNoWorkspace(root);
     });
 
-    it('throws OBJECT_NOT_FOUND for an id whose directory name is too long to exist', async () => {
+    it('throws OBJECT_NOT_FOUND for an id whose path is too long to exist', async () => {
       const root = await newRoot(NESTED);
 
-      await assertRefused(root, 'x'.repeat(300), 'OBJECT_NOT_FOUND');
+      await assertRefused(root, Array(20).fill('x'.repeat(250)).join('/'), 'OBJECT_NOT_FOUND');
+    });
+
+    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id with a segment too long to be the name of a directory', async () => {
+      const root = await newRoot(NESTED);
+
+      await assertRefused(root, 'x'.repeat(300), 'ID_INCOMPATIBLE_WITH_LAYOUT');
     });
 
     it('throws OBJECT_NOT_FOUND for an empty directory where the object would be, and keeps it', async () => {

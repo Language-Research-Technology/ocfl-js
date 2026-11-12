@@ -278,9 +278,9 @@ describe('opening an object', () => {
       await assert.rejects(root.open('a-file/below'), ocflError('OBJECT_NOT_FOUND'));
     });
 
-    it('throws OBJECT_NOT_FOUND for an id too long to be the name of a directory', async () => {
+    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id with a segment too long to be the name of a directory', async () => {
       const root = await newRoot({ extensionName: PATH_DIRECT });
-      await assert.rejects(root.open('x'.repeat(300)), ocflError('OBJECT_NOT_FOUND'));
+      await assert.rejects(root.open('x'.repeat(300)), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
     });
   });
 

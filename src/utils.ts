@@ -57,6 +57,14 @@ function normaliseLogicalPath(logicalPath: string): string {
   return path.posix.normalize(logicalPath).replace(/\/$/, '');
 }
 
+/** The most UTF-8 bytes common file systems allow in one file or directory name */
+const MAX_NAME_BYTES = 255;
+
+/** Whether a segment of the path `p` is too long for a file system to name */
+function hasOverlongSegment(p: string): boolean {
+  return p.split('/').some((segment) => Buffer.byteLength(segment) > MAX_NAME_BYTES);
+}
+
 /** The directories a logical path is inside, outermost first */
 function parentDirectories(logicalPath: string): string[] {
   const directories: string[] = [];
@@ -194,12 +202,14 @@ export {
   dirContents,
   findNamasteVersion,
   hasErrorCode,
+  hasOverlongSegment,
   isAlreadyExists,
   isDirEmpty,
   isErrnoException,
   isNonEmptyString,
   isNotFound,
   isNothingAtPath,
+  MAX_NAME_BYTES,
   normaliseLogicalPath,
   parentDirectories,
   parseJsonObject,

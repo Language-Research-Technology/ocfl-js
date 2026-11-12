@@ -193,4 +193,22 @@ describe('the 000N path direct layout', () => {
     assert.strictEqual(layout.map('a'), 'a/__object__');
     assert.strictEqual(layout.map('a/b'), 'a/b/__object__');
   });
+
+  it('rejects an id that maps to a path segment over 255 UTF-8 bytes, and maps one of exactly 255', () => {
+    const layout = createLayout({ extensionName: NAME });
+    const cases: [Record<string, unknown>, string][] = [
+      [{}, `a/${'x'.repeat(256)}/b`],
+      [{}, `a/${'é'.repeat(128)}`],
+      [{}, `https://h/${'é'.repeat(50)}`],
+      [{}, `https://${'x'.repeat(250)}.org/a`],
+      [{ replace: [['X', 'x'.repeat(256)]] }, 'a/X'],
+      [{ suffix: `/${'x'.repeat(256)}` }, 'a'],
+    ];
+    for (const [params, id] of cases) {
+      assert.throws(() => configured(params).map(id), { name: 'OcflError', code: 'ID_INCOMPATIBLE_WITH_LAYOUT' }, `${JSON.stringify(params)} ${id}`);
+    }
+    assert.strictEqual(layout.map(`a/${'x'.repeat(255)}`), `a/${'x'.repeat(255)}/__object__`);
+    assert.strictEqual(layout.map(`${'é'.repeat(127)}x`), `${'é'.repeat(127)}x/__object__`);
+    assert.strictEqual(layout.map(`https://h/${'é'.repeat(42)}xxx`), `https_h/${'%C3%A9'.repeat(42)}xxx/__object__`);
+  });
 });
