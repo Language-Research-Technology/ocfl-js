@@ -1,0 +1,85 @@
+---
+title: Use cases and best practices
+description: The library applied to a deposit service, a read-only file server, an indexing job and a fixity check across a storage root, with practices that keep them safe.
+sidebar:
+  order: 5
+---
+
+import { Code } from '@astrojs/starlight/components';
+import depositService from '../../../examples/use-cases/deposit-service.ts?raw';
+import fileServer from '../../../examples/use-cases/file-server.ts?raw';
+import indexingJob from '../../../examples/use-cases/indexing-job.ts?raw';
+import fixityCheck from '../../../examples/use-cases/fixity-check.ts?raw';
+
+This guide shows the library at work in four common jobs, then lists the practices they share.
+
+## A deposit service
+
+A deposit service takes a directory of files, such as a finished upload, and stores it as an OCFL object. The first deposit for an id creates the object; each later one adds a version whose files are exactly the new deposit.
+
+<Code code={depositService} lang="ts" />
+
+- The service tries `root.create` first and catches [`OBJECT_EXISTS`](/ocfl-js/guides/errors/#object_exists), rather than checking whether the object exists. A check followed by a create can be beaten by another writer in between; the create can't.
+- When the object exists, it opens it straight away and updates that. It never updates an object it opened earlier, which may no longer be the head.
+- `draft.clear()` and then `draft.import(directory)` make the new version hold only the deposited files. Without `clear()`, files from the last version that aren't in the deposit would stay. See [Replacing](/ocfl-js/guides/updating-objects/#replacing) in Updating objects.
+- Content already in the object is shared, not stored again. Depositing the same files twice writes no version: `update` returns the object it was called on, at the same version. See [An update that changes nothing](/ocfl-js/guides/updating-objects/#an-update-that-changes-nothing).
+- `import` copies the whole directory or nothing. It refuses a symbolic link with [`UNSUPPORTED_FILE_TYPE`](/ocfl-js/guides/errors/#unsupported_file_type), and throws [`SOURCE_CHANGED`](/ocfl-js/guides/errors/#source_changed) if a file changes while it is being copied, so deposit an upload only once it is complete.
+
+If two deposits for one id run at once, one of them is refused with [`UPDATE_IN_PROGRESS`](/ocfl-js/guides/errors/#update_in_progress) or [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date). See [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/) for which is safe to retry.
+
+## A read-only file server
+
+A file server reads files from OCFL objects and sends them over HTTP. It never writes, so it takes no lock and never waits on a writer.
+
+<Code code={fileServer} lang="ts" />
+
+- The server opens the storage root once, but opens the object on every request. An opened OCFL object is the object as read at one moment, so opening it again is how the server sees versions committed since.
+- `file.stream(range)` reads only the bytes asked for. A [`ByteRange`](/ocfl-js/api/interfaces/byterange/) counts from 0 and includes its `end`, as an HTTP `Range` header does. A range that starts after it ends throws `RangeError` before anything is read, which the server answers with `416`.
+- A file's `digest` names its content, so it makes a good `ETag`: the same content has the same digest in every version.
+- A stored file that has gone missing makes `file.size()` throw, before any headers are sent, so the server answers `500`. One that vanishes while it is being read surfaces as an error from the stream, after the response has started, so the server can only drop the connection.
+- To serve an earlier version, read its files from `object.versions.get(number)?.files` instead of `object.head.files`.
+
+## An indexing job
+
+An indexing job lists every OCFL object in a storage root and records what it finds, for a search index or a catalogue.
+
+<Code code={indexingJob} lang="ts" />
+
+- `root.objects()` yields each object as it finds it, in no particular order. Reading it lazily keeps memory use flat however large the storage root is, and breaking out of the loop stops the walk.
+- An object it can't open is yielded as an [`OcflError`](/ocfl-js/api/classes/ocflerror/) with code [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object), and the listing carries on. The job keeps these errors and reports them at the end, so one damaged object doesn't stop the index or go unnoticed. Their `ocflCode`, when present, names the OCFL rule the object breaks.
+- A file system error, such as a directory it can't read, is thrown, not yielded, and ends the listing.
+- The listing leaves out an object that has lost its declaration and [a create whose writer died](/ocfl-js/guides/concurrent-writers/#a-create-whose-writer-died), without an error. See [what the library doesn't check or do](/ocfl-js/#what-it-doesnt-check-or-do).
+
+## Checking fixity across a storage root
+
+This job runs a fixity check on every object in a storage root and reports what has changed or gone missing since it was stored.
+
+<Code code={fixityCheck} lang="ts" />
+
+`checkFixity()` reads every stored file listed in the object's manifest again and compares its digest with the one the inventory records. It returns one [`FixityProblem`](/ocfl-js/api/interfaces/fixityproblem/) for each stored file that fails, so an empty list means every stored file matches.
+
+It finds:
+
+- **a missing file:** the manifest lists a stored file that isn't there (`missing`);
+- **changed content:** a stored file whose digest no longer matches the one recorded for it (`changed`).
+
+It doesn't find:
+
+- **a logical path pointing at the wrong content.** The check compares each stored file with its own digest. It doesn't check that each file in a version is the content you meant it to be. If a writer recorded `notes.txt` against another file's digest, every stored file still matches and the check reports nothing.
+- **extra files** that the inventory doesn't list;
+- **problems in the `fixity` block** of the inventory, which it doesn't read.
+
+It isn't validation: an object can pass the fixity check and still break the OCFL specification. To check that, use an OCFL validator, as described under [Objects written by other tools](/ocfl-js/#objects-written-by-other-tools).
+
+A stored file that can't be read for any reason but being missing, such as `EACCES` or `EIO`, throws instead of being reported. The job catches that for each object, so one unreadable file doesn't end the run.
+
+The `actual` digest is always lowercase. The `expected` digest is as the inventory records it, and an object written by another tool may record digests in uppercase. So `expected === actual` isn't a test that the content is unchanged: compare digests ignoring case.
+
+## Best practices
+
+- **Open the object fresh before updating it.** An opened OCFL object doesn't change when another writer commits a version. Updating one that is no longer the head throws [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date), so open it just before the update, and open it again before you retry. Within one process, use the object each update returns for the next: see [How an update works](/ocfl-js/guides/updating-objects/#how-an-update-works). [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_out_of_date-the-object-changed-since-you-opened-it) shows the retry.
+- **Catch [`OBJECT_NOT_FOUND`](/ocfl-js/guides/errors/#object_not_found) instead of checking whether the object exists first.** Call `root.open(id)` and catch the error, or call `root.create` and catch [`OBJECT_EXISTS`](/ocfl-js/guides/errors/#object_exists). A separate check can be out of date by the time you act on it, and it costs an extra read.
+- **Handle errors yielded while listing.** `root.objects()` yields an `OcflError` for each object it can't open. Check every entry with `instanceof OcflError` before using it, and record the errors so damaged objects get looked at.
+- **Run fixity checks regularly.** Disks fail, and files get changed by hand, without anyone noticing until the content is read. A regular check finds this while you still have a good copy to restore from. A check reads every stored file, so its time grows with the size of the storage root: run it when the storage is quiet, or spread the objects over several runs, and keep each run's report.
+
+See [`StorageRoot`](/ocfl-js/api/interfaces/storageroot/), [`OcflObject`](/ocfl-js/api/interfaces/ocflobject/) and [`OcflFile`](/ocfl-js/api/interfaces/ocflfile/) in the API reference for every error each method throws, and [Errors](/ocfl-js/guides/errors/) for what to do about each.

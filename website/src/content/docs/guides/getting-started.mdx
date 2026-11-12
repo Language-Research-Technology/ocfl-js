@@ -1,0 +1,71 @@
+---
+title: Getting started
+description: Install @ocfl/ocfl-fs, create a storage root, create an OCFL object and read a file back.
+sidebar:
+  order: 1
+---
+
+import { Code } from '@astrojs/starlight/components';
+import createStorageRoot from '../../../examples/getting-started/create-storage-root.ts?raw';
+import createObject from '../../../examples/getting-started/create-object.ts?raw';
+import readAFile from '../../../examples/getting-started/read-a-file.ts?raw';
+
+This guide takes you from an empty directory to an OCFL object you can read back. It has three steps: create a storage root, create an OCFL object in it, then open the object and read a file.
+
+## Install
+
+You need Node.js 22.12 or later, on Linux. The package is an ES module and ships its own types.
+
+```sh
+pnpm add @ocfl/ocfl-fs
+```
+
+With npm or Yarn, use `npm install @ocfl/ocfl-fs` or `yarn add @ocfl/ocfl-fs`.
+
+Each example below is a module of its own. None of them use TypeScript syntax, so you can save one as `step.mjs` and run it with `node step.mjs`. Run them in order, from the same directory.
+
+## Create a storage root
+
+A storage root is the directory that holds your OCFL objects. [`createStorageRoot`](/ocfl-js/api/functions/createstorageroot/) makes one. The directory must be empty or not exist yet; the library creates it if it's missing.
+
+<Code code={createStorageRoot} lang="ts" />
+
+You choose a storage layout when you create the storage root. It decides which directory each object goes in, worked out from the object's id. `0004-hashed-n-tuple-storage-layout` spreads objects across directories named from a digest of the id. See [Storage layouts](/ocfl-js/#storage-layouts) for the others, and [`LayoutConfig`](/ocfl-js/api/type-aliases/layoutconfig/) for their parameters.
+
+You only create a storage root once. From then on, open it with [`openStorageRoot`](/ocfl-js/api/functions/openstorageroot/), which reads the storage layout back from the storage root.
+
+## Create an object
+
+[`root.create`](/ocfl-js/api/interfaces/storageroot/#create) makes a new OCFL object with its first version. It takes:
+
+- the object's id
+- the version's details: a message saying why the version was made, and the user making it. The user's `address` is optional; use a URI such as a `mailto:` address or an ORCID.
+- a function that fills in a [draft](/ocfl-js/api/interfaces/draft/), the files the first version will hold
+
+<Code code={createObject} lang="ts" />
+
+[`draft.write`](/ocfl-js/api/interfaces/draft/#write) puts text, bytes or a stream at a logical path: the file's path inside the object, such as `notes/field-notes.txt`. To bring in files or a whole directory from disk, use [`draft.import`](/ocfl-js/api/interfaces/draft/#import) instead.
+
+Nothing is written to the object until your function returns. The library then commits the draft as version 1. If your function throws, the draft is discarded, no object is created, and `create` throws the same error. Await every draft operation inside the function.
+
+`create` returns the new [`OcflObject`](/ocfl-js/api/interfaces/ocflobject/). If an object with that id already exists, it throws an [`OcflError`](/ocfl-js/api/classes/ocflerror/) with code [`OBJECT_EXISTS`](/ocfl-js/guides/errors/#object_exists).
+
+## Open an object and read a file
+
+[`root.open`](/ocfl-js/api/interfaces/storageroot/#open) reads an object by its id. If there's no such object, it throws an `OcflError` with code [`OBJECT_NOT_FOUND`](/ocfl-js/guides/errors/#object_not_found). [Errors](/ocfl-js/guides/errors/) covers how to catch an `OcflError` and what each code means.
+
+<Code code={readAFile} lang="ts" />
+
+[`object.head`](/ocfl-js/api/interfaces/ocflobject/#head) is the latest version. Its [`files`](/ocfl-js/api/interfaces/version/#files) map each logical path to an [`OcflFile`](/ocfl-js/api/interfaces/ocflfile/), which you can read with [`text()`](/ocfl-js/api/interfaces/ocflfile/#text), [`bytes()`](/ocfl-js/api/interfaces/ocflfile/#bytes) or [`stream()`](/ocfl-js/api/interfaces/ocflfile/#stream). A stream can cover just a byte range, which suits large files.
+
+Every earlier version stays readable too: [`object.versions`](/ocfl-js/api/interfaces/ocflobject/#versions) maps each version number to its version, so `object.versions.get(1)?.files` gives the files of version 1.
+
+An opened object is the object as it was when you opened it. It doesn't change when someone commits a later version; open it again to see that.
+
+## Next steps
+
+- Add a version to an object with [`object.update`](/ocfl-js/api/interfaces/ocflobject/#update). It works like `create`, but the draft starts with the files of the head version. [Updating objects](/ocfl-js/guides/updating-objects/) covers every draft operation and the order they take effect in.
+- If more than one process writes to the same storage root, read [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/).
+- See [Use cases and best practices](/ocfl-js/guides/use-cases/) for a deposit service, a file server, an indexing job and a fixity check across a storage root.
+- Check what the library does and doesn't do in the [overview](/ocfl-js/). In particular, it doesn't validate OCFL objects.
+- The [API reference](/ocfl-js/api/readme/) lists every function, type and error.

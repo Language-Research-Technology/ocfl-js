@@ -1,0 +1,83 @@
+---
+title: ocfl-fs
+description: What @ocfl/ocfl-fs does and doesn't do, to help you decide whether it fits.
+---
+
+import { Code } from '@astrojs/starlight/components';
+import pathDirectLayout from '../../examples/index/path-direct-layout.ts?raw';
+import quickStart from '../../examples/readme/quick-start.ts?raw';
+
+`@ocfl/ocfl-fs` is a Node.js library for keeping versioned digital objects under the [Oxford Common File Layout (OCFL)](https://ocfl.io/) on a local file system. It reads and writes storage roots and the OCFL objects in them, so your application can deposit files, add versions and read any version back without handling inventories, digests or version directories itself.
+
+It needs Node.js 22.12 or later and is published as an ES module with its own types.
+
+<Code code={quickStart} lang="ts" />
+
+New to the library? [Getting started](/ocfl-js/guides/getting-started/) walks through this one step at a time. Upgrading from 0.4? See [Migrating from 0.4](/ocfl-js/guides/migrating-from-0-4/).
+
+## What it does
+
+- **Storage roots.** Creates OCFL 1.1 storage roots and opens existing OCFL 1.0 and 1.1 storage roots. Each storage root uses one of the storage layouts [below](#storage-layouts).
+- **Objects.** Creates, opens and removes OCFL objects by id. An opened OCFL object is the object as read at that moment: it doesn't change when a later version is committed.
+- **Versions.** Each update assembles a draft and commits it as one new version, or discards it if anything goes wrong before the commit point. A draft can write, import from disk, copy, rename, reinstate from an earlier version and remove files. Content already in the object is shared, not stored again. See [Updating objects](/ocfl-js/guides/updating-objects/).
+- **Reading.** Gives you every file of every version by its logical path, as a stream (including byte ranges), text or bytes.
+- **Listing.** Walks a storage root and yields each OCFL object it finds. See [an indexing job](/ocfl-js/guides/use-cases/#an-indexing-job).
+- **Fixity check.** Reads every stored file of an object again and reports each one that has changed or is missing. See [checking fixity across a storage root](/ocfl-js/guides/use-cases/#checking-fixity-across-a-storage-root) for what it does and doesn't find.
+- **Concurrent writers.** A lock refuses a second writer to the same object straight away instead of making it wait. After a writer dies, you can recover the object to clear what it left behind. See [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/).
+
+New objects use sha512 digests and a `content` directory in each version.
+
+## It doesn't validate
+
+The library doesn't validate OCFL objects or storage roots against the OCFL specification. It reads and writes them; it doesn't tell you whether they conform.
+
+Some errors carry an `ocflCode`, such as `E058` for a missing inventory sidecar. That code names the OCFL rule the problem breaks, so you can look it up. It isn't a validation report: the library stops at the first problem it needs to stop at, and doesn't look for the rest. [Errors](/ocfl-js/guides/errors/#invalid_object) lists every error code and what to do about it.
+
+### What it checks when it opens an object
+
+Before it uses an object's inventory, the library checks:
+
+- the inventory's digest against its sidecar file
+- that the inventory is JSON with an `id`, a `head` that is one of its versions, and a digest algorithm of sha256 or sha512
+- that the `fixity` block, if there is one, has the right shape
+- that version names, content paths and the `contentDirectory` are safe to use as paths: no empty, `.` or `..` segments, and no leading or trailing `/`
+- that each file in each version has its content in the manifest, and the head is the latest version
+- that the object declaration is present and correct, the object isn't inside another object, and its id is the one you asked for
+
+These checks exist so the library can read an object safely. Version names, content paths and the content directory become paths on disk, so a damaged or hostile inventory mustn't be able to make the library read or write outside the object. They are not a check that the object follows the OCFL specification.
+
+The library doesn't check that content files exist or match their digests until you read them or run a fixity check. It doesn't look for extra files, read the inventories of earlier versions, or check the digests in the inventory's `fixity` block. Nor does it check the logical paths: the library never turns them into paths on disk, but if your code does, check that each one stays inside the directory you write to.
+
+### Objects written by other tools
+
+If you read OCFL objects that another tool wrote, check them with an OCFL validator, such as `ocfl-validate` from [ocfl-py](https://github.com/zimeon/ocfl-py). The [OCFL implementations list](https://github.com/OCFL/spec/wiki/Implementations) has others.
+
+## What it doesn't check or do
+
+- **An object that has lost its declaration isn't listed.** When it lists a storage root, the library treats only a directory with an object declaration (the `0=ocfl_object_1.x` file) as an object. A directory with an inventory but no declaration is searched like any other directory, not reported. So listing silently leaves out an object that has lost its declaration. Opening that object by its id fails with [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object).
+- **A create whose writer died isn't listed.** It stays out of the listing until you [recover it by its id](/ocfl-js/guides/concurrent-writers/#a-create-whose-writer-died).
+- **No lock for older writers.** Writers on ocfl-js 0.4, or on a beta from before the lock, don't take it, so [upgrade every writer of a storage root together](/ocfl-js/guides/concurrent-writers/#upgrade-every-writer-together).
+- **Linux, on a case-sensitive file system.** The library is supported and tested on Linux only. Windows isn't supported; WSL works, because it runs Linux. macOS isn't supported, and case-insensitive file systems are untested: there, two logical paths that differ only in case, such as `README.md` and `readme.md`, are the same file.
+- **One file system.** The whole storage root, including the library's workspace inside it, must be on one file system, local or NFS. There's no way to plug in another storage backend.
+- **No upgrade from OCFL 1.0.** The library reads and updates OCFL 1.0 objects and storage roots, but it doesn't upgrade them to OCFL 1.1.
+- **No mutable head.** It refuses to update an object with an active `0005-mutable-head` extension.
+- **Symbolic links.** Paths are checked as text, so a symbolic link inside a storage root is followed. Give write access to a storage root only to processes you trust.
+
+## Storage layouts
+
+A storage layout maps an object id to the directory that holds its OCFL object. You choose one when you create a storage root, and the library reads it back from `ocfl_layout.json` when you open the root. A storage root that declares any other layout is refused with [`UNSUPPORTED_LAYOUT`](/ocfl-js/guides/errors/#unsupported_layout).
+
+| Layout | Where an object goes |
+|---|---|
+| `0002-flat-direct-storage-layout` | A directory named by the id, directly in the storage root. The id can't contain `/`. |
+| `0003-hash-and-id-n-tuple-storage-layout` | Directories named from the id's digest, then a directory named by the percent-encoded id. |
+| `0004-hashed-n-tuple-storage-layout` | Directories named from the id's digest, then the digest itself. |
+| `000N-path-direct-storage-layout` | A path spelled by the id itself, ending in `__object__` by default, so you can browse the storage root by id. |
+
+The first three are registered [OCFL community extensions](https://ocfl.github.io/extensions/). The hashed layouts take their digest algorithm and tuple sizes as parameters.
+
+`000N-path-direct-storage-layout` is a local extension of this library, not a registered OCFL extension. Each storage root that uses it holds a `000N-path-direct-storage-layout.md` file describing it, so another tool, or a person, can work out where each object is.
+
+<Code code={pathDirectLayout} lang="ts" />
+
+See the [API reference](/ocfl-js/api/readme/) for every function, type and layout parameter.

@@ -61,9 +61,13 @@ jobs:
       issues: write # to be able to comment on released issues
       pull-requests: write # to be able to comment on released pull requests
       id-token: write # for npm trusted publishing and provenance
+    outputs:
+      release-tag: ${{ steps.semantic-release.outputs.tag }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       NPM_CONFIG_PROVENANCE: true
+      # Otherwise pnpm exec installs the whole workspace, site toolchain included
+      pnpm_config_verify_deps_before_run: false
 
     steps:
       - name: Checkout code
@@ -86,7 +90,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --filter @ocfl/ocfl-fs
 
       - name: Verify the integrity of provenance attestations and registry signatures for installed dependencies
         run: npm audit signatures
@@ -104,7 +108,9 @@ jobs:
           echo ""
           pnpm pack --dry-run
 
+      # release.config.mjs sets the tag output only when a release succeeds
       - name: Semantic Release
+        id: semantic-release
         if: ${{ !inputs.dry_run }}
         run: pnpm exec semantic-release
 
@@ -123,3 +129,58 @@ jobs:
             fi
             echo "Visit the [releases page]($RELEASES_URL) to see the releases."
           } >> "$GITHUB_STEP_SUMMARY"
+
+  build-site:
+    needs: publish
+    # A tag means the release happened, even if a later step (e.g. a GitHub comment) failed the job
+    if: ${{ always() && needs.publish.outputs.release-tag != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout the release
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.publish.outputs.release-tag }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build site
+        run: pnpm --dir website build
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: website/dist
+
+  deploy-site:
+    needs: build-site
+    # Without this, a failed publish job skips deploy-site even when build-site succeeded
+    if: ${{ !cancelled() && needs.build-site.result == 'success' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write # deploy-pages proves the run's identity to Pages
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

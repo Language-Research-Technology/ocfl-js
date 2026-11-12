@@ -8,7 +8,7 @@ The library checks that object roots, workspace paths and content paths stay ins
 - OCFL forbids links in objects (E090). A storage root that contains one is already invalid.
 - Resolving every path with `realpath` adds a filesystem call to each read and write, and the file-store layer has no `realpath` today.
 
-The README tells users to keep write access to the storage root limited to trusted processes.
+The overview page on the documentation site tells users to give write access to a storage root only to processes they trust.
 
 Reopen this if the library starts to read storage roots that untrusted parties can write to.
 

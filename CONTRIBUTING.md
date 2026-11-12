@@ -17,6 +17,8 @@ cd ocfl-js
 pnpm install
 ```
 
+The documentation site is a separate, private workspace package in `website/`, built with [Starlight](https://starlight.astro.build/). Preview it with `pnpm --dir website dev`. Its code examples live in `website/src/examples` and are type-checked against the package.
+
 Installing also sets up the [Lefthook](https://lefthook.dev/) Git hooks, which run the lint scripts before each commit and check the commit message. If they're missing (for example, after installing with `--ignore-scripts`), run `pnpm exec lefthook install`.
 
 ## Checks
@@ -32,6 +34,7 @@ CI runs all of these on every pull request to `main`:
 | `pnpm lint:knip`     | Unused files, exports and dependencies                              |
 | `pnpm lint:consumer` | That the packed package passes publint and attw, installs and works |
 | `pnpm lint:api`      | That the public API matches the API report                          |
+| `pnpm lint:docs`     | That the site's examples type-check and the site builds             |
 
 Run a single test file with `node --test`, for example `node --test test/open-object.spec.ts`. Specs sit at the top of `test/`, named for the behaviour they cover, with `helpers/`, `types/` (compiled, never run) and `fixtures/` beside them. Specs of the public API import only the package entry, `src/index.ts`; unit specs of internals import the module they test.
 
@@ -54,7 +57,7 @@ commitlint checks each message when you commit, and again in CI for every commit
 
 ## Pull requests
 
-Open pull requests against `main`. Include tests for the change and update the README and docs to match. The pull request template has a checklist.
+Open pull requests against `main`. Include tests for the change and update the README and docs to match. The README's quick start must be identical to `website/src/examples/readme/quick-start.ts`, which `pnpm lint:docs` type-checks and compares. The pull request template has a checklist.
 
 ## Layouts and digest algorithms
 
