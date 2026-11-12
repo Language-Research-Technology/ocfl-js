@@ -136,6 +136,8 @@ async function putLock(lock: string, content: string, exclusive: boolean): Promi
 }
 
 /**
+ * Links `staged` to `lock`. `EEXIST` with `staged` linked twice means the link was made: a retried NFS request whose first reply
+ * was lost.
  * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the file system refuses the hard link: `EPERM` is how some, such as FAT,
  * say they have none, but it also comes from an immutable or append-only directory
  */
@@ -143,6 +145,9 @@ async function linkLock(staged: string, lock: string): Promise<void> {
   try {
     await fs.promises.link(staged, lock);
   } catch (error) {
+    if (isAlreadyExists(error) && (await fs.promises.stat(staged)).nlink === 2) {
+      return;
+    }
     if (hasErrorCode(error, 'EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS')) {
       throw ocflError(
         'UNSUPPORTED_FILESYSTEM',

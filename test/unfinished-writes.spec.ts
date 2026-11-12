@@ -260,6 +260,15 @@ describe('root.unfinishedWrites', () => {
     const [refused] = results.filter((result) => result.status === 'rejected');
     assert.ok(ocflError('UPDATE_IN_PROGRESS')(refused?.reason), String(refused?.reason));
   });
+
+  it('takes its lock when linking it succeeds but reports EEXIST, as a retried NFS request does after a lost reply', async () => {
+    const root = await newRoot();
+
+    const object = await withFsFailure('link', placesOf(root, 'a').lock, () => root.create('a', DETAILS, writeB), 'EEXIST', true);
+
+    assert.strictEqual(object.head.number, 1);
+    assert.ok(!fs.existsSync(workspaceOf(root)));
+  });
 });
 
 describe('root.unfinishedWrite', () => {
