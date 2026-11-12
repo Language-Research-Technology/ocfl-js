@@ -69,7 +69,7 @@ async function createLock(lock: string, content: string): Promise<boolean> {
       await handle.close();
     }
   } catch (error) {
-    await fs.promises.rm(lock, { force: true }).catch(() => {});
+    await store.removeQuietly(lock);
     throw error;
   }
   return true;

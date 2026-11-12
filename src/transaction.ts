@@ -318,6 +318,8 @@ class OcflObjectTransaction {
 
   #getRealPath(logicalPath: string) {
     checkLogicalPath(logicalPath);
+    // Defence in depth: only a Windows drive-relative path such as C:x gets past checkLogicalPath
+    /* node:coverage ignore next 3 */
     if (relativeWithin(path.resolve(this.#contentRoot), logicalPath) === undefined) {
       throw invalidLogicalPath(logicalPath);
     }
@@ -483,7 +485,7 @@ class OcflObjectTransaction {
     try {
       return await step();
     } catch (error) {
-      await fs.promises.rm(staging, { recursive: true, force: true }).catch(() => {});
+      await store.removeQuietly(staging);
       throw error;
     }
   }
@@ -677,7 +679,7 @@ class OcflObjectTransaction {
         }
       }
     } catch (error) {
-      await Promise.all(Array.from(staged.values(), (staging) => fs.promises.rm(staging, { recursive: true, force: true }).catch(() => {})));
+      await Promise.all(Array.from(staged.values(), store.removeQuietly));
       throw error;
     }
     return staged;

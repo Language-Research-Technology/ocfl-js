@@ -121,19 +121,6 @@ class OpenedObject implements OcflObject {
     Object.freeze(this);
   }
 
-  /** @internal */
-  get _inventory(): OcflObjectInventory {
-    return this.#inventory;
-  }
-
-  /**
-   * Absolute path of the object root
-   * @internal
-   */
-  get _root(): string {
-    return this.#root;
-  }
-
   async update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject> {
     const checked = checkedDetails(details);
     await declaredVersion(this.#storageRoot, this.#root);
@@ -510,6 +497,8 @@ async function createObject(
     contentDirectory: 'content',
   });
   const committed = await commitDraft(updateTarget(storageRoot, objectRoot, ocflVersion), inventory, details, build);
+  // A first version always differs from no version, so it is always committed
+  /* node:coverage ignore next 3 */
   if (!committed) {
     throw new Error(`No first version of <${id}> was committed.`);
   }

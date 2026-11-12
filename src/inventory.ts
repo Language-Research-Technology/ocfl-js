@@ -276,9 +276,19 @@ class OcflObjectInventory {
     }
   }
 
-  #indexFindPaths(prefix: string, versionName = this.head) {
-    const prefixWithSlash = prefix.endsWith('/') ? prefix : `${prefix}/`;
-    return [...this.#versionIndex(versionName).keys()].filter((lp) => lp === prefix || lp.startsWith(prefixWithSlash));
+  /**
+   * The file at a normalised logical path, or the files under it, in a version
+   * @returns Each file's logical path and normalised digest
+   */
+  #indexFindFiles(logicalPath: string, versionName = this.head): [string, string][] {
+    const prefix = `${logicalPath}/`;
+    const found: [string, string][] = [];
+    for (const [lp, digest] of this.#versionIndex(versionName)) {
+      if (lp === logicalPath || lp.startsWith(prefix)) {
+        found.push([lp, digest]);
+      }
+    }
+    return found;
   }
 
   /**
@@ -501,6 +511,8 @@ class OcflObjectInventory {
   /** The head state entry for a digest the manifest has, and its key */
   #headStateEntry(digest: string): { key: string; files: string[] } {
     const key = this.#requireManifestKey(digest);
+    // Its callers pass only digests the head state lists, so `?? []` is never used
+    /* node:coverage ignore next */
     return { key, files: headVersion(this.#data).state[key] ?? [] };
   }
 
@@ -637,8 +649,9 @@ class OcflObjectInventory {
         throw ocflError('INVALID_LOGICAL_PATH', "A logical path can't be empty");
       }
     }
-    const isFile = this.getDigest(src) !== undefined;
-    const sources = isFile ? [src] : this.#indexFindPaths(src);
+    const srcDigest = this.getDigest(src);
+    const isFile = srcDigest !== undefined;
+    const sources: [string, string][] = isFile ? [[src, srcDigest]] : this.#indexFindFiles(src);
     if (sources.length === 0) {
       throw ocflError('FILE_NOT_FOUND', `Source logical path "${source}" does not exist in object [${this.id}]`);
     }
@@ -657,10 +670,7 @@ class OcflObjectInventory {
         throw ocflError('FILE_EXISTS', `Target logical path "${target}" already has files in object [${this.id}]`);
       }
     }
-    const transfers = sources.flatMap((file) => {
-      const digest = this.getDigest(file);
-      return digest ? [{ src: file, dest: `${dest}${file.slice(src.length)}`, digest }] : [];
-    });
+    const transfers = sources.map(([file, digest]) => ({ src: file, dest: `${dest}${file.slice(src.length)}`, digest }));
     for (const transfer of transfers) {
       this._checkFilePath(transfer.dest);
     }
@@ -726,7 +736,7 @@ class OcflObjectInventory {
    * @internal
    */
   _planDelete(logicalPath: string): DeletePlan {
-    const paths = this.#indexFindPaths(logicalPath);
+    const paths = this.#indexFindFiles(logicalPath).map(([lp]) => lp);
     return { paths, releases: this._contentReleases(paths) };
   }
 
@@ -770,13 +780,12 @@ class OcflObjectInventory {
   _planReinstate(logicalPath: string, version: number): RelistPlan {
     const path = normaliseLogicalPath(logicalPath);
     const versionName = this.#committedVersionName(version);
-    const found = versionName === undefined ? [] : this.#indexFindPaths(path, versionName);
+    const found = versionName === undefined ? [] : this.#indexFindFiles(path, versionName);
     if (found.length === 0) {
       throw ocflError('FILE_NOT_FOUND', `Version ${version} of object [${this.id}] has nothing at logical path "${logicalPath}"`);
     }
-    const files = found.flatMap((filePath) => {
-      const digest = this.getDigest(filePath, versionName);
-      if (!digest || this.getDigest(filePath) === digest) {
+    const files = found.flatMap(([filePath, digest]) => {
+      if (this.getDigest(filePath) === digest) {
         return [];
       }
       this._checkFilePath(filePath);

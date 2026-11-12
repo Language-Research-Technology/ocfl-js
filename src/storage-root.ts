@@ -102,6 +102,8 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion
     if (error instanceof TypeError) {
       throw ocflError('INVALID_STORAGE_ROOT', `The layout config ${configPath} is invalid: ${error.message}`, { cause: error });
     }
+    // Layout constructors throw only TypeError; anything else is a bug, not a bad config
+    /* node:coverage ignore next */
     throw error;
   }
 }
