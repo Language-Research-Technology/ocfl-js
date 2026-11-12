@@ -17,7 +17,7 @@ try {
     throw error;
   }
   // Safe only because this process is the object's one writer
-  await root.recover(id);
+  await (await root.unfinishedWrite(id))?.recover();
   object = await root.open(id);
   if (object.head.number === headBefore) {
     object = await object.update(details, change);

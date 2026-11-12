@@ -40,6 +40,10 @@ _Avoid_: Publish, finalise
 To clear what a dead writer left of an OCFL object and release its lock, on the caller's word that no writer is alive: an update that wasn't committed is discarded, one that was is completed, and a remove that had begun deleting is finished.
 _Avoid_: Repair, unlock, roll back
 
+**Unfinished write**:
+A create, update or remove of an OCFL object whose lock is still held: its writer is still working, or died. The library can't tell which. An OCFL object is recovered only through its unfinished write.
+_Avoid_: Stale lock, orphan, leftover
+
 **Content algorithm**:
 The digest algorithm an OCFL object addresses its content by, `sha512` or `sha256`, named by its inventory's `digestAlgorithm`. Fixity values may use other algorithms, and a storage layout's digest algorithm only hashes object ids; neither is a content algorithm.
 _Avoid_: Digest algorithm (unqualified), hash algorithm

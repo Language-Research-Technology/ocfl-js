@@ -1,24 +1,25 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { type OcflError, ocflError } from './error.ts';
 import * as store from './store.ts';
-import { isAlreadyExists, isNotFound, pathExists, readIfExists } from './utils.ts';
+import { hasErrorCode, isAlreadyExists, isNotFound, isNothingAtPath, parseJsonObject, pathExists } from './utils.ts';
 
 const LOCK_NAME = 'lock';
-/** The second line of a lock taken when the object root didn't exist, so whatever is there afterwards was made by the lock's writer */
-const NO_OBJECT_ROOT = 'no-object-root';
-/** The second line of a lock whose writer has begun deleting the object root, so recovery finishes deleting it */
-const REMOVING = 'removing';
+/** Prefix of the file a lock's content is written to before it is put in place, so a lock is never seen half-written */
+const STAGED_LOCK_PREFIX = '.lock-';
 const MAX_LOCK_ATTEMPTS = 3;
-/** Longer than a time and {@link NO_OBJECT_ROOT} */
-const MAX_LOCK_LENGTH = 64;
+/** Larger than the lock of any sane id, so a large file named `lock` is known not to be one without reading all of it */
+const MAX_LOCK_LENGTH = 64 * 1024;
 
 interface Lock {
-  /** When the lock was taken, if it says */
-  lockedAt: Date | undefined;
-  /** False only if the lock says its writer found no object root */
+  /** The id of the object its writer is creating, updating or removing */
+  id: string;
+  /** When the lock was taken */
+  lockedAt: Date;
+  /** False if its writer found no object root, so whatever is there afterwards it made */
   objectRootExisted: boolean;
-  /** Whether the lock says its writer had begun deleting the object root */
+  /** Whether its writer had begun deleting the object root */
   removing: boolean;
 }
 
@@ -27,52 +28,122 @@ function lockPath(workspace: string): string {
   return path.join(workspace, LOCK_NAME);
 }
 
-function formatLock(lockedAt: Date, objectRootExisted: boolean): string {
-  return lockedAt.toISOString() + (objectRootExisted ? '' : `\n${NO_OBJECT_ROOT}`);
+function formatLock({ id, lockedAt, objectRootExisted, removing }: Lock): string {
+  return JSON.stringify({ id, lockedAt: lockedAt.toISOString(), objectRootExisted, ...(removing ? { removing } : {}) });
 }
 
-function parseLock(content: string): Lock {
-  const [time = '', second] = content.split('\n');
-  const lockedAt = new Date(time);
-  return { lockedAt: Number.isNaN(lockedAt.getTime()) ? undefined : lockedAt, objectRootExisted: second !== NO_OBJECT_ROOT, removing: second === REMOVING };
+/** What `content` records if it is exactly what {@link formatLock} gives, or `undefined` */
+function parseLock(content: string): Lock | undefined {
+  const { id, lockedAt, objectRootExisted, removing, ...rest } = parseJsonObject(content) ?? {};
+  if (typeof id !== 'string' || id === '' || typeof lockedAt !== 'string' || typeof objectRootExisted !== 'boolean') {
+    return undefined;
+  }
+  if ((removing !== undefined && removing !== true) || Object.keys(rest).length > 0) {
+    return undefined;
+  }
+  const time = new Date(lockedAt);
+  if (Number.isNaN(time.getTime()) || time.toISOString() !== lockedAt) {
+    return undefined;
+  }
+  return { id, lockedAt: time, objectRootExisted, removing: removing === true };
+}
+
+/** Whether two locks were taken by the same writer, whether or not it has since begun removing the object */
+function sameWriter(a: Lock, b: Lock): boolean {
+  return a.id === b.id && a.lockedAt.getTime() === b.lockedAt.getTime() && a.objectRootExisted === b.objectRootExisted;
+}
+
+/** What the file `file` records if it is a lock, or `undefined` if it isn't one or nothing is there */
+async function readLockFile(file: string): Promise<Lock | undefined> {
+  let handle: fs.promises.FileHandle;
+  try {
+    handle = await fs.promises.open(file, 'r');
+  } catch (error) {
+    if (isNothingAtPath(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+  let content: string | undefined;
+  try {
+    const buffer = Buffer.alloc(MAX_LOCK_LENGTH + 1);
+    let length = 0;
+    for (let read = -1; read !== 0 && length < buffer.length; length += read) {
+      ({ bytesRead: read } = await handle.read(buffer, length, buffer.length - length, length));
+    }
+    content = length > MAX_LOCK_LENGTH ? undefined : buffer.toString('utf8', 0, length);
+  } catch (error) {
+    if (!hasErrorCode(error, 'EISDIR')) {
+      throw error;
+    }
+  } finally {
+    await handle.close();
+  }
+  return content === undefined ? undefined : parseLock(content);
+}
+
+/** What the object's lock records, or `undefined` if the object isn't locked or its lock isn't one this library wrote */
+function readLock(workspace: string): Promise<Lock | undefined> {
+  return readLockFile(lockPath(workspace));
 }
 
 /** When the lock was taken, or `undefined` if it can't be read or has been released since */
 async function readLockedAt(lock: string): Promise<Date | undefined> {
-  try {
-    const { lockedAt } = parseLock(await fs.promises.readFile(lock, 'utf8'));
-    // Without a time, its writer has created the lock but not yet written into it
-    return lockedAt ?? (await fs.promises.stat(lock)).mtime;
-  } catch {
-    return undefined;
-  }
+  return (await readLockFile(lock).catch(() => undefined))?.lockedAt;
 }
 
-/**
- * Creates the lock file holding `content`. Exclusive, so of any overlapping writers only one takes the lock.
- * @returns Whether the lock was created: `false` if it already exists
- */
-async function createLock(lock: string, content: string): Promise<boolean> {
-  let handle: fs.promises.FileHandle;
-  try {
-    handle = await fs.promises.open(lock, 'wx');
-  } catch (error) {
-    if (isAlreadyExists(error)) {
-      return false;
-    }
-    throw error;
-  }
+/** Writes `content` to the new file `file`, and flushes it to disk, so a crash can't leave it empty once it is in place */
+async function writeDurably(file: string, content: string): Promise<void> {
+  const handle = await fs.promises.open(file, 'wx');
   try {
     try {
       await handle.writeFile(content);
+      await handle.sync();
     } finally {
       await handle.close();
     }
   } catch (error) {
-    await store.removeQuietly(lock);
+    await store.removeQuietly(file);
     throw error;
   }
-  return true;
+}
+
+/**
+ * Puts `content` at `lock` whole: it is staged beside the lock under a name no other writer uses, then hard-linked to the lock if
+ * `exclusive`, which fails if the lock exists, NFS included, or else renamed over it. On a file system without hard links an
+ * exclusive lock is created directly, and a crash while it is written can leave it incomplete.
+ * @returns Whether it was put in place: `false` only if `exclusive` and the lock already exists
+ */
+async function putLock(lock: string, content: string, exclusive: boolean): Promise<boolean> {
+  const staged = path.join(path.dirname(lock), `${STAGED_LOCK_PREFIX}${randomUUID()}`);
+  let placed = true;
+  try {
+    await writeDurably(staged, content);
+    if (exclusive) {
+      await linkOrCreate(staged, lock, content);
+    } else {
+      await fs.promises.rename(staged, lock);
+    }
+  } catch (error) {
+    if (!(exclusive && isAlreadyExists(error))) {
+      throw error;
+    }
+    placed = false;
+  } finally {
+    await store.removeQuietly(staged);
+  }
+  return placed;
+}
+
+async function linkOrCreate(staged: string, lock: string, content: string): Promise<void> {
+  try {
+    await fs.promises.link(staged, lock);
+  } catch (error) {
+    if (!hasErrorCode(error, 'EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS')) {
+      throw error;
+    }
+    await writeDurably(lock, content);
+  }
 }
 
 /** The `UPDATE_IN_PROGRESS` for an object whose lock is held, with `lockedAt` if the lock can still be read */
@@ -82,26 +153,29 @@ async function updateInProgress(workspace: string): Promise<OcflError> {
 }
 
 /**
- * Takes the object's lock, without waiting for a writer that holds it.
+ * Takes the lock of the object `id`, without waiting for a writer that holds it.
  * @param workspace - The object's directory in the workspace of the storage root at `storageRoot`
- * @param objectRootExists - Recorded in the lock, for {@link readLock}
+ * @param objectRootExisted - Recorded in the lock, for recovery
+ * @returns What the lock records
  * @throws {@link OcflError} `UPDATE_IN_PROGRESS`, with `lockedAt` if the lock can be read, if the lock is already taken
  */
-async function takeLock(workspace: string, storageRoot: string, objectRootExists: boolean): Promise<void> {
-  if (!(await createLockInWorkspace(workspace, storageRoot, objectRootExists))) {
+async function takeLock(workspace: string, storageRoot: string, id: string, objectRootExisted: boolean): Promise<Lock> {
+  const lock: Lock = { id, lockedAt: new Date(), objectRootExisted, removing: false };
+  if (!(await createLockInWorkspace(workspace, storageRoot, formatLock(lock)))) {
     throw await updateInProgress(workspace);
   }
+  return lock;
 }
 
 /** @returns Whether the lock was created: `false` if it already exists */
-async function createLockInWorkspace(workspace: string, storageRoot: string, objectRootExists: boolean, attempt = 1): Promise<boolean> {
+async function createLockInWorkspace(workspace: string, storageRoot: string, content: string, attempt = 1): Promise<boolean> {
   try {
     await fs.promises.mkdir(workspace, { recursive: true });
-    return await createLock(lockPath(workspace), formatLock(new Date(), objectRootExists));
+    return await putLock(lockPath(workspace), content, true);
   } catch (error) {
     // Not found: another update's clean-up removed the empty workspace before the lock was created in it
     if (isNotFound(error) && attempt < MAX_LOCK_ATTEMPTS) {
-      return createLockInWorkspace(workspace, storageRoot, objectRootExists, attempt + 1);
+      return createLockInWorkspace(workspace, storageRoot, content, attempt + 1);
     }
     await store.removeEmptyAncestorsQuietly(workspace, storageRoot);
     throw error;
@@ -115,53 +189,30 @@ async function releaseLock(workspace: string, storageRoot: string): Promise<void
 }
 
 /**
- * Records in the object's lock, which the caller holds, that the object root is about to be deleted.
- * Nothing may be deleted before this returns: a lock left half-written doesn't say so.
+ * Records in `held`, the object's lock that the caller took, that the object root is about to be deleted.
+ * The lock is replaced whole, so it doesn't say so until this returns.
  */
-async function markRemoving(workspace: string): Promise<void> {
-  const lock = lockPath(workspace);
-  const [time = ''] = (await fs.promises.readFile(lock, 'utf8')).split('\n');
-  await fs.promises.writeFile(lock, `${time}\n${REMOVING}`);
+async function markRemoving(workspace: string, held: Lock): Promise<void> {
+  await putLock(lockPath(workspace), formatLock({ ...held, removing: true }), false);
 }
 
-/** What the object's lock records, or `undefined` if the object isn't locked */
-async function readLock(workspace: string): Promise<Lock | undefined> {
-  const content = await readIfExists(lockPath(workspace));
-  return content === undefined ? undefined : parseLock(content);
+/** Whether `name`, in an object's directory in the workspace, is a lock's content that was staged and never put in place */
+function isStagedLock(name: string): boolean {
+  return name.startsWith(STAGED_LOCK_PREFIX);
 }
 
 /**
  * The `RECOVERY_NEEDED` for a writer that ended holding the object's lock.
  * @param outcome - What became of it, as a sentence without its full stop
- * @param advice - What recovering the object does, or what to do next, continuing "call recover() on its storage root, "
+ * @param advice - What recovering the object does, or what to do next, continuing "recover its unfinished write, "
  * @param cause - What the writer failed with
  */
 function lockKept(outcome: string, advice: string, cause: unknown): OcflError {
   return ocflError(
     'RECOVERY_NEEDED',
-    `${outcome}. The object stays locked until it is recovered: once no writer of it is alive, call recover() on its storage root, ${advice}.`,
+    `${outcome}. The object stays locked until it is recovered: once no writer of it is alive, recover its unfinished write, ${advice}.`,
     { cause },
   );
-}
-
-/** Whether `content` is exactly what {@link formatLock} gives */
-function isLockContent(content: string): boolean {
-  const [time = '', second, ...rest] = content.split('\n');
-  const lockedAt = new Date(time);
-  return (
-    !Number.isNaN(lockedAt.getTime()) &&
-    lockedAt.toISOString() === time &&
-    (second === undefined || second === NO_OBJECT_ROOT || second === REMOVING) &&
-    rest.length === 0
-  );
-}
-
-/** Whether the file named as a lock was written as one, as a file of a version's content wouldn't be */
-async function isLock(file: string): Promise<boolean> {
-  if ((await fs.promises.stat(file)).size > MAX_LOCK_LENGTH) {
-    return false;
-  }
-  return isLockContent(await fs.promises.readFile(file, 'utf8'));
 }
 
 /** Whether the object's lock is held */
@@ -169,4 +220,5 @@ async function isLocked(workspace: string): Promise<boolean> {
   return pathExists(lockPath(workspace));
 }
 
-export { isLock, isLocked, LOCK_NAME, lockKept, markRemoving, NO_OBJECT_ROOT, REMOVING, readLock, releaseLock, takeLock, updateInProgress };
+export type { Lock };
+export { isLocked, isStagedLock, LOCK_NAME, lockKept, markRemoving, readLock, readLockFile, releaseLock, sameWriter, takeLock, updateInProgress };

@@ -7,11 +7,11 @@ import { type OcflError, ocflError } from './error.ts';
 import type { BuiltInLayout } from './extension.ts';
 import { builtInLayoutClass, createLayout, type Layout, type LayoutConfig } from './extensions/index.ts';
 import { listObjects } from './list.ts';
-import { LOCK_NAME, NO_OBJECT_ROOT, REMOVING } from './lock.ts';
+import { LOCK_NAME } from './lock.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
-import { recoverObject } from './recover.ts';
 import { removeObject } from './remove.ts';
 import * as store from './store.ts';
+import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
 import { deepFreeze, findNamasteVersion, isDirEmpty, isNonEmptyString, parseJsonObject, readIfExists, rejectUnknownKeys, relativeWithin } from './utils.ts';
 import { createError } from './validation.ts';
 
@@ -26,17 +26,17 @@ Each object has one directory here, \`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<
 \`<object path>\` is the object root relative to the storage root. While the object is being created,
 updated or removed, that directory holds:
 
-- \`${LOCK_NAME}\`: the object's lock, a file whose first line is the time it was taken (ISO 8601, UTC). A
-  second line, \`${NO_OBJECT_ROOT}\`, means the object root did not exist when the lock was taken. A
-  second line, \`${REMOVING}\`, means the object is being removed. Only the writer that created the
-  lock may change the object. The library never waits for a lock, and never removes one because of
-  its age.
+- \`${LOCK_NAME}\`: the object's lock, a JSON object. \`id\` is the id of the object, \`lockedAt\` the time
+  the lock was taken (ISO 8601, UTC), and \`objectRootExisted\` whether the object root existed then.
+  \`removing\`, if \`true\`, means the object is being removed. Only the writer that created the lock
+  may change the object. The library never waits for a lock, and never removes one because of its
+  age. A lock is written whole to a file beside it whose name starts \`.lock-\`, then put in place.
 - \`<version>/\`: the new version being assembled, which is then moved into the object root.
 
 The directories exist only while a create, update or remove is in progress. Anything left in them
-afterwards is from one that was interrupted, and is not part of any OCFL object. A lock or a
-version left behind keeps the object from being updated or removed, until the library's
-\`recover\` is called for the object.
+afterwards is from one that was interrupted, and is not part of any OCFL object. A lock left
+behind keeps the object from being updated or removed, until the library recovers the object's
+unfinished write.
 `;
 
 const SPEC_TEXT_FILE = 'ocfl_1.1.md';
@@ -155,7 +155,7 @@ interface StorageRoot {
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds something else, is below a file, or is inside another object.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object, or died creating it; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
-   * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs and leaving the object unlocked, if an earlier create left an unfinished version in the workspace. Don't simply repeat the create: call {@link StorageRoot.recover}, then open the object to see whether it was created.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs, if an earlier create left an unfinished version in the workspace. Don't simply repeat the create: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object to see whether it was created.
    * @throws `TypeError` if the id, the message or the user's name is missing or empty.
    * @throws Whatever `build` or a draft operation throws; nothing of the object is left, and it isn't locked.
    * @example
@@ -193,11 +193,11 @@ interface StorageRoot {
    * Deletes an object and all its versions, and the parent directories that leaves empty. The object's lock is held while it is deleted.
    *
    * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id.
-   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if the object is being updated or created, or a writer died doing so; `lockedAt` says since when. Nothing is deleted. After a dead writer, call {@link StorageRoot.recover} and then `remove` again.
+   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if the object is being updated or created, or a writer died doing so; `lockedAt` says since when. Nothing is deleted. After a dead writer, recover its unfinished write ({@link StorageRoot.unfinishedWrite}) and then `remove` again.
    * @throws {@link OcflError} `INVALID_OBJECT` if the id's directory holds something that isn't an object, or an object whose inventory is missing, corrupt or inconsistent, so its id can't be confirmed; nothing is deleted.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds a different object; nothing is deleted.
    * @throws `TypeError` if the id is missing or empty.
-   * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting the object failed part of the way through, or it was deleted and its lock couldn't be released; `cause` is the failure. The object stays locked, and may be partly deleted: call {@link StorageRoot.recover}, which finishes removing it.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting the object failed part of the way through, or it was deleted and its lock couldn't be released; `cause` is the failure. The object stays locked, and may be partly deleted: recovering its unfinished write ({@link StorageRoot.unfinishedWrite}) finishes removing it.
    * @example
    * ```ts
    * await root.remove('arcp://name,corpus/item/1');
@@ -206,37 +206,34 @@ interface StorageRoot {
   remove(id: string): Promise<void>;
 
   /**
-   * Clears what a dead update or create left behind and releases the object's lock. Does nothing if there is nothing to clear.
+   * Lists every unfinished write in the storage root, in no particular order: each create, update or remove whose lock is still held.
+   * The library can't tell whether a write's writer is still working or died; `lockedAt` is what it offers towards deciding.
+   * Nothing is changed.
    *
-   * **Only call this when no writer of the object is alive: a live writer's update is destroyed**, and the library can't tell
-   * a live writer from a dead one. `lockedAt` on `UPDATE_IN_PROGRESS` says when the lock was taken.
-   *
-   * A remove that had begun deleting the object is finished. An update that wasn't committed is discarded: the unfinished version in the workspace, the directory of the version after the head
-   * in the object, and staged inventory files are removed. A create that wasn't committed is discarded while its lock is still there:
-   * the declaration and first version of an object that never got an inventory, and its directory if the create made it. An update that
-   * was committed is completed by writing the root inventory's sidecar. A version is never made the head by `recover`, and no other
-   * version directory is ever removed.
-   *
-   * After `RECOVERY_NEEDED`, call `recover` and then open the object again before retrying: the head shows whether the update was committed.
-   *
-   * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id and nothing left over for it.
-   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is corrupt or inconsistent, or the object is inside another object; or if it has a declaration and no inventory, and either no lock or a version other than the first, which a dead create never leaves. Nothing is changed.
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds another object, or holds no object and is inside one; nothing is changed.
-   * @throws `TypeError` if the id is missing or empty.
-   * @throws The file system error that stopped it; the object stays locked, and `recover` can be called again.
+   * @throws The file system error that stopped the listing.
    * @example
    * ```ts
-   * try {
-   *   object = await object.update(details, change);
-   * } catch (error) {
-   *   if ((error as OcflError).code !== 'RECOVERY_NEEDED') throw error;
-   *   // This process is the only writer, so none is alive
-   *   await root.recover(id);
-   *   object = await root.open(id);
+   * // After this host crashed: it was the storage root's only writer, so none of the writes before the crash is alive
+   * for await (const write of root.unfinishedWrites()) {
+   *   if (write.lockedAt < crashedAt) await write.recover();
    * }
    * ```
    */
-  recover(id: string): Promise<void>;
+  unfinishedWrites(): AsyncIterable<UnfinishedWrite>;
+
+  /**
+   * The unfinished write of an object: its create, update or remove whose lock is still held. Nothing is changed.
+   *
+   * @returns The write, or `undefined` if the object isn't locked
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory is locked by a writer of another id.
+   * @throws `TypeError` if the id is missing or empty.
+   * @example
+   * ```ts
+   * const write = await root.unfinishedWrite(id);
+   * if (write) console.log(`Locked since ${write.lockedAt.toISOString()}`);
+   * ```
+   */
+  unfinishedWrite(id: string): Promise<UnfinishedWrite | undefined>;
 }
 
 /**
@@ -280,8 +277,11 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
     async remove(id: string) {
       await removeObject(root, objectRootOf(checkedId(id)), id);
     },
-    async recover(id: string) {
-      await recoverObject(root, objectRootOf(checkedId(id)), id);
+    unfinishedWrites() {
+      return listUnfinishedWrites(root, (id) => mappedObjectPath(root, layout, id));
+    },
+    async unfinishedWrite(id: string) {
+      return findUnfinishedWrite(root, objectRootOf(checkedId(id)), id);
     },
   });
 }

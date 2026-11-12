@@ -11,6 +11,7 @@ import {
   lockObject,
   lockOf,
   objectAtV1,
+  recover,
   snapshot,
   textFiles,
   useTempRoots,
@@ -190,7 +191,7 @@ describe('root.remove', () => {
       await writeFiles(path.join(workspace, 'v2', 'content'), { 'half-written.txt': 'x' });
       await assertRefused(root, ID, 'UPDATE_IN_PROGRESS');
 
-      await root.recover(ID);
+      await recover(root, ID);
       await root.remove(ID);
 
       assert.ok(!fs.existsSync(objectRoot));
@@ -355,7 +356,7 @@ describe('root.remove', () => {
 
       assert.ok(!fs.existsSync(path.join(objectRoot, 'v1')));
       assert.strictEqual((await root.open(ID)).head.number, 2);
-      await root.recover(ID);
+      await recover(root, ID);
       assert.ok(!fs.existsSync(objectRoot));
       assertNoWorkspace(root);
     });
@@ -366,7 +367,7 @@ describe('root.remove', () => {
       await withFsFailure('readdir', objectRoot, () => assertRecoveryNeeded(root, root.remove(ID)));
 
       assert.deepStrictEqual(await snapshot(objectRoot), before);
-      await root.recover(ID);
+      await recover(root, ID);
       assert.ok(!fs.existsSync(objectRoot));
       assertNoWorkspace(root);
     });
@@ -381,12 +382,12 @@ describe('root.remove', () => {
     ] as const) {
       it(`is finished by recover after it died having deleted ${gone}`, async () => {
         const { root, objectRoot, lock } = await existingObject();
-        await writeFiles(path.dirname(lock), { lock: `${new Date().toISOString()}\nremoving` });
+        await writeFiles(path.dirname(lock), { lock: JSON.stringify({ id: ID, lockedAt: new Date().toISOString(), objectRootExisted: true, removing: true }) });
         for (const name of names) {
           await fs.promises.rm(path.join(objectRoot, name), { recursive: true });
         }
 
-        await root.recover(ID);
+        await recover(root, ID);
 
         assert.ok(!fs.existsSync(objectRoot));
         assertNoWorkspace(root);
@@ -398,7 +399,7 @@ describe('root.remove', () => {
     it('throws the file system error and deletes nothing when its lock cannot be marked, and releases the lock', async () => {
       const { root, objectRoot, lock, before } = await existingObject();
 
-      await withFsFailure('writeFile', lock, () => assert.rejects(root.remove(ID), { code: 'EIO' }));
+      await withFsFailure('rename', lock, () => assert.rejects(root.remove(ID), { code: 'EIO' }));
 
       assert.deepStrictEqual(await snapshot(objectRoot), before);
       assertNoWorkspace(root);
@@ -410,7 +411,7 @@ describe('root.remove', () => {
       await withFsFailure('rm', lock, () => assertRecoveryNeeded(root, root.remove(ID)));
 
       assert.ok(!fs.existsSync(objectRoot));
-      await root.recover(ID);
+      await recover(root, ID);
       assertNoWorkspace(root);
       await assert.rejects(root.remove(ID), ocflError('OBJECT_NOT_FOUND'));
     });
@@ -427,29 +428,29 @@ describe('root.remove', () => {
       );
 
       assert.ok(ocflError('ID_INCOMPATIBLE_WITH_LAYOUT')(error.cause));
-      await root.recover('https://example.org/object');
+      await assert.rejects(root.unfinishedWrite('https://example.org/object'), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      await recover(root, 'http://example.org/object');
       assert.deepStrictEqual(await snapshot(path.join(root.path, 'example.org')), before);
+      assert.strictEqual(await root.unfinishedWrite('https://example.org/object'), undefined);
     });
 
     it('throws the file system error when the lock cannot be taken, and deletes nothing', async () => {
       const { root, objectRoot, before } = await existingObject();
 
-      await withFsFailure('open', lockOf(root, ID), () => assert.rejects(root.remove(ID), { code: 'EIO' }));
+      await withFsFailure('link', lockOf(root, ID), () => assert.rejects(root.remove(ID), { code: 'EIO' }));
 
       assert.deepStrictEqual(await snapshot(objectRoot), before);
       assertNoWorkspace(root);
     });
   });
 
-  it('leaves a version in the workspace with no lock for recover to clear', async () => {
+  it('removes a version a dead writer left in the workspace with no lock', async () => {
     const { root, objectRoot, workspace } = await existingObject();
     await writeFiles(path.join(workspace, 'v2', 'content'), { 'half-written.txt': 'x' });
 
     await root.remove(ID);
 
     assert.ok(!fs.existsSync(objectRoot));
-    assert.ok(fs.existsSync(path.join(workspace, 'v2', 'content', 'half-written.txt')));
-    await root.recover(ID);
     assertNoWorkspace(root);
   });
 });

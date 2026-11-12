@@ -104,7 +104,7 @@ The digest directories haven't changed, only the last directory, named by the en
 | `t.purge(path)`, `remove(path, { purge: true })` | [A new object without the file](#removing-a-file-from-every-version) |
 | `object.export()` (only ever threw) | [Write a version out](#writing-a-version-out) yourself |
 | `object.validate()`, `verify()` (only ever threw) | None: use an OCFL validator. `object.checkFixity()` reads every stored file again |
-| None | `root.recover(id)`, after a writer dies |
+| None | `root.unfinishedWrites()`, `root.unfinishedWrite(id)` and `write.recover()`, after a writer dies |
 
 ## Storage roots
 
@@ -241,11 +241,11 @@ for await (const object of storage) {
 
 - Each object is yielded already opened. Listing goes in no particular order.
 - An object that can't be opened is yielded as an `OcflError` with the code `INVALID_OBJECT`, and the listing carries on. A file system error, such as `EACCES`, is thrown and ends it.
-- Listing treats a directory as an object only if it has an object declaration, so it leaves out an object that has lost its declaration. It also leaves out an object whose creation hasn't been committed, including one whose writer died; run `root.recover(id)` for that id to clear it.
+- Listing treats a directory as an object only if it has an object declaration, so it leaves out an object that has lost its declaration. It also leaves out an object whose creation hasn't been committed, including one whose writer died; it is among `root.unfinishedWrites()`, and recovering it clears it.
 
 `root.remove(id)` deletes an object with all its versions, and any parent directories that are left empty. It takes the object's lock, so it never deletes an object while it's being updated. It throws `INVALID_OBJECT` for a directory that isn't an object, or an object it can't read; [delete that one by hand](/ocfl-js/guides/errors/#removing-a-damaged-object).
 
-`root.recover(id)` clears what a writer that died left of an object, and releases its lock. Only call it when you know no writer of that object is alive: it destroys a live writer's update. See [Recovering](/ocfl-js/guides/concurrent-writers/#recovering) and [a create whose writer died](/ocfl-js/guides/concurrent-writers/#a-create-whose-writer-died).
+`root.unfinishedWrites()` lists every create, update or remove whose lock is still held, and `root.unfinishedWrite(id)` finds one. `write.recover()` clears what a writer that died left of the object, and releases its lock. Only call it when you know that writer is no longer alive: it destroys a live writer's update. See [Recovering](/ocfl-js/guides/concurrent-writers/#recovering) and [a create whose writer died](/ocfl-js/guides/concurrent-writers/#a-create-whose-writer-died).
 
 ## Errors
 
@@ -255,7 +255,7 @@ for await (const object of storage) {
 
 | `code` | Thrown when |
 | --- | --- |
-| [`OBJECT_NOT_FOUND`](/ocfl-js/guides/errors/#object_not_found) | `open()` finds no object, or one whose creation isn't committed; `remove()` or `recover()` finds nothing there |
+| [`OBJECT_NOT_FOUND`](/ocfl-js/guides/errors/#object_not_found) | `open()` finds no object, or one whose creation isn't committed; `remove()` finds nothing there |
 | [`OBJECT_EXISTS`](/ocfl-js/guides/errors/#object_exists) | `create()` finds an object already there, or another writer created it first |
 | [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date) | `update()` finds that a later version was committed, or the object was removed and created again, since it was opened |
 | [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object) | An object can't be used safely: its inventory or sidecar is missing, damaged or inconsistent, its declaration is missing or wrong, or it is inside another object. `ocflCode` names the OCFL rule. `objects()` yields it instead of throwing |

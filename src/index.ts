@@ -15,3 +15,4 @@ export type { ByteRange, OcflFile } from './ocfl-file.ts';
 export type { FixityProblem, OcflObject, User, Version } from './ocfl-object.ts';
 export type { StorageRoot } from './storage-root.ts';
 export { createStorageRoot, openStorageRoot } from './storage-root.ts';
+export type { UnfinishedWrite } from './unfinished-write.ts';
