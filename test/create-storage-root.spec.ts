@@ -59,6 +59,23 @@ describe('creating a storage root', () => {
     assert.ok(!fs.existsSync(rootPath));
   });
 
+  for (const [option, value] of [
+    ['ocflVersion', '1.0'],
+    ['fixityAlgorithms', ['md5']],
+  ] as const) {
+    it(`rejects the 0.4 option ${option}, naming it, and makes nothing`, async () => {
+      const rootPath = newPath();
+      const options = { layout: { extensionName: HASHED }, [option]: value } as never;
+      await assert.rejects(createStorageRoot(rootPath, options), { name: 'TypeError', message: new RegExp(`'${option}'`) });
+      assert.ok(!fs.existsSync(rootPath));
+    });
+  }
+
+  it('names every option it does not know', async () => {
+    const options = { layout: { extensionName: HASHED }, ocflVersion: '1.0', fixityAlgorithms: ['md5'] } as never;
+    await assert.rejects(createStorageRoot(newPath(), options), { name: 'TypeError', message: /'ocflVersion'.*'fixityAlgorithms'/ });
+  });
+
   it('rejects creating a storage root in a non-empty directory, leaving it as it was', async () => {
     const rootPath = newPath();
     await fs.promises.mkdir(rootPath);

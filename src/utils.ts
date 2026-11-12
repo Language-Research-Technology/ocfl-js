@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import type { OcflVersion } from './types.ts';
 
@@ -176,6 +177,17 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
+/**
+ * @param refusal - Starts the message, e.g. `createStorageRoot has no option`
+ * @throws `TypeError` naming each key of `object` that `isKnown` refuses
+ */
+function rejectUnknownKeys(object: object, isKnown: (key: string) => boolean, refusal: string): void {
+  const unknown = Object.keys(object).filter((key) => !isKnown(key));
+  if (unknown.length > 0) {
+    throw new TypeError(`${refusal} ${unknown.map((key) => inspect(key)).join(' or ')}.`);
+  }
+}
+
 export {
   createLimiter,
   deepFreeze,
@@ -193,5 +205,6 @@ export {
   parseJsonObject,
   pathExists,
   readIfExists,
+  rejectUnknownKeys,
   relativeWithin,
 };

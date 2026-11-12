@@ -13,7 +13,7 @@ import { recoverObject } from './recover.ts';
 import { removeObject } from './remove.ts';
 import * as store from './store.ts';
 import type { Layout, LayoutConfig, OcflVersion } from './types.ts';
-import { deepFreeze, findNamasteVersion, isDirEmpty, isNonEmptyString, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
+import { deepFreeze, findNamasteVersion, isDirEmpty, isNonEmptyString, parseJsonObject, readIfExists, rejectUnknownKeys, relativeWithin } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, NAMASTE_PREFIX_STORAGE, NAMASTE_T } = OcflConstants;
@@ -296,7 +296,7 @@ function absolutePath(rootPath: string): string {
  * Creates a new OCFL 1.1 storage root in an empty or missing directory.
  *
  * @throws {@link OcflError} `DIRECTORY_NOT_EMPTY` if `path` holds anything.
- * @throws `TypeError` if the layout or one of its parameters is invalid.
+ * @throws `TypeError` if the layout or one of its parameters is invalid, or `options` has a key other than `layout`.
  * @example
  * ```ts
  * const root = await createStorageRoot('/srv/ocfl', {
@@ -307,6 +307,7 @@ function absolutePath(rootPath: string): string {
 async function createStorageRoot(path: string, options: { layout: LayoutConfig }): Promise<StorageRoot> {
   const root = absolutePath(path);
   const layout = createLayout(options?.layout);
+  rejectUnknownKeys(options, (option) => option === 'layout', 'createStorageRoot has no option');
   await fs.promises.mkdir(root, { recursive: true });
   if (!(await isDirEmpty(root))) {
     throw ocflError('DIRECTORY_NOT_EMPTY', `Cannot create a storage root in ${root}, which is not empty.`);

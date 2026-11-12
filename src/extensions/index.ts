@@ -1,6 +1,6 @@
-import { inspect } from 'node:util';
 import type { BuiltInLayout, OcflExtensionConfig } from '../extension.ts';
 import type { LayoutConfig, LayoutName } from '../types.ts';
+import { rejectUnknownKeys } from '../utils.ts';
 import { PathDirectStorageLayout } from './000N-path-direct-storage-layout.ts';
 import { FlatDirectStorageLayout } from './0002-flat-direct-storage-layout.ts';
 import { HashAndIdNTupleStorageLayout } from './0003-hash-and-id-n-tuple-storage-layout.ts';
@@ -36,10 +36,7 @@ function createLayout(config: LayoutConfig): BuiltInLayout {
     throw new TypeError(`Layout "${name}" is not supported.`);
   }
   const layout = new layoutClass(own);
-  const unknown = Object.keys(own).filter((parameter) => parameter !== 'extensionName' && !Object.hasOwn(layout.parameters, parameter));
-  if (unknown.length > 0) {
-    throw new TypeError(`Layout ${name} has no parameter ${unknown.map((parameter) => inspect(parameter)).join(' or ')}.`);
-  }
+  rejectUnknownKeys(own, (parameter) => parameter === 'extensionName' || Object.hasOwn(layout.parameters, parameter), `Layout ${name} has no parameter`);
   return layout;
 }
 
