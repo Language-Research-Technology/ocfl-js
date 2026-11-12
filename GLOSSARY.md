@@ -16,6 +16,18 @@ _Avoid_: Layout extension, path mapping, storage scheme
 A directory holding one digital object's versions and its inventory. An opened OCFL object is the object as read at one moment; it does not change when later versions are committed.
 _Avoid_: Record, item, snapshot
 
+**Object root**:
+The directory of an OCFL object, where the storage layout places it in the storage root.
+_Avoid_: Object directory, object folder
+
+**Root inventory**:
+The inventory in an object root, which names the object's head: its latest version. Its sidecar is the file beside it that records its digest.
+_Avoid_: Main inventory, top-level inventory
+
+**Writer**:
+A process creating, updating or removing an OCFL object through this library.
+_Avoid_: Client, updater
+
 **Draft**:
 The changes being assembled during an update to an OCFL object, which become one new version or are discarded.
 _Avoid_: Transaction
@@ -25,7 +37,7 @@ To put a file, or every file below a directory, back in a draft as it was in an 
 _Avoid_: Restore, revert, copy from a version
 
 **Workspace**:
-The library's directory inside a storage root where a new version is assembled before it is published to its OCFL object.
+The library's directory inside a storage root where a new version is assembled before it is moved into its object root.
 _Avoid_: Staging area, temp directory, deposit directory
 
 **Lock**:
