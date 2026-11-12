@@ -19,6 +19,12 @@ The library refuses a second writer rather than managing one. It never waits, qu
 
 Each OCFL object has one lock, a file in the storage root's workspace, which must be on [the same file system](/ocfl-js/#what-it-doesnt-check-or-do) as the rest of the storage root. `root.create`, `object.update` and `root.remove` take it before they do anything else, and release it only when they end cleanly. Readers take no lock, so opening an object or reading its files never waits on a writer.
 
+### Sharing a storage root over NFS
+
+Use NFS 4.1 or later. Its sessions carry out each request exactly once, so a reply lost on the network doesn't turn a link or rename that worked into an error. On NFS 3 a lost reply to the rename that commits an update can fail the update with [`RECOVERY_NEEDED`](#recovery_needed-the-update-may-or-may-not-be-committed) although the version was committed. NFS 4 also sends several operations in one request, so a write takes fewer round trips to the server.
+
+### Locks outlive dead writers
+
 The library never removes a lock because of its age, and never removes one it didn't take. A process that is killed, or a host that loses power, leaves its lock behind. The library can't tell a dead writer from a slow one on shared storage, so it doesn't try: a slow writer is never trampled, however long it takes.
 
 ## `UPDATE_IN_PROGRESS`: another writer holds the lock

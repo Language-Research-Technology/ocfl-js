@@ -10,7 +10,7 @@
 pnpm add @ocfl/ocfl-fs
 ```
 
-It needs Node.js 22.12 or later, and is an ES module with its own types. It's supported and tested on Linux only, on a case-sensitive file system; WSL works, macOS and Windows aren't supported.
+It needs Node.js 22.12 or later, and is an ES module with its own types. It's supported and tested on Linux only, on a case-sensitive file system with hard links, local or NFS; WSL works, macOS and Windows aren't supported.
 
 Upgrading from 0.4? See [Migrating from 0.4](https://language-research-technology.github.io/ocfl-js/guides/migrating-from-0-4/).
 

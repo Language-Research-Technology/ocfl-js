@@ -260,6 +260,15 @@ describe('root.unfinishedWrites', () => {
     const [refused] = results.filter((result) => result.status === 'rejected');
     assert.ok(ocflError('UPDATE_IN_PROGRESS')(refused?.reason), String(refused?.reason));
   });
+
+  it('takes its lock when linking it succeeds but reports EEXIST, as a retried NFS request does after a lost reply', async () => {
+    const root = await newRoot();
+
+    const object = await withFsFailure('link', placesOf(root, 'a').lock, () => root.create('a', DETAILS, writeB), 'EEXIST', true);
+
+    assert.strictEqual(object.head.number, 1);
+    assert.ok(!fs.existsSync(workspaceOf(root)));
+  });
 });
 
 describe('root.unfinishedWrite', () => {
@@ -392,30 +401,26 @@ describe('reading and writing a lock', () => {
   });
 });
 
-describe('a lock on a file system without hard links', () => {
+describe('a storage root on a file system without hard links', () => {
   const { newRoot } = useTempRoots('ocfl-unfinished-no-links-');
 
-  it('is created directly, and refuses a second writer', async () => {
-    const root = await newRoot();
-    const create = held((hold) =>
-      withFsFailure(
-        'link',
-        placesOf(root, 'a').lock,
-        () =>
-          root.create('a', DETAILS, async (draft) => {
-            await writeB(draft);
-            await hold();
-          }),
-        'EPERM',
-      ),
-    );
-    await create.inside;
+  for (const code of ['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS']) {
+    it(`refuses a create, update or remove with UNSUPPORTED_FILESYSTEM when linking fails with ${code}, and changes nothing`, async () => {
+      const root = await newRoot();
+      const object = await createObject(root, 'a', { 'a.txt': 'a' });
+      const before = await snapshot(root.path);
 
-    await assert.rejects(root.create('a', DETAILS, writeB), ocflError('UPDATE_IN_PROGRESS'));
-    assert.strictEqual((await root.unfinishedWrite('a'))?.id, 'a');
-    assert.strictEqual((await create.finish()).head.number, 1);
-    assert.ok(!fs.existsSync(workspaceOf(root)));
-  });
+      const writes: (() => Promise<unknown>)[] = [() => root.create('b', DETAILS, writeB), () => object.update(DETAILS, writeB), () => root.remove('a')];
+      for (const write of writes) {
+        await assert.rejects(
+          withFsFailure('link', () => true, write, code),
+          ocflError('UNSUPPORTED_FILESYSTEM'),
+        );
+        assert.deepStrictEqual(await snapshot(root.path), before);
+      }
+      assert.deepStrictEqual(await listed(root), []);
+    });
+  }
 });
 
 describe('with a layout whose object paths are deep', () => {

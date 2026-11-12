@@ -101,23 +101,18 @@ async function readLockedAt(lock: string): Promise<Date | undefined> {
 async function writeDurably(file: string, content: string): Promise<void> {
   const handle = await fs.promises.open(file, 'wx');
   try {
-    try {
-      await handle.writeFile(content);
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-  } catch (error) {
-    await store.removeQuietly(file);
-    throw error;
+    await handle.writeFile(content);
+    await handle.sync();
+  } finally {
+    await handle.close();
   }
 }
 
 /**
  * Puts `content` at `lock` whole: it is staged beside the lock under a name no other writer uses, then hard-linked to the lock if
- * `exclusive`, which fails if the lock exists, NFS included, or else renamed over it. On a file system without hard links an
- * exclusive lock is created directly, and a crash while it is written can leave it incomplete.
+ * `exclusive`, which fails if the lock exists, NFS included, or else renamed over it.
  * @returns Whether it was put in place: `false` only if `exclusive` and the lock already exists
+ * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if `exclusive` and the file system refuses the hard link
  */
 async function putLock(lock: string, content: string, exclusive: boolean): Promise<boolean> {
   const staged = stagedLockPath(lock);
@@ -125,7 +120,7 @@ async function putLock(lock: string, content: string, exclusive: boolean): Promi
   try {
     await writeDurably(staged, content);
     if (exclusive) {
-      await linkOrCreate(staged, lock, content);
+      await linkLock(staged, lock);
     } else {
       await fs.promises.rename(staged, lock);
     }
@@ -140,14 +135,27 @@ async function putLock(lock: string, content: string, exclusive: boolean): Promi
   return placed;
 }
 
-async function linkOrCreate(staged: string, lock: string, content: string): Promise<void> {
+/**
+ * Links `staged` to `lock`. `EEXIST` with `staged` linked twice means the link was made: a retried NFS request whose first reply
+ * was lost.
+ * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the file system refuses the hard link: `EPERM` is how some, such as FAT,
+ * say they have none, but it also comes from an immutable or append-only directory
+ */
+async function linkLock(staged: string, lock: string): Promise<void> {
   try {
     await fs.promises.link(staged, lock);
   } catch (error) {
-    if (!hasErrorCode(error, 'EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS')) {
-      throw error;
+    if (isAlreadyExists(error) && (await fs.promises.stat(staged)).nlink === 2) {
+      return;
     }
-    await writeDurably(lock, content);
+    if (hasErrorCode(error, 'EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS')) {
+      throw ocflError(
+        'UNSUPPORTED_FILESYSTEM',
+        `Couldn't hard-link the lock ${lock}: the storage root's file system doesn't support hard links, which locks need, or refused this one.`,
+        { cause: error },
+      );
+    }
+    throw error;
   }
 }
 
@@ -163,6 +171,7 @@ async function updateInProgress(workspace: string): Promise<OcflError> {
  * @param objectRootExisted - Recorded in the lock, for recovery
  * @returns What the lock records
  * @throws {@link OcflError} `UPDATE_IN_PROGRESS`, with `lockedAt` if the lock can be read, if the lock is already taken
+ * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the lock can't be hard-linked into place; nothing is left behind
  */
 async function takeLock(workspace: string, storageRoot: string, id: string, objectRootExisted: boolean): Promise<Lock> {
   const lock: Lock = { id, lockedAt: new Date(), objectRootExisted, removing: false };
