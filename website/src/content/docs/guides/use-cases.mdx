@@ -73,7 +73,7 @@ It isn't validation: an object can pass the fixity check and still break the OCF
 
 A stored file that can't be read for any reason but being missing, such as `EACCES` or `EIO`, throws instead of being reported. The job catches that for each object, so one unreadable file doesn't end the run.
 
-The `actual` digest is always lowercase. The `expected` digest is as the inventory records it, and an object written by another tool may record digests in uppercase. So `expected === actual` isn't a test that the content is unchanged: compare digests ignoring case.
+Both digests are lowercase, even when an object written by another tool records them in uppercase.
 
 ## Best practices
 

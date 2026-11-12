@@ -94,7 +94,7 @@ describe('checking the fixity of an object', () => {
     ]);
   });
 
-  it('matches digests the inventory records in upper case', async () => {
+  it('matches digests the inventory records in upper case, and reports them in lower case', async () => {
     const root = await temp.newRoot();
     await createObject(root, 'upper-case', { 'a.txt': 'abc', 'b.txt': 'b' });
     const objectRoot = objectRootOf(root, 'upper-case');
@@ -106,7 +106,12 @@ describe('checking the fixity of an object', () => {
     assert.deepStrictEqual(await object.checkFixity(), []);
     await fs.promises.writeFile(path.join(objectRoot, 'v1/content/a.txt'), 'abd');
     assert.deepStrictEqual(await object.checkFixity(), [
-      { problem: 'changed', contentPath: 'v1/content/a.txt', expected: DIGESTS_OF_ABC.sha512.toUpperCase(), actual: sha512('abd') },
+      { problem: 'changed', contentPath: 'v1/content/a.txt', expected: DIGESTS_OF_ABC.sha512, actual: sha512('abd') },
+    ]);
+    await fs.promises.rm(path.join(objectRoot, 'v1/content/b.txt'));
+    assert.deepStrictEqual(await object.checkFixity(), [
+      { problem: 'changed', contentPath: 'v1/content/a.txt', expected: DIGESTS_OF_ABC.sha512, actual: sha512('abd') },
+      { problem: 'missing', contentPath: 'v1/content/b.txt', expected: sha512('b') },
     ]);
   });
 

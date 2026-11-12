@@ -92,10 +92,7 @@ interface FixityProblem {
   readonly problem: 'changed' | 'missing';
   /** Where the stored file is, relative to the object, such as `v1/content/audio/1.wav`. */
   readonly contentPath: string;
-  /**
-   * The digest the inventory records, in the case the inventory uses. An object written by another tool may record it
-   * in uppercase, so `expected === actual` isn't a test that the content is unchanged; compare digests ignoring case.
-   */
+  /** The digest the inventory records, in lowercase. */
   readonly expected: string;
   /** The digest found on disk, in lowercase. Absent when the file is missing. */
   readonly actual?: string;
@@ -171,11 +168,11 @@ class OpenedObject implements OcflObject {
   }
 }
 
-/** Each stored file the inventory's manifest lists, with the digest recorded for it */
+/** Each stored file the inventory's manifest lists, with the normalised digest recorded for it */
 function* storedFilesOf(inventory: OcflObjectInventory): Generator<[contentPath: string, digest: string]> {
   for (const [digest, contentPaths] of Object.entries(inventory.manifest)) {
     for (const contentPath of contentPaths) {
-      yield [contentPath, digest];
+      yield [contentPath, Hashing.normaliseDigest(digest)];
     }
   }
 }
@@ -196,7 +193,7 @@ async function checkStoredFile(
     }
     throw error;
   }
-  return actual === Hashing.normaliseDigest(expected) ? undefined : { problem: 'changed', contentPath, expected, actual };
+  return actual === expected ? undefined : { problem: 'changed', contentPath, expected, actual };
 }
 
 /** Each version's number and name, oldest first */
