@@ -4,14 +4,14 @@ description: What @ocfl/ocfl-fs does and doesn't do, to help you decide whether 
 ---
 
 import { Code } from '@astrojs/starlight/components';
-import createAndRead from '../../examples/index/create-and-read.ts?raw';
 import pathDirectLayout from '../../examples/index/path-direct-layout.ts?raw';
+import quickStart from '../../examples/readme/quick-start.ts?raw';
 
 `@ocfl/ocfl-fs` is a Node.js library for keeping versioned digital objects under the [Oxford Common File Layout (OCFL)](https://ocfl.io/) on a local file system. It reads and writes storage roots and the OCFL objects in them, so your application can deposit files, add versions and read any version back without handling inventories, digests or version directories itself.
 
 It needs Node.js 22.12 or later and is published as an ES module with its own types.
 
-<Code code={createAndRead} lang="ts" />
+<Code code={quickStart} lang="ts" />
 
 New to the library? [Getting started](/ocfl-js/guides/getting-started/) walks through this one step at a time. Upgrading from 0.4? See [Migrating from 0.4](/ocfl-js/guides/migrating-from-0-4/).
 
