@@ -251,7 +251,9 @@ function unsupportedFileType(filePath: string) {
   return ocflError('UNSUPPORTED_FILE_TYPE', `"${filePath}" is not a regular file or directory`);
 }
 
-type TrackedPromise<T> = Promise<T> & { done?: boolean };
+interface TrackedPromise<T> extends Promise<T> {
+  done?: boolean;
+}
 
 /**
  * A Transaction represent an atomic update on an OCFL Object.
