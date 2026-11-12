@@ -82,7 +82,7 @@ It is also thrown when the directory the id maps to holds an object with a diffe
 
 ### `INVALID_OBJECT`
 
-**Cause:** what the library read where the object should be isn't an object it can safely use. The inventory is missing, isn't JSON, is inconsistent, or names paths that would lead outside the object; the sidecar digest is missing or doesn't match; the object declaration is missing or wrong; or the object is inside another object. `ocflCode` names the OCFL rule, for example `E003` (no object declaration), `E033` (inventory isn't JSON) or `E060` (sidecar digest doesn't match).
+**Cause:** what the library read where the object should be isn't an object it can safely use. The inventory is missing, isn't JSON, is inconsistent, or names paths that would lead outside the object; the sidecar digest is missing or doesn't match; the object declaration is missing or wrong, or declares a later OCFL version than the storage root's; or the object is inside another object. `ocflCode` names the OCFL rule, for example `E003` (no object declaration), `E033` (inventory isn't JSON), `E060` (sidecar digest doesn't match) or `E081` (a 1.1 object in a 1.0 storage root).
 
 `open`, `update`, `remove`, recovering an unfinished write, and `objects()` can all give it. `update` throws it if the declaration has been removed or damaged since the object was opened.
 
