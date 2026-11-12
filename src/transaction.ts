@@ -270,7 +270,7 @@ class OcflObjectTransaction {
    * Create a new transaction instance.
    * @internal
    */
-  static async create(target: UpdateTarget, inventory: OcflObjectInventory) {
+  static async _create(target: UpdateTarget, inventory: OcflObjectInventory) {
     const rootExisted = await fs.promises.stat(target.root).then(
       () => true,
       () => false,

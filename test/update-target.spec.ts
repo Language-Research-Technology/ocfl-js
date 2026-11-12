@@ -14,7 +14,7 @@ describe('OcflObjectTransaction driven from an update target', () => {
   let target: UpdateTarget;
 
   const firstVersion = () =>
-    OcflObjectInventory.newVersion({ id: 'an-object', digestAlgorithm: 'sha512', type: 'https://ocfl.io/1.0/spec/#inventory', contentDirectory: 'content' });
+    OcflObjectInventory._newVersion({ id: 'an-object', digestAlgorithm: 'sha512', type: 'https://ocfl.io/1.0/spec/#inventory', contentDirectory: 'content' });
 
   beforeEach(async () => {
     storageRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-update-target-'));
@@ -30,7 +30,7 @@ describe('OcflObjectTransaction driven from an update target', () => {
   });
 
   it('commits a version to disk and returns the committed inventory', async () => {
-    const transaction = await OcflObjectTransaction.create(target, firstVersion());
+    const transaction = await OcflObjectTransaction._create(target, firstVersion());
     await transaction.write('a.txt', 'abc');
     assert.strictEqual(fs.readFileSync(path.join(target.workspace, 'v1', 'content', 'a.txt'), 'utf8'), 'abc');
 
@@ -49,12 +49,12 @@ describe('OcflObjectTransaction driven from an update target', () => {
   });
 
   it('returns nothing from a commit with no changes, and leaves the object at its version', async () => {
-    const first = await OcflObjectTransaction.create(target, firstVersion());
+    const first = await OcflObjectTransaction._create(target, firstVersion());
     await first.write('a.txt', 'abc');
     const v1 = await first._commit(DETAILS);
     assert.ok(v1);
 
-    const second = await OcflObjectTransaction.create(target, OcflObjectInventory.newVersion(v1));
+    const second = await OcflObjectTransaction._create(target, OcflObjectInventory._newVersion(v1));
 
     assert.strictEqual(await second._commit(DETAILS), undefined);
     assert.deepStrictEqual(fs.readdirSync(target.root).sort(), ['0=ocfl_object_1.0', 'inventory.json', 'inventory.json.sha512', 'v1']);
@@ -62,7 +62,7 @@ describe('OcflObjectTransaction driven from an update target', () => {
   });
 
   it('refuses an operation once it has been committed', async () => {
-    const transaction = await OcflObjectTransaction.create(target, firstVersion());
+    const transaction = await OcflObjectTransaction._create(target, firstVersion());
     await transaction.write('a.txt', 'abc');
     await transaction._commit(DETAILS);
 
@@ -71,7 +71,7 @@ describe('OcflObjectTransaction driven from an update target', () => {
   });
 
   it('refuses a write once committed before looking at its content', async () => {
-    const transaction = await OcflObjectTransaction.create(target, firstVersion());
+    const transaction = await OcflObjectTransaction._create(target, firstVersion());
     await transaction._commit(DETAILS);
 
     await assert.rejects(transaction.write('b.txt', 42 as never), /already commited/);
@@ -79,7 +79,7 @@ describe('OcflObjectTransaction driven from an update target', () => {
 
   it('refuses a root that holds something other than an object', async () => {
     await writeFiles(target.root, { 'stray.txt': 'stray' });
-    const transaction = await OcflObjectTransaction.create(target, firstVersion());
+    const transaction = await OcflObjectTransaction._create(target, firstVersion());
     await transaction.write('a.txt', 'abc');
 
     await assert.rejects(transaction._commit(DETAILS), { code: 'DIRECTORY_NOT_EMPTY' });

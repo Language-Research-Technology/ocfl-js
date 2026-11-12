@@ -129,7 +129,7 @@ class OpenedObject implements OcflObject {
       this.#root,
       `The object <${this.id}> has an active mutable head (extension 0005), which this library doesn't support; it can't be updated until the head is committed or removed.`,
     );
-    const inventory = OcflObjectInventory.newVersion(this.#inventory);
+    const inventory = OcflObjectInventory._newVersion(this.#inventory);
     const committed = await commitDraft(updateTarget(this.#storageRoot, this.#root, this.ocflVersion), inventory, checked, change);
     return committed ? new OpenedObject(this.#storageRoot, this.#root, this.ocflVersion, committed) : this;
   }
@@ -187,7 +187,7 @@ async function checkStoredFile(
 /** Each version's number and name, oldest first */
 function versionNumbers(inventory: OcflObjectInventory): [number: number, name: string][] {
   return Object.keys(inventory.versions)
-    .map((name): [number, string] => [VersionNumber.fromString(name).value, name])
+    .map((name): [number, string] => [VersionNumber._fromString(name).value, name])
     .sort(([a], [b]) => a - b);
 }
 
@@ -484,7 +484,7 @@ async function createObject(
   if (outer !== undefined) {
     throw insideAnotherObject(objectRoot, id, outer);
   }
-  const inventory = OcflObjectInventory.newVersion({
+  const inventory = OcflObjectInventory._newVersion({
     id,
     digestAlgorithm: 'sha512',
     type: `https://ocfl.io/${ocflVersion}/spec/#inventory`,
