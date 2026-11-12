@@ -81,6 +81,6 @@ jobs:
       # The site's dependencies aren't needed to test the library
       - run: pnpm install --frozen-lockfile --filter @ocfl/ocfl-fs
       - run: pnpm test
-        if: matrix.node-version != 24
+        if: matrix.node-version != 26
       - run: pnpm coverage
-        if: matrix.node-version == 24
+        if: matrix.node-version == 26
