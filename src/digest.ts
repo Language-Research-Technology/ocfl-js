@@ -1,6 +1,9 @@
 import crypto from 'node:crypto';
 
-/** A digest algorithm OCFL allows for content addressing */
+/**
+ * The algorithm an OCFL object addresses its content by: its inventory's `digestAlgorithm` (spec E025, E039).
+ * Not a fixity algorithm, nor a layout's `digestAlgorithm`, which only hashes ids.
+ */
 type ContentAlgorithm = 'sha256' | 'sha512';
 
 type DataType = string | ArrayBufferView | ArrayBufferLike;
