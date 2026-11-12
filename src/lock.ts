@@ -37,13 +37,13 @@ function formatLock({ id, lockedAt, objectRootExisted, removing }: Lock): string
   return JSON.stringify({ id, lockedAt: lockedAt.toISOString(), objectRootExisted, ...(removing ? { removing } : {}) });
 }
 
-/** What `content` records if it is exactly what {@link formatLock} gives, or `undefined` */
+/** What `content` records if it has the fields {@link formatLock} gives, or `undefined`. Other fields, which a later release may add, are ignored. */
 function parseLock(content: string): Lock | undefined {
-  const { id, lockedAt, objectRootExisted, removing, ...rest } = parseJsonObject(content) ?? {};
+  const { id, lockedAt, objectRootExisted, removing } = parseJsonObject(content) ?? {};
   if (typeof id !== 'string' || id === '' || typeof lockedAt !== 'string' || typeof objectRootExisted !== 'boolean') {
     return undefined;
   }
-  if ((removing !== undefined && removing !== true) || Object.keys(rest).length > 0) {
+  if (removing !== undefined && removing !== true) {
     return undefined;
   }
   const time = new Date(lockedAt);

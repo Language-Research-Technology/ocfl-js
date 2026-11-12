@@ -200,6 +200,27 @@ describe('updating an object', () => {
       assert.strictEqual((await readInventory(objectRoot)).type, 'https://ocfl.io/1.0/spec/#inventory');
     });
 
+    it('throws INVALID_OBJECT with E081, writing nothing, when the object has come to declare a later OCFL version than the storage root', async () => {
+      const rootPath = path.join(temp.dir, 'root-1.0-object-1.1');
+      await writeStorageRoot(rootPath, '1.0');
+      const objectRoot = await writeVersions(rootPath, 'object-1.0', [{ 'a.txt': 'abc' }]);
+      const root = await openStorageRoot(rootPath);
+      const object = await root.open('object-1.0');
+      await fs.promises.rm(path.join(objectRoot, '0=ocfl_object_1.0'));
+      await writeFiles(objectRoot, { '0=ocfl_object_1.1': 'ocfl_object_1.1\n' });
+      const before = await snapshot(rootPath);
+      let called = false;
+
+      await assert.rejects(
+        object.update(DETAILS, async () => {
+          called = true;
+        }),
+        ocflError('INVALID_OBJECT', 'E081'),
+      );
+      assert.ok(!called, 'the callback ran');
+      assert.deepStrictEqual(await snapshot(rootPath), before);
+    });
+
     it('keeps a 1.1 object at 1.1', async () => {
       const root = await newRoot();
       const object = await createObject(root, 'object-1.1', { 'a.txt': 'a' });

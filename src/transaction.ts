@@ -270,7 +270,7 @@ class OcflObjectTransaction {
    * Create a new transaction instance.
    * @internal
    */
-  static async create(target: UpdateTarget, inventory: OcflObjectInventory) {
+  static async _create(target: UpdateTarget, inventory: OcflObjectInventory) {
     const rootExisted = await fs.promises.stat(target.root).then(
       () => true,
       () => false,
@@ -451,12 +451,12 @@ class OcflObjectTransaction {
     try {
       await store.move(rootInv.stagedInventory, rootInv.inventory);
     } catch (error) {
-      // On NFS a rename can be applied though its reply is lost. An unreadable root inventory may be the new one.
-      const replaced = await headOnDisk(this.#target.root).then(
-        (head) => head === inventory.head,
-        () => true,
+      // On NFS a rename can be applied though its reply is lost, so only the old head on disk shows it wasn't
+      const notReplaced = await headOnDisk(this.#target.root).then(
+        (head) => head === inventory.versionNumber.previous()?.toString(),
+        () => false,
       );
-      if (!replaced) {
+      if (notReplaced) {
         throw error;
       }
       return { error };

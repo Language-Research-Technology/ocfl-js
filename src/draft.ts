@@ -197,7 +197,7 @@ async function commitDraft(
   details: VersionDetails,
   change: (draft: Draft) => Promise<void>,
 ): Promise<OcflObjectInventory | undefined> {
-  const transaction = await OcflObjectTransaction.create(target, inventory);
+  const transaction = await OcflObjectTransaction._create(target, inventory);
   const draft = new ObjectDraft(transaction);
   try {
     await change(draft);

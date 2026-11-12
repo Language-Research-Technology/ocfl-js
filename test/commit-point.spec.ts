@@ -135,6 +135,60 @@ describe('the commit point', () => {
     });
   });
 
+  /** Runs `fn` with the rename onto `file` failing after leaving `content` there, or nothing if `content` is `undefined` */
+  function withRenameLeaving<T>(file: string, content: string | undefined, fn: () => Promise<T>): Promise<T> {
+    return withFsFailure(
+      'rename',
+      (_source, target) => {
+        if (target !== file) {
+          return false;
+        }
+        if (content === undefined) {
+          fs.rmSync(file, { force: true });
+        } else {
+          fs.writeFileSync(file, content);
+        }
+        return true;
+      },
+      fn,
+    );
+  }
+
+  describe('when replacing the root inventory fails and the root inventory on disk does not name the old head', () => {
+    it('throws RECOVERY_NEEDED from an update when the root inventory is not valid JSON, and keeps the new version and the lock', async () => {
+      const { object, objectRoot, lock } = await existingObject();
+
+      const error = await withRenameLeaving(path.join(objectRoot, 'inventory.json'), 'not json', () => recoveryNeeded(object.update(DETAILS, writeB)));
+
+      assert.match((error.cause as Error).message, INJECTED);
+      assert.ok(fs.existsSync(path.join(objectRoot, 'v2', 'content', 'b.txt')));
+      assert.ok(fs.existsSync(lock));
+    });
+
+    it('throws RECOVERY_NEEDED from an update when there is no root inventory, and keeps the new version and the lock', async () => {
+      const { object, objectRoot, lock } = await existingObject();
+
+      const error = await withRenameLeaving(path.join(objectRoot, 'inventory.json'), undefined, () => recoveryNeeded(object.update(DETAILS, writeB)));
+
+      assert.match((error.cause as Error).message, INJECTED);
+      assert.ok(fs.existsSync(path.join(objectRoot, 'v2', 'content', 'b.txt')));
+      assert.ok(fs.existsSync(lock));
+    });
+
+    it('discards a create when there is no root inventory', async () => {
+      const { root, objectRoot, lock } = await emptyRoot();
+
+      await assert.rejects(
+        withRenameLeaving(path.join(objectRoot, 'inventory.json'), undefined, () => root.create(ID, DETAILS, writeB)),
+        INJECTED,
+      );
+
+      assert.ok(!fs.existsSync(objectRoot));
+      assert.ok(!fs.existsSync(lock));
+      await assert.rejects(root.open(ID), ocflError('OBJECT_NOT_FOUND'));
+    });
+  });
+
   describe('when the lock cannot be removed after a commit', () => {
     it('throws RECOVERY_NEEDED from an update, with the failure as its cause, and keeps the committed version and the lock', async () => {
       const { root, object, objectRoot, lock } = await existingObject();

@@ -80,6 +80,10 @@ It never makes a version the head, and never removes a version directory other t
 Call `write.recover()` only when you know its writer is no longer alive. If it is, recovery destroys its update and lets a second writer in beside it. Nothing in the library guards against this: it can't tell a live writer from a dead one, and it takes your word.
 :::
 
+:::danger[Recover a write from one process at a time]
+Two recoveries of the same unfinished write at once aren't kept apart, whether they run on two hosts, in two processes on one host, or in one process. If a new writer takes the lock between them, the later recovery destroys that writer's update and damages the object. Let one process recover after a crash, and don't run a recovery loop in more than one process over the same storage root.
+:::
+
 You know a writer is dead when, for example, it is your own process and it has stopped, or the host that ran it has been restarted. A `lockedAt` from long ago is a hint, not proof: a writer can stall for minutes on a slow mount and then carry on.
 
 Don't delete a lock by hand. Recovery uses what the lock records to decide what to clear, and a dead create whose lock was removed by hand can't be recovered: its object root then has to be removed by hand too.
@@ -90,7 +94,7 @@ A writer that dies leaves its lock, and every later create, update or remove of 
 
 ### After a crash
 
-A host that crashed may have been writing objects you can't name. List the unfinished writes and recover the ones whose writers you know are dead. There is no way to recover every lock at once: other hosts sharing the storage root may still be writing, so the choice is made one write at a time.
+A host that crashed may have been writing objects you can't name. List the unfinished writes and recover the ones whose writers you know are dead. There is no way to recover every lock at once: other hosts sharing the storage root may still be writing, so the choice is made one write at a time. Run this from one process only.
 
 <Code code={recoverAfterCrash} lang="ts" />
 

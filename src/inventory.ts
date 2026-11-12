@@ -90,7 +90,7 @@ class VersionNumber {
     }
   }
   /** @internal */
-  static fromString(versionLabel: string): VersionNumber {
+  static _fromString(versionLabel: string): VersionNumber {
     const label = versionLabel.replace('v', '');
     let zeroPaddingLength: number | undefined;
     if (label.startsWith('0')) {
@@ -105,7 +105,7 @@ class VersionNumber {
    */
   static _among(versionLabel: string, versionNames: string[]): VersionNumber {
     const padded = versionNames.find((name) => name.startsWith('v0'));
-    return new VersionNumber(VersionNumber.fromString(versionLabel).value, padded ? VersionNumber.fromString(padded).zeroPaddingLength : undefined);
+    return new VersionNumber(VersionNumber._fromString(versionLabel).value, padded ? VersionNumber._fromString(padded).zeroPaddingLength : undefined);
   }
 }
 
@@ -381,7 +381,7 @@ class OcflObjectInventory {
 
   /** The name of committed version `version`, if there is one */
   #committedVersionName(version: number): string | undefined {
-    return Object.keys(this.versions).find((name) => name !== this.head && VersionNumber.fromString(name).value === version);
+    return Object.keys(this.versions).find((name) => name !== this.head && VersionNumber._fromString(name).value === version);
   }
 
   toString(): string {
@@ -465,7 +465,7 @@ class OcflObjectInventory {
    * If data.head is undefined, starts from v1.
    * @internal
    */
-  static newVersion(data: Partial<Inventory> | OcflObjectInventory): OcflObjectInventory {
+  static _newVersion(data: Partial<Inventory> | OcflObjectInventory): OcflObjectInventory {
     const madeFrom = data instanceof OcflObjectInventory ? data._digest : undefined;
     if (data instanceof OcflObjectInventory) {
       data = JSON.parse(JSON.stringify(data.#data)) as Inventory;

@@ -40,7 +40,7 @@ Run a single test file with `node --test`, for example `node --test test/open-ob
 
 ## The API report
 
-`etc/ocfl-fs.api.md` lists the package's public API, and `pnpm lint:api` fails when the built API differs from it. If you meant to change the API, run `pnpm api:update` and commit the report's diff with the change, so reviewers can see it. If you didn't, fix the code and leave the report alone. [ADR 0001](docs/adr/0001-one-filesystem-only-package-with-no-extension-points.md) explains the rules for the public API.
+`etc/ocfl-fs.api.md` lists the package's public API, and `pnpm lint:api` fails when the built API differs from it. If you meant to change the API, run `pnpm api:update` and commit the report's diff with the change, so reviewers can see it. If you didn't, fix the code and leave the report alone. [ADR 0002](docs/adr/0002-the-api-report-is-the-public-api-contract.md) explains the rules for the public API.
 
 ## Commit messages
 
