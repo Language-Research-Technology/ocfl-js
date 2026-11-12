@@ -184,8 +184,24 @@ describe('root.unfinishedWrites', () => {
   });
 
   const lockedAt = '2026-11-10T22:01:44.000Z';
+  it("lists a lock with a field it doesn't know, as a later release may write, and recovers it", async () => {
+    const root = await newRoot();
+    const { lock } = placesOf(root, 'a');
+    await fs.promises.mkdir(path.dirname(lock), { recursive: true });
+    await fs.promises.writeFile(lock, JSON.stringify({ id: 'a', lockedAt, objectRootExisted: false, owner: 'x' }));
+
+    const writes = await listed(root);
+    assert.deepStrictEqual(
+      writes.map((write) => [write.id, write.lockedAt.toISOString()]),
+      [['a', lockedAt]],
+    );
+    await (await root.unfinishedWrite('a'))?.recover();
+
+    assert.deepStrictEqual(await listed(root), []);
+    assert.strictEqual(await root.unfinishedWrite('a'), undefined);
+  });
+
   for (const [what, content] of [
-    ['an unknown field', { id: 'a', lockedAt, objectRootExisted: true, owner: 'x' }],
     ['removing false', { id: 'a', lockedAt, objectRootExisted: true, removing: false }],
     ['a time that is not ISO 8601', { id: 'a', lockedAt: 'Tue, 10 Nov 2026 22:01:44 GMT', objectRootExisted: true }],
     ['an invalid time', { id: 'a', lockedAt: 'never', objectRootExisted: true }],
