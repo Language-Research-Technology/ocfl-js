@@ -1,0 +1,302 @@
+---
+title: Migrating from 0.4
+description: Move code from @ocfl/ocfl-fs 0.4 to the 1.0 API. Storage roots and objects already on disk keep working.
+sidebar:
+  order: 6
+---
+
+import { Code } from '@astrojs/starlight/components';
+import branchOnCode from '../../../examples/errors/branch-on-code.ts?raw';
+import listWithErrors from '../../../examples/errors/list-with-errors.ts?raw';
+import checkFixity from '../../../examples/migrating-from-0-4/check-fixity.ts?raw';
+import deposit from '../../../examples/migrating-from-0-4/deposit.ts?raw';
+import move0003Objects from '../../../examples/migrating-from-0-4/move-0003-objects.ts?raw';
+import openOrCreate from '../../../examples/migrating-from-0-4/open-or-create.ts?raw';
+import readFiles from '../../../examples/migrating-from-0-4/read-files.ts?raw';
+import removeFileFromHistory from '../../../examples/migrating-from-0-4/remove-file-from-history.ts?raw';
+import update from '../../../examples/migrating-from-0-4/update.ts?raw';
+import writeVersionOut from '../../../examples/migrating-from-0-4/write-version-out.ts?raw';
+
+Version 1.0 of `@ocfl/ocfl-fs` replaces the 0.4 API with a smaller one. You open a storage root, open or create an OCFL object in it by id, read its files from its versions, and change it by passing a callback that edits a draft. This page maps each 0.4 call to its 1.0 replacement.
+
+The 0.4 snippets below are shown as you would have written them; they don't run against 1.0. Every 1.0 example is type-checked against the package. New to 1.0 altogether? Start with [Getting started](/ocfl-js/guides/getting-started/).
+
+## Your storage keeps working
+
+Storage roots and objects that 0.4 wrote open and update in 1.0 as they are. There's nothing to convert:
+
+- The layouts map ids to the same directories as before: `0002-flat-direct-storage-layout`, `0004-hashed-n-tuple-storage-layout` (the 0.4 default) and `000N-path-direct-storage-layout` with string `replace` patterns.
+- An existing object keeps its digest algorithm and content directory. Only new objects are always sha512 with a `content` directory.
+- Every version stays readable, with the message, user and creation time it was committed with.
+- An existing `fixity` block is kept as it is in each new version.
+- OCFL 1.0 storage roots and objects stay OCFL 1.0.
+
+A few storage roots and ids need attention. In each case 1.0 refuses the storage root or the id, or doesn't find the object; it never changes anything on disk by itself:
+
+| What you have | What 1.0 does | What to do |
+| --- | --- | --- |
+| A `0003-hash-and-id-n-tuple-storage-layout` object whose id has upper-case letters, any of `!'()*~`, or more than 100 characters once percent-encoded | Looks for it in a different directory, which the [extension](https://ocfl.github.io/extensions/0003-hash-and-id-n-tuple-storage-layout.html) specifies; 0.4 named it wrongly | [Move it](#objects-in-a-0003-storage-root) |
+| A `config.json` whose `replace` pattern is `{}`, because 0.4 wrote a `RegExp` pattern that way | `INVALID_STORAGE_ROOT` | Write the pattern as a string |
+| A `config.json` with a `digestAlgorithm` in another case, such as `SHA256`, or one that's no longer supported: `crc32`, `size`, `blake2b-160`, `blake2b-256` or `blake2b-384` | `INVALID_STORAGE_ROOT` | Write a supported name in lower case; an algorithm that's gone means the objects would need moving to new paths |
+| A `config.json` with `tupleSize` or `numberOfTuples` above 32, or only one of them 0 | `INVALID_STORAGE_ROOT` | None in this library: the extension doesn't allow these values |
+| A path-direct `suffix` of `''` or `/` | `INVALID_STORAGE_ROOT` | Let every update finish, move each object into a `__object__` directory and drop `suffix` from `config.json` |
+| A storage root using `0006-flat-omit-prefix-storage-layout` or `0007-n-tuple-omit-prefix-storage-layout` | `UNSUPPORTED_LAYOUT` | None: 0.4 could never map an id under these layouts |
+| A path-direct id with a `.` or `..` segment (such as `a/../b`), the suffix part-way through (such as `a/__object__/b`), or a segment longer than 255 bytes in UTF-8 | `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id. 0.4 resolved the dots, so such an object sits where the resolved id maps to |
+| A flat-direct id longer than 255 bytes in UTF-8 | `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id |
+
+### Objects in a 0003 storage root
+
+The digest directories haven't changed, only the last directory, named by the encoded id. Listing still finds an object stored under its 0.4 name, because listing goes by the object declaration, but opening it by id doesn't. To move such objects once no 0.4 writer is running, work out each name both ways and rename the directory where they differ:
+
+<Code code={move0003Objects} lang="ts" />
+
+## Before you upgrade
+
+**Upgrade every writer of a storage root together.** 1.0 takes a lock on an object before it changes it, and refuses a second writer while the lock is held. Writers on 0.4, or on a 1.0 beta from before the lock, don't take it, so a 0.4 writer and a 1.0 writer can change the same object at once and damage it. Stop every 0.4 writer of a storage root before you start a 1.0 writer. [The lock](/ocfl-js/guides/concurrent-writers/#the-lock) and [Upgrade every writer together](/ocfl-js/guides/concurrent-writers/#upgrade-every-writer-together) explain why.
+
+**Clear the old workspace.** 0.4 assembled versions in `extensions/workspace` inside the storage root, or in the `workspace` you passed. 1.0 uses `extensions/ocfl-js-workspace` and ignores the old one. Once no 0.4 writer is running, delete the old workspace directory.
+
+**Check the objects 0.4 wrote.** Some 0.4 updates could damage an object. See [objects 0.4 may have damaged](#objects-04-may-have-damaged).
+
+**Install only `@ocfl/ocfl-fs`.** It no longer depends on `@ocfl/ocfl`, so remove that package. Keeping it installs a second copy of the library, and `instanceof OcflError` fails for an error from the other copy.
+
+**Node.js 22.12 or later.** The package is an ES module with its own types. CommonJS code can still `require()` it, because Node.js 22.12 can load ES modules that way. It has named exports only: `createStorageRoot`, `openStorageRoot`, `OcflError` and the types. Delete any hand-written type declarations for either package.
+
+## The calls at a glance
+
+| 0.4 | 1.0 |
+| --- | --- |
+| `ocfl.storage({ root })`, then `create()` or `load()` | `createStorageRoot(path, { layout })` or `openStorageRoot(path)` |
+| `ocfl.createStorage(config)`, `ocfl.loadStorage(config)` | `createStorageRoot(path, { layout })`, `openStorageRoot(path)` |
+| `storage.exists()` | `openStorageRoot(path)`, catching `INVALID_STORAGE_ROOT` |
+| `storage.object(id)` for an existing object, then `load()` | `root.open(id)` |
+| `storage.object(id)` for a new object, then `update()` or `import()` | `root.create(id, details, build)` |
+| `ocfl.object({ root })`, `storage.object({ root })` | `root.open(id)`: objects are opened only through their storage root |
+| `storage.has(id)`, `object.exists()` | `root.open(id)`, catching `OBJECT_NOT_FOUND` |
+| `for await (const o of storage)`, `storage.objects()` | `root.objects()` |
+| `storage.remove(id)`, `delete(id)`, `purge(id)` (they only ever threw) | `root.remove(id)` |
+| `storage.objectRoot(id)`, `objectRootAbs(id)`, `object.root` | None: the library doesn't give out paths on disk |
+| `object.getInventory()`, `object.inventory` | `object.head`, `object.versions` |
+| `object.headVersion` | `object.head.number` |
+| `object.versions` (version numbers) | `object.versions`, a map from version number to version |
+| `object.files(version)`, `object.count(version)` | `object.versions.get(n)?.files`, and its `size` |
+| `object.getFile(path)`, `fileByLogicalPath(path)` | `object.head.files.get(path)` |
+| `object.getFile(path, 'v1')` | `object.versions.get(1)?.files.get(path)` |
+| `object.fileByDigest(digest)`, `fileByContentPath(path)` | None: look a file up by its logical path |
+| `object.readFile()`, `stat()`, `createReadable()` | The methods of the file from `files.get(path)` |
+| `file.logicalPath` | `file.path` |
+| `file.text(encoding)`, `asString()` | `file.text()`, which decodes UTF-8 |
+| `file.buffer()`, `asBuffer()` | `file.bytes()` |
+| `await file.stream()`, `asStream()` | `file.stream(range?)`, which returns a web `ReadableStream` straight away |
+| `file.stat()`, `file.size`, `file.lastModified` | `file.size()`; there's no modification time |
+| `object.update(fn)`, `update(fn, 'MERGE')` | `object.update(details, fn)`, which returns the updated object |
+| `object.update(fn, 'REPLACE')` | `object.update(details, fn)`, calling `draft.clear()` first |
+| `object.update()` with no callback, then `t.commit(options)` or `t.rollback()` | `object.update(details, fn)`: it commits when `fn` returns and discards when it throws |
+| `object.import(source)`, `object.add(source)` | `object.update(details, (draft) => draft.import(source))` |
+| `object.import([[source, target], …])` | One `draft.import(source, target)` call for each, in one update |
+| `t.write(path, data, options)` | `draft.write(path, content)` |
+| `t.createWritable(path)`, `createWriteStream(path)` | `draft.write(path, stream)` |
+| `t.import(source, target)` | `draft.import(source, target)` |
+| `t.copy(source, target)` | `draft.copy(source, target)` |
+| `t.rename(source, target)`, `t.move(source, target)` | `draft.rename(source, target)` |
+| `t.remove(path)`, `t.delete(path)` | `draft.remove(path)` |
+| `t.reinstate(path, 'v1')` | `draft.reinstate(path, 1)` |
+| `t.purge(path)`, `remove(path, { purge: true })` | [A new object without the file](#removing-a-file-from-every-version) |
+| `object.export()` (only ever threw) | [Write a version out](#writing-a-version-out) yourself |
+| `object.validate()`, `verify()` (only ever threw) | None: use an OCFL validator. `object.checkFixity()` reads every stored file again |
+| None | `root.recover(id)`, after a writer dies |
+
+## Storage roots
+
+0.4:
+
+```js
+import ocfl from '@ocfl/ocfl-fs';
+
+let storage;
+try {
+  storage = await ocfl.createStorage({ root: '/srv/ocfl', layout: { extensionName: '000N-path-direct-storage-layout' } });
+} catch (error) {
+  storage = await ocfl.loadStorage({ root: '/srv/ocfl' });
+}
+```
+
+1.0:
+
+<Code code={openOrCreate} lang="ts" />
+
+- `createStorageRoot()` takes the path and a `layout`, which is now required. 0.4 used `0004-hashed-n-tuple-storage-layout` when you gave none.
+- A layout is chosen only as `{ extensionName, ...parameters }`. Class names such as `'HashedNTupleStorageLayout'`, layout objects such as `new ocfl.StorageLayout.PathDirectStorageLayout()`, and a bare name string are gone.
+- A parameter the layout doesn't have, or a wrongly typed one, throws a `TypeError` from `createStorageRoot()`. 0.4 ignored it.
+- `createStorageRoot()` takes no other option. `workspace`, `digestAlgorithm`, `contentDirectory`, `ocflVersion` and `fixityAlgorithms` are gone, and so is the second `{ fs }` argument. New storage roots are OCFL 1.1, and new objects are sha512 with a `content` directory.
+- `openStorageRoot()` reads the layout from the storage root's own `ocfl_layout.json` and `config.json`. It throws `INVALID_STORAGE_ROOT` when the directory isn't a storage root, or its layout files are missing or wrong, and `UNSUPPORTED_LAYOUT` for a layout the library doesn't have. 0.4 often carried on with no layout.
+- `root.layout` gives the layout's parameters, defaults included. `ocfl.storageLayout()` and the layout classes are gone, so there's no way to map an id to a path outside a storage root.
+
+## Reading objects and files
+
+0.4:
+
+```js
+const object = storage.object('arcp://name,corpus/item/1');
+await object.load();
+const file = object.getFile('ro-crate-metadata.json');
+if (file) console.log(JSON.parse(await file.text()));
+
+for (const f of await object.files()) console.log(f.logicalPath, f.digest);
+```
+
+1.0:
+
+<Code code={readFiles} lang="ts" />
+
+- `root.open(id)` reads the inventory before it returns, so there's no `load()`. It throws `OBJECT_NOT_FOUND` when there's no object, instead of returning an object that later fails. Open the object and catch that error rather than checking first with `has()`: a check can be overtaken by another writer.
+- An opened object is the object as it was read. It never changes, even after `update()`: that returns a new object. To see what another process has committed since, open it again.
+- Versions are numbers: `object.versions.get(1)`, not `'v1'`. `object.head` is the latest. Each version has its `created` date, `message`, `user` and `files`, keyed by logical path. This replaces the inventory API (`getInventory()`, `versionState()`, `diffState()`, `toJSON()` and the rest): compare two versions' `files` maps to see what changed.
+- A file's `digest` is in lower-case hex. Files can't be looked up by digest or content path, and content paths aren't given out.
+- `file.stream()` returns a web `ReadableStream` without `await`, and takes an optional byte range: `file.stream({ start: 0, end: 1023 })`, with `end` included as in an HTTP Range header.
+
+## Creating and updating objects
+
+0.4 created an object the first time it was updated. 1.0 creates it with `root.create()`, and `update()` works only on an object that exists. Every new version needs a message and a user: 0.4's `update(fn)` couldn't record them at all.
+
+0.4:
+
+```js
+const object = storage.object('arcp://name,corpus/item/1');
+await object.import('/data/crates/item-1', 'REPLACE');
+```
+
+1.0:
+
+<Code code={deposit} lang="ts" />
+
+If another writer creates the object between `open()` and `create()`, `create()` throws `OBJECT_EXISTS`: open it and update it instead.
+
+0.4:
+
+```js
+await object.update(async (t) => {
+  await t.write('notes.txt', 'Checked by Alice');
+  await t.import('/data/extra/scans');
+  await t.move('raw', 'audio');
+  await t.copy('audio/1.wav', 'preview/1.wav');
+  await t.delete('tmp');
+  await t.reinstate('README.md', 'v1');
+});
+```
+
+1.0:
+
+<Code code={update} lang="ts" />
+
+- `update()` takes the version's details first and the callback second, and returns the updated object.
+- The draft starts with the head's files, as `'MERGE'` did. For `'REPLACE'`, call `draft.clear()` first.
+- If the callback throws, the update is discarded and the error is rethrown. If it ends with the files the same as the head, [no version is written](/ocfl-js/guides/updating-objects/#an-update-that-changes-nothing) and `update()` returns the same object.
+- Await every operation. Operations take effect [in the order they were called](/ocfl-js/guides/updating-objects/#the-order-operations-take-effect-in), even when you start them together with `Promise.all`. An operation still unfinished when the callback returns makes the update fail with an `Error`, and nothing is committed.
+- A draft can't be used once its update has finished.
+
+### Changes in the draft operations
+
+[Updating objects](/ocfl-js/guides/updating-objects/#draft-operations) describes each operation in full. What changed from 0.4:
+
+- **`import()` without a target** puts a directory's contents at the top of the object, as `object.import()` did. 0.4's `t.import('/data/dir')` put them under `dir/`, so pass the name, `draft.import('/data/dir', 'dir')`, to keep that. A file keeps its own name. A target of `''` throws `INVALID_LOGICAL_PATH`: leave the target out instead.
+- `import()` copies hidden files too, and fails with `UNSUPPORTED_FILE_TYPE` on a symbolic link or anything else that isn't a regular file or directory. It fails with `SOURCE_CHANGED` when a file changes while it's being read. An import that fails adds none of its files.
+- **`write()`** takes a string (written as UTF-8), a `Uint8Array`, or any async iterable of them, such as a `ReadableStream` or a Node.js stream. Its third `options` argument is gone: decode first, for example with `Buffer.from(text, 'base64')`.
+- **`reinstate()`** takes a version number, returns nothing, and throws `FILE_NOT_FOUND` when that version had nothing at the path. A directory puts back every file that was below it.
+- **`remove()`** and **`rename()`** throw `FILE_NOT_FOUND` when nothing is at the path, instead of doing nothing.
+- **`copy()`**, **`rename()`**, **`write()`**, **`import()`** and **`reinstate()`** replace a file at the target. They throw `FILE_EXISTS` when a file would sit inside another file, or where a directory with files is. A directory copied or renamed onto one that has files needs `{ merge: true }`: files at the same paths are replaced and the rest stay.
+- Paths are normalised, so `./raw//1.wav` is `raw/1.wav`. An empty or absolute path, or one with a `..` segment (`\` counts as a separator), throws `INVALID_LOGICAL_PATH`, as does a target inside its source, such as `rename('raw', 'raw/old')`.
+- `move()`, `delete()`, `purge()`, `createWritable()` and `createWriteStream()` are gone.
+
+### Removing a file from every version
+
+OCFL versions don't change once committed, and the OCFL implementation notes say purging isn't supported directly. 0.4's `purge()` never removed the bytes anyway. To take a file out of an object's history, create a new object without it, then remove the original:
+
+<Code code={removeFileFromHistory} lang="ts" />
+
+The new object needs its own id. This copies only the head, so the new object starts with one version. To keep the history, create one version in the new object for each version of the original.
+
+### Writing a version out
+
+0.4's `object.export()` only ever threw. To put a version's files in a directory, write each one out under its logical path:
+
+<Code code={writeVersionOut} lang="ts" />
+
+The library doesn't check the logical paths in an inventory it reads, so an object written by another tool, or a damaged one, can hold a path such as `../../etc/passwd`. Check that each target stays inside the directory, as the example does, before you write it.
+
+## Listing, removing and recovering
+
+0.4:
+
+```js
+for await (const object of storage) {
+  await object.load();
+  console.log(object.id, await object.count());
+}
+```
+
+1.0:
+
+<Code code={listWithErrors} lang="ts" />
+
+- Each object is yielded already opened. Listing goes in no particular order.
+- An object that can't be opened is yielded as an `OcflError` with the code `INVALID_OBJECT`, and the listing carries on. A file system error, such as `EACCES`, is thrown and ends it.
+- Listing treats a directory as an object only if it has an object declaration, so it leaves out an object that has lost its declaration. It also leaves out an object whose creation hasn't been committed, including one whose writer died; run `root.recover(id)` for that id to clear it.
+
+`root.remove(id)` deletes an object with all its versions, and any parent directories that are left empty. It takes the object's lock, so it never deletes an object while it's being updated. It throws `INVALID_OBJECT` for a directory that isn't an object, or an object it can't read; [delete that one by hand](/ocfl-js/guides/errors/#removing-a-damaged-object).
+
+`root.recover(id)` clears what a writer that died left of an object, and releases its lock. Only call it when you know no writer of that object is alive: it destroys a live writer's update. See [Recovering](/ocfl-js/guides/concurrent-writers/#recovering) and [a create whose writer died](/ocfl-js/guides/concurrent-writers/#a-create-whose-writer-died).
+
+## Errors
+
+0.4 threw plain `Error`s, so callers matched on messages. 1.0 throws an `OcflError` for anything a caller might handle. Test its `code`: the message isn't part of the API and may change. [Errors](/ocfl-js/guides/errors/) says what to do about each code, and [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/) covers the lock, retrying and `RECOVERY_NEEDED`.
+
+<Code code={branchOnCode} lang="ts" />
+
+| `code` | Thrown when |
+| --- | --- |
+| [`OBJECT_NOT_FOUND`](/ocfl-js/guides/errors/#object_not_found) | `open()` finds no object, or one whose creation isn't committed; `remove()` or `recover()` finds nothing there |
+| [`OBJECT_EXISTS`](/ocfl-js/guides/errors/#object_exists) | `create()` finds an object already there, or another writer created it first |
+| [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date) | `update()` finds that a later version was committed, or the object was removed and created again, since it was opened |
+| [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object) | An object can't be used safely: its inventory or sidecar is missing, damaged or inconsistent, its declaration is missing or wrong, or it is inside another object. `ocflCode` names the OCFL rule. `objects()` yields it instead of throwing |
+| [`INVALID_STORAGE_ROOT`](/ocfl-js/guides/errors/#invalid_storage_root) | `openStorageRoot()` finds a missing or wrong declaration (`E069`, `E080`), a missing `ocfl_layout.json` or one naming no storage layout (`E070`), or a `config.json` that isn't a JSON object, is for another storage layout or has parameters it refuses |
+| [`UNSUPPORTED_LAYOUT`](/ocfl-js/guides/errors/#unsupported_layout) | `openStorageRoot()` finds a storage layout the library doesn't have |
+| [`ID_INCOMPATIBLE_WITH_LAYOUT`](/ocfl-js/guides/errors/#id_incompatible_with_layout) | The storage layout can't map the id, or maps it to the storage root, outside it or into `extensions`; the directory holds an object with another id; or `create()` would put the object in a directory that isn't empty, below a file or inside another object |
+| [`DIRECTORY_NOT_EMPTY`](/ocfl-js/guides/errors/#directory_not_empty) | `createStorageRoot()` is given a directory that isn't empty; rarely, `create()` when something appears in the new object's directory |
+| [`UPDATE_IN_PROGRESS`](/ocfl-js/guides/errors/#update_in_progress) | `create()`, `update()` or `remove()` finds the object locked by another writer. `lockedAt` is when the lock was taken |
+| [`RECOVERY_NEEDED`](/ocfl-js/guides/errors/#recovery_needed) | A write failed after the commit point or in a way that may have committed, couldn't remove what it made, or `remove()` stopped part-way; or an earlier writer left an unfinished version. `cause` is the underlying failure. Don't simply retry |
+| [`MUTABLE_HEAD_ACTIVE`](/ocfl-js/guides/errors/#mutable_head_active) | `update()` finds an active `0005-mutable-head` extension |
+| [`CROSS_FILESYSTEM_MOVE`](/ocfl-js/guides/errors/#cross_filesystem_move) | A new version can't be moved from the workspace into the object, because they are on different file systems |
+| [`VERSION_LIMIT_REACHED`](/ocfl-js/guides/errors/#version_limit_reached) | An object with zero-padded version names, such as `v01`, has used them all up |
+| [`FILE_NOT_FOUND`](/ocfl-js/guides/errors/#file_not_found) | `copy()`, `rename()` or `remove()` names a path with nothing in the draft, or `reinstate()` a path or version that doesn't exist |
+| [`FILE_EXISTS`](/ocfl-js/guides/errors/#file_exists) | A file would go where a directory is or below another file, or `copy()` or `rename()` would put a directory onto one with files without `{ merge: true }` |
+| [`INVALID_LOGICAL_PATH`](/ocfl-js/guides/errors/#invalid_logical_path) | A logical path is empty, absolute or has a `..` segment; a `copy()` or `rename()` target is inside its source; or an `import()` target is empty or the top of the object |
+| [`SOURCE_CHANGED`](/ocfl-js/guides/errors/#source_changed) | `import()` finds a file changed while it was copied in |
+| [`UNSUPPORTED_FILE_TYPE`](/ocfl-js/guides/errors/#unsupported_file_type) | `import()` meets a symbolic link or anything else that isn't a regular file or directory |
+
+Misuse, such as an argument of the wrong type, throws a plain `TypeError`, and file system errors such as `ENOSPC` pass through as they are. `OcflError` has no subclasses: 0.4's `ValidationError` and `NotImplementedError` are gone.
+
+## Digests and layouts
+
+- Object content uses sha256 or sha512. The hashed layouts take `md5`, `sha1`, `sha256`, `sha512`, `sha512/256` or `blake2b-512`, written exactly so. `crc32` and `size` can no longer be a layout's `digestAlgorithm`, and `blake2b-160`, `blake2b-256` and `blake2b-384` have gone.
+- `OcflDigest` is gone. Use `createHash()` from `node:crypto` to compute a digest yourself.
+- The layouts are a fixed set: `0002-flat-direct-storage-layout`, `0003-hash-and-id-n-tuple-storage-layout`, `0004-hashed-n-tuple-storage-layout` and `000N-path-direct-storage-layout`. They can't be subclassed or registered.
+- The path-direct `replace` option takes `[find, replacement]` pairs of strings. Each replaces only the first occurrence of `find`.
+
+## Objects 0.4 may have damaged
+
+Some 0.4 updates could leave an object damaged. `object.checkFixity()` reads every stored file the object's manifest lists and reports each one that is `missing` (a manifest entry with no file) or `changed` (content that doesn't match its digest). It doesn't look for files the manifest doesn't list, and it can't tell when a logical path points at the wrong content, because the object doesn't record what you meant to store. Check objects written by other tools, or for problems these checks don't cover, with an OCFL validator.
+
+<Code code={checkFixity} lang="ts" />
+
+**Concurrent operations in one update.** Operations started together in one 0.4 update could write content files that the manifest doesn't list, which breaks the OCFL rule [E023](https://ocfl.io/1.1/spec/#E023). The usual cause is importing a directory that holds two files with the same content, because 0.4 read a directory's files concurrently. Concurrent writes to one logical path could also record the wrong content for it, or delete the only stored copy. A fixity check reports the deleted copies as `missing`; it doesn't find the extra files or a path recording the wrong content.
+
+**Replacing a file within one update.** Replacing a file more than once in one 0.4 update, or writing identical content to it again as a stream, could make a logical path read another file's content or fail to read at all, and could lose content shared with another logical path. A fixity check reports the lost content as `missing`; it doesn't find a logical path that reads another file's content.
+
+**Renaming or removing a file within one update.** Renaming a file added earlier in the same 0.4 update could leave a manifest entry for a file that isn't on disk. Removing one could delete content another logical path still used, or leave a manifest entry for a file that's gone. A fixity check reports both as `missing`.
+
+**Objects with no workspace.** An object opened with `ocfl.object({ root })` and no `workspace` could lose every version when an update failed, was rolled back or had no changes. With a shared `workspace`, an update could delete everything else in it. Objects from `storage.object()` had their own workspace and kept their versions. Versions already lost can't be got back.
+
+The library doesn't repair damaged objects. To repair one, create a new object from the files you know are right, then remove the damaged one.
+
+See the [API reference](/ocfl-js/api/readme/) for every function and type.

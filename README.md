@@ -15,7 +15,7 @@ The package is an ES module with bundled TypeScript types and requires Node.js 2
 
 The library is supported and tested on Linux only, and the filesystem must be case-sensitive. macOS isn't supported, and case-insensitive filesystems are untested. Windows isn't supported, but WSL is, because it runs Linux.
 
-Upgrading from 0.4? See [Migrating from 0.4](docs/migrating-from-0.4.md).
+Upgrading from 0.4? See [Migrating from 0.4](https://language-research-technology.github.io/ocfl-js/guides/migrating-from-0-4/).
 
 ## Usage
 
