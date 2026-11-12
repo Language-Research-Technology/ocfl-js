@@ -1,6 +1,9 @@
+/** An OCFL specification version this library reads and writes. */
+type OcflVersion = '1.0' | '1.1';
+
 const OcflConstants = {
   OCFL_VERSION: '1.1',
-  OCFL_VERSIONS: Object.freeze(['1.1', '1.0'] as const) as readonly ['1.1', '1.0'],
+  OCFL_VERSIONS: Object.freeze<OcflVersion[]>(['1.1', '1.0']) as readonly OcflVersion[],
   OCFL_LAYOUT: 'ocfl_layout.json',
   NAMASTE_T: '0=',
   NAMASTE_PREFIX_OBJECT: 'ocfl_object_',
@@ -10,7 +13,5 @@ const OcflConstants = {
   EXTENSION_CONFIG: 'config.json',
   WORKSPACE_EXTENSION: 'ocfl-js-workspace',
 } as const;
-
-type OcflVersion = (typeof OcflConstants.OCFL_VERSIONS)[number];
 
 export { OcflConstants, type OcflVersion };

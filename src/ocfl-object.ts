@@ -45,7 +45,7 @@ interface OcflObject {
   /** The object's identifier. */
   readonly id: string;
   /** OCFL version the object conforms to. */
-  readonly ocflVersion: '1.0' | '1.1';
+  readonly ocflVersion: OcflVersion;
   /** Algorithm of every {@link OcflFile.digest} in this object. */
   readonly digestAlgorithm: ContentAlgorithm;
   /** Every version, keyed by version number, oldest first. */

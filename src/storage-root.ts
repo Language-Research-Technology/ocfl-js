@@ -126,7 +126,7 @@ interface StorageRoot {
   /** Absolute path of the storage root. */
   readonly path: string;
   /** OCFL version of the storage root, and of objects created in it. */
-  readonly ocflVersion: '1.0' | '1.1';
+  readonly ocflVersion: OcflVersion;
   /** The storage root's layout, with every parameter present. */
   readonly layout: Layout;
 
