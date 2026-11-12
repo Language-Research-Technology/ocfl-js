@@ -500,14 +500,21 @@ describe('root.recover', () => {
     });
   });
 
-  describe('in a storage root whose layout nests object paths', () => {
-    const nestingRoot = () => newRoot({ extensionName: PATH_DIRECT, suffix: '' });
+  describe('in a storage root holding an object another tool wrote where the layout puts none', () => {
+    /** A path-direct storage root holding the objects `ids`, and then at `outer` a copy of another object */
+    const holdingForeignOuter = async (...ids: string[]) => {
+      const root = await newRoot({ extensionName: PATH_DIRECT });
+      for (const id of [...ids, 'other']) {
+        await createObject(root, id, { 'a.txt': 'a' });
+      }
+      await fs.promises.cp(path.join(root.path, 'other', '__object__'), path.join(root.path, 'outer'), { recursive: true });
+      return root;
+    };
 
     it('throws ID_INCOMPATIBLE_WITH_LAYOUT, changing nothing, for leftovers inside another object', async () => {
-      const root = await nestingRoot();
-      await createObject(root, 'outer', { 'a.txt': 'a' });
-      await lockObject(root, 'outer/inner');
-      await writeFiles(path.join(workspaceOf(root), 'outer', 'inner', 'v1'), { 'content/b.txt': 'unfinished' });
+      const root = await holdingForeignOuter();
+      await lockObject(root, 'outer/inner/__object__');
+      await writeFiles(path.join(workspaceOf(root), 'outer', 'inner', '__object__', 'v1'), { 'content/b.txt': 'unfinished' });
       const held = await snapshot(root.path);
 
       await assert.rejects(root.recover('outer/inner'), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
@@ -516,16 +523,9 @@ describe('root.recover', () => {
     });
 
     it('throws INVALID_OBJECT with E082, changing nothing, for an object inside another object', async () => {
-      const root = await nestingRoot();
-      await createObject(root, 'outer', { 'a.txt': 'a' });
-      await createObject(root, 'other', { 'a.txt': 'a' });
-      const nested = path.join(root.path, 'outer', 'inner');
-      await fs.promises.cp(path.join(root.path, 'other'), nested, { recursive: true });
-      await rewriteInventory(nested, (inventory) => {
-        inventory.id = 'outer/inner';
-      });
-      await lockObject(root, 'outer/inner');
-      await writeFiles(path.join(nested, 'v2'), { 'content/b.txt': 'unfinished' });
+      const root = await holdingForeignOuter('outer/inner');
+      await lockObject(root, 'outer/inner/__object__');
+      await writeFiles(path.join(root.path, 'outer', 'inner', '__object__', 'v2'), { 'content/b.txt': 'unfinished' });
       const held = await snapshot(root.path);
 
       await assert.rejects(root.recover('outer/inner'), ocflError('INVALID_OBJECT', 'E082'));
@@ -533,24 +533,36 @@ describe('root.recover', () => {
       assert.deepStrictEqual(await snapshot(root.path), held);
     });
 
-    for (const child of ['corpus/v1', 'corpus/v1/item']) {
-      it(`leaves alone the lock and unfinished version of <${child}>, which a live writer holds below a version name of <corpus>`, async () => {
-        const root = await nestingRoot();
-        const object = await createObject(root, child, { 'a.txt': 'a' });
-        const workspace = path.join(workspaceOf(root), child);
+    /** Leaves in the workspace of <corpus>, below its version name v1, another object's lock and unfinished version, as its live writer would */
+    const foreignWorkspaceBelowVersion = async (root: StorageRoot, below: string) => {
+      const foreign = path.join(workspaceOf(root), 'corpus', '__object__', 'v1', below);
+      await writeFiles(foreign, { lock: new Date().toISOString(), 'v2/content/b.txt': 'b' });
+    };
 
-        const updated = await object.update(DETAILS, async (draft) => {
-          await writeB(draft);
-          const during = await snapshot(workspace);
-          assert.deepStrictEqual(Object.keys(during).sort(), ['lock', path.join('v2', 'content', 'b.txt')]);
-          await assert.rejects(root.recover('corpus'), ocflError('OBJECT_NOT_FOUND'));
-          assert.deepStrictEqual(await snapshot(workspace), during);
-        });
+    for (const below of ['', 'item/__object__']) {
+      it(`leaves alone another writer's lock and unfinished version at <v1/${below}> in its workspace`, async () => {
+        const root = await newRoot({ extensionName: PATH_DIRECT });
+        await foreignWorkspaceBelowVersion(root, below);
+        const held = await snapshot(root.path);
 
-        assert.deepStrictEqual(await textFiles(updated.head), { 'a.txt': 'a', 'b.txt': 'b' });
-        assert.deepStrictEqual(await textFiles((await root.open(child)).head), { 'a.txt': 'a', 'b.txt': 'b' });
+        await assert.rejects(root.recover('corpus'), ocflError('OBJECT_NOT_FOUND'));
+
+        assert.deepStrictEqual(await snapshot(root.path), held);
       });
     }
+
+    it("releases its own lock but leaves another writer's workspace below its version name", async () => {
+      const root = await newRoot({ extensionName: PATH_DIRECT });
+      await createObject(root, 'corpus', { 'a.txt': 'a' });
+      await foreignWorkspaceBelowVersion(root, '');
+      const foreign = await snapshot(path.join(workspaceOf(root), 'corpus', '__object__', 'v1'));
+      const lock = await lockObject(root, 'corpus/__object__');
+
+      await root.recover('corpus');
+
+      assert.ok(!fs.existsSync(lock));
+      assert.deepStrictEqual(await snapshot(path.join(workspaceOf(root), 'corpus', '__object__', 'v1')), foreign);
+    });
   });
 
   describe('when it cannot read what is there', () => {

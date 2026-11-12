@@ -272,13 +272,11 @@ describe('root.remove', () => {
       await assertRefused(root, ID, 'INVALID_OBJECT');
     });
 
-    it('throws INVALID_OBJECT for an object inside another object', async () => {
-      const layout: LayoutConfig = { extensionName: PATH_DIRECT, suffix: '' };
-      const root = await newRoot(layout);
-      await createObject(root, 'outer', { 'a.txt': 'a' });
-      const donor = await newRoot(layout);
-      await createObject(donor, 'outer/inner', { 'a.txt': 'a' });
-      await fs.promises.cp(path.join(donor.path, 'outer', 'inner'), path.join(root.path, 'outer', 'inner'), { recursive: true });
+    it('throws INVALID_OBJECT for an object inside an object another tool wrote', async () => {
+      const root = await newRoot(NESTED);
+      await createObject(root, 'outer/inner', { 'a.txt': 'a' });
+      await createObject(root, 'other', { 'a.txt': 'a' });
+      await fs.promises.cp(path.join(root.path, 'other', '__object__'), path.join(root.path, 'outer'), { recursive: true });
 
       await assertRefused(root, 'outer/inner', 'INVALID_OBJECT', 'E082');
     });
@@ -315,9 +313,8 @@ describe('root.remove', () => {
     }
 
     it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an object in the extensions directory', async () => {
-      const layout: LayoutConfig = { extensionName: PATH_DIRECT, suffix: '' };
-      const root = await newRoot(layout);
-      const donor = await newRoot(layout);
+      const root = await newRoot(NESTED);
+      const donor = await newRoot(NESTED);
       await createObject(donor, 'an-extension', { 'a.txt': 'a' });
       await fs.promises.cp(path.join(donor.path, 'an-extension'), path.join(root.path, 'extensions', 'an-extension'), { recursive: true });
 

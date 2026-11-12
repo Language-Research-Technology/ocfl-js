@@ -258,12 +258,12 @@ describe('creating an object', () => {
       await assertRefused(root, 'a-file', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for a place inside another object', async () => {
-      const nesting = await newRoot({ extensionName: PATH_DIRECT, suffix: '' });
-      await createObject(nesting, 'outer', { 'a.txt': 'one' });
-      await assertRefused(nesting, 'outer/inner', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
-      await assertRefused(nesting, 'outer/deep/inner', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
-      assert.deepStrictEqual(await textFiles((await nesting.open('outer')).head), { 'a.txt': 'one' });
+    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for a place inside an object another tool wrote', async () => {
+      const root = await newRoot({ extensionName: PATH_DIRECT });
+      await createObject(root, 'other', { 'a.txt': 'one' });
+      await fs.promises.cp(path.join(root.path, 'other', '__object__'), path.join(root.path, 'outer'), { recursive: true });
+      await assertRefused(root, 'outer/inner', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      await assertRefused(root, 'outer/deep/inner', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
     });
 
     it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id the layout cannot place', async () => {

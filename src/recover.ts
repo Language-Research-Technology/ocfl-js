@@ -45,7 +45,7 @@ async function holdsLock(dir: string): Promise<boolean> {
 
 /**
  * The unfinished versions among `names`, the entries of an object's directory in the workspace.
- * With some layouts another object's directory in the workspace is at or below a version's name, where a live writer of it holds its lock.
+ * A storage root an earlier release or another tool wrote can hold another object's directory in the workspace at or below a version's name, where a live writer of it holds its lock.
  */
 async function unfinishedVersions(workspace: string, names: string[]): Promise<string[]> {
   const versions = names.filter(isVersionName);

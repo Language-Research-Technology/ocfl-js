@@ -28,7 +28,7 @@ Set in \`extensions/${NAME}/config.json\`. A parameter left out takes its defaul
 | --- | --- | --- | --- |
 | \`omitScheme\` | boolean | \`${DefaultConfig.omitScheme}\` | Leave the identifier's URI scheme out of the path. |
 | \`replace\` | array of \`[find, replacement]\` pairs of strings | \`${JSON.stringify(DefaultConfig.replace)}\` | Text to find in the identifier and what to put in its place. Only the first occurrence of each \`find\` is replaced. |
-| \`suffix\` | string | \`${DefaultConfig.suffix}\` | Added to the end of the path. It marks the object root, so that one identifier can be the start of another without one object sitting inside the other. |
+| \`suffix\` | string | \`${DefaultConfig.suffix}\` | Added to the end of the path, as one or more path segments; leading, trailing and repeated \`/\` in it are ignored. It marks the object root, so that one identifier can be the start of another without one object sitting inside the other. It must have at least one segment, so \`''\` and \`/\` are refused. |
 
 ## Mapping
 
@@ -43,7 +43,10 @@ Set in \`extensions/${NAME}/config.json\`. A parameter left out takes its defaul
 3. Leading, trailing and repeated \`/\` are removed.
 4. \`suffix\` is added.
 
-An identifier that ends with \`suffix\`, or has a \`.\` or \`..\` path segment, is refused.
+An identifier is refused if its last path segments are those of \`suffix\`, or if it has a \`.\` or \`..\` path segment.
+So is one whose path, once mapped, has \`suffix\` part-way through: one in which a directory above the object root ends with \`suffix\`,
+such as \`a/__object__/b\` with the default parameters. That directory would be the object root of another identifier, so no object root is ever inside another.
+These comparisons are of whole path segments, ignoring case and Unicode normalisation form, as a case-insensitive file system names them: \`a/__OBJECT__/b\` is refused too.
 
 ## Examples
 
@@ -64,10 +67,24 @@ function hasDotSegment(p: string): boolean {
     .some((segment) => /^(\.|%2e){1,2}$/i.test(segment));
 }
 
+function trimSlashes(p: string): string {
+  return p.replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+/** The path segments of `p`, compared as a case-insensitive file system would */
+function foldedSegments(p: string): string[] {
+  return p
+    .split('/')
+    .filter((segment) => segment !== '')
+    .map((segment) => segment.normalize('NFC').toLowerCase());
+}
+
 class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   readonly name: typeof NAME = NAME;
   readonly description = 'OCFL object identifiers are used directly as the path.';
   override readonly documentation: string = DOCUMENTATION;
+  readonly #suffixPath: string;
+  readonly #foldedSuffixSegments: string[];
 
   constructor(config?: OcflExtensionConfig) {
     super(config, DefaultConfig);
@@ -78,11 +95,22 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     if (hasDotSegment(this.parameters.suffix)) {
       throw new TypeError(`The suffix '${this.parameters.suffix}' has a . or .. segment.`);
     }
+    this.#suffixPath = trimSlashes(path.join('/', this.parameters.suffix));
+    if (this.#suffixPath === '') {
+      throw new TypeError(`The suffix '${this.parameters.suffix}' has no path segment, so one object root could be inside another.`);
+    }
+    this.#foldedSuffixSegments = foldedSegments(this.#suffixPath);
+  }
+
+  /** Whether the suffix's segments are at index `i` of `segments` */
+  #hasSuffixAt(segments: string[], i: number): boolean {
+    return i >= 0 && this.#foldedSuffixSegments.every((segment, j) => segments[i + j] === segment);
   }
 
   map(id: string): string {
     const { suffix } = this.parameters;
-    if (suffix && id.endsWith(suffix)) {
+    const idSegments = foldedSegments(id ?? '');
+    if (this.#hasSuffixAt(idSegments, idSegments.length - this.#foldedSuffixSegments.length)) {
       throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `Identifier cannot end with '${suffix}'`);
     }
     let replaced = id ?? '';
@@ -110,8 +138,17 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
         `The object id <${id}> is incompatible with layout extension ${this.name} because it has a . or .. segment.`,
       );
     }
-    p = path.join(p).replace(/^\/+/, '').replace(/\/+$/, '');
-    return path.join(p, suffix);
+    p = trimSlashes(path.join(p));
+    const objectRoot = path.join(p, this.#suffixPath);
+    const rootSegments = foldedSegments(objectRoot);
+    const lastStartAbove = rootSegments.length - 1 - this.#foldedSuffixSegments.length;
+    if (rootSegments.some((_segment, i) => i <= lastStartAbove && this.#hasSuffixAt(rootSegments, i))) {
+      throw ocflError(
+        'ID_INCOMPATIBLE_WITH_LAYOUT',
+        `The object id <${id}> is incompatible with layout extension ${this.name} because its path has '${suffix}' part-way through, which would put it inside another object.`,
+      );
+    }
+    return objectRoot;
   }
 }
 

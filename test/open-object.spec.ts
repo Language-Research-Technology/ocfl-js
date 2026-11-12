@@ -271,8 +271,9 @@ describe('opening an object', () => {
     });
 
     it('throws OBJECT_NOT_FOUND when the place of the id is a file, or below one', async () => {
-      const root = await newRoot({ extensionName: PATH_DIRECT, suffix: '' });
-      await writeFiles(root.path, { 'a-file': 'not an object' });
+      const root = await newRoot({ extensionName: PATH_DIRECT });
+      await writeFiles(root.path, { 'a-file': 'not an object', 'b/__object__': 'not an object' });
+      await assert.rejects(root.open('b'), ocflError('OBJECT_NOT_FOUND'));
       await assert.rejects(root.open('a-file'), ocflError('OBJECT_NOT_FOUND'));
       await assert.rejects(root.open('a-file/below'), ocflError('OBJECT_NOT_FOUND'));
     });
@@ -538,22 +539,23 @@ describe('opening an object', () => {
       await assert.rejects(root.open('misdeclared'), invalid('E007'));
     });
 
+    /** A path-direct storage root holding the objects `ids`, and then at `outer` an object another tool wrote where the layout puts none */
+    const holdingForeignOuter = async (...ids: string[]) => {
+      const nesting = await newRoot({ extensionName: PATH_DIRECT });
+      for (const id of [...ids, 'other']) {
+        await writeVersions(nesting.path, id, [{ 'a.txt': 'abc' }]);
+      }
+      await fs.promises.cp(path.join(nesting.path, 'other', '__object__'), path.join(nesting.path, 'outer'), { recursive: true });
+      return nesting;
+    };
+
     it('throws INVALID_OBJECT with E082 for an object nested inside another object', async () => {
-      const nesting = await newRoot({ extensionName: PATH_DIRECT, suffix: '' });
-      const outer = await writeVersions(nesting.path, 'outer', [{ 'a.txt': 'abc' }]);
-      const copy = path.join(tempdir, 'outer-copy');
-      await fs.promises.cp(outer, copy, { recursive: true });
-      await fs.promises.cp(copy, path.join(outer, 'deep', 'inner'), { recursive: true });
-      await rewriteInventory(path.join(outer, 'deep', 'inner'), (inventory) => {
-        inventory.id = 'outer/deep/inner';
-      });
+      const nesting = await holdingForeignOuter('outer/deep/inner');
       await assert.rejects(nesting.open('outer/deep/inner'), invalid('E082'));
-      assert.strictEqual((await nesting.open('outer')).id, 'outer');
     });
 
     it('throws OBJECT_NOT_FOUND for an id that would be nested inside another object but has no object', async () => {
-      const nesting = await newRoot({ extensionName: PATH_DIRECT, suffix: '' });
-      await writeVersions(nesting.path, 'outer', [{ 'a.txt': 'abc' }]);
+      const nesting = await holdingForeignOuter();
       await assert.rejects(nesting.open('outer/inner'), ocflError('OBJECT_NOT_FOUND'));
     });
 
@@ -579,7 +581,7 @@ describe('opening an object', () => {
     }
 
     it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id the layout maps into the extensions directory', async () => {
-      const root = await newRoot({ extensionName: PATH_DIRECT, suffix: '' });
+      const root = await newRoot({ extensionName: PATH_DIRECT });
       await assert.rejects(root.open('extensions/ocfl-js-workspace/an-object'), incompatible);
       await assert.rejects(root.open('Extensions/an-object'), incompatible);
     });

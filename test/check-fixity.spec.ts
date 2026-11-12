@@ -12,7 +12,7 @@ describe('checking the fixity of an object', () => {
   const temp = useTempRoots('ocfl-check-fixity-');
   let count = 0;
 
-  /** A new storage root holding a copy of the OCFL fixture object, in the directory `spec-ex-full` */
+  /** A new storage root holding a copy of the OCFL fixture object, in the directory `spec-ex-full/__object__` */
   async function fixtureRoot() {
     const rootPath = path.join(temp.dir, `fixture-${count++}`);
     await writeSpecExFullRoot(rootPath);
@@ -68,14 +68,14 @@ describe('checking the fixity of an object', () => {
 
   it('ignores files on disk that are not in the manifest', async () => {
     const root = await fixtureRoot();
-    await writeFiles(path.join(root.path, 'spec-ex-full'), { 'v1/content/extra.txt': 'extra', 'extra.txt': 'extra' });
+    await writeFiles(path.join(root.path, 'spec-ex-full', '__object__'), { 'v1/content/extra.txt': 'extra', 'extra.txt': 'extra' });
     const object = await root.open(SPEC_EX_FULL_ID);
     assert.deepStrictEqual(await object.checkFixity(), []);
   });
 
   it('ignores the fixity block, even when a value in it is wrong', async () => {
     const root = await fixtureRoot();
-    await rewriteInventory(path.join(root.path, 'spec-ex-full'), (inventory) => {
+    await rewriteInventory(path.join(root.path, 'spec-ex-full', '__object__'), (inventory) => {
       inventory.fixity = { md5: { [DIGESTS_OF_ABC.md5]: ['v1/content/foo/bar.xml'] } };
     });
     const object = await root.open(SPEC_EX_FULL_ID);

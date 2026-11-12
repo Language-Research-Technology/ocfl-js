@@ -16,10 +16,15 @@ On NFS a rename can take effect while its reply is lost, so the call fails altho
 
 A create writes the object declaration before its root inventory, so for a moment, and for good if the writer dies there, the object root has a declaration and no inventory. A damaged object can look the same.
 
+Two writers whose object roots nest hold different locks, so neither lock keeps them apart, and each one's checks for an enclosing object or a non-empty object root run before it takes its lock. One object's lock or unfinished version could also be at a path another object's writer uses. Only the path-direct layout can place one object root inside another: with an empty `suffix`, or with an id whose path has the suffix part-way through. The other built-in layouts place every object root at the same depth.
+
+A storage root written by another tool can still hold an object inside another, at a directory the layout gives no object.
+
 A dead writer can only have left certain things. It always leaves its lock, which it takes first and releases last. In the workspace it leaves the version it was assembling. In the object root it leaves, at most, staged root inventory files and one version directory the root inventory doesn't name: the version after the head, or for a create the first version, beside the declaration. A remove that dies leaves whatever of the object root it hadn't deleted yet.
 
 ## Decision
 
+- **No layout nests object roots.** The path-direct layout refuses an empty `suffix`, and refuses with `ID_INCOMPATIBLE_WITH_LAYOUT` any id whose mapped path has a directory above the object root that ends with the suffix, such as `a/__object__/b`. It compares path segments ignoring case and Unicode normalisation form, as a case-insensitive file system names them, so `a/__OBJECT__/b` is refused too. So two objects' roots, and their directories in the workspace, are never one inside the other, and one object's lock decides who may write it. Opening, creating, removing and recovering still check for an object root inside another object, as another tool can leave one.
 - **A second writer is refused straight away.** `root.create`, `object.update` and `root.remove` take the object's lock before anything else. If it is taken they throw `UPDATE_IN_PROGRESS` and change nothing. The library never waits or queues behind another writer.
 - **Dead writers are not detected.** The library never expires a lock, and never removes one it didn't take. The lock records no process id, host or heartbeat, and no operating-system file lock is used.
 - **The lock says when it was taken.** The time is written into the lock, and `UPDATE_IN_PROGRESS` carries it as `lockedAt`. Whether that is too long ago is for the caller to judge. Reading the time is best effort: a lock that exists is held even if it can't be read, and then `lockedAt` is absent.
@@ -33,7 +38,7 @@ A dead writer can only have left certain things. It always leaves its lock, whic
 - **A failure to discard an update throws `RECOVERY_NEEDED`** too, with the update's original failure as its `cause`, and keeps the lock.
 - **The lock is released only when the update ends cleanly**: once it is committed and its sidecar is in place, or once it is discarded and everything it made is gone. An empty workspace directory that can't be removed is harmless, and doesn't count as a failure.
 - **`root.recover(id)` clears a lock on the caller's word that no writer is alive.** It applies the commit-point rule to what it finds, and removes only what a dead writer can have left:
-  - the unfinished version in the workspace, unless a lock is held below it: with a layout that nests object paths, another object's directory in the workspace can be there;
+  - the unfinished version in the workspace, unless a lock is at or below it. No layout nests object roots, but a storage root an earlier release or another tool wrote can still hold another object's directory in the workspace below a version name, so recovery leaves alone any version directory holding another lock;
   - with a root inventory, the staged inventory files and the directory of the version after the head. A root inventory whose sidecar is stale or missing is a committed update, and is completed by writing the sidecar;
   - with no root inventory, a declaration and a lock, the create wasn't committed: the declaration, the first version and the staged inventory files are removed;
   - with a lock that says the object is being removed, the remove is finished: whatever is left of the object root is deleted, in whatever state it is.
@@ -53,6 +58,8 @@ A dead writer can only have left certain things. It always leaves its lock, whic
 - `lockedAt` is the writer's own clock, so it is comparable across hosts only as far as their clocks agree.
 - Only writers that use this library's lock are kept apart. Another tool writing to the same object is caught only if it has moved the head by the time the update checks it.
 - Readers take no lock, so opening an object never waits on a writer.
+- A path-direct storage root whose `config.json` sets an empty `suffix` can't be opened, even to read. An id that spells the suffix part-way through, such as `a/__object__/b`, can't be stored under path-direct at all. Ids that only start with another, such as `a` and `a/b`, are stored side by side.
+- An object root inside another object, which another tool left, is reported rather than written: `INVALID_OBJECT` (E082) if it holds an object, `ID_INCOMPATIBLE_WITH_LAYOUT` if it doesn't.
 - "Was the update committed?" has one answer, which the root inventory on disk gives. Any error other than `RECOVERY_NEEDED` means it wasn't, and the update can be repeated without applying a change twice.
 - After `RECOVERY_NEEDED` the update may or may not be committed, and the caller must not simply repeat it. The object stays readable, and later updates of it throw `UPDATE_IN_PROGRESS` until it is recovered. The caller recovers it, opens it again, and repeats the update only if the head hasn't moved.
 - After `RECOVERY_NEEDED` from a remove, the object is partly or wholly deleted, and recovering it deletes the rest. Until then it may still open, with files of its versions missing.

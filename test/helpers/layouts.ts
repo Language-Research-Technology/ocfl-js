@@ -53,6 +53,7 @@ export const INVALID_LAYOUT_PARAMETERS: InvalidLayout[] = [
   ...rowsFor('000N-path-direct-storage-layout', [
     ['a string omitScheme', { omitScheme: 'yes' }],
     ['a numeric suffix', { suffix: 5 }],
+    ['an empty suffix', { suffix: '' }],
     ['a string replace', { replace: 'abc' }],
     ['a replace pair without a replacement', { replace: [['a']] }],
     ['a replace pair with a numeric pattern', { replace: [[1, 'b']] }],
