@@ -1,8 +1,21 @@
 import path from 'node:path';
 import * as Hashing from '../digest.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
-import type { HashedNTupleLayoutConfig } from '../types.ts';
 import { checkNTupleParameters } from './n-tuple.ts';
+
+/** Object directories named by their id's digest, nested under pieces of it. */
+interface HashedNTupleLayoutConfig {
+  /** Name of the layout's OCFL extension. */
+  extensionName: '0004-hashed-n-tuple-storage-layout';
+  /** Algorithm used to hash the id. Defaults to `sha256`. */
+  digestAlgorithm?: string;
+  /** Characters of the digest in each directory level. Defaults to 3. */
+  tupleSize?: number;
+  /** Number of directory levels. Defaults to 3. */
+  numberOfTuples?: number;
+  /** Name the object directory with only the rest of the digest. Defaults to `false`. */
+  shortObjectRoot?: boolean;
+}
 
 const DefaultConfig: Required<Omit<HashedNTupleLayoutConfig, 'extensionName'>> = {
   digestAlgorithm: 'sha256',
@@ -45,4 +58,4 @@ class HashedNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   }
 }
 
-export { HashedNTupleStorageLayout };
+export { type HashedNTupleLayoutConfig, HashedNTupleStorageLayout };

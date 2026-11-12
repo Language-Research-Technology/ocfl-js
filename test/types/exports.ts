@@ -1,6 +1,7 @@
 import type * as entryPoint from '../../src/index.ts';
 import type {
   ByteRange,
+  ContentAlgorithm,
   Draft,
   FixityProblem,
   FlatDirectLayoutConfig,
@@ -11,6 +12,7 @@ import type {
   OcflErrorCode,
   OcflFile,
   OcflObject,
+  OcflVersion,
   PathDirectLayoutConfig,
   StorageRoot,
   User,
@@ -21,6 +23,7 @@ import type {
 
 export type EveryExportedType = [
   ByteRange,
+  ContentAlgorithm,
   Draft,
   FixityProblem,
   FlatDirectLayoutConfig,
@@ -31,6 +34,7 @@ export type EveryExportedType = [
   OcflErrorCode,
   OcflFile,
   OcflObject,
+  OcflVersion,
   PathDirectLayoutConfig,
   StorageRoot,
   User,

@@ -1,5 +1,11 @@
 import crypto from 'node:crypto';
 
+/**
+ * The algorithm an OCFL object addresses its content by: its inventory's `digestAlgorithm` (spec E025, E039).
+ * Not a fixity algorithm, nor a layout's `digestAlgorithm`, which only hashes ids.
+ */
+type ContentAlgorithm = 'sha256' | 'sha512';
+
 type DataType = string | ArrayBufferView | ArrayBufferLike;
 
 interface Hasher {
@@ -87,4 +93,4 @@ function getHexDigestLength(algorithm: string): number {
   return ALGORITHMS.get(algorithm)?.hexLength ?? 0;
 }
 
-export { createHasher, digest, digestSync, getHexDigestLength, normaliseDigest, toBytes };
+export { type ContentAlgorithm, createHasher, digest, digestSync, getHexDigestLength, normaliseDigest, toBytes };

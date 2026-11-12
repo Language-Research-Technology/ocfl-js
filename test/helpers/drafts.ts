@@ -14,7 +14,7 @@ import {
   type Version,
   type VersionDetails,
 } from '../../src/index.ts';
-import type { Inventory } from '../../src/types.ts';
+import type { Inventory } from '../../src/inventory.ts';
 import { emptyDirectoriesUnder } from './empty-directories.ts';
 import { ocflError } from './ocfl-error.ts';
 

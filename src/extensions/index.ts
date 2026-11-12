@@ -1,10 +1,18 @@
 import type { BuiltInLayout, OcflExtensionConfig } from '../extension.ts';
-import type { LayoutConfig, LayoutName } from '../types.ts';
 import { rejectUnknownKeys } from '../utils.ts';
-import { PathDirectStorageLayout } from './000N-path-direct-storage-layout.ts';
-import { FlatDirectStorageLayout } from './0002-flat-direct-storage-layout.ts';
-import { HashAndIdNTupleStorageLayout } from './0003-hash-and-id-n-tuple-storage-layout.ts';
-import { HashedNTupleStorageLayout } from './0004-hashed-n-tuple-storage-layout.ts';
+import { type PathDirectLayoutConfig, PathDirectStorageLayout } from './000N-path-direct-storage-layout.ts';
+import { type FlatDirectLayoutConfig, FlatDirectStorageLayout } from './0002-flat-direct-storage-layout.ts';
+import { type HashAndIdNTupleLayoutConfig, HashAndIdNTupleStorageLayout } from './0003-hash-and-id-n-tuple-storage-layout.ts';
+import { type HashedNTupleLayoutConfig, HashedNTupleStorageLayout } from './0004-hashed-n-tuple-storage-layout.ts';
+
+/** A storage layout to create a storage root with: its extension name plus any parameters, which default as its extension spec says. */
+type LayoutConfig = FlatDirectLayoutConfig | HashAndIdNTupleLayoutConfig | HashedNTupleLayoutConfig | PathDirectLayoutConfig;
+
+/** The official extension name of a layout this library implements. */
+type LayoutName = LayoutConfig['extensionName'];
+
+/** A storage root's layout: a {@link LayoutConfig} with every parameter present. */
+type Layout = Readonly<Required<LayoutConfig>>;
 
 type LayoutClass = new (config?: OcflExtensionConfig) => BuiltInLayout;
 
@@ -40,4 +48,14 @@ function createLayout(config: LayoutConfig): BuiltInLayout {
   return layout;
 }
 
-export { builtInLayoutClass, createLayout };
+export {
+  builtInLayoutClass,
+  createLayout,
+  type FlatDirectLayoutConfig,
+  type HashAndIdNTupleLayoutConfig,
+  type HashedNTupleLayoutConfig,
+  type Layout,
+  type LayoutConfig,
+  type LayoutName,
+  type PathDirectLayoutConfig,
+};

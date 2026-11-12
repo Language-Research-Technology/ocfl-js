@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { OcflConstants } from './constants.ts';
+import { OcflConstants, type OcflVersion } from './constants.ts';
 import { OcflError } from './error.ts';
 import { type OcflObject, openDeclaredObject } from './ocfl-object.ts';
-import type { OcflVersion } from './types.ts';
 import { findNamasteVersion, isNothingAtPath } from './utils.ts';
 
 const { EXTENSIONS_DIR, NAMASTE_PREFIX_OBJECT } = OcflConstants;

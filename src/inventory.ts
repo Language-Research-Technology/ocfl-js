@@ -1,12 +1,52 @@
 import nodePath from 'node:path';
-import { OcflConstants } from './constants.ts';
-import { normaliseDigest } from './digest.ts';
+import { OcflConstants, type OcflVersion } from './constants.ts';
+import { type ContentAlgorithm, normaliseDigest } from './digest.ts';
 import { ocflError } from './error.ts';
-import type { ContentAlgorithm, DeepReadonly, Inventory, InventoryDigests, InventoryVersion } from './types.ts';
 import { normaliseLogicalPath, parentDirectories } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
+
+/** `T` and everything nested in it, read-only at compile time. The data isn't frozen. */
+type DeepReadonly<T> = { readonly [K in keyof T]: DeepReadonly<T[K]> };
+
+/** Content paths (or logical paths, in a version's state) keyed by digest */
+interface InventoryDigests {
+  [digest: string]: string[];
+}
+
+interface InventoryVersion {
+  created: string;
+  message?: string;
+  state: InventoryDigests;
+  user?: {
+    name: string;
+    address?: string;
+  };
+}
+
+interface Inventory {
+  /** A unique identifier for the OCFL Object. */
+  id: string;
+  /** The URI of the inventory section of the specification version matching the object conformance declaration. */
+  type: `https://ocfl.io/${OcflVersion}/spec/#inventory`;
+  /**
+   * The algorithm used for calculating digests for content-addressing
+   * within the OCFL Object and for the Inventory Digest.
+   * This MUST be the algorithm used in the manifest and state blocks
+   */
+  digestAlgorithm: ContentAlgorithm;
+  /** The version directory name of the most recent version of the object. */
+  head: string;
+  manifest: InventoryDigests;
+  versions: { [versionName: string]: InventoryVersion };
+  fixity?: { [algorithm: string]: InventoryDigests };
+  /**
+   * The name of the designated content directory within the version directories.
+   * @defaultValue content
+   */
+  contentDirectory?: string;
+}
 
 interface InventoryFile {
   logicalPath: string;
@@ -787,4 +827,14 @@ class OcflObjectInventory {
   }
 }
 
-export { isStagedRootInventory, isVersionName, OcflObjectInventory, rootInventoryPaths, sidecarContent, sidecarDigest, VersionNumber, validateStoredInventory };
+export {
+  type Inventory,
+  isStagedRootInventory,
+  isVersionName,
+  OcflObjectInventory,
+  rootInventoryPaths,
+  sidecarContent,
+  sidecarDigest,
+  VersionNumber,
+  validateStoredInventory,
+};

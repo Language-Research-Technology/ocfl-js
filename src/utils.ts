@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { inspect } from 'node:util';
-import { OcflConstants } from './constants.ts';
-import type { OcflVersion } from './types.ts';
+import { OcflConstants, type OcflVersion } from './constants.ts';
 
 const { OCFL_VERSIONS, NAMASTE_T } = OcflConstants;
 

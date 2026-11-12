@@ -1,8 +1,19 @@
 import path from 'node:path';
 import { inspect } from 'node:util';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
-import type { PathDirectLayoutConfig } from '../types.ts';
 import { hasOverlongSegment, MAX_NAME_BYTES } from '../utils.ts';
+
+/** Object directories at the path spelled by their id. */
+interface PathDirectLayoutConfig {
+  /** Name of the layout's OCFL extension. */
+  extensionName: '000N-path-direct-storage-layout';
+  /** Leave the id's URI scheme out of the path. Defaults to `false`. */
+  omitScheme?: boolean;
+  /** Pairs of text to find in the id and what to put in its place. Defaults to none. */
+  replace?: readonly (readonly [find: string, replacement: string])[];
+  /** Text added to the end of the object directory's path. Defaults to `/__object__`. */
+  suffix?: string;
+}
 
 const isReplacePair = (pair: unknown) => Array.isArray(pair) && pair.length === 2 && typeof pair[0] === 'string' && typeof pair[1] === 'string';
 
@@ -150,4 +161,4 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   }
 }
 
-export { PathDirectStorageLayout };
+export { type PathDirectLayoutConfig, PathDirectStorageLayout };
