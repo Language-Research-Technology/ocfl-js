@@ -21,7 +21,7 @@
     "rules": {
       "preset": "recommended",
       "nursery": {},
-      "style": { "useBlockStatements": "error" }
+      "style": { "useBlockStatements": "error", "useConsistentTypeDefinitions": "error" }
     }
   },
   "overrides": [

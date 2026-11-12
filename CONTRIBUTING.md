@@ -63,6 +63,10 @@ Open pull requests against `main`. Include tests for the change and update the R
 
 Storage layouts and digest algorithms are a fixed set built into the library, with no plugin API. To add one, send a pull request to this repository. [ADR 0001](docs/adr/0001-one-filesystem-only-package-with-no-extension-points.md) explains why.
 
+## Coding standards
+
+[CODING_STANDARDS.md](CODING_STANDARDS.md) lists the conventions reviewers check.
+
 ## Design decisions
 
 Decisions about the library's design are recorded as ADRs in [docs/adr](docs/adr), and [GLOSSARY.md](GLOSSARY.md) defines the terms the code and docs use. A change that contradicts an ADR needs a new ADR first.

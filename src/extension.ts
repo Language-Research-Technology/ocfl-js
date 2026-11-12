@@ -3,7 +3,10 @@ import { type OcflError, ocflError } from './error.ts';
 import type { LayoutName } from './extensions/index.ts';
 
 /** A layout's config as callers and config.json give it, before any checking */
-type OcflExtensionConfig = { extensionName?: string; [key: string]: unknown };
+interface OcflExtensionConfig {
+  extensionName?: string;
+  [key: string]: unknown;
+}
 
 const typeName = (value: unknown) => (Array.isArray(value) ? 'array' : typeof value);
 

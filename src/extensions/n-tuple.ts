@@ -4,7 +4,11 @@ import * as Hashing from '../digest.ts';
 const MAX_TUPLE_PARAMETER = 32;
 
 /** The parameters the 0003 and 0004 layouts share */
-type NTupleParameters = { digestAlgorithm: string; tupleSize: number; numberOfTuples: number };
+interface NTupleParameters {
+  digestAlgorithm: string;
+  tupleSize: number;
+  numberOfTuples: number;
+}
 
 function checkTupleParameter(name: string, value: number) {
   if (!Number.isInteger(value) || value < 0 || value > MAX_TUPLE_PARAMETER) {
