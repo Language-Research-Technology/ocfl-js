@@ -21,7 +21,7 @@ It needs Node.js 22.12 or later and is published as an ES module with its own ty
 - **Reading.** Gives you every file of every version by its logical path, as a stream (including byte ranges), text or bytes.
 - **Listing.** Walks a storage root and yields each OCFL object it finds.
 - **Fixity check.** Reads every stored file of an object again and reports each one that has changed or is missing.
-- **Concurrent writers.** A lock refuses a second writer to the same object straight away instead of making it wait. After a writer dies, you can recover the object to clear what it left behind.
+- **Concurrent writers.** A lock refuses a second writer to the same object straight away instead of making it wait. After a writer dies, you can recover the object to clear what it left behind. See [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/).
 
 New objects use sha512 digests and a `content` directory in each version.
 
@@ -53,6 +53,8 @@ If you read OCFL objects that another tool wrote, check them with an OCFL valida
 ## What it doesn't check or do
 
 - **An object that has lost its declaration isn't listed.** When it lists a storage root, the library treats only a directory with an object declaration (the `0=ocfl_object_1.x` file) as an object. A directory with an inventory but no declaration is searched like any other directory, not reported. So listing silently leaves out an object that has lost its declaration. Opening that object by its id fails with `INVALID_OBJECT`.
+- **A create whose writer died isn't listed.** It stays out of the listing until you [recover it by its id](/ocfl-js/guides/concurrent-writers/#a-create-whose-writer-died).
+- **No lock for older writers.** Writers on ocfl-js 0.4, or on a beta from before the lock, don't take it, so [upgrade every writer of a storage root together](/ocfl-js/guides/concurrent-writers/#upgrade-every-writer-together).
 - **Linux, on a case-sensitive file system.** The library is supported and tested on Linux only. Windows isn't supported; WSL works, because it runs Linux. macOS isn't supported, and case-insensitive file systems are untested: there, two logical paths that differ only in case, such as `README.md` and `readme.md`, are the same file.
 - **One file system.** The whole storage root, including the library's workspace inside it, must be on one file system, local or NFS. There's no way to plug in another storage backend.
 - **No upgrade from OCFL 1.0.** The library reads and updates OCFL 1.0 objects and storage roots, but it doesn't upgrade them to OCFL 1.1.
