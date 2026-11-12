@@ -2,15 +2,23 @@
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
   // Treat anything tagged @lintignore as intentional.
   "tags": ["-lintignore"],
-  // Typechecked only, by test/tsconfig.json.
-  "entry": ["test/types/*.ts"],
-  // Loaded by semantic-release from the `preset` option, the plugins release.config.mjs drops on beta,
-  // and the tools scripts/check-consumer.sh runs.
-  "ignoreDependencies": [
-    "conventional-changelog-conventionalcommits",
-    "@semantic-release/changelog",
-    "@semantic-release/git",
-    "publint",
-    "@arethetypeswrong/cli"
-  ]
+  "workspaces": {
+    ".": {
+      // Type-checked only, by test/tsconfig.json.
+      "entry": ["test/types/*.ts"],
+      // Loaded by semantic-release from the `preset` option, the plugins release.config.mjs drops on beta,
+      // and the tools scripts/check-consumer.sh runs.
+      "ignoreDependencies": [
+        "conventional-changelog-conventionalcommits",
+        "@semantic-release/changelog",
+        "@semantic-release/git",
+        "publint",
+        "@arethetypeswrong/cli"
+      ]
+    },
+    "website": {
+      // Type-checked only, by src/examples/tsconfig.json.
+      "entry": ["src/examples/**/*.ts"]
+    }
+  }
 }

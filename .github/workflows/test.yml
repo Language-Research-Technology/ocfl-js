@@ -39,6 +39,8 @@ jobs:
         run: pnpm lint:consumer
       - name: Lint (API)
         run: pnpm lint:api
+      - name: Lint (docs)
+        run: pnpm lint:docs
       - name: Lint (workflows, actionlint)
         uses: docker://rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
         with:
@@ -62,6 +64,9 @@ jobs:
     strategy:
       matrix:
         node-version: [22, 24, 26]
+    env:
+      # Otherwise pnpm run installs the whole workspace, site toolchain included
+      pnpm_config_verify_deps_before_run: false
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,7 +78,8 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      # The site's dependencies aren't needed to test the library
+      - run: pnpm install --frozen-lockfile --filter @ocfl/ocfl-fs
       - run: pnpm test
         if: matrix.node-version != 24
       - run: pnpm coverage

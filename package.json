@@ -48,7 +48,8 @@
     "format": "biome check --write .",
     "lint:types": "tsc --noEmit && tsc -p test",
     "test": "node --test 'test/**/*.spec.ts'",
-    "coverage": "c8 pnpm test"
+    "coverage": "c8 pnpm test",
+    "lint:docs": "tsc && pnpm --dir website check:examples && pnpm --dir website build"
   },
   "packageManager": "pnpm@12.18.0",
   "devDependencies": {
