@@ -12,8 +12,19 @@ import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import { removeObject } from './remove.ts';
 import * as store from './store.ts';
 import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
-import { deepFreeze, findNamasteVersion, isDirEmpty, isNonEmptyString, parseJsonObject, readIfExists, rejectUnknownKeys, relativeWithin } from './utils.ts';
+import {
+  deepFreeze,
+  findNamasteVersion,
+  isDirEmpty,
+  isNonEmptyString,
+  parseJsonObject,
+  pathFits,
+  readIfExists,
+  rejectUnknownKeys,
+  relativeWithin,
+} from './utils.ts';
 import { createError } from './validation.ts';
+import { longestWriterPath } from './workspace.ts';
 
 const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, NAMASTE_PREFIX_STORAGE, NAMASTE_T } = OcflConstants;
 
@@ -137,7 +148,7 @@ interface StorageRoot {
    *
    * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id, or another writer is creating it and hasn't committed it.
    * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is missing, corrupt or inconsistent, or the object has no declaration.
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds another object.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, or that directory holds another object.
    * @example
    * ```ts
    * const object = await root.open('arcp://name,corpus/item/1');
@@ -152,7 +163,7 @@ interface StorageRoot {
    * The object uses sha512 digests and the `content` directory, at the storage root's OCFL version.
    *
    * @throws {@link OcflError} `OBJECT_EXISTS` if an object with this id already exists.
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds something else, is below a file, or is inside another object.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, with its lock in the workspace, or that directory holds something else, is below a file, or is inside another object.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object, or died creating it; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs, if an earlier create left an unfinished version in the workspace. Don't simply repeat the create: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object to see whether it was created.
@@ -195,7 +206,7 @@ interface StorageRoot {
    * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if the object is being updated or created, or a writer died doing so; `lockedAt` says since when. Nothing is deleted. After a dead writer, recover its unfinished write ({@link StorageRoot.unfinishedWrite}) and then `remove` again.
    * @throws {@link OcflError} `INVALID_OBJECT` if the id's directory holds something that isn't an object, or an object whose inventory is missing, corrupt or inconsistent, so its id can't be confirmed; nothing is deleted.
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds a different object; nothing is deleted.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, with its lock in the workspace, or that directory holds a different object; nothing is deleted.
    * @throws `TypeError` if the id is missing or empty.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting the object failed part of the way through, or it was deleted and its lock couldn't be released; `cause` is the failure. The object stays locked, and may be partly deleted: recovering its unfinished write ({@link StorageRoot.unfinishedWrite}) finishes removing it.
    * @example
@@ -225,7 +236,7 @@ interface StorageRoot {
    * The unfinished write of an object: its create, update or remove whose lock is still held. Nothing is changed.
    *
    * @returns The write, or `undefined` if the object isn't locked
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory is locked by a writer of another id.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, or that directory is locked by a writer of another id.
    * @throws `TypeError` if the id is missing or empty.
    * @example
    * ```ts
@@ -257,31 +268,45 @@ function checkedId(id: string): string {
   return id;
 }
 
+/**
+ * @param longest - The longest path the operation uses, given the object root
+ * @returns The absolute object root of `id`
+ * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` as {@link mappedObjectPath} does, or if `longest` is too long for the file system
+ */
+async function placedObjectRoot(root: string, layout: BuiltInLayout, id: string, longest: (objectRoot: string) => string): Promise<string> {
+  const objectRoot = nodePath.join(root, mappedObjectPath(root, layout, id));
+  if (!(await pathFits(longest(objectRoot)))) {
+    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> maps to a path too long for this file system.`);
+  }
+  return objectRoot;
+}
+
 function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayout): StorageRoot {
-  const objectRootOf = (id: string) => nodePath.join(root, mappedObjectPath(root, layout, id));
+  const objectRootToRead = (id: string) => placedObjectRoot(root, layout, id, (objectRoot) => objectRoot);
+  const objectRootToWrite = (id: string) => placedObjectRoot(root, layout, id, (objectRoot) => longestWriterPath(root, objectRoot));
   return deepFreeze({
     path: root,
     ocflVersion,
     layout: { extensionName: layout.name, ...layout.parameters } as Layout,
     async open(id: string) {
-      return openObject(root, objectRootOf(checkedId(id)), id);
+      return openObject(root, await objectRootToRead(checkedId(id)), id);
     },
     async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>) {
       const objectId = checkedId(id);
       const checked = checkedDetails(details);
-      return createObject(root, objectRootOf(objectId), objectId, ocflVersion, checked, build);
+      return createObject(root, await objectRootToWrite(objectId), objectId, ocflVersion, checked, build);
     },
     objects() {
       return listObjects(root);
     },
     async remove(id: string) {
-      await removeObject(root, objectRootOf(checkedId(id)), id);
+      await removeObject(root, await objectRootToWrite(checkedId(id)), id);
     },
     unfinishedWrites() {
       return listUnfinishedWrites(root, (id) => mappedObjectPath(root, layout, id));
     },
     async unfinishedWrite(id: string) {
-      return findUnfinishedWrite(root, objectRootOf(checkedId(id)), id);
+      return findUnfinishedWrite(root, await objectRootToRead(checkedId(id)), id);
     },
   });
 }

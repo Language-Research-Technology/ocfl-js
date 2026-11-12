@@ -1,18 +1,12 @@
 import assert from 'node:assert';
-import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import type { LayoutConfig, StorageRoot } from '../src/index.ts';
-import { createObject, DETAILS, snapshot, textFiles, useTempRoots } from './helpers/drafts.ts';
+import { createObject, DETAILS, everything, textFiles, useTempRoots } from './helpers/drafts.ts';
 import { PATH_DIRECT } from './helpers/layouts.ts';
 import { ocflError } from './helpers/ocfl-error.ts';
 
 const incompatible = ocflError('ID_INCOMPATIBLE_WITH_LAYOUT');
-
-/** Every directory and file under `dir`, with the content of each file */
-async function everything(dir: string) {
-  return { paths: (await fs.promises.readdir(dir, { recursive: true })).sort(), files: await snapshot(dir) };
-}
 
 describe('a path-direct id whose path has the suffix part-way through', () => {
   const temp = useTempRoots('ocfl-path-direct-nesting-');

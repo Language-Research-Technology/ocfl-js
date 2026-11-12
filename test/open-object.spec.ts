@@ -283,9 +283,9 @@ describe('opening an object', () => {
       await assert.rejects(root.open('x'.repeat(300)), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
     });
 
-    it('throws OBJECT_NOT_FOUND for an id whose path is too long for anything to be there', async () => {
+    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id whose path is too long for the file system', async () => {
       const root = await newRoot({ extensionName: PATH_DIRECT });
-      await assert.rejects(root.open(Array(20).fill('x'.repeat(250)).join('/')), ocflError('OBJECT_NOT_FOUND'));
+      await assert.rejects(root.open(Array(20).fill('x'.repeat(250)).join('/')), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
     });
   });
 

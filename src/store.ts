@@ -36,7 +36,7 @@ export async function removeIfEmpty(dirPath: string): Promise<boolean> {
     await fs.promises.rmdir(dirPath);
     return true;
   } catch (error) {
-    // ENAMETOOLONG: nothing can be at a path with a name that long
+    // ENAMETOOLONG: nothing can be at that path, such as the directory of a draft's file
     if (hasErrorCode(error, 'ENOENT', 'ENAMETOOLONG')) {
       return true;
     }

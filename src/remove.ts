@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { type OcflError, ocflError } from './error.ts';
-import { type Lock, lockKept, markRemoving, releaseLock, takeLock } from './lock.ts';
+import { lockKept, markRemoving, releaseLock, takeLock } from './lock.ts';
 import { confirmedVersion, declarationWithoutInventory, hasObjectDeclaration, objectNotFound, readInventory } from './ocfl-object.ts';
 import * as store from './store.ts';
 import { hasErrorCode, isDirEmpty } from './utils.ts';
@@ -59,18 +59,6 @@ function recoveryNeeded(objectRoot: string, state: string, advice: string, cause
 }
 
 /**
- * Takes the lock of the object `id`, as {@link takeLock} does.
- * @throws {@link OcflError} `OBJECT_NOT_FOUND` if its path is too long for anything to be there
- */
-async function takeLockToRemove(storageRoot: string, workspace: string, id: string): Promise<Lock> {
-  try {
-    return await takeLock(workspace, storageRoot, id, true);
-  } catch (error) {
-    throw hasErrorCode(error, 'ENAMETOOLONG') ? objectNotFound(storageRoot, id) : error;
-  }
-}
-
-/**
  * Deletes the object `id` that the storage root's layout places at `objectRoot`, with every version, and the parent directories that leaves empty.
  * The object's lock is held throughout, and what dead writers left in its workspace directory is removed with it.
  * Once the lock says the object is being removed, the remove is carried through: by this call, or by recovery.
@@ -79,7 +67,7 @@ async function takeLockToRemove(storageRoot: string, workspace: string, id: stri
  */
 async function removeObject(storageRoot: string, objectRoot: string, id: string): Promise<void> {
   const workspace = objectWorkspace(storageRoot, objectRoot);
-  const lock = await takeLockToRemove(storageRoot, workspace, id);
+  const lock = await takeLock(workspace, storageRoot, id, true);
   try {
     await assertHoldsObject(storageRoot, objectRoot, id);
     await markRemoving(workspace, lock);
