@@ -22,6 +22,12 @@ function isNotFound(error: unknown): boolean {
 }
 
 /** Whether nothing can be at the path read: it doesn't exist, a directory above it is a file, or a name in it is too long */
+/** Whether `file` is short enough for the file system to look it up, whether or not anything is there */
+async function pathFits(file: string): Promise<boolean> {
+  const found: unknown = await fs.promises.lstat(file).catch((error: unknown) => error);
+  return !hasErrorCode(found, 'ENAMETOOLONG');
+}
+
 function isNothingAtPath(error: unknown): boolean {
   return hasErrorCode(error, 'ENOENT', 'ENOTDIR', 'ENAMETOOLONG');
 }
@@ -209,6 +215,7 @@ export {
   parentDirectories,
   parseJsonObject,
   pathExists,
+  pathFits,
   readIfExists,
   rejectUnknownKeys,
   relativeWithin,

@@ -28,6 +28,11 @@ function lockPath(workspace: string): string {
   return path.join(workspace, LOCK_NAME);
 }
 
+/** A path beside `lock`, where no other writer stages a lock's content */
+function stagedLockPath(lock: string): string {
+  return path.join(path.dirname(lock), `${STAGED_LOCK_PREFIX}${randomUUID()}`);
+}
+
 function formatLock({ id, lockedAt, objectRootExisted, removing }: Lock): string {
   return JSON.stringify({ id, lockedAt: lockedAt.toISOString(), objectRootExisted, ...(removing ? { removing } : {}) });
 }
@@ -115,7 +120,7 @@ async function writeDurably(file: string, content: string): Promise<void> {
  * @returns Whether it was put in place: `false` only if `exclusive` and the lock already exists
  */
 async function putLock(lock: string, content: string, exclusive: boolean): Promise<boolean> {
-  const staged = path.join(path.dirname(lock), `${STAGED_LOCK_PREFIX}${randomUUID()}`);
+  const staged = stagedLockPath(lock);
   let placed = true;
   try {
     await writeDurably(staged, content);
@@ -221,4 +226,17 @@ async function isLocked(workspace: string): Promise<boolean> {
 }
 
 export type { Lock };
-export { isLocked, isStagedLock, LOCK_NAME, lockKept, markRemoving, readLock, readLockFile, releaseLock, sameWriter, takeLock, updateInProgress };
+export {
+  isLocked,
+  isStagedLock,
+  LOCK_NAME,
+  lockKept,
+  markRemoving,
+  readLock,
+  readLockFile,
+  releaseLock,
+  sameWriter,
+  stagedLockPath,
+  takeLock,
+  updateInProgress,
+};

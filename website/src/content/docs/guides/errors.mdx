@@ -74,9 +74,9 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 ### `ID_INCOMPATIBLE_WITH_LAYOUT`
 
-**Cause:** the storage root's storage layout can't place an object with this id. Either the storage layout can't map the id, or it maps it somewhere an object can't go: the storage root itself, outside it, or the `extensions` directory. Each storage layout has its own rules. For example, `0002-flat-direct-storage-layout` refuses an id with a `/` in it, `.`, `..`, `extensions`, or an id longer than 255 bytes, and the path-direct storage layout refuses an id with `.` or `..` segments, or one that ends with or contains its suffix.
+**Cause:** the storage root's storage layout can't place an object with this id. Either the storage layout can't map the id, or it maps it somewhere an object can't go: the storage root itself, outside it, the `extensions` directory, or a path too long for the file system (with the path-direct storage layout, an id of many long segments). Each storage layout has its own rules. For example, `0002-flat-direct-storage-layout` refuses an id with a `/` in it, `.`, `..`, `extensions`, or an id longer than 255 bytes, and the path-direct storage layout refuses an id with `.` or `..` segments, or one that ends with or contains its suffix.
 
-It is also thrown when the directory the id maps to holds an object with a different id, and by `create` when that directory isn't empty, is below a file, or is inside another object.
+It is also thrown when the directory the id maps to holds an object with a different id, and by `create` when that directory isn't empty, is below a file, or is inside another object. `create` and `remove` also throw it when the object's lock in the workspace would be too long for the file system, even if its directory isn't, so such an object can be opened but not changed.
 
 **What to do:** choose another id, or a storage layout that suits your ids. If the directory holds another object or other files, look at what is there before doing anything; the message names the directory.
 

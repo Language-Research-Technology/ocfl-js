@@ -11,7 +11,7 @@ import { type OcflFile, StoredFile } from './ocfl-file.ts';
 import type { StorageRoot } from './storage-root.ts';
 import * as store from './store.ts';
 import { assertNoMutableHead, updateTarget } from './transaction.ts';
-import { dirContents, findNamasteVersion, hasErrorCode, isNotFound, isNothingAtPath, pathExists } from './utils.ts';
+import { dirContents, findNamasteVersion, isNotFound, isNothingAtPath, pathExists } from './utils.ts';
 import { createError } from './validation.ts';
 import { objectWorkspace } from './workspace.ts';
 
@@ -350,14 +350,7 @@ async function enclosingObject(storageRoot: string, objectRoot: string): Promise
 
 /** Whether `dir` has an object declaration file, whatever it holds */
 async function hasObjectDeclaration(dir: string): Promise<boolean> {
-  try {
-    return (await findNamasteVersion(NAMASTE_PREFIX_OBJECT, dir)) !== undefined;
-  } catch (error) {
-    if (hasErrorCode(error, 'ENAMETOOLONG')) {
-      return false;
-    }
-    throw error;
-  }
+  return (await findNamasteVersion(NAMASTE_PREFIX_OBJECT, dir)) !== undefined;
 }
 
 /**

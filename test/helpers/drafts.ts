@@ -172,6 +172,11 @@ export async function assertHolds(root: StorageRoot, object: OcflObject, expecte
   return assertVersionValid(objectRootOf(root, object.id), `v${object.head.number}`);
 }
 
+/** Every directory and file under `dir`, with the content of each file */
+export async function everything(dir: string): Promise<{ paths: string[]; files: Record<string, string> }> {
+  return { paths: (await fs.promises.readdir(dir, { recursive: true })).sort(), files: await snapshot(dir) };
+}
+
 /** The content of every file under `dir`, keyed by its path relative to `dir`. Empty if `dir` doesn't exist. */
 export async function snapshot(dir: string): Promise<Record<string, string>> {
   const entries = await fs.promises.readdir(dir, { recursive: true, withFileTypes: true }).catch((error) => {
