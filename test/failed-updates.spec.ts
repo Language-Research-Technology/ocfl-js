@@ -227,11 +227,11 @@ describe('an update that fails or finishes early', () => {
       await assertNoPartialObject(root);
     });
 
-    it('fails a create whose place lies below a plain file, leaving the file as it was', async () => {
-      const root = await newRoot({ extensionName: PATH_DIRECT, suffix: '' });
+    it('refuses a create whose place lies below a plain file, leaving the file as it was', async () => {
+      const root = await newRoot({ extensionName: PATH_DIRECT });
       await fs.promises.writeFile(path.join(root.path, 'a-file'), 'not an object');
 
-      await assert.rejects(root.create('a-file/inner', DETAILS, writeB), { code: 'ENOTDIR' });
+      await assert.rejects(root.create('a-file/inner', DETAILS, writeB), { code: 'ID_INCOMPATIBLE_WITH_LAYOUT' });
 
       assert.strictEqual(await fs.promises.readFile(path.join(root.path, 'a-file'), 'utf8'), 'not an object');
       assert.ok(!fs.existsSync(workspaceOf(root)));

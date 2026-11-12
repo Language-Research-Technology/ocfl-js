@@ -11,7 +11,7 @@ import type { StorageRoot } from './storage-root.ts';
 import * as store from './store.ts';
 import { assertNoMutableHead, objectWorkspace, updateTarget } from './transaction.ts';
 import type { ContentAlgorithm, Inventory, OcflVersion } from './types.ts';
-import { findNamasteVersion, hasErrorCode, isDirEmpty, isNotFound, isNothingAtPath, pathExists } from './utils.ts';
+import { dirContents, findNamasteVersion, hasErrorCode, isNotFound, isNothingAtPath, pathExists } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
@@ -492,8 +492,12 @@ async function createObject(
     }
     throw ocflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}, where the storage root ${storageRoot} places <${id}>.`);
   }
-  if (!(await isDirEmpty(objectRoot))) {
+  const contents = await dirContents(objectRoot);
+  if (contents === 'not empty') {
     throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is not empty.`);
+  }
+  if (contents === 'below a file') {
+    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is below a file.`);
   }
   const outer = await enclosingObject(storageRoot, objectRoot);
   if (outer !== undefined) {

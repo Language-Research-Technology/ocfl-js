@@ -104,25 +104,30 @@ function createLimiter(count: number): Limiter {
   };
 }
 
-async function isDirEmpty(dirPath: string): Promise<boolean> {
+/** What is at `dirPath`: nothing or an empty directory, a file or a directory with something in it, or nothing because a parent is a file */
+async function dirContents(dirPath: string): Promise<'empty' | 'not empty' | 'below a file'> {
   let dir: fs.Dir;
   try {
     dir = await fs.promises.opendir(dirPath);
   } catch (error) {
     if (isNotFound(error)) {
-      return true;
+      return 'empty';
     }
     // ENOTDIR: either the path is a file, or one of its parents is and the path doesn't exist
     if (isNotDir(error)) {
-      return !(await pathExists(dirPath));
+      return (await pathExists(dirPath)) ? 'not empty' : 'below a file';
     }
     throw error;
   }
   try {
-    return !(await dir.read());
+    return (await dir.read()) ? 'not empty' : 'empty';
   } finally {
     await dir.close().catch(() => {});
   }
+}
+
+async function isDirEmpty(dirPath: string): Promise<boolean> {
+  return (await dirContents(dirPath)) !== 'not empty';
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -174,6 +179,7 @@ function deepFreeze<T>(value: T): T {
 export {
   createLimiter,
   deepFreeze,
+  dirContents,
   findNamasteVersion,
   hasErrorCode,
   isAlreadyExists,
