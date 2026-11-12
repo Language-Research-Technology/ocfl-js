@@ -10,8 +10,9 @@ const { INVENTORY_NAME } = OcflConstants;
 /** `T` and everything nested in it, read-only at compile time. The data isn't frozen. */
 type DeepReadonly<T> = { readonly [K in keyof T]: DeepReadonly<T[K]> };
 
+/** Content paths (or logical paths, in a version's state) keyed by digest */
 interface InventoryDigests {
-  [key: string]: string[];
+  [digest: string]: string[];
 }
 
 interface InventoryVersion {
@@ -38,14 +39,8 @@ interface Inventory {
   /** The version directory name of the most recent version of the object. */
   head: string;
   manifest: InventoryDigests;
-  versions: {
-    [key: string]: InventoryVersion;
-  };
-  fixity?: {
-    [key: string]: {
-      [key: string]: string[];
-    };
-  };
+  versions: { [versionName: string]: InventoryVersion };
+  fixity?: { [algorithm: string]: InventoryDigests };
   /**
    * The name of the designated content directory within the version directories.
    * @defaultValue content
