@@ -9,13 +9,13 @@ import { Code } from '@astrojs/starlight/components';
 import branchOnCode from '../../../examples/errors/branch-on-code.ts?raw';
 import listWithErrors from '../../../examples/errors/list-with-errors.ts?raw';
 import checkFixity from '../../../examples/migrating-from-0-4/check-fixity.ts?raw';
-import deposit from '../../../examples/migrating-from-0-4/deposit.ts?raw';
 import move0003Objects from '../../../examples/migrating-from-0-4/move-0003-objects.ts?raw';
 import openOrCreate from '../../../examples/migrating-from-0-4/open-or-create.ts?raw';
 import readFiles from '../../../examples/migrating-from-0-4/read-files.ts?raw';
 import removeFileFromHistory from '../../../examples/migrating-from-0-4/remove-file-from-history.ts?raw';
 import update from '../../../examples/migrating-from-0-4/update.ts?raw';
 import writeVersionOut from '../../../examples/migrating-from-0-4/write-version-out.ts?raw';
+import depositService from '../../../examples/use-cases/deposit-service.ts?raw';
 
 Version 1.0 of `@ocfl/ocfl-fs` replaces the 0.4 API with a smaller one. You open a storage root, open or create an OCFL object in it by id, read its files from its versions, and change it by passing a callback that edits a draft. This page maps each 0.4 call to its 1.0 replacement.
 
@@ -168,9 +168,9 @@ await object.import('/data/crates/item-1', 'REPLACE');
 
 1.0:
 
-<Code code={deposit} lang="ts" />
+<Code code={depositService} lang="ts" />
 
-If another writer creates the object between `open()` and `create()`, `create()` throws `OBJECT_EXISTS`: open it and update it instead.
+Try `create()` first and, when it throws `OBJECT_EXISTS`, open the object and update it. Checking whether it exists first can be beaten by another writer in between; the create can't. `draft.clear()` before `draft.import()` does what `'REPLACE'` did. [A deposit service](/ocfl-js/guides/use-cases/#a-deposit-service) explains this pattern in full.
 
 0.4:
 
