@@ -88,9 +88,9 @@ describe('updating an object made by another tool', () => {
     });
 
     it('reports an object that has come to be nested in another object ahead of its mutable head', async () => {
-      const root = await newRoot({ extensionName: PATH_DIRECT, suffix: '' });
+      const root = await newRoot({ extensionName: PATH_DIRECT });
       const object = await createObject(root, 'outer/inner', { 'a.txt': 'a' });
-      const objectRoot = path.join(root.path, 'outer', 'inner');
+      const objectRoot = path.join(root.path, 'outer', 'inner', '__object__');
       await writeFiles(path.dirname(headInventoryOf(objectRoot)), { 'inventory.json': '{}' });
       await writeFiles(path.join(root.path, 'outer'), { '0=ocfl_object_1.1': 'ocfl_object_1.1\n' });
       const initial = await snapshot(root.path);
@@ -154,7 +154,7 @@ describe('updating an object made by another tool', () => {
   it('keeps the fixity block of an inventory unchanged in the new version', async () => {
     const rootPath = path.join(temp.dir, 'spec-ex-full-root');
     await writeSpecExFullRoot(rootPath);
-    const objectRoot = path.join(rootPath, 'spec-ex-full');
+    const objectRoot = path.join(rootPath, 'spec-ex-full', '__object__');
     const { fixity } = await readInventory(objectRoot);
     assert.deepStrictEqual(Object.keys(fixity!), ['md5', 'sha1']);
 

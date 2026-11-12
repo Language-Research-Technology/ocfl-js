@@ -143,6 +143,33 @@ describe('writing a file to a draft', () => {
     });
   });
 
+  describe('a buffer the caller changes before the write settles', () => {
+    it('stores the bytes as they were when write was called, in a new object', async () => {
+      const buffer = encode('aaaa');
+      const object = await root.create(newId(), DETAILS, async (draft) => {
+        const written = draft.write('a.txt', buffer);
+        buffer.set(encode('bbbb'));
+        await written;
+      });
+      await assertHolds(root, object, { 'a.txt': 'aaaa' });
+      assert.deepStrictEqual(await object.checkFixity(), []);
+    });
+
+    it('stores the bytes as they were when write was called, in an update', async () => {
+      const object = await createObject(root, newId(), { a: 'a' });
+      const buffer = Buffer.from('aaaa');
+      const updated = await object.update(DETAILS, async (draft) => {
+        const first = draft.write('b.txt', buffer);
+        buffer.write('bbbb');
+        const second = draft.write('c.txt', buffer);
+        buffer.write('cccc');
+        await Promise.all([first, second]);
+      });
+      await assertHolds(root, updated, { a: 'a', 'b.txt': 'aaaa', 'c.txt': 'bbbb' });
+      assert.deepStrictEqual(await updated.checkFixity(), []);
+    });
+  });
+
   describe('replacing a file', () => {
     it('replaces a file of the head version', async () => {
       const object = await createObject(root, newId(), { a: 'a', 'd/x': 'x' });

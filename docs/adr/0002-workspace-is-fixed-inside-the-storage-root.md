@@ -24,7 +24,7 @@ The OCFL spec lets a storage root have an `extensions` directory containing only
 
 - An update is committed when the root inventory is replaced (ADR 0004). An update that fails before that is discarded: what it built in the workspace, and what it had moved into the object root, is removed, and the object is as it was. An update that fails after it stays committed.
 - An update that is interrupted, or can't be discarded, leaves its lock until the object is recovered (ADR 0004), and may leave an unfinished version in the workspace, or in the object root the directory of the next version or staged inventory files, which the root inventory doesn't name. The root inventory names only complete versions throughout.
-- With a layout that nests object paths, one object's directory in the workspace can be below a version name in another's. Recovery tells them apart by the lock a live writer holds there (ADR 0004).
+- No layout nests object roots (ADR 0004), so one object's directory in the workspace is never inside another's, and everything in it is that object's.
 - A storage root with a workspace in use gets a W016 warning from validators, because `ocfl-js-workspace` isn't a registered extension name.
 - Part of the object hierarchy mounted from another filesystem can't be updated. Callers get an explicit error instead of a slow copy.
 - Every create, update or remove made through this library takes the object's lock first, so a second writer of an object is refused with `UPDATE_IN_PROGRESS` before either writes content, whichever version each believes is the head.

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { inspect } from 'node:util';
 import { OcflConstants } from './constants.ts';
 import type { OcflVersion } from './types.ts';
 
@@ -56,6 +57,14 @@ function normaliseLogicalPath(logicalPath: string): string {
   return path.posix.normalize(logicalPath).replace(/\/$/, '');
 }
 
+/** The most UTF-8 bytes common file systems allow in one file or directory name */
+const MAX_NAME_BYTES = 255;
+
+/** Whether a segment of the path `p` is too long for a file system to name */
+function hasOverlongSegment(p: string): boolean {
+  return p.split('/').some((segment) => Buffer.byteLength(segment) > MAX_NAME_BYTES);
+}
+
 /** The directories a logical path is inside, outermost first */
 function parentDirectories(logicalPath: string): string[] {
   const directories: string[] = [];
@@ -104,25 +113,30 @@ function createLimiter(count: number): Limiter {
   };
 }
 
-async function isDirEmpty(dirPath: string): Promise<boolean> {
+/** What is at `dirPath`: nothing or an empty directory, a file or a directory with something in it, or nothing because a parent is a file */
+async function dirContents(dirPath: string): Promise<'empty' | 'not empty' | 'below a file'> {
   let dir: fs.Dir;
   try {
     dir = await fs.promises.opendir(dirPath);
   } catch (error) {
     if (isNotFound(error)) {
-      return true;
+      return 'empty';
     }
     // ENOTDIR: either the path is a file, or one of its parents is and the path doesn't exist
     if (isNotDir(error)) {
-      return !(await pathExists(dirPath));
+      return (await pathExists(dirPath)) ? 'not empty' : 'below a file';
     }
     throw error;
   }
   try {
-    return !(await dir.read());
+    return (await dir.read()) ? 'not empty' : 'empty';
   } finally {
     await dir.close().catch(() => {});
   }
+}
+
+async function isDirEmpty(dirPath: string): Promise<boolean> {
+  return (await dirContents(dirPath)) !== 'not empty';
 }
 
 async function pathExists(filePath: string): Promise<boolean> {
@@ -171,21 +185,36 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
+/**
+ * @param refusal - Starts the message, e.g. `createStorageRoot has no option`
+ * @throws `TypeError` naming each key of `object` that `isKnown` refuses
+ */
+function rejectUnknownKeys(object: object, isKnown: (key: string) => boolean, refusal: string): void {
+  const unknown = Object.keys(object).filter((key) => !isKnown(key));
+  if (unknown.length > 0) {
+    throw new TypeError(`${refusal} ${unknown.map((key) => inspect(key)).join(' or ')}.`);
+  }
+}
+
 export {
   createLimiter,
   deepFreeze,
+  dirContents,
   findNamasteVersion,
   hasErrorCode,
+  hasOverlongSegment,
   isAlreadyExists,
   isDirEmpty,
   isErrnoException,
   isNonEmptyString,
   isNotFound,
   isNothingAtPath,
+  MAX_NAME_BYTES,
   normaliseLogicalPath,
   parentDirectories,
   parseJsonObject,
   pathExists,
   readIfExists,
+  rejectUnknownKeys,
   relativeWithin,
 };

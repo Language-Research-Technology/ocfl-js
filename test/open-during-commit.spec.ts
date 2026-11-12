@@ -1,11 +1,11 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, it, mock } from 'node:test';
+import { afterEach, describe, it, mock } from 'node:test';
 import type { StorageRoot } from '../src/index.ts';
-import { createObject, DETAILS, objectRootOf, readInventory, textFiles, useTempRoots } from './helpers/drafts.ts';
+import { createObject, DETAILS, objectRootOf, placesOf, readInventory, textFiles, useTempRoots } from './helpers/drafts.ts';
 import { ocflError } from './helpers/ocfl-error.ts';
-import { writeInventory } from './helpers/storage-roots.ts';
+import { writeFiles, writeInventory } from './helpers/storage-roots.ts';
 
 const SIDECAR = 'inventory.json.sha512';
 
@@ -177,5 +177,54 @@ describe('opening an object while another writer is committing', () => {
     } finally {
       mock.timers.reset();
     }
+  });
+
+  describe('a writer that finishes after the root inventory is found missing and before the lock is checked', () => {
+    afterEach(() => mock.restoreAll());
+
+    /** Runs `finish` as the lock of `id` is first checked */
+    function finishingAtLockCheck(root: StorageRoot, id: string, finish: () => Promise<void>) {
+      const { lock } = placesOf(root, id);
+      const real = fs.promises.stat;
+      let finished = false;
+      mock.method(fs.promises, 'stat', async (...args: Parameters<typeof real>) => {
+        if (!finished && String(args[0]) === lock) {
+          finished = true;
+          await finish();
+        }
+        return real.apply(fs.promises, args);
+      });
+    }
+
+    it('opens an object whose create commits', async () => {
+      const root = await newRoot();
+      const objectRoot = objectRootOf(root, 'created');
+      await createObject(root, 'created', { 'a.txt': 'one' });
+      const aside = path.join(root.path, 'extensions', 'aside');
+      await fs.promises.mkdir(aside, { recursive: true });
+      const inventoryFiles = ['inventory.json', SIDECAR];
+      for (const name of inventoryFiles) {
+        await fs.promises.rename(path.join(objectRoot, name), path.join(aside, name));
+      }
+      finishingAtLockCheck(root, 'created', async () => {
+        for (const name of inventoryFiles) {
+          await fs.promises.rename(path.join(aside, name), path.join(objectRoot, name));
+        }
+      });
+
+      const object = await root.open('created');
+
+      assert.strictEqual(object.head.number, 1);
+      assert.deepStrictEqual(await textFiles(object.head), { 'a.txt': 'one' });
+    });
+
+    it('throws OBJECT_NOT_FOUND for an object whose remove finishes', async () => {
+      const root = await newRoot();
+      const objectRoot = objectRootOf(root, 'removed');
+      await writeFiles(objectRoot, { '0=ocfl_object_1.1': 'ocfl_object_1.1\n' });
+      finishingAtLockCheck(root, 'removed', () => fs.promises.rm(objectRoot, { recursive: true, force: true }));
+
+      await assert.rejects(root.open('removed'), ocflError('OBJECT_NOT_FOUND'));
+    });
   });
 });

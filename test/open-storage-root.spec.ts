@@ -139,6 +139,17 @@ describe('opening a storage root', () => {
       assert.strictEqual(await writeObject(rootPath, 'xa'), path.join('ya', '__object__'));
     });
 
+    it('rejects a path-direct root whose extension config sets an empty suffix, naming the file', async () => {
+      const rootPath = newPath();
+      const configFile = path.join(rootPath, 'extensions', PATH_DIRECT, 'config.json');
+      await writeFiles(rootPath, {
+        '0=ocfl_1.1': 'ocfl_1.1\n',
+        'ocfl_layout.json': declaring(PATH_DIRECT),
+        [path.relative(rootPath, configFile)]: JSON.stringify({ extensionName: PATH_DIRECT, suffix: '' }),
+      });
+      await assert.rejects(openStorageRoot(rootPath), (error: OcflError) => invalidNaming(configFile)(error) && error.cause instanceof TypeError);
+    });
+
     for (const [digestAlgorithm, digest] of Object.entries(DIGESTS_OF_ABC)) {
       it(`creates, writes to and reopens a root hashed with ${digestAlgorithm}`, async () => {
         const rootPath = newPath();

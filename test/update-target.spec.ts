@@ -70,6 +70,13 @@ describe('OcflObjectTransaction driven from an update target', () => {
     assert.ok(!fs.existsSync(path.join(target.root, 'v1', 'content', 'b.txt')));
   });
 
+  it('refuses a write once committed before looking at its content', async () => {
+    const transaction = await OcflObjectTransaction.create(target, firstVersion());
+    await transaction._commit(DETAILS);
+
+    await assert.rejects(transaction.write('b.txt', 42 as never), /already commited/);
+  });
+
   it('refuses a root that holds something other than an object', async () => {
     await writeFiles(target.root, { 'stray.txt': 'stray' });
     const transaction = await OcflObjectTransaction.create(target, firstVersion());

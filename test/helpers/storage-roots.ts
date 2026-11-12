@@ -48,14 +48,14 @@ export async function writeObject(root: string, id: string): Promise<string> {
 export const SPEC_EX_FULL: string = path.join(import.meta.dirname, '../fixtures/ocfl/1.1/good-objects/spec-ex-full');
 export const SPEC_EX_FULL_ID = 'ark:/12345/bcd987';
 
-/** Writes a storage root at `root` holding a copy of {@link SPEC_EX_FULL} in the directory `spec-ex-full` */
+/** Writes a storage root at `root` holding a copy of {@link SPEC_EX_FULL} in the directory `spec-ex-full/__object__` */
 export async function writeSpecExFullRoot(root: string): Promise<void> {
   await writeFiles(root, {
     '0=ocfl_1.1': 'ocfl_1.1\n',
     'ocfl_layout.json': JSON.stringify({ extension: PATH_DIRECT }),
-    [`extensions/${PATH_DIRECT}/config.json`]: JSON.stringify({ extensionName: PATH_DIRECT, replace: [[SPEC_EX_FULL_ID, 'spec-ex-full']], suffix: '' }),
+    [`extensions/${PATH_DIRECT}/config.json`]: JSON.stringify({ extensionName: PATH_DIRECT, replace: [[SPEC_EX_FULL_ID, 'spec-ex-full']] }),
   });
-  await fs.promises.cp(SPEC_EX_FULL, path.join(root, 'spec-ex-full'), { recursive: true });
+  await fs.promises.cp(SPEC_EX_FULL, path.join(root, 'spec-ex-full', '__object__'), { recursive: true });
 }
 
 type VersionFiles = Record<string, string | Uint8Array | null>;

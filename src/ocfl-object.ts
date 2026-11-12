@@ -11,7 +11,7 @@ import type { StorageRoot } from './storage-root.ts';
 import * as store from './store.ts';
 import { assertNoMutableHead, objectWorkspace, updateTarget } from './transaction.ts';
 import type { ContentAlgorithm, Inventory, OcflVersion } from './types.ts';
-import { findNamasteVersion, hasErrorCode, isDirEmpty, isNotFound, isNothingAtPath, pathExists } from './utils.ts';
+import { dirContents, findNamasteVersion, hasErrorCode, isNotFound, isNothingAtPath, pathExists } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
@@ -429,11 +429,8 @@ function declarationWithoutInventory(objectRoot: string): OcflError {
  * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it holds an object with another id
  */
 async function openObject(storageRoot: string, objectRoot: string, id: string): Promise<OcflObject> {
-  const inventory = await readInventory(objectRoot);
+  const inventory = await committedInventory(storageRoot, objectRoot);
   if (!inventory) {
-    if ((await hasObjectDeclaration(objectRoot)) && !(await isLocked(objectWorkspace(storageRoot, objectRoot)))) {
-      throw declarationWithoutInventory(objectRoot);
-    }
     throw objectNotFound(storageRoot, id);
   }
   return new OpenedObject(storageRoot, objectRoot, await confirmedVersion(storageRoot, objectRoot, inventory, id), inventory);
@@ -449,21 +446,26 @@ async function openDeclaredObject(storageRoot: string, objectRoot: string, decla
   if (declared === '') {
     throw createError('E007', objectRoot);
   }
-  let inventory = await readInventory(objectRoot);
-  if (!inventory) {
-    if (await isLocked(objectWorkspace(storageRoot, objectRoot))) {
-      return undefined;
-    }
-    // Its writer may have finished between the two: a create by committing, a remove by deleting it
-    inventory = await readInventory(objectRoot);
-    if (!inventory) {
-      if (!(await hasObjectDeclaration(objectRoot))) {
-        return undefined;
-      }
-      throw declarationWithoutInventory(objectRoot);
-    }
+  const inventory = await committedInventory(storageRoot, objectRoot);
+  return inventory && new OpenedObject(storageRoot, objectRoot, declared, inventory);
+}
+
+/**
+ * The root inventory of the object at `objectRoot`.
+ * @returns `undefined` if it has no inventory and its lock is held, a create that isn't committed; or if it has neither an inventory nor an object declaration
+ * @throws {@link OcflError} `INVALID_OBJECT` with E063 if it has a declaration, no inventory and no lock held
+ */
+async function committedInventory(storageRoot: string, objectRoot: string): Promise<OcflObjectInventory | undefined> {
+  const inventory = await readInventory(objectRoot);
+  if (inventory || !(await hasObjectDeclaration(objectRoot)) || (await isLocked(objectWorkspace(storageRoot, objectRoot)))) {
+    return inventory;
   }
-  return new OpenedObject(storageRoot, objectRoot, declared, inventory);
+  // Its writer may have finished between the two: a create by committing, a remove by deleting it
+  const reread = await readInventory(objectRoot);
+  if (!reread && (await hasObjectDeclaration(objectRoot))) {
+    throw declarationWithoutInventory(objectRoot);
+  }
+  return reread;
 }
 
 /**
@@ -490,8 +492,12 @@ async function createObject(
     }
     throw ocflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}, where the storage root ${storageRoot} places <${id}>.`);
   }
-  if (!(await isDirEmpty(objectRoot))) {
+  const contents = await dirContents(objectRoot);
+  if (contents === 'not empty') {
     throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is not empty.`);
+  }
+  if (contents === 'below a file') {
+    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is below a file.`);
   }
   const outer = await enclosingObject(storageRoot, objectRoot);
   if (outer !== undefined) {

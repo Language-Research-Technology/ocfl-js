@@ -601,17 +601,19 @@ class OcflObjectTransaction {
    * @throws {@link OcflError} `FILE_EXISTS` if `logicalPath` is an existing directory, or is inside an existing file. An existing file is replaced.
    */
   async write(logicalPath: string, data: WriteContent): Promise<void> {
+    this.#assertOpen();
+    // Copied now: the caller may change their buffer before this write's turn
+    const content = isAsyncIterable(data) || typeof data === 'string' ? data : new Uint8Array(Hashing.toBytes(data));
     return this.#inTurn(async () => {
       const target = fileLogicalPath(logicalPath);
       const digestAlgo = this.#inventory.digestAlgorithm;
       const staging = this.#stagingPath();
-      if (isAsyncIterable(data)) {
+      if (isAsyncIterable(content)) {
         const hash = Hashing.createHasher(digestAlgo);
-        await this.#removeStagedOnFailure(staging, () => store.writeFile(staging, hashedBytes(data, hash)));
+        await this.#removeStagedOnFailure(staging, () => store.writeFile(staging, hashedBytes(content, hash)));
         const digest = hash.digest();
         return () => this.#addContent(target, digest, staging);
       }
-      const content = Hashing.toBytes(data);
       const digest = await Hashing.digest(digestAlgo, content);
       return () => this.#addContent(target, digest, staging, () => store.writeFile(staging, content));
     });
@@ -818,15 +820,19 @@ class OcflObjectTransaction {
    * earlier has finished.
    */
   async #inTurn<T>(prepare: () => Promise<() => Promise<T>>): Promise<T> {
-    if (this.#ended) {
-      throw new Error('Transaction already commited');
-    }
+    this.#assertOpen();
     const prepared = prepare();
     // A rejection surfaces at this operation's turn, which may come much later
     prepared.catch(() => {});
     const turn = this.#lastTurn.then(async () => (await prepared)());
     this.#lastTurn = turn.catch(() => {});
     return this.#track(turn);
+  }
+
+  #assertOpen() {
+    if (this.#ended) {
+      throw new Error('Transaction already commited');
+    }
   }
 
   #track<T>(p: TrackedPromise<T>): Promise<T> {

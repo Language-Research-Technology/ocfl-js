@@ -123,10 +123,10 @@ describe('root.objects', () => {
     });
 
     it('is reported, not searched for objects, when its object declaration is invalid', async () => {
-      const root = await newRoot({ extensionName: PATH_DIRECT, suffix: '' });
+      const root = await newRoot({ extensionName: PATH_DIRECT });
       await createObject(root, 'good', { 'a.txt': 'a' });
       const damaged = path.join(root.path, 'damaged');
-      await fs.promises.cp(path.join(root.path, 'good'), path.join(damaged, 'inner'), { recursive: true });
+      await fs.promises.cp(path.join(root.path, 'good', '__object__'), path.join(damaged, 'inner'), { recursive: true });
       await writeFiles(damaged, { '0=ocfl_object_1.1': 'wrong\n' });
 
       const { ids, errors } = await listed(root);

@@ -13,7 +13,7 @@ import { recoverObject } from './recover.ts';
 import { removeObject } from './remove.ts';
 import * as store from './store.ts';
 import type { Layout, LayoutConfig, OcflVersion } from './types.ts';
-import { deepFreeze, findNamasteVersion, isDirEmpty, isNonEmptyString, parseJsonObject, readIfExists, relativeWithin } from './utils.ts';
+import { deepFreeze, findNamasteVersion, isDirEmpty, isNonEmptyString, parseJsonObject, readIfExists, rejectUnknownKeys, relativeWithin } from './utils.ts';
 import { createError } from './validation.ts';
 
 const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, NAMASTE_PREFIX_STORAGE, NAMASTE_T } = OcflConstants;
@@ -151,7 +151,7 @@ interface StorageRoot {
    * The object uses sha512 digests and the `content` directory, at the storage root's OCFL version.
    *
    * @throws {@link OcflError} `OBJECT_EXISTS` if an object with this id already exists.
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds something else or is inside another object.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory, or that directory holds something else, is below a file, or is inside another object.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object, or died creating it; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs and leaving the object unlocked, if an earlier create left an unfinished version in the workspace. Don't simply repeat the create: call {@link StorageRoot.recover}, then open the object to see whether it was created.
@@ -296,7 +296,7 @@ function absolutePath(rootPath: string): string {
  * Creates a new OCFL 1.1 storage root in an empty or missing directory.
  *
  * @throws {@link OcflError} `DIRECTORY_NOT_EMPTY` if `path` holds anything.
- * @throws `TypeError` if the layout or one of its parameters is invalid.
+ * @throws `TypeError` if the layout or one of its parameters is invalid, or `options` has a key other than `layout`.
  * @example
  * ```ts
  * const root = await createStorageRoot('/srv/ocfl', {
@@ -307,6 +307,7 @@ function absolutePath(rootPath: string): string {
 async function createStorageRoot(path: string, options: { layout: LayoutConfig }): Promise<StorageRoot> {
   const root = absolutePath(path);
   const layout = createLayout(options?.layout);
+  rejectUnknownKeys(options, (option) => option === 'layout', 'createStorageRoot has no option');
   await fs.promises.mkdir(root, { recursive: true });
   if (!(await isDirEmpty(root))) {
     throw ocflError('DIRECTORY_NOT_EMPTY', `Cannot create a storage root in ${root}, which is not empty.`);

@@ -29,4 +29,12 @@ describe('the 0002 flat direct layout', () => {
       assert.throws(() => layout.map(id), { name: 'OcflError', code: 'ID_INCOMPATIBLE_WITH_LAYOUT' }, id);
     }
   });
+
+  it('rejects an id over 255 UTF-8 bytes, which no file system can name, and maps one of exactly 255', () => {
+    const expected = { name: 'OcflError', code: 'ID_INCOMPATIBLE_WITH_LAYOUT' };
+    assert.throws(() => layout.map('é'.repeat(128)), expected);
+    assert.throws(() => layout.map('x'.repeat(256)), expected);
+    assert.strictEqual(layout.map(`${'é'.repeat(127)}x`), `${'é'.repeat(127)}x`);
+    assert.strictEqual(layout.map('x'.repeat(255)), 'x'.repeat(255));
+  });
 });
