@@ -17,6 +17,8 @@ export default {
         // At a git root, pnpm version would otherwise commit and create the tag semantic-release owns
         prepareCmd: `pnpm version \${nextRelease.version} --no-git-checks --no-git-tag-version`,
         publishCmd: `pnpm publish --tag \${nextRelease.channel || 'latest'} --no-git-checks`,
+        // Tells publish.yml which tag to build the site from; GITHUB_OUTPUT is unset outside Actions
+        successCmd: `if [ -n "$GITHUB_OUTPUT" ]; then echo "tag=\${nextRelease.gitTag}" >> "$GITHUB_OUTPUT"; fi`,
       },
     ],
     '@semantic-release/github',

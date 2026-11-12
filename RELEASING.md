@@ -48,3 +48,17 @@ nothing is committed back, which keeps `beta` a fast-forward of `main`.
   reset to `main`.
 - Stable releases need no `beta` housekeeping: the next releasable push to `main` starts the next
   prerelease line (e.g. `1.1.0-beta.1` after `1.0.0`).
+
+## Documentation site
+
+The [documentation site](https://language-research-technology.github.io/ocfl-js/) is deployed to
+GitHub Pages by Publish Packages after every release it publishes, stable or beta, built from the
+release's tag. It documents the most recent publish, not npm's `latest`: every releasable push to
+`main` publishes a beta, so the site usually describes a prerelease that `pnpm add @ocfl/ocfl-fs`
+doesn't install. A dry run, or a run with no releasable commits, doesn't deploy.
+
+Pages must be switched on once, before the first release that should deploy it:
+
+1. **Settings → Pages → Build and deployment → Source**: choose **GitHub Actions**.
+2. **Settings → Environments → github-pages → Deployment branches and tags**: allow `beta` as well
+   as `main`, or prerelease deploys are rejected.
