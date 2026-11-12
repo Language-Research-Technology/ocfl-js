@@ -23,6 +23,9 @@ interface UnfinishedWrite {
    * **Only call this when its writer is no longer alive: a live writer's update is destroyed**, and the library can't tell
    * a live writer from a dead one. `lockedAt` says when the lock was taken.
    *
+   * **Recover a write from one process at a time.** Two recoveries of the same write at once, on any hosts or in one process,
+   * aren't kept apart: if a new writer takes the lock between them, the later one destroys that writer's update.
+   *
    * A remove that had begun deleting the object is finished. An update that wasn't committed is discarded: its unfinished version in the workspace, the directory of the version after the head
    * in the object, and staged inventory files are removed. A create that wasn't committed is discarded: the declaration and first version of an object that never
    * got an inventory, and its directory if the create made it. An update that was committed is completed by writing the root inventory's sidecar.
