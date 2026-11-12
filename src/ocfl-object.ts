@@ -92,9 +92,12 @@ interface FixityProblem {
   readonly problem: 'changed' | 'missing';
   /** Where the stored file is, relative to the object, such as `v1/content/audio/1.wav`. */
   readonly contentPath: string;
-  /** The digest the inventory records. */
+  /**
+   * The digest the inventory records, in the case the inventory uses. An object written by another tool may record it
+   * in uppercase, so `expected === actual` isn't a test that the content is unchanged; compare digests ignoring case.
+   */
   readonly expected: string;
-  /** The digest found on disk. Absent when the file is missing. */
+  /** The digest found on disk, in lowercase. Absent when the file is missing. */
   readonly actual?: string;
 }
 
