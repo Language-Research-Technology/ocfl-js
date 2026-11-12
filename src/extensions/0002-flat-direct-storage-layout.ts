@@ -3,6 +3,12 @@ import { OcflConstants } from '../constants.ts';
 import { BuiltInLayout } from '../extension.ts';
 import { hasOverlongSegment, MAX_NAME_BYTES } from '../utils.ts';
 
+/** Object directories named by their id, directly in the storage root. */
+interface FlatDirectLayoutConfig {
+  /** Name of the layout's OCFL extension. */
+  extensionName: '0002-flat-direct-storage-layout';
+}
+
 const { EXTENSIONS_DIR } = OcflConstants;
 
 /**
@@ -31,4 +37,4 @@ class FlatDirectStorageLayout extends BuiltInLayout {
   }
 }
 
-export { FlatDirectStorageLayout };
+export { type FlatDirectLayoutConfig, FlatDirectStorageLayout };

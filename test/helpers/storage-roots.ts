@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { type Draft, openStorageRoot } from '../../src/index.ts';
-import type { Inventory } from '../../src/types.ts';
+import type { Inventory } from '../../src/inventory.ts';
 import { DETAILS } from './drafts.ts';
 import { PATH_DIRECT } from './layouts.ts';
 import { ocflError } from './ocfl-error.ts';

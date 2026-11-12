@@ -1,18 +1,17 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
-import { OcflConstants } from './constants.ts';
+import { OcflConstants, type OcflVersion } from './constants.ts';
 import { checkedDetails, type Draft, type VersionDetails } from './draft.ts';
 import { type OcflError, ocflError } from './error.ts';
 import type { BuiltInLayout } from './extension.ts';
-import { builtInLayoutClass, createLayout } from './extensions/index.ts';
+import { builtInLayoutClass, createLayout, type Layout, type LayoutConfig } from './extensions/index.ts';
 import { listObjects } from './list.ts';
 import { LOCK_NAME, NO_OBJECT_ROOT, REMOVING } from './lock.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import { recoverObject } from './recover.ts';
 import { removeObject } from './remove.ts';
 import * as store from './store.ts';
-import type { Layout, LayoutConfig, OcflVersion } from './types.ts';
 import { deepFreeze, findNamasteVersion, isDirEmpty, isNonEmptyString, parseJsonObject, readIfExists, rejectUnknownKeys, relativeWithin } from './utils.ts';
 import { createError } from './validation.ts';
 

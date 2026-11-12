@@ -1,5 +1,8 @@
 import crypto from 'node:crypto';
 
+/** A digest algorithm OCFL allows for content addressing */
+type ContentAlgorithm = 'sha256' | 'sha512';
+
 type DataType = string | ArrayBufferView | ArrayBufferLike;
 
 interface Hasher {
@@ -87,4 +90,4 @@ function getHexDigestLength(algorithm: string): number {
   return ALGORITHMS.get(algorithm)?.hexLength ?? 0;
 }
 
-export { createHasher, digest, digestSync, getHexDigestLength, normaliseDigest, toBytes };
+export { type ContentAlgorithm, createHasher, digest, digestSync, getHexDigestLength, normaliseDigest, toBytes };

@@ -2,14 +2,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { inspect } from 'node:util';
-import { OcflConstants } from './constants.ts';
+import { OcflConstants, type OcflVersion } from './constants.ts';
 import * as Hashing from './digest.ts';
 import type { VersionDetails, WriteContent } from './draft.ts';
 import { ocflError } from './error.ts';
 import { type ContentRelease, type DeletePlan, type OcflObjectInventory, type RelistPlan, rootInventoryPaths, sidecarContent } from './inventory.ts';
 import { lockKept, releaseLock, takeLock } from './lock.ts';
 import * as store from './store.ts';
-import type { OcflVersion } from './types.ts';
 import {
   createLimiter,
   findNamasteVersion,

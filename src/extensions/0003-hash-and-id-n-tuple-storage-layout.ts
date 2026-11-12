@@ -1,8 +1,19 @@
 import path from 'node:path';
 import * as Hashing from '../digest.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
-import type { HashAndIdNTupleLayoutConfig } from '../types.ts';
 import { checkNTupleParameters } from './n-tuple.ts';
+
+/** Object directories named by their encoded id, nested under pieces of the id's digest. */
+interface HashAndIdNTupleLayoutConfig {
+  /** Name of the layout's OCFL extension. */
+  extensionName: '0003-hash-and-id-n-tuple-storage-layout';
+  /** Algorithm used to hash the id. Defaults to `sha256`. */
+  digestAlgorithm?: string;
+  /** Characters of the digest in each directory level. Defaults to 3. */
+  tupleSize?: number;
+  /** Number of directory levels. Defaults to 3. */
+  numberOfTuples?: number;
+}
 
 const MAX_ENCODED_ID_LENGTH = 100;
 
@@ -46,4 +57,4 @@ class HashAndIdNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   }
 }
 
-export { HashAndIdNTupleStorageLayout };
+export { type HashAndIdNTupleLayoutConfig, HashAndIdNTupleStorageLayout };

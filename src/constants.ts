@@ -11,4 +11,6 @@ const OcflConstants = {
   WORKSPACE_EXTENSION: 'ocfl-js-workspace',
 } as const;
 
-export { OcflConstants };
+type OcflVersion = (typeof OcflConstants.OCFL_VERSIONS)[number];
+
+export { OcflConstants, type OcflVersion };

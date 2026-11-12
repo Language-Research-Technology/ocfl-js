@@ -1,16 +1,16 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
-import { OcflConstants } from './constants.ts';
+import { OcflConstants, type OcflVersion } from './constants.ts';
+import type { ContentAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
 import { checkedDetails, commitDraft, type Draft, type VersionDetails } from './draft.ts';
 import { type OcflError, ocflError } from './error.ts';
-import { isVersionName, OcflObjectInventory, sidecarDigest, VersionNumber, validateStoredInventory } from './inventory.ts';
+import { type Inventory, isVersionName, OcflObjectInventory, sidecarDigest, VersionNumber, validateStoredInventory } from './inventory.ts';
 import { isLocked, updateInProgress } from './lock.ts';
 import { type OcflFile, StoredFile } from './ocfl-file.ts';
 import type { StorageRoot } from './storage-root.ts';
 import * as store from './store.ts';
 import { assertNoMutableHead, objectWorkspace, updateTarget } from './transaction.ts';
-import type { ContentAlgorithm, Inventory, OcflVersion } from './types.ts';
 import { dirContents, findNamasteVersion, hasErrorCode, isNotFound, isNothingAtPath, pathExists } from './utils.ts';
 import { createError } from './validation.ts';
 
@@ -47,7 +47,7 @@ interface OcflObject {
   /** OCFL version the object conforms to. */
   readonly ocflVersion: '1.0' | '1.1';
   /** Algorithm of every {@link OcflFile.digest} in this object. */
-  readonly digestAlgorithm: 'sha256' | 'sha512';
+  readonly digestAlgorithm: ContentAlgorithm;
   /** Every version, keyed by version number, oldest first. */
   readonly versions: ReadonlyMap<number, Version>;
   /** The latest version. */

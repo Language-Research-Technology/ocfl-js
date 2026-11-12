@@ -1,6 +1,7 @@
 import type * as entryPoint from '../../src/index.ts';
 import type {
   ByteRange,
+  ContentAlgorithm,
   Draft,
   FixityProblem,
   FlatDirectLayoutConfig,
@@ -21,6 +22,7 @@ import type {
 
 export type EveryExportedType = [
   ByteRange,
+  ContentAlgorithm,
   Draft,
   FixityProblem,
   FlatDirectLayoutConfig,
