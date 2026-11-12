@@ -62,7 +62,7 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 ### `OBJECT_NOT_FOUND`
 
-**Cause:** there is no object with this id. `open` also throws it for an object another writer is creating and hasn't committed. `remove` and `recover` throw it when there is nothing there at all.
+**Cause:** there is no object with this id. `open` also throws it for an object another writer is creating and hasn't committed. `remove` throws it when there is nothing there at all.
 
 **What to do:** catch it instead of checking whether the object exists first; a check can be out of date by the time you act on it. To make the object, call `create`.
 
@@ -84,7 +84,7 @@ It is also thrown when the directory the id maps to holds an object with a diffe
 
 **Cause:** what the library read where the object should be isn't an object it can safely use. The inventory is missing, isn't JSON, is inconsistent, or names paths that would lead outside the object; the sidecar digest is missing or doesn't match; the object declaration is missing or wrong; or the object is inside another object. `ocflCode` names the OCFL rule, for example `E003` (no object declaration), `E033` (inventory isn't JSON) or `E060` (sidecar digest doesn't match).
 
-`open`, `update`, `remove`, `recover` and `objects()` can all give it. `update` throws it if the declaration has been removed or damaged since the object was opened.
+`open`, `update`, `remove`, recovering an unfinished write, and `objects()` can all give it. `update` throws it if the declaration has been removed or damaged since the object was opened.
 
 These are checks the library makes before it uses an inventory's values as file paths. They are not validation: an object that opens can still break OCFL rules the library never looks at. To check an object against the specification, use [an OCFL validator](/ocfl-js/#objects-written-by-other-tools). See [It doesn't validate](/ocfl-js/#it-doesnt-validate) for what the library checks and what it doesn't.
 
@@ -108,7 +108,7 @@ These are checks the library makes before it uses an inventory's values as file 
 
 **Cause:** `create`, `update` or `remove` found the object's lock taken: another writer is creating, updating or removing it, or died doing so. The library refuses straight away, never waits, and never removes a lock because of its age. `lockedAt` says when the lock was taken.
 
-**What to do:** wait and try again. If you know the writer is dead, call `root.recover(id)` and then try again. Only call `recover` when no writer of the object is alive: it destroys a live writer's update. See [`UPDATE_IN_PROGRESS` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#update_in_progress-another-writer-holds-the-lock).
+**What to do:** wait and try again. If you know the writer is dead, recover the object's unfinished write, from `root.unfinishedWrite(id)`, and then try again. Only recover it when its writer is no longer alive: recovering destroys a live writer's update. Recovering a write also throws `UPDATE_IN_PROGRESS`, changing nothing, if another writer took the lock after you got the write. See [`UPDATE_IN_PROGRESS` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#update_in_progress-another-writer-holds-the-lock).
 
 ### `OBJECT_OUT_OF_DATE`
 
@@ -123,11 +123,11 @@ These are checks the library makes before it uses an inventory's values as file 
 - `create` or `update` failed after the commit point, or failed replacing the root inventory in a way that may have replaced it. The update may have been committed.
 - A failed update couldn't remove everything it had made.
 - `remove` failed part of the way through, so the object may be partly deleted.
-- An earlier writer left an unfinished version in the workspace. This is thrown before your change runs, and leaves the object unlocked.
+- An earlier writer left an unfinished version in the workspace. This is thrown before your change runs.
 
-`cause` is the underlying failure. Apart from the last case, the object stays locked, so later writes get `UPDATE_IN_PROGRESS` until it is recovered. It can still be read.
+`cause` is the underlying failure. The object stays locked, so later writes get `UPDATE_IN_PROGRESS` until it is recovered, and it is among the storage root's unfinished writes. It can still be read.
 
-**What to do:** don't simply repeat the write. Once no writer of the object is alive, call `root.recover(id)`. After a `create` or `update`, open the object again and look at the head to see whether your version was committed; retry only if it wasn't. After a `remove`, `recover` finishes removing the object. See [`RECOVERY_NEEDED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#recovery_needed-the-update-may-or-may-not-be-committed).
+**What to do:** don't simply repeat the write. Once no writer of the object is alive, recover its unfinished write: `(await root.unfinishedWrite(id))?.recover()`. After a `create` or `update`, open the object again and look at the head to see whether your version was committed; retry only if it wasn't. After a `remove`, recovering finishes removing the object. See [`RECOVERY_NEEDED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#recovery_needed-the-update-may-or-may-not-be-committed).
 
 ### `CROSS_FILESYSTEM_MOVE`
 

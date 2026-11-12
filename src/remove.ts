@@ -2,11 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { type OcflError, ocflError } from './error.ts';
-import { lockKept, markRemoving, releaseLock, takeLock } from './lock.ts';
+import { type Lock, lockKept, markRemoving, releaseLock, takeLock } from './lock.ts';
 import { confirmedVersion, declarationWithoutInventory, hasObjectDeclaration, objectNotFound, readInventory } from './ocfl-object.ts';
 import * as store from './store.ts';
-import { objectWorkspace } from './transaction.ts';
 import { hasErrorCode, isDirEmpty } from './utils.ts';
+import { clearWorkspace, objectWorkspace } from './workspace.ts';
 
 const { INVENTORY_NAME, NAMASTE_T } = OcflConstants;
 
@@ -62,9 +62,9 @@ function recoveryNeeded(objectRoot: string, state: string, advice: string, cause
  * Takes the lock of the object `id`, as {@link takeLock} does.
  * @throws {@link OcflError} `OBJECT_NOT_FOUND` if its path is too long for anything to be there
  */
-async function takeLockToRemove(storageRoot: string, workspace: string, id: string): Promise<void> {
+async function takeLockToRemove(storageRoot: string, workspace: string, id: string): Promise<Lock> {
   try {
-    await takeLock(workspace, storageRoot, true);
+    return await takeLock(workspace, storageRoot, id, true);
   } catch (error) {
     throw hasErrorCode(error, 'ENAMETOOLONG') ? objectNotFound(storageRoot, id) : error;
   }
@@ -72,17 +72,17 @@ async function takeLockToRemove(storageRoot: string, workspace: string, id: stri
 
 /**
  * Deletes the object `id` that the storage root's layout places at `objectRoot`, with every version, and the parent directories that leaves empty.
- * The object's lock is held throughout, and nothing else in its workspace directory is touched.
+ * The object's lock is held throughout, and what dead writers left in its workspace directory is removed with it.
  * Once the lock says the object is being removed, the remove is carried through: by this call, or by recovery.
  * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if the object is locked; `OBJECT_NOT_FOUND`, `INVALID_OBJECT` or `ID_INCOMPATIBLE_WITH_LAYOUT` if `objectRoot` doesn't hold the object. Nothing is deleted.
  * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting it failed, or its lock couldn't be released; the lock is kept
  */
 async function removeObject(storageRoot: string, objectRoot: string, id: string): Promise<void> {
   const workspace = objectWorkspace(storageRoot, objectRoot);
-  await takeLockToRemove(storageRoot, workspace, id);
+  const lock = await takeLockToRemove(storageRoot, workspace, id);
   try {
     await assertHoldsObject(storageRoot, objectRoot, id);
-    await markRemoving(workspace);
+    await markRemoving(workspace, lock);
   } catch (error) {
     try {
       await releaseLock(workspace, storageRoot);
@@ -93,6 +93,7 @@ async function removeObject(storageRoot: string, objectRoot: string, id: string)
   }
   try {
     await deleteObjectRoot(storageRoot, objectRoot);
+    await clearWorkspace(workspace);
     await releaseLock(workspace, storageRoot);
   } catch (error) {
     throw recoveryNeeded(objectRoot, 'failed part of the way through', 'which finishes removing it', error);

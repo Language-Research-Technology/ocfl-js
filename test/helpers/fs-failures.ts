@@ -4,7 +4,7 @@ import path from 'node:path';
 import { mock } from 'node:test';
 import { isErrnoException } from '../../src/utils.ts';
 
-type FsMethod = 'mkdir' | 'open' | 'rename' | 'copyFile' | 'writeFile' | 'readFile' | 'readdir' | 'rmdir' | 'rm' | 'opendir' | 'stat';
+type FsMethod = 'mkdir' | 'open' | 'link' | 'rename' | 'copyFile' | 'writeFile' | 'readFile' | 'readdir' | 'rmdir' | 'rm' | 'opendir' | 'stat';
 type Fails = (source: string, target: string) => boolean;
 
 /** Matches a move from a path ending in `from` to one ending in `to` */
@@ -58,7 +58,7 @@ export function withLostReply<T>(method: FsMethod, failing: string | Fails, fn: 
 }
 
 /** Runs `fn` with `before` called once, just before the first call of `method` whose path argument at `position` is `file` */
-async function beforeCalling<T>(method: 'open' | 'rename', position: 0 | 1, file: string, before: () => Promise<unknown>, fn: () => Promise<T>): Promise<T> {
+async function beforeCalling<T>(method: 'link' | 'rename', position: 0 | 1, file: string, before: () => Promise<unknown>, fn: () => Promise<T>): Promise<T> {
   const fsp = fs.promises as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
   const real = fsp[method] as (...args: unknown[]) => Promise<unknown>;
   let called = false;
@@ -78,9 +78,9 @@ async function beforeCalling<T>(method: 'open' | 'rename', position: 0 | 1, file
   }
 }
 
-/** Runs `fn` with `beforeOpen` called once, just before the first file at `file` is opened */
-export function beforeOpening<T>(file: string, beforeOpen: () => Promise<unknown>, fn: () => Promise<T>): Promise<T> {
-  return beforeCalling('open', 0, file, beforeOpen, fn);
+/** Runs `fn` with `beforeLink` called once, just before something is first hard-linked to `target` */
+export function beforeLinkingTo<T>(target: string, beforeLink: () => Promise<unknown>, fn: () => Promise<T>): Promise<T> {
+  return beforeCalling('link', 1, target, beforeLink, fn);
 }
 
 /** Runs `fn` with `beforeRename` called once, just before something is first renamed to `target` */

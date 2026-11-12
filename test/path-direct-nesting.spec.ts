@@ -29,7 +29,6 @@ describe('a path-direct id whose path has the suffix part-way through', () => {
         ['create', (root, id) => createObject(root, id, { 'b.txt': 'b' })],
         ['open', (root, id) => root.open(id)],
         ['remove', (root, id) => root.remove(id)],
-        ['recover', (root, id) => root.recover(id)],
       ];
       for (const [name, operation] of operations) {
         for (const id of ids) {

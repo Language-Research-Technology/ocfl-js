@@ -9,6 +9,7 @@ import { Code } from '@astrojs/starlight/components';
 import updateInProgress from '../../../examples/concurrent-writers/update-in-progress.ts?raw';
 import retryOutOfDate from '../../../examples/concurrent-writers/retry-out-of-date.ts?raw';
 import recoverAndReopen from '../../../examples/concurrent-writers/recover-and-reopen.ts?raw';
+import recoverAfterCrash from '../../../examples/concurrent-writers/recover-after-crash.ts?raw';
 
 A storage root is often shared: several processes on one host, or several hosts on one NFS mount. This guide covers what happens when two of them write the same OCFL object, and what to do when a writer dies part of the way through.
 
@@ -50,10 +51,10 @@ An update is committed at one moment: the rename that replaces the object's root
 After `RECOVERY_NEEDED`:
 
 - The object stays readable.
-- In most cases the lock is kept, so later creates, updates and removes of the object throw `UPDATE_IN_PROGRESS` until it is recovered.
+- The lock is kept, so later creates, updates and removes of the object throw `UPDATE_IN_PROGRESS` until it is recovered.
 - The object you called `update` on is unchanged. Opening the object again shows what is on disk.
 
-Run `root.recover(id)`, then open the object again. Its head says whether the update was committed. Repeat the update only if the head hasn't moved.
+Recover the object's unfinished write, from `root.unfinishedWrite(id)`, then open the object again. Its head says whether the update was committed. Repeat the update only if the head hasn't moved.
 
 <Code code={recoverAndReopen} lang="ts" />
 
@@ -64,17 +65,19 @@ The same goes for the other writers:
 
 ## Recovering
 
-`root.recover(id)` clears what a dead writer left of one object and releases its lock last:
+Every held lock is an **unfinished write**: a create, update or remove whose writer is still working, or died. `root.unfinishedWrites()` lists them all, and `root.unfinishedWrite(id)` finds the one for an id, or gives `undefined` if the object isn't locked. Each has the object's `id`, the `lockedAt` time and whether it is `removing` the object. Listing changes nothing.
+
+`write.recover()` clears what the write left and releases the lock last:
 
 - an update that wasn't committed is discarded;
 - an update that was committed is completed, by writing the root inventory's sidecar;
 - a create that wasn't committed is discarded;
 - a remove that had begun deleting is finished.
 
-It never makes a version the head, and never removes a version directory other than the one the dead writer was adding. With nothing to clear, it does nothing. If it fails part of the way through, the lock is still there and you can call it again.
+It never makes a version the head, and never removes a version directory other than the one the dead writer was adding. If the lock has been released since you got the write, it does nothing. If another writer has taken the lock since, it throws `UPDATE_IN_PROGRESS` and changes nothing. If it fails part of the way through, the lock is still there and you can recover the write again.
 
 :::danger[Recovering destroys a live writer's update]
-Call `root.recover(id)` only when you know no writer of the object is alive. If one is, recovery destroys its update and lets a second writer in beside it. Nothing in the library guards against this: it can't tell a live writer from a dead one, and it takes your word.
+Call `write.recover()` only when you know its writer is no longer alive. If it is, recovery destroys its update and lets a second writer in beside it. Nothing in the library guards against this: it can't tell a live writer from a dead one, and it takes your word.
 :::
 
 You know a writer is dead when, for example, it is your own process and it has stopped, or the host that ran it has been restarted. A `lockedAt` from long ago is a hint, not proof: a writer can stall for minutes on a slow mount and then carry on.
@@ -83,7 +86,15 @@ Don't delete a lock by hand. Recovery uses what the lock records to decide what 
 
 ### When a writer dies
 
-A writer that dies leaves its lock, and every later create, update or remove of the object throws `UPDATE_IN_PROGRESS`. Once you know the writer is dead, run `root.recover(id)` and then try again.
+A writer that dies leaves its lock, and every later create, update or remove of the object throws `UPDATE_IN_PROGRESS`. Once you know the writer is dead, recover its unfinished write and then try again.
+
+### After a crash
+
+A host that crashed may have been writing objects you can't name. List the unfinished writes and recover the ones whose writers you know are dead. There is no way to recover every lock at once: other hosts sharing the storage root may still be writing, so the choice is made one write at a time.
+
+<Code code={recoverAfterCrash} lang="ts" />
+
+This finds every write, whatever the layout, including a create that died before it was committed and so has no inventory naming its id.
 
 ### A create whose writer died
 
@@ -93,7 +104,7 @@ A create writes the object declaration before the root inventory. If its writer 
 - `root.create(id, …)` throws `UPDATE_IN_PROGRESS`;
 - `root.objects()` leaves it out without an error.
 
-So a dead create doesn't show up when you list the storage root. Run `root.recover(id)` for its id to clear it. There is no root-wide way to find these yet: [issue #262](https://github.com/Language-Research-Technology/ocfl-js/issues/262) tracks one. Listing also leaves out an object that has lost its declaration: see [what the library doesn't check or do](/ocfl-js/#what-it-doesnt-check-or-do).
+So a dead create doesn't show up when you list the storage root's objects, but it is among its unfinished writes. Listing also leaves out an object that has lost its declaration: see [what the library doesn't check or do](/ocfl-js/#what-it-doesnt-check-or-do).
 
 ## Upgrade every writer together
 

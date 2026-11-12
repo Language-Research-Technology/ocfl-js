@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
-import { DETAILS, objectAtV1, placesOf, readInventory, sidecarMatches, snapshot, textFiles, useTempRoots, writeB } from './helpers/drafts.ts';
+import { DETAILS, objectAtV1, placesOf, readInventory, recover, sidecarMatches, snapshot, textFiles, useTempRoots, writeB } from './helpers/drafts.ts';
 import { withFsFailure, withLostReply } from './helpers/fs-failures.ts';
 import { ocflError, rejection } from './helpers/ocfl-error.ts';
 
@@ -92,7 +92,7 @@ describe('the commit point', () => {
       assert.strictEqual(object.head.number, 1);
       assert.deepStrictEqual(await textFiles((await root.open(ID)).head), { 'a.txt': 'a', 'b.txt': 'b' });
 
-      await root.recover(ID);
+      await recover(root, ID);
       assert.deepStrictEqual(await rootInventory(objectRoot), { head: 'v2', sidecarMatches: true });
       assert.ok(!fs.existsSync(lock));
     });
@@ -129,7 +129,7 @@ describe('the commit point', () => {
       assert.ok(fs.existsSync(path.join(objectRoot, 'v2', 'content', 'b.txt')));
       assert.ok(fs.existsSync(lock));
 
-      await root.recover(ID);
+      await recover(root, ID);
       assert.deepStrictEqual(await snapshot(objectRoot), before);
       assert.strictEqual((await root.open(ID)).head.number, 1);
     });

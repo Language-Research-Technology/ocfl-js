@@ -11,6 +11,7 @@ import {
   lockObject,
   objectAtV1,
   placesOf,
+  recover,
   sidecarMatches,
   snapshot,
   textFiles,
@@ -53,27 +54,27 @@ describe('root.recover', () => {
   }
 
   describe('with nothing to clear', () => {
-    it('resolves for a healthy, unlocked object and changes nothing on disk', async () => {
+    it('has no unfinished write for a healthy, unlocked object, and changes nothing on disk', async () => {
       const { root, before } = await existingObject();
 
-      assert.strictEqual(await root.recover(ID), undefined);
+      assert.strictEqual(await root.unfinishedWrite(ID), undefined);
 
       assert.deepStrictEqual(await snapshot(root.path), before);
     });
 
-    it('throws OBJECT_NOT_FOUND for an id with no object and no leftovers', async () => {
+    it('has no unfinished write for an id with no object and no leftovers, and changes nothing', async () => {
       const { root, before } = await emptyRoot();
 
-      await assert.rejects(root.recover(ID), ocflError('OBJECT_NOT_FOUND'));
+      assert.strictEqual(await root.unfinishedWrite(ID), undefined);
 
       assert.deepStrictEqual(await snapshot(root.path), before);
     });
 
-    it('throws OBJECT_NOT_FOUND for an empty directory where the object would be, and keeps it', async () => {
+    it('has no unfinished write for an empty directory where the object would be, and keeps it', async () => {
       const { root, objectRoot } = await emptyRoot();
       await fs.promises.mkdir(objectRoot);
 
-      await assert.rejects(root.recover(ID), ocflError('OBJECT_NOT_FOUND'));
+      assert.strictEqual(await root.unfinishedWrite(ID), undefined);
 
       assert.ok(fs.existsSync(objectRoot));
     });
@@ -81,7 +82,7 @@ describe('root.recover', () => {
     it('throws a TypeError for a missing id', async () => {
       const { root } = await emptyRoot();
 
-      await assert.rejects(root.recover(''), TypeError);
+      await assert.rejects(recover(root, ''), TypeError);
     });
   });
 
@@ -90,7 +91,7 @@ describe('root.recover', () => {
       const { root, before } = await existingObject();
       await lockObject(root, ID);
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await snapshot(root.path), before);
       await assertUpdatable(root, { 'a.txt': 'a' });
@@ -105,22 +106,22 @@ describe('root.recover', () => {
         ocflError('RECOVERY_NEEDED'),
       );
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assertNoWorkspace(root);
       assert.notDeepStrictEqual(await snapshot(root.path), before);
       assert.strictEqual((await root.open(ID)).head.number, 2);
     });
 
-    it('is released for an object that was never created, without throwing OBJECT_NOT_FOUND', async () => {
+    it('is released for an object that was never created', async () => {
       const { root, before } = await emptyRoot();
       await lockObject(root, ID);
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await snapshot(root.path), before);
       assertNoWorkspace(root);
-      await assert.rejects(root.recover(ID), ocflError('OBJECT_NOT_FOUND'));
+      assert.strictEqual(await root.unfinishedWrite(ID), undefined);
     });
 
     it("leaves another object's lock and leftovers untouched", async () => {
@@ -133,7 +134,7 @@ describe('root.recover', () => {
       await fs.promises.writeFile(otherVersion, 'b');
       const others = await snapshot(placesOf(root, 'other').workspace);
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.ok(!fs.existsSync(placesOf(root, ID).workspace));
       assert.ok(fs.existsSync(otherLock));
@@ -163,7 +164,7 @@ describe('root.recover', () => {
         [],
       );
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await snapshot(root.path), before);
       assert.ok(!fs.existsSync(path.join(objectRoot, 'v2')));
@@ -188,7 +189,7 @@ describe('root.recover', () => {
         'inventory.json': 'unfinished',
       });
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await snapshot(root.path), before);
       await assertUpdatable(root, { 'a.txt': 'a' });
@@ -204,7 +205,7 @@ describe('root.recover', () => {
       await withFsFailure('rm', path.join(workspace, 'v2'), () => assert.rejects(update(), ocflError('RECOVERY_NEEDED')), 'EACCES');
       assert.ok(fs.existsSync(path.join(workspace, 'v2')));
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await snapshot(root.path), before);
       assert.strictEqual((await root.open(ID)).head.number, 1);
@@ -214,9 +215,10 @@ describe('root.recover', () => {
     it('gives the same result when called twice', async () => {
       const { root, object, objectRoot, before } = await existingObject();
       await failBeforeCommit(objectRoot, () => object.update(DETAILS, writeB));
+      const write = await root.unfinishedWrite(ID);
 
-      await root.recover(ID);
-      await root.recover(ID);
+      await write?.recover();
+      await write?.recover();
 
       assert.deepStrictEqual(await snapshot(root.path), before);
       assert.deepStrictEqual(await emptyDirectoriesUnder(root.path), []);
@@ -227,12 +229,12 @@ describe('root.recover', () => {
       await failBeforeCommit(objectRoot, () => object.update(DETAILS, writeB));
 
       await assert.rejects(
-        withFsFailure('rm', path.join(objectRoot, 'v2'), () => root.recover(ID), 'EACCES'),
+        withFsFailure('rm', path.join(objectRoot, 'v2'), () => recover(root, ID), 'EACCES'),
         /injected failure/,
       );
 
       assert.ok(fs.existsSync(lock));
-      await root.recover(ID);
+      await recover(root, ID);
       assert.deepStrictEqual(await snapshot(root.path), before);
     });
   });
@@ -242,7 +244,7 @@ describe('root.recover', () => {
       const { root, object, objectRoot } = await existingObject();
       await failAfterCommit(objectRoot, () => object.update(DETAILS, writeB));
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.ok(await sidecarMatches(objectRoot));
       assert.deepStrictEqual((await fs.promises.readdir(objectRoot)).sort(), ['0=ocfl_object_1.1', 'inventory.json', 'inventory.json.sha512', 'v1', 'v2']);
@@ -256,7 +258,7 @@ describe('root.recover', () => {
       const { root, objectRoot } = await emptyRoot();
       await failAfterCommit(objectRoot, () => root.create(ID, DETAILS, writeB));
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.ok(await sidecarMatches(objectRoot));
       assert.deepStrictEqual((await fs.promises.readdir(objectRoot)).sort(), ['0=ocfl_object_1.1', 'inventory.json', 'inventory.json.sha512', 'v1']);
@@ -269,7 +271,7 @@ describe('root.recover', () => {
       await fs.promises.rm(path.join(objectRoot, 'inventory.json.sha512.tmp'));
       await fs.promises.rm(path.join(objectRoot, 'inventory.json.sha512'));
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.ok(await sidecarMatches(objectRoot));
     });
@@ -277,10 +279,11 @@ describe('root.recover', () => {
     it('gives the same result when called twice', async () => {
       const { root, object, objectRoot } = await existingObject();
       await failAfterCommit(objectRoot, () => object.update(DETAILS, writeB));
-      await root.recover(ID);
+      const write = await root.unfinishedWrite(ID);
+      await write?.recover();
       const once = await snapshot(root.path);
 
-      await root.recover(ID);
+      await write?.recover();
 
       assert.deepStrictEqual(await snapshot(root.path), once);
     });
@@ -293,7 +296,7 @@ describe('root.recover', () => {
       );
       const { [path.relative(root.path, lock)]: _lock, ...committed } = await snapshot(root.path);
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await snapshot(root.path), committed);
       await assertUpdatable(root, { 'a.txt': 'a', 'b.txt': 'b' });
@@ -306,24 +309,25 @@ describe('root.recover', () => {
       await fs.promises.writeFile(inventory, `${await fs.promises.readFile(inventory, 'utf8')}\n`);
       const damaged = await snapshot(root.path);
 
-      await assert.rejects(root.recover(ID), ocflError('INVALID_OBJECT'));
+      await assert.rejects(recover(root, ID), ocflError('INVALID_OBJECT'));
 
       assert.deepStrictEqual(await snapshot(root.path), damaged);
       assert.ok(fs.existsSync(lock));
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT, changing nothing, when the directory holds an object with another id', async () => {
-      const { root, objectRoot, lock } = await existingObject();
-      await lockObject(root, ID);
+    it('releases the lock, leaving the object root alone, when the directory holds an object with another id', async () => {
+      const { root, objectRoot } = await existingObject();
       await rewriteInventory(objectRoot, (inventory) => {
         inventory.id = 'another';
       });
-      const held = await snapshot(root.path);
+      const held = await snapshot(objectRoot);
+      await lockObject(root, ID);
+      await writeFiles(path.join(placesOf(root, ID).workspace, 'v2'), { 'content/b.txt': 'unfinished' });
 
-      await assert.rejects(root.recover(ID), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      await recover(root, ID);
 
-      assert.deepStrictEqual(await snapshot(root.path), held);
-      assert.ok(fs.existsSync(lock));
+      assert.deepStrictEqual(await snapshot(objectRoot), held);
+      assertNoWorkspace(root);
     });
   });
 
@@ -333,7 +337,7 @@ describe('root.recover', () => {
       await failBeforeCommit(objectRoot, () => root.create(ID, DETAILS, writeB));
       assert.deepStrictEqual((await fs.promises.readdir(objectRoot)).sort(), ['0=ocfl_object_1.1', 'inventory.json.sha512.tmp', 'inventory.json.tmp', 'v1']);
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.ok(!fs.existsSync(objectRoot));
       assert.deepStrictEqual(await snapshot(root.path), before);
@@ -352,7 +356,7 @@ describe('root.recover', () => {
       );
       assert.notDeepStrictEqual(await snapshot(root.path), before);
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await snapshot(root.path), before);
       assert.deepStrictEqual(await fs.promises.readdir(root.path), directories);
@@ -364,7 +368,7 @@ describe('root.recover', () => {
       await fs.promises.mkdir(objectRoot);
       await failBeforeCommit(objectRoot, () => root.create(ID, DETAILS, writeB));
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await fs.promises.readdir(objectRoot), []);
       assertNoWorkspace(root);
@@ -381,20 +385,21 @@ describe('root.recover', () => {
         });
       await withFsFailure('rm', path.join(workspace, 'v1'), () => assert.rejects(create(), ocflError('RECOVERY_NEEDED')), 'EACCES');
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await snapshot(root.path), before);
       assert.ok(!fs.existsSync(objectRoot));
       assertNoWorkspace(root);
     });
 
-    it('throws INVALID_OBJECT for a declaration with no inventory once the lock is gone, changing nothing', async () => {
+    it('is damage once the lock is gone: no unfinished write, and the object opens as INVALID_OBJECT', async () => {
       const { root, objectRoot, lock } = await emptyRoot();
       await failBeforeCommit(objectRoot, () => root.create(ID, DETAILS, writeB));
       await fs.promises.rm(lock);
       const left = await snapshot(root.path);
 
-      await assert.rejects(root.recover(ID), ocflError('INVALID_OBJECT', 'E063'));
+      assert.strictEqual(await root.unfinishedWrite(ID), undefined);
+      await assert.rejects(root.open(ID), ocflError('INVALID_OBJECT', 'E063'));
 
       assert.deepStrictEqual(await snapshot(root.path), left);
     });
@@ -405,18 +410,18 @@ describe('root.recover', () => {
       const held = await snapshot(objectRoot);
       await lockObject(root, ID);
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await snapshot(objectRoot), held);
       assert.ok(!fs.existsSync(lock));
     });
 
-    it('leaves the disk as it is when called again, and then throws OBJECT_NOT_FOUND', async () => {
+    it('leaves no unfinished write, and the disk as it was', async () => {
       const { root, objectRoot, before } = await emptyRoot();
       await failBeforeCommit(objectRoot, () => root.create(ID, DETAILS, writeB));
-      await root.recover(ID);
+      await recover(root, ID);
 
-      await assert.rejects(root.recover(ID), ocflError('OBJECT_NOT_FOUND'));
+      assert.strictEqual(await root.unfinishedWrite(ID), undefined);
 
       assert.deepStrictEqual(await snapshot(root.path), before);
     });
@@ -433,21 +438,17 @@ describe('root.recover', () => {
       return { ...existing, object, committed: await snapshot(existing.objectRoot) };
     }
 
-    for (const locked of [false, true]) {
-      it(`is kept, with INVALID_OBJECT, in an object of several versions that lost its root inventory and has ${locked ? 'a' : 'no'} lock`, async () => {
-        const { root, objectRoot } = await objectAt(2);
-        await fs.promises.rm(path.join(objectRoot, 'inventory.json'));
-        if (locked) {
-          await lockObject(root, ID);
-        }
-        const damaged = await snapshot(root.path);
+    it('is kept, with INVALID_OBJECT, in a locked object of several versions that lost its root inventory', async () => {
+      const { root, objectRoot, lock } = await objectAt(2);
+      await fs.promises.rm(path.join(objectRoot, 'inventory.json'));
+      await lockObject(root, ID);
+      const damaged = await snapshot(root.path);
 
-        await assert.rejects(root.recover(ID), ocflError('INVALID_OBJECT', 'E063'));
+      await assert.rejects(recover(root, ID), ocflError('INVALID_OBJECT', 'E063'));
 
-        assert.deepStrictEqual(await snapshot(root.path), damaged);
-        assert.deepStrictEqual(Object.keys(damaged).filter((file) => file.endsWith('lock')).length, locked ? 1 : 0);
-      });
-    }
+      assert.deepStrictEqual(await snapshot(root.path), damaged);
+      assert.ok(fs.existsSync(lock));
+    });
 
     it('is kept when it is not the version after the head', async () => {
       const { root, objectRoot, lock } = await objectAt(3);
@@ -455,29 +456,25 @@ describe('root.recover', () => {
       await writeFiles(path.join(objectRoot, 'v5'), { 'content/stray.txt': 'stray' });
       const held = await snapshot(objectRoot);
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await snapshot(objectRoot), held);
       assert.ok(!fs.existsSync(lock));
       assert.strictEqual((await root.open(ID)).head.number, 3);
     });
 
-    for (const locked of [true, false]) {
-      it(`is removed when it is the version after the head, which the root inventory does not name, ${locked ? 'with a' : 'without a'} lock`, async () => {
-        const { root, objectRoot, lock, committed } = await objectAt(3);
-        if (locked) {
-          await lockObject(root, ID);
-        }
-        await writeFiles(path.join(objectRoot, 'v4'), { 'content/unfinished.txt': 'unfinished' });
+    it('is removed when it is the version after the head, which the root inventory does not name', async () => {
+      const { root, objectRoot, lock, committed } = await objectAt(3);
+      await lockObject(root, ID);
+      await writeFiles(path.join(objectRoot, 'v4'), { 'content/unfinished.txt': 'unfinished' });
 
-        await root.recover(ID);
+      await recover(root, ID);
 
-        assert.deepStrictEqual(await snapshot(objectRoot), committed);
-        assert.ok(!fs.existsSync(path.join(objectRoot, 'v4')));
-        assert.ok(!fs.existsSync(lock));
-        assert.strictEqual((await (await root.open(ID)).update(DETAILS, writeC)).head.number, 4);
-      });
-    }
+      assert.deepStrictEqual(await snapshot(objectRoot), committed);
+      assert.ok(!fs.existsSync(path.join(objectRoot, 'v4')));
+      assert.ok(!fs.existsSync(lock));
+      assert.strictEqual((await (await root.open(ID)).update(DETAILS, writeC)).head.number, 4);
+    });
 
     it('is kept when the object can have no further version', async () => {
       const { root, objectRoot, lock } = await existingObject();
@@ -493,7 +490,7 @@ describe('root.recover', () => {
       await writeFiles(path.join(objectRoot, 'v10'), { 'content/stray.txt': 'stray' });
       const held = await snapshot(objectRoot);
 
-      await root.recover(ID);
+      await recover(root, ID);
 
       assert.deepStrictEqual(await snapshot(objectRoot), held);
       assert.ok(!fs.existsSync(lock));
@@ -511,41 +508,44 @@ describe('root.recover', () => {
       return root;
     };
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT, changing nothing, for leftovers inside another object', async () => {
+    it('releases the lock and clears the workspace, but touches nothing in the storage root, for a write inside another object', async () => {
       const root = await holdingForeignOuter();
-      await lockObject(root, 'outer/inner/__object__');
+      await lockObject(root, 'outer/inner', undefined, 'outer/inner/__object__');
       await writeFiles(path.join(workspaceOf(root), 'outer', 'inner', '__object__', 'v1'), { 'content/b.txt': 'unfinished' });
-      const held = await snapshot(root.path);
+      const held = await snapshot(path.join(root.path, 'outer'));
 
-      await assert.rejects(root.recover('outer/inner'), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      await recover(root, 'outer/inner');
 
-      assert.deepStrictEqual(await snapshot(root.path), held);
+      assert.deepStrictEqual(await snapshot(path.join(root.path, 'outer')), held);
+      assert.ok(!fs.existsSync(path.join(workspaceOf(root), 'outer')));
     });
 
-    it('throws INVALID_OBJECT with E082, changing nothing, for an object inside another object', async () => {
+    it('releases the lock, leaving the object root alone, for an object inside another object', async () => {
       const root = await holdingForeignOuter('outer/inner');
-      await lockObject(root, 'outer/inner/__object__');
+      await lockObject(root, 'outer/inner', undefined, 'outer/inner/__object__');
       await writeFiles(path.join(root.path, 'outer', 'inner', '__object__', 'v2'), { 'content/b.txt': 'unfinished' });
-      const held = await snapshot(root.path);
+      const held = await snapshot(path.join(root.path, 'outer'));
 
-      await assert.rejects(root.recover('outer/inner'), ocflError('INVALID_OBJECT', 'E082'));
+      await recover(root, 'outer/inner');
 
-      assert.deepStrictEqual(await snapshot(root.path), held);
+      assert.deepStrictEqual(await snapshot(path.join(root.path, 'outer')), held);
+      assert.strictEqual(await root.unfinishedWrite('outer/inner'), undefined);
     });
 
     /** Leaves in the workspace of <corpus>, below its version name v1, another object's lock and unfinished version, as its live writer would */
     const foreignWorkspaceBelowVersion = async (root: StorageRoot, below: string) => {
       const foreign = path.join(workspaceOf(root), 'corpus', '__object__', 'v1', below);
-      await writeFiles(foreign, { lock: new Date().toISOString(), 'v2/content/b.txt': 'b' });
+      const lock = JSON.stringify({ id: 'foreign', lockedAt: new Date().toISOString(), objectRootExisted: true });
+      await writeFiles(foreign, { lock, 'v2/content/b.txt': 'b' });
     };
 
     for (const below of ['', 'item/__object__']) {
-      it(`leaves alone another writer's lock and unfinished version at <v1/${below}> in its workspace`, async () => {
+      it(`is no unfinished write of the object whose version name holds another writer's lock at <v1/${below}>`, async () => {
         const root = await newRoot({ extensionName: PATH_DIRECT });
         await foreignWorkspaceBelowVersion(root, below);
         const held = await snapshot(root.path);
 
-        await assert.rejects(root.recover('corpus'), ocflError('OBJECT_NOT_FOUND'));
+        assert.strictEqual(await root.unfinishedWrite('corpus'), undefined);
 
         assert.deepStrictEqual(await snapshot(root.path), held);
       });
@@ -556,9 +556,9 @@ describe('root.recover', () => {
       await createObject(root, 'corpus', { 'a.txt': 'a' });
       await foreignWorkspaceBelowVersion(root, '');
       const foreign = await snapshot(path.join(workspaceOf(root), 'corpus', '__object__', 'v1'));
-      const lock = await lockObject(root, 'corpus/__object__');
+      const lock = await lockObject(root, 'corpus', undefined, 'corpus/__object__');
 
-      await root.recover('corpus');
+      await recover(root, 'corpus');
 
       assert.ok(!fs.existsSync(lock));
       assert.deepStrictEqual(await snapshot(path.join(workspaceOf(root), 'corpus', '__object__', 'v1')), foreign);
@@ -571,7 +571,7 @@ describe('root.recover', () => {
       await lockObject(root, ID);
 
       await assert.rejects(
-        withFsFailure('readdir', objectRoot, () => root.recover(ID), 'EACCES'),
+        withFsFailure('readdir', objectRoot, () => recover(root, ID), 'EACCES'),
         { code: 'EACCES' },
       );
 
@@ -580,10 +580,12 @@ describe('root.recover', () => {
   });
 
   describe('the RECOVERY_NEEDED error', () => {
-    it('tells the caller to recover the object', async () => {
+    it("tells the caller to recover the object's unfinished write", async () => {
       const { object, objectRoot } = await existingObject();
 
-      await withFsFailure('rename', path.join(objectRoot, 'inventory.json.sha512'), () => assert.rejects(object.update(DETAILS, writeB), /recover\(\)/));
+      await withFsFailure('rename', path.join(objectRoot, 'inventory.json.sha512'), () =>
+        assert.rejects(object.update(DETAILS, writeB), /recover its unfinished write/),
+      );
     });
   });
 });

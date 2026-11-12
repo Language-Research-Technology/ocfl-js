@@ -22,8 +22,9 @@ import {
   relativeWithin,
 } from './utils.ts';
 import { createError } from './validation.ts';
+import { objectWorkspace } from './workspace.ts';
 
-const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T, WORKSPACE_EXTENSION } = OcflConstants;
+const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
 const MUTABLE_HEAD_INVENTORY = path.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
 
 export interface UpdateTarget {
@@ -35,14 +36,6 @@ export interface UpdateTarget {
   readonly storageRoot: string;
   /** Declared when the first commit creates the object */
   readonly ocflVersion: OcflVersion;
-}
-
-/**
- * The directory, in the workspace of the storage root at the absolute path `root`, of the object at `objectRoot`
- * @param objectRoot - Absolute, and inside the storage root
- */
-function objectWorkspace(root: string, objectRoot: string): string {
-  return path.join(root, EXTENSIONS_DIR, WORKSPACE_EXTENSION, path.relative(root, objectRoot));
 }
 
 /** @param objectRoot - Absolute, and inside the storage root at the absolute path `root` */
@@ -131,25 +124,6 @@ async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory
  */
 function recoveryNeeded(objectRoot: string, state: string, cause: unknown) {
   return lockKept(`The update of the object at ${objectRoot} ${state}`, 'then open the object again before retrying', cause);
-}
-
-/**
- * Makes the directory, in the workspace, that the new version of the object at `objectRoot` is assembled in.
- * @throws {@link OcflError} `RECOVERY_NEEDED` if it is already there, so that what an earlier writer left in it never becomes part of a version
- */
-async function createVersionDirectory(versionPath: string, objectRoot: string): Promise<void> {
-  try {
-    await fs.promises.mkdir(versionPath);
-  } catch (error) {
-    if (!isAlreadyExists(error)) {
-      throw error;
-    }
-    throw ocflError(
-      'RECOVERY_NEEDED',
-      `The object at ${objectRoot} can't be updated: an earlier update left ${versionPath} behind. Once no writer of the object is alive, call recover() on its storage root, then open the object again before retrying.`,
-      { cause: error },
-    );
-  }
 }
 
 function invalidLogicalPath(logicalPath: string) {
@@ -299,18 +273,29 @@ class OcflObjectTransaction {
       () => true,
       () => false,
     );
-    await takeLock(target.workspace, target.storageRoot, rootExisted);
+    await takeLock(target.workspace, target.storageRoot, inventory.id, rootExisted);
     const versionPath = path.join(target.workspace, inventory.head);
-    try {
-      await assertUpToDate(target.root, inventory);
-      await createVersionDirectory(versionPath, target.root);
-    } catch (error) {
+    const refuse = async (error: unknown): Promise<never> => {
       try {
         await releaseLock(target.workspace, target.storageRoot);
       } catch {
         throw recoveryNeeded(target.root, 'was refused, and its lock could not be released', error);
       }
       throw error;
+    };
+    await assertUpToDate(target.root, inventory).catch(refuse);
+    try {
+      await fs.promises.mkdir(versionPath);
+    } catch (error) {
+      // Kept locked, so that what an earlier writer left there never becomes part of a version
+      if (isAlreadyExists(error)) {
+        throw lockKept(
+          `The object at ${target.root} can't be updated: an earlier update left ${versionPath} behind`,
+          'then open the object again before retrying',
+          error,
+        );
+      }
+      return refuse(error);
     }
     return new OcflObjectTransaction(target, inventory, versionPath, rootExisted);
   }
@@ -847,4 +832,4 @@ class OcflObjectTransaction {
   }
 }
 
-export { assertNoMutableHead, isAsyncIterable, OcflObjectTransaction, objectWorkspace, updateTarget };
+export { assertNoMutableHead, isAsyncIterable, OcflObjectTransaction, updateTarget };

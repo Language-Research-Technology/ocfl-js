@@ -75,13 +75,21 @@ export function lockOf(root: StorageRoot, id: string): string {
 
 /**
  * Leaves `id`, in a storage root with the {@link FLAT} layout, as a writer that died straight after taking its lock would
+ * @param objectPath - Where another layout places `id`'s object root, relative to the storage root
  * @returns The lock
  */
-export async function lockObject(root: StorageRoot, id: string, lockedAt: Date = new Date()): Promise<string> {
-  const lock = lockOf(root, id);
+export async function lockObject(root: StorageRoot, id: string, lockedAt: Date = new Date(), objectPath: string = id): Promise<string> {
+  const lock = lockOf(root, objectPath);
   await fs.promises.mkdir(path.dirname(lock), { recursive: true });
-  await fs.promises.writeFile(lock, lockedAt.toISOString());
+  await fs.promises.writeFile(lock, JSON.stringify({ id, lockedAt: lockedAt.toISOString(), objectRootExisted: true }));
   return lock;
+}
+
+/** Recovers the unfinished write of `id`, which it must have, as a caller that knows its writer is dead does */
+export async function recover(root: StorageRoot, id: string): Promise<void> {
+  const write = await root.unfinishedWrite(id);
+  assert.ok(write, `<${id}> has no unfinished write`);
+  await write.recover();
 }
 
 /** Where the object `id`, its directory in the workspace and its lock are, or would be, in a storage root with the {@link FLAT} layout */
