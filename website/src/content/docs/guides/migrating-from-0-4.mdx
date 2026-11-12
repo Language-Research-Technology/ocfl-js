@@ -285,7 +285,7 @@ Misuse, such as an argument of the wrong type, throws a plain `TypeError`, and f
 
 ## Objects 0.4 may have damaged
 
-Some 0.4 updates could leave an object damaged. `object.checkFixity()` reads every stored file the object's manifest lists and reports each one that is `missing` (a manifest entry with no file) or `changed` (content that doesn't match its digest). It doesn't look for files the manifest doesn't list, and it can't tell when a logical path points at the wrong content, because the object doesn't record what you meant to store. Check objects written by other tools, or for problems these checks don't cover, with an OCFL validator. [A fixity audit](/ocfl-js/guides/use-cases/#a-fixity-audit) runs the check over a whole storage root.
+Some 0.4 updates could leave an object damaged. `object.checkFixity()` reads every stored file the object's manifest lists and reports each one that is `missing` (a manifest entry with no file) or `changed` (content that doesn't match its digest). It doesn't look for files the manifest doesn't list, and it can't tell when a logical path points at the wrong content, because the object doesn't record what you meant to store. Check objects written by other tools, or for problems these checks don't cover, with an OCFL validator. [Checking fixity across a storage root](/ocfl-js/guides/use-cases/#checking-fixity-across-a-storage-root) shows the check run over every object.
 
 <Code code={checkFixity} lang="ts" />
 

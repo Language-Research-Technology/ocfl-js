@@ -22,7 +22,7 @@ New to the library? [Getting started](/ocfl-js/guides/getting-started/) walks th
 - **Versions.** Each update assembles a draft and commits it as one new version, or discards it if anything goes wrong before the commit point. A draft can write, import from disk, copy, rename, reinstate from an earlier version and remove files. Content already in the object is shared, not stored again. See [Updating objects](/ocfl-js/guides/updating-objects/).
 - **Reading.** Gives you every file of every version by its logical path, as a stream (including byte ranges), text or bytes.
 - **Listing.** Walks a storage root and yields each OCFL object it finds. See [an indexing job](/ocfl-js/guides/use-cases/#an-indexing-job).
-- **Fixity check.** Reads every stored file of an object again and reports each one that has changed or is missing. See [a fixity audit](/ocfl-js/guides/use-cases/#a-fixity-audit) for what it does and doesn't find.
+- **Fixity check.** Reads every stored file of an object again and reports each one that has changed or is missing. See [checking fixity across a storage root](/ocfl-js/guides/use-cases/#checking-fixity-across-a-storage-root) for what it does and doesn't find.
 - **Concurrent writers.** A lock refuses a second writer to the same object straight away instead of making it wait. After a writer dies, you can recover the object to clear what it left behind. See [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/).
 
 New objects use sha512 digests and a `content` directory in each version.
