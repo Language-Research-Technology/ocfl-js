@@ -60,7 +60,7 @@ interface OcflObject {
    * The update is committed when the root inventory is replaced: any error but `RECOVERY_NEEDED` means it wasn't committed and can be repeated.
    * This object never changes, whatever the outcome.
    *
-   * @throws {@link OcflError} `INVALID_OBJECT` if the object's declaration has been removed or damaged, or the object is now inside another object, since it was opened.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the object's declaration has been removed or damaged, or now declares a later OCFL version than the storage root's (E081), or the object is now inside another object, since it was opened.
    * @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE` if the object has an active mutable head (extension 0005).
    * @throws {@link OcflError} `VERSION_LIMIT_REACHED` if the object's version names are zero-padded and the next one couldn't start with a zero, as OCFL requires (E011): `v01` to `v09` leaves none.
    * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if a later version has been committed since this object was opened; open it again and retry.
@@ -108,10 +108,15 @@ class OpenedObject implements OcflObject {
   readonly #inventory: OcflObjectInventory;
   readonly #root: string;
   readonly #storageRoot: string;
+  readonly #rootVersion: OcflVersion;
 
-  /** @param inventory - As {@link readInventory} returns it, or as a commit returns it */
-  constructor(storageRoot: string, root: string, ocflVersion: OcflVersion, inventory: OcflObjectInventory) {
+  /**
+   * @param rootVersion - The storage root's OCFL version
+   * @param inventory - As {@link readInventory} returns it, or as a commit returns it
+   */
+  constructor(storageRoot: string, rootVersion: OcflVersion, root: string, ocflVersion: OcflVersion, inventory: OcflObjectInventory) {
     this.#storageRoot = storageRoot;
+    this.#rootVersion = rootVersion;
     this.#root = root;
     this.#inventory = inventory;
     this.id = inventory.id;
@@ -124,14 +129,14 @@ class OpenedObject implements OcflObject {
 
   async update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject> {
     const checked = checkedDetails(details);
-    await declaredVersion(this.#storageRoot, this.#root);
+    withinRootVersion(this.#root, await declaredVersion(this.#storageRoot, this.#root), this.#rootVersion);
     await assertNoMutableHead(
       this.#root,
       `The object <${this.id}> has an active mutable head (extension 0005), which this library doesn't support; it can't be updated until the head is committed or removed.`,
     );
     const inventory = OcflObjectInventory._newVersion(this.#inventory);
     const committed = await commitDraft(updateTarget(this.#storageRoot, this.#root, this.ocflVersion), inventory, checked, change);
-    return committed ? new OpenedObject(this.#storageRoot, this.#root, this.ocflVersion, committed) : this;
+    return committed ? new OpenedObject(this.#storageRoot, this.#rootVersion, this.#root, this.ocflVersion, committed) : this;
   }
 
   async checkFixity(): Promise<readonly FixityProblem[]> {
@@ -384,6 +389,17 @@ async function confirmedVersion(storageRoot: string, objectRoot: string, invento
   return ocflVersion;
 }
 
+/**
+ * `ocflVersion`, declared by the object at `objectRoot`, once it is known to be no later than `rootVersion`, its storage root's.
+ * @throws {@link OcflError} `INVALID_OBJECT` with E081 if it is later
+ */
+function withinRootVersion(objectRoot: string, ocflVersion: OcflVersion, rootVersion: OcflVersion): OcflVersion {
+  if (ocflVersion > rootVersion) {
+    throw createError('E081', objectRoot, `an OCFL ${ocflVersion} object in an OCFL ${rootVersion} storage root`);
+  }
+  return ocflVersion;
+}
+
 /** For an object at `objectRoot`, which is inside the object at `outer` */
 function nestedObject(objectRoot: string, outer: string): OcflError {
   return createError('E082', objectRoot, `nested under the object at ${outer}`);
@@ -404,31 +420,37 @@ function declarationWithoutInventory(objectRoot: string): OcflError {
 }
 
 /**
- * Opens the object `id` that the storage root's layout places at `objectRoot`.
+ * Opens the object `id` that the layout of the storage root, of OCFL version `rootVersion`, places at `objectRoot`.
  * @throws {@link OcflError} `OBJECT_NOT_FOUND` if `objectRoot` has no inventory, and either no object declaration or a lock held: a create that isn't committed
- * @throws {@link OcflError} `INVALID_OBJECT` if it has only one of them and isn't locked, is inside another object, or its inventory can't be used
+ * @throws {@link OcflError} `INVALID_OBJECT` if it has only one of them and isn't locked, is inside another object, is of a later OCFL version than the storage root, or its inventory can't be used
  * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it holds an object with another id
  */
-async function openObject(storageRoot: string, objectRoot: string, id: string): Promise<OcflObject> {
+async function openObject(storageRoot: string, objectRoot: string, id: string, rootVersion: OcflVersion): Promise<OcflObject> {
   const inventory = await committedInventory(storageRoot, objectRoot);
   if (!inventory) {
     throw objectNotFound(storageRoot, id);
   }
-  return new OpenedObject(storageRoot, objectRoot, await confirmedVersion(storageRoot, objectRoot, inventory, id), inventory);
+  const ocflVersion = withinRootVersion(objectRoot, await confirmedVersion(storageRoot, objectRoot, inventory, id), rootVersion);
+  return new OpenedObject(storageRoot, rootVersion, objectRoot, ocflVersion, inventory);
 }
 
 /**
- * Opens the object at `objectRoot`, a directory found with the object declaration `declared` and inside no other object.
+ * Opens the object at `objectRoot`, a directory found with the object declaration `declared` and inside no other object, in a storage root of OCFL version `rootVersion`.
  * @param declared - As `findNamasteVersion` returns it for a declaration that exists
  * @returns `undefined` if it has no inventory and its lock is held, a create that isn't committed; or if it has gone
- * @throws {@link OcflError} `INVALID_OBJECT` if its declaration is invalid, or its inventory is missing or can't be used
+ * @throws {@link OcflError} `INVALID_OBJECT` if its declaration is invalid or of a later OCFL version than the storage root, or its inventory is missing or can't be used
  */
-async function openDeclaredObject(storageRoot: string, objectRoot: string, declared: OcflVersion | ''): Promise<OcflObject | undefined> {
+async function openDeclaredObject(
+  storageRoot: string,
+  objectRoot: string,
+  declared: OcflVersion | '',
+  rootVersion: OcflVersion,
+): Promise<OcflObject | undefined> {
   if (declared === '') {
     throw createError('E007', objectRoot);
   }
   const inventory = await committedInventory(storageRoot, objectRoot);
-  return inventory && new OpenedObject(storageRoot, objectRoot, declared, inventory);
+  return inventory && new OpenedObject(storageRoot, rootVersion, objectRoot, withinRootVersion(objectRoot, declared, rootVersion), inventory);
 }
 
 /**
@@ -497,7 +519,7 @@ async function createObject(
     throw new Error(`No first version of <${id}> was committed.`);
   }
   /* node:coverage enable */
-  return new OpenedObject(storageRoot, objectRoot, ocflVersion, committed);
+  return new OpenedObject(storageRoot, ocflVersion, objectRoot, ocflVersion, committed);
 }
 
 export {

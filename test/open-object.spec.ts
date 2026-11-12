@@ -234,6 +234,17 @@ describe('opening an object', () => {
       assert.strictEqual(object.ocflVersion, '1.0');
       assert.strictEqual(await object.head.files.get('a.txt')!.text(), 'abc');
     });
+
+    it('throws INVALID_OBJECT with E081 for a 1.1 object in a 1.0 storage root', async () => {
+      const rootPath = path.join(tempdir, 'root-1.0-object-1.1');
+      await writeStorageRoot(rootPath, '1.1');
+      await writeVersions(rootPath, 'object-1.1', [{ 'a.txt': 'abc' }]);
+      await fs.promises.rm(path.join(rootPath, '0=ocfl_1.1'));
+      await writeFiles(rootPath, { '0=ocfl_1.0': 'ocfl_1.0\n' });
+
+      const root = await openStorageRoot(rootPath);
+      await assert.rejects(root.open('object-1.1'), ocflError('INVALID_OBJECT', 'E081'));
+    });
   });
 
   describe('an id with no object', () => {

@@ -14,6 +14,7 @@ type ValidationCode =
   | 'E069'
   | 'E070'
   | 'E080'
+  | 'E081'
   | 'E082'
   | 'E096'
   | 'E099'
@@ -45,6 +46,7 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
     'If present, [the ocfl_layout.json document] MUST include the following two keys in the root JSON object: [extension, description].',
   ],
   E080: ['INVALID_STORAGE_ROOT', 'The text contents of [the OCFL version declaration file] MUST be the same as dvalue, followed by a newline (\\n).'],
+  E081: ['INVALID_OBJECT', "An OCFL Object's version MUST be less than or equal to the version of the OCFL Storage Root it is in."],
   E082: [
     'INVALID_OBJECT',
     'OCFL Object Roots MUST be stored either as the terminal resource at the end of a directory storage hierarchy or as direct children of a containing OCFL Storage Root.',

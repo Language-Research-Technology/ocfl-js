@@ -138,6 +138,21 @@ describe('root.objects', () => {
       assert.ok(errors[0]!.message.includes(damaged), errors[0]!.message);
     });
 
+    it('is reported with E081 when its OCFL version is later than the storage root', async () => {
+      const root = await newRoot();
+      await createObject(root, 'a', { 'a.txt': 'a' });
+      await fs.promises.rm(path.join(root.path, '0=ocfl_1.1'));
+      await writeFiles(root.path, { '0=ocfl_1.0': 'ocfl_1.0\n' });
+
+      const { objects, errors } = await listed(await openStorageRoot(root.path));
+
+      assert.deepStrictEqual(objects, []);
+      assert.strictEqual(errors.length, 1);
+      assert.strictEqual(errors[0]!.code, 'INVALID_OBJECT');
+      assert.strictEqual(errors[0]!.ocflCode, 'E081');
+      assert.ok(errors[0]!.message.includes(objectRootOf(root, 'a')), errors[0]!.message);
+    });
+
     it('is reported when it has an object declaration and no inventory', async () => {
       const root = await newRoot();
       const objectRoot = objectRootOf(root, 'no-inventory');

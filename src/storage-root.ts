@@ -147,7 +147,7 @@ interface StorageRoot {
    * Reads an object's inventory and returns the object as it is now. It does not change when later versions are committed.
    *
    * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id, or another writer is creating it and hasn't committed it.
-   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is missing, corrupt or inconsistent, or the object has no declaration.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is missing, corrupt or inconsistent, the object has no declaration, or its OCFL version is later than the storage root's (E081).
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, or that directory holds another object.
    * @example
    * ```ts
@@ -181,7 +181,7 @@ interface StorageRoot {
   /**
    * Lists every object in the storage root, in no particular order. Each object is read when the listing reaches it.
    * An object that can't be opened is yielded as an `INVALID_OBJECT` error whose message names its directory, and the listing carries on.
-   * A directory with an invalid object declaration is one of these: it isn't searched for objects.
+   * A directory with an invalid object declaration is one of these: it isn't searched for objects. So is an object whose OCFL version is later than the storage root's (E081).
    *
    * An object that another writer is creating and hasn't committed is left out, and so is the `extensions` directory.
    * Leaving the loop early closes every directory the listing opened.
@@ -289,7 +289,7 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
     ocflVersion,
     layout: { extensionName: layout.name, ...layout.parameters } as Layout,
     async open(id: string) {
-      return openObject(root, await objectRootToRead(checkedId(id)), id);
+      return openObject(root, await objectRootToRead(checkedId(id)), id, ocflVersion);
     },
     async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>) {
       const objectId = checkedId(id);
@@ -297,7 +297,7 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
       return createObject(root, await objectRootToWrite(objectId), objectId, ocflVersion, checked, build);
     },
     objects() {
-      return listObjects(root);
+      return listObjects(root, ocflVersion);
     },
     async remove(id: string) {
       await removeObject(root, await objectRootToWrite(checkedId(id)), id);
