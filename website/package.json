@@ -5,7 +5,7 @@
   "scripts": {
     "build": "astro build",
     "dev": "astro dev",
-    "check:examples": "tsc -p src/examples"
+    "check:examples": "tsc -p src/examples && node scripts/check-readme.ts"
   },
   "devDependencies": {
     "@astrojs/starlight": "^0.42.10",

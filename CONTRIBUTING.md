@@ -57,7 +57,7 @@ commitlint checks each message when you commit, and again in CI for every commit
 
 ## Pull requests
 
-Open pull requests against `main`. Include tests for the change and update the README and docs to match. The pull request template has a checklist.
+Open pull requests against `main`. Include tests for the change and update the README and docs to match. The README's quick start must be identical to `website/src/examples/readme/quick-start.ts`, which `pnpm lint:docs` type-checks and compares. The pull request template has a checklist.
 
 ## Layouts and digest algorithms
 
