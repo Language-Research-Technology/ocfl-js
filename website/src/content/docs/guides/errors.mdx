@@ -135,6 +135,12 @@ These are checks the library makes before it uses an inventory's values as file 
 
 **What to do:** keep the whole storage root on one file system. A mount point inside the storage root splits it.
 
+### `UNSUPPORTED_FILESYSTEM`
+
+**Cause:** `create`, `update` or `remove` couldn't take the object's lock, because the storage root's file system refused to hard-link it. Usually the file system has no hard links, as FAT, exFAT, most FUSE object-store mounts and SMB shares without POSIX extensions don't. `cause` is the underlying error; an `EPERM` can also come from an immutable or append-only directory. Nothing is changed and no lock is left.
+
+**What to do:** move the storage root to a file system with hard links, such as a local Linux file system or NFS. Reading works where it is. If the file system has hard links, check the attributes of the workspace (`extensions/ocfl-js-workspace`) with `lsattr`.
+
 ## Drafts
 
 These come from draft operations inside the function you pass to `create` or `update`. Unless you catch them there, the whole update is discarded, the object is left as it was, and the error is thrown from `create` or `update`. [Updating objects](/ocfl-js/guides/updating-objects/) describes each operation.

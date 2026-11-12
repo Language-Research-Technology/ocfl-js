@@ -62,7 +62,7 @@ function recoveryNeeded(objectRoot: string, state: string, advice: string, cause
  * Deletes the object `id` that the storage root's layout places at `objectRoot`, with every version, and the parent directories that leaves empty.
  * The object's lock is held throughout, and what dead writers left in its workspace directory is removed with it.
  * Once the lock says the object is being removed, the remove is carried through: by this call, or by recovery.
- * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if the object is locked; `OBJECT_NOT_FOUND`, `INVALID_OBJECT` or `ID_INCOMPATIBLE_WITH_LAYOUT` if `objectRoot` doesn't hold the object. Nothing is deleted.
+ * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if the object is locked; `UNSUPPORTED_FILESYSTEM` if its lock can't be hard-linked; `OBJECT_NOT_FOUND`, `INVALID_OBJECT` or `ID_INCOMPATIBLE_WITH_LAYOUT` if `objectRoot` doesn't hold the object. Nothing is deleted.
  * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting it failed, or its lock couldn't be released; the lock is kept
  */
 async function removeObject(storageRoot: string, objectRoot: string, id: string): Promise<void> {

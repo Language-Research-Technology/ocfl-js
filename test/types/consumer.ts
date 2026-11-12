@@ -35,6 +35,7 @@ export function everyCodeIsHandled(code: OcflErrorCode): string {
     case 'RECOVERY_NEEDED':
     case 'MUTABLE_HEAD_ACTIVE':
     case 'CROSS_FILESYSTEM_MOVE':
+    case 'UNSUPPORTED_FILESYSTEM':
     case 'VERSION_LIMIT_REACHED':
     case 'FILE_NOT_FOUND':
     case 'FILE_EXISTS':

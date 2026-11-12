@@ -267,6 +267,7 @@ for await (const object of storage) {
 | [`RECOVERY_NEEDED`](/ocfl-js/guides/errors/#recovery_needed) | A write failed after the commit point or in a way that may have committed, couldn't remove what it made, or `remove()` stopped part-way; or an earlier writer left an unfinished version. `cause` is the underlying failure. Don't simply retry |
 | [`MUTABLE_HEAD_ACTIVE`](/ocfl-js/guides/errors/#mutable_head_active) | `update()` finds an active `0005-mutable-head` extension |
 | [`CROSS_FILESYSTEM_MOVE`](/ocfl-js/guides/errors/#cross_filesystem_move) | A new version can't be moved from the workspace into the object, because they are on different file systems |
+| [`UNSUPPORTED_FILESYSTEM`](/ocfl-js/guides/errors/#unsupported_filesystem) | `create()`, `update()` or `remove()` can't take the object's lock, because the storage root's file system doesn't support hard links |
 | [`VERSION_LIMIT_REACHED`](/ocfl-js/guides/errors/#version_limit_reached) | An object with zero-padded version names, such as `v01`, has used them all up |
 | [`FILE_NOT_FOUND`](/ocfl-js/guides/errors/#file_not_found) | `copy()`, `rename()` or `remove()` names a path with nothing in the draft, or `reinstate()` a path or version that doesn't exist |
 | [`FILE_EXISTS`](/ocfl-js/guides/errors/#file_exists) | A file would go where a directory is or below another file, or `copy()` or `rename()` would put a directory onto one with files without `{ merge: true }` |
