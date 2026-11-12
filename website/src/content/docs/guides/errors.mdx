@@ -137,7 +137,7 @@ These are checks the library makes before it uses an inventory's values as file 
 
 ## Drafts
 
-These come from draft operations inside the function you pass to `create` or `update`. Unless you catch them there, the whole update is discarded, the object is left as it was, and the error is thrown from `create` or `update`.
+These come from draft operations inside the function you pass to `create` or `update`. Unless you catch them there, the whole update is discarded, the object is left as it was, and the error is thrown from `create` or `update`. [Updating objects](/ocfl-js/guides/updating-objects/) describes each operation.
 
 ### `FILE_NOT_FOUND`
 
@@ -147,7 +147,7 @@ These come from draft operations inside the function you pass to `create` or `up
 
 ### `FILE_EXISTS`
 
-**Cause:** the operation would put a file where a directory is, or a file below another file. `copy`, `rename` and `reinstate` also throw it for a directory onto a target that already has files, without `{ merge: true }`.
+**Cause:** the operation would put a file where a directory is, or a file below another file. `copy` and `rename` also throw it for a directory onto a target that already has files, without `{ merge: true }`.
 
 **What to do:** remove what is in the way first, or pass `{ merge: true }` to put the directory's files in among the target's.
 

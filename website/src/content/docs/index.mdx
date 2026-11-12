@@ -19,7 +19,7 @@ New to the library? [Getting started](/ocfl-js/guides/getting-started/) walks th
 
 - **Storage roots.** Creates OCFL 1.1 storage roots and opens existing OCFL 1.0 and 1.1 storage roots. Each storage root uses one of the storage layouts [below](#storage-layouts).
 - **Objects.** Creates, opens and removes OCFL objects by id. An opened OCFL object is the object as read at that moment: it doesn't change when a later version is committed.
-- **Versions.** Each update assembles a draft and commits it as one new version, or discards it if anything goes wrong before the commit point. A draft can write, import from disk, copy, rename, reinstate from an earlier version and remove files. Content already in the object is shared, not stored again.
+- **Versions.** Each update assembles a draft and commits it as one new version, or discards it if anything goes wrong before the commit point. A draft can write, import from disk, copy, rename, reinstate from an earlier version and remove files. Content already in the object is shared, not stored again. See [Updating objects](/ocfl-js/guides/updating-objects/).
 - **Reading.** Gives you every file of every version by its logical path, as a stream (including byte ranges), text or bytes.
 - **Listing.** Walks a storage root and yields each OCFL object it finds.
 - **Fixity check.** Reads every stored file of an object again and reports each one that has changed or is missing.

@@ -1,0 +1,142 @@
+---
+title: Updating objects
+description: How to change an OCFL object with ocfl-fs, one draft and one new version at a time.
+sidebar:
+  order: 2
+---
+
+import { Code } from '@astrojs/starlight/components';
+import draftOperations from '../../../examples/updating-objects/draft-operations.ts?raw';
+import callOrder from '../../../examples/updating-objects/call-order.ts?raw';
+import replaceDirectory from '../../../examples/updating-objects/replace-directory.ts?raw';
+import replaceContent from '../../../examples/updating-objects/replace-content.ts?raw';
+import merge from '../../../examples/updating-objects/merge.ts?raw';
+import noChange from '../../../examples/updating-objects/no-change.ts?raw';
+import versionDetails from '../../../examples/updating-objects/version-details.ts?raw';
+
+Every change to an OCFL object is one update, and every update adds at most one version. This guide covers what you can do in an update, the order things happen in, and what an update records.
+
+## How an update works
+
+`object.update(details, change)` gives your `change` function a [draft](/ocfl-js/api/interfaces/draft/): the changes being assembled for the next version. The draft starts with the files of the head version. Your function changes it, and when the function returns, the draft is committed as one new version.
+
+<Code code={draftOperations} lang="ts" />
+
+- **All or nothing.** If `change` throws, or a draft operation throws and you let the error leave `change`, the whole update is discarded. The object is as it was and isn't locked.
+- **A new object comes back.** `update` returns the object with its new version. The object you called it on never changes. Use the returned object for the next update: the old one is no longer the head, so updating it throws [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date).
+- **Only one writer at a time.** An update takes the object's lock before `change` runs. If another writer holds it, the update throws [`UPDATE_IN_PROGRESS`](/ocfl-js/guides/errors/#update_in_progress) straight away. See [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/) for what to do then, and for what happens when two updates race.
+- **Content is shared.** Content the object already holds, in any version, isn't stored again. Copying, renaming and reinstating store nothing new.
+
+`root.create(id, details, build)` works the same way, except that the draft starts empty and becomes version 1.
+
+## Draft operations
+
+Each operation takes logical paths: the paths of files as the object presents them, such as `raw/1.wav`. Paths are normalised first, so `./raw//1.wav` is `raw/1.wav`. A path that is empty, absolute or has a `..` segment throws [`INVALID_LOGICAL_PATH`](/ocfl-js/guides/errors/#invalid_logical_path).
+
+| Operation | What it does |
+|---|---|
+| `write(path, content)` | Puts one file at `path`. `content` is text (stored as UTF-8), bytes, or a stream of either, such as a Node or web stream. |
+| `import(source, target?)` | Copies a file or directory from disk into the draft. |
+| `copy(source, target, options?)` | Copies a file, or every file below a directory, to another path in the draft. |
+| `rename(source, target, options?)` | Moves a file, or every file below a directory, to another path in the draft. |
+| `reinstate(path, version)` | Puts a file, or every file below a directory, back as it was in an earlier version, at the same path. |
+| `remove(path)` | Removes a file, or every file below a directory, from the draft. Earlier versions keep it. |
+| `clear()` | Removes every file from the draft. |
+
+There's no separate replace operation. Writing, importing, copying, renaming or reinstating onto a path that already has a file replaces that file. See [Replacing](#replacing).
+
+### write
+
+`write` stores the bytes as they were when you called it. A path that is a directory in the draft, or lies below a file, throws [`FILE_EXISTS`](/ocfl-js/guides/errors/#file_exists).
+
+### import
+
+`import` reads from your file system, not from the object.
+
+- With a `target`, a file goes to that path and a directory's contents go below it.
+- Without one, a file keeps its own name at the top of the object, and a directory's contents go at the top. The directory itself isn't included: importing `/data/item-1` gives `a.txt`, not `item-1/a.txt`.
+- Everything below a directory is imported, including hidden files.
+- Files already at the same paths are replaced. Other files in the draft stay.
+- A symbolic link, or anything else that isn't a regular file or directory, throws [`UNSUPPORTED_FILE_TYPE`](/ocfl-js/guides/errors/#unsupported_file_type). A file that changes while it is being read throws [`SOURCE_CHANGED`](/ocfl-js/guides/errors/#source_changed).
+- If any file fails, the first failure is thrown and the draft is left as it was before the import.
+
+### copy and rename
+
+`copy` and `rename` work within the draft, so their source is a logical path, not a path on disk. A source that isn't in the draft throws [`FILE_NOT_FOUND`](/ocfl-js/guides/errors/#file_not_found). A target inside the source throws `INVALID_LOGICAL_PATH`. A source and target that are the same path do nothing.
+
+A file copied or renamed onto an existing file replaces it. A directory copied or renamed onto a target that already has files throws `FILE_EXISTS`, unless you [merge](#merging-directories).
+
+### reinstate
+
+`reinstate(path, version)` takes a version number, as in `object.versions`. It puts back what was at `path` in that version and replaces whatever is there now. Other files stay. A version that doesn't exist, or has nothing at `path`, throws `FILE_NOT_FOUND`.
+
+Reinstating from the head version undoes what the draft has done to that path so far.
+
+### remove and clear
+
+`remove` takes a file or a directory. A path that isn't in the draft throws `FILE_NOT_FOUND`. `clear` removes everything and never throws for an empty draft. Both change only the new version: every earlier version keeps its files.
+
+### Catching an operation's error
+
+An operation that is refused with an [`OcflError`](/ocfl-js/api/classes/ocflerror/), such as `FILE_NOT_FOUND`, changes nothing in the draft. If you catch the error inside `change`, the update carries on without that operation. If you don't, the update is discarded. [Errors](/ocfl-js/guides/errors/#drafts) covers each code a draft operation can throw.
+
+## The order operations take effect in
+
+Operations take effect in the order you call them, even when you start them together with `Promise.all`. Starting several imports together lets them read from disk at the same time, but the draft still changes in call order, whichever finishes first.
+
+<Code code={callOrder} lang="ts" />
+
+Here `raw/README.txt` is the text written, even if `/data/session-3/audio` holds a `README.txt` too, because the write was called after the import.
+
+When operations touch the same path, call order decides:
+
+- **The last one wins.** Two writes to one path leave the content of the one called second. A write after an import replaces the imported file, and an import after a write replaces the written one.
+- **Each operation sees the draft as the earlier calls left it.** A `copy` or `rename` takes its source as it stands after every earlier call, and a `remove` followed by a `write` to the same path leaves the new file.
+- **A copy is independent of its source.** Writing the source again after a copy leaves the copy as it was.
+
+Await every operation you start before `change` returns. If any is still running when it returns, the update throws an `Error` and is discarded. A draft can't be used once its update has finished: every operation then throws an `Error`.
+
+## Replacing
+
+To replace one file, write or import onto its path. To replace a directory with what is on disk, remove it first, then import, so files that are no longer on disk don't stay behind:
+
+<Code code={replaceDirectory} lang="ts" />
+
+To replace the whole content of an object, clear the draft and import or write the new content. Files that are the same in the old and new content are stored once, and earlier versions keep everything they had.
+
+<Code code={replaceContent} lang="ts" />
+
+## Merging directories
+
+Copying or renaming a directory onto a target that already has files throws `FILE_EXISTS`. Pass `{ merge: true }` to put the directory there file by file instead: files at the same paths are replaced, and the target's other files stay.
+
+<Code code={merge} lang="ts" />
+
+On a single file, or onto a target with no files, `{ merge: true }` makes no difference. A file that would go where the target has a directory, or below a file, still throws `FILE_EXISTS`.
+
+## An update that changes nothing
+
+If the draft ends with exactly the files of the head version, no version is written and `update` returns the same object you called it on. You can test for that with `===`.
+
+<Code code={noChange} lang="ts" />
+
+The draft is compared as it ends, not by what you did to it. Writing a file and removing it again, or renaming a file and back, changes nothing. Importing files that are already in the object, at the same paths with the same content, changes nothing either, which makes repeating a sync safe.
+
+The lock and the out-of-date check still happen before `change` runs, so an update that changes nothing can still throw `UPDATE_IN_PROGRESS` or `OBJECT_OUT_OF_DATE`.
+
+A create always writes version 1, even with no files.
+
+## Version details
+
+The first argument of `update` and `create` is the [version details](/ocfl-js/api/interfaces/versiondetails/) the new version records:
+
+- `message`: why the version was made. Required, and can't be empty.
+- `user`: who made it. `user.name` is required and can't be empty. `user.address` is optional: a URI for the user, such as a `mailto:` address or an ORCID.
+
+Details that break these rules throw a `TypeError` before anything else happens.
+
+You don't set the time. The library records the version's `created` time when it commits the version, by the clock of the host doing the update. Each [version](/ocfl-js/api/interfaces/version/) gives back its `number`, `created`, `message` and `user`. An object written by another tool may have versions with no message or user.
+
+<Code code={versionDetails} lang="ts" />
+
+See [`Draft`](/ocfl-js/api/interfaces/draft/) and [`OcflObject`](/ocfl-js/api/interfaces/ocflobject/) in the API reference for every error each operation throws.

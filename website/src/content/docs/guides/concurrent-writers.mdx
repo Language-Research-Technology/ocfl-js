@@ -35,7 +35,7 @@ Nothing was written, so you can wait and try again. If the lock stays, its write
 
 ## `OBJECT_OUT_OF_DATE`: the object changed since you opened it
 
-An opened OCFL object is the object as read at one moment. It doesn't change when another writer commits a later version. If you update an object that is no longer the head, the update throws [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date) and is discarded, so your change is never built on files you didn't see.
+An opened OCFL object is the object as read at one moment. It doesn't change when another writer commits a later version. If you update an object that is no longer the head, the update throws [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date) and is discarded, so your change is never built on files you didn't see. That includes an object you have updated yourself: make the next update on the object `update` returned, as [Updating objects](/ocfl-js/guides/updating-objects/#how-an-update-works) explains.
 
 Open the object again and repeat the update. Any error other than `RECOVERY_NEEDED` means the update wasn't committed, so repeating it never applies a change twice.
 
