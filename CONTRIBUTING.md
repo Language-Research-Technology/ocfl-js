@@ -28,7 +28,7 @@ CI runs all of these on every pull request to `main`:
 | Command              | What it checks                                                      |
 | -------------------- | ------------------------------------------------------------------- |
 | `pnpm test`          | The test suite                                                      |
-| `pnpm coverage`      | The test suite, with coverage                                       |
+| `pnpm coverage`      | The test suite, failing unless it covers all of `src`               |
 | `pnpm lint:types`    | Types, in the source and the tests                                  |
 | `pnpm lint:biome`    | Formatting and lint rules (`pnpm format` fixes what it can)         |
 | `pnpm lint:knip`     | Unused files, exports and dependencies                              |

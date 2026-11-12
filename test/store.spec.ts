@@ -43,6 +43,30 @@ describe('store', () => {
     });
   });
 
+  describe('removeQuietly', () => {
+    let dir: string;
+    beforeEach(async () => {
+      dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ocfl-fs-remove-quietly-'));
+    });
+    afterEach(async () => {
+      mock.restoreAll();
+      await fs.promises.rm(dir, { recursive: true, force: true });
+    });
+
+    it('removes a directory and what it holds', async () => {
+      await fs.promises.writeFile(path.join(dir, 'a.txt'), 'a');
+      await store.removeQuietly(dir);
+      assert.equal(fs.existsSync(dir), false);
+    });
+
+    it('resolves when the removal fails', async () => {
+      mock.method(fs.promises, 'rm', async () => {
+        throw fsError('EACCES');
+      });
+      await assert.doesNotReject(store.removeQuietly(dir));
+    });
+  });
+
   describe('move', () => {
     let dir: string;
     let source: string;

@@ -130,6 +130,8 @@ async function dirContents(dirPath: string): Promise<'empty' | 'not empty' | 'be
   try {
     return (await dir.read()) ? 'not empty' : 'empty';
   } finally {
+    // A failed close of a directory only read must not mask the result; it can't be made to fail
+    /* node:coverage ignore next */
     await dir.close().catch(() => {});
   }
 }
@@ -156,23 +158,17 @@ async function pathExists(filePath: string): Promise<boolean> {
  */
 async function findNamasteVersion(prefix: string, rootPath: string): Promise<OcflVersion | '' | undefined> {
   const namastePath = `${rootPath}/${NAMASTE_T}${prefix}`;
-  let version: OcflVersion | null | undefined;
   try {
-    version = await Promise.any(OCFL_VERSIONS.map(async (v) => ((await fs.promises.readFile(namastePath + v, 'utf8')) === `${prefix}${v}\n` ? v : null)));
-    if (!version) {
-      return '';
-    }
+    const version = await Promise.any(OCFL_VERSIONS.map(async (v) => ((await fs.promises.readFile(namastePath + v, 'utf8')) === `${prefix}${v}\n` ? v : null)));
+    return version ?? '';
   } catch (error) {
-    if (!(error instanceof AggregateError)) {
-      throw error;
-    }
     // ENOTDIR: the root is a file, which can't hold a declaration
-    const failure = error.errors.find((e) => !isNotFound(e) && !isNotDir(e));
+    const failure = (error as AggregateError).errors.find((e) => !isNotFound(e) && !isNotDir(e));
     if (failure) {
       throw failure;
     }
+    return undefined;
   }
-  return version ?? undefined;
 }
 
 /** `value`, with it and everything nested in it frozen */

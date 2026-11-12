@@ -360,6 +360,17 @@ describe('root.remove', () => {
       assertNoWorkspace(root);
     });
 
+    it('throws RECOVERY_NEEDED and keeps the lock when the object root cannot be listed, deleting nothing; recover then removes it', async () => {
+      const { root, objectRoot, before } = await existingObject();
+
+      await withFsFailure('readdir', objectRoot, () => assertRecoveryNeeded(root, root.remove(ID)));
+
+      assert.deepStrictEqual(await snapshot(objectRoot), before);
+      await root.recover(ID);
+      assert.ok(!fs.existsSync(objectRoot));
+      assertNoWorkspace(root);
+    });
+
     for (const [gone, names] of [
       ['nothing yet', []],
       ['its versions', ['v1']],

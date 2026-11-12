@@ -121,11 +121,11 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
 
   map(id: string): string {
     const { suffix } = this.parameters;
-    const idSegments = foldedSegments(id ?? '');
+    const idSegments = foldedSegments(id);
     if (this.#hasSuffixAt(idSegments, idSegments.length - this.#foldedSuffixSegments.length)) {
       throw this.incompatibleId(id, `it ends with '${suffix}'`);
     }
-    let replaced = id ?? '';
+    let replaced = id;
     for (const r of this.parameters.replace) {
       replaced = replaced.replace(r[0], r[1]);
     }
