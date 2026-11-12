@@ -1,4 +1,5 @@
 import { inspect } from 'node:util';
+import { type OcflError, ocflError } from './error.ts';
 import type { LayoutName } from './types.ts';
 
 /** A layout's config as callers and config.json give it, before any checking */
@@ -68,6 +69,11 @@ abstract class BuiltInLayout<C extends object = object> {
   }
 
   abstract map(id: string): string;
+
+  /** @param reason - Completes "because …" */
+  protected incompatibleId(id: string, reason: string): OcflError {
+    return ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> is incompatible with the ${this.name} storage layout because ${reason}.`);
+  }
 }
 
 export { BuiltInLayout, type OcflExtensionConfig };

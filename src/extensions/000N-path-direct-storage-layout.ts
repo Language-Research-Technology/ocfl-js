@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { inspect } from 'node:util';
-import { ocflError } from '../error.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 import type { PathDirectLayoutConfig } from '../types.ts';
 import { hasOverlongSegment, MAX_NAME_BYTES } from '../utils.ts';
@@ -113,7 +112,7 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     const { suffix } = this.parameters;
     const idSegments = foldedSegments(id ?? '');
     if (this.#hasSuffixAt(idSegments, idSegments.length - this.#foldedSuffixSegments.length)) {
-      throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `Identifier cannot end with '${suffix}'`);
+      throw this.incompatibleId(id, `it ends with '${suffix}'`);
     }
     let replaced = id ?? '';
     for (const r of this.parameters.replace) {
@@ -135,26 +134,17 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     }
     // the URL parser resolves dot segments in the id, and rewriting the hostname can add one
     if (hasDotSegment(afterScheme) || hasDotSegment(p)) {
-      throw ocflError(
-        'ID_INCOMPATIBLE_WITH_LAYOUT',
-        `The object id <${id}> is incompatible with layout extension ${this.name} because it has a . or .. segment.`,
-      );
+      throw this.incompatibleId(id, 'it has a . or .. segment');
     }
     p = trimSlashes(path.join(p));
     const objectRoot = path.join(p, this.#suffixPath);
     const rootSegments = foldedSegments(objectRoot);
     const lastStartAbove = rootSegments.length - 1 - this.#foldedSuffixSegments.length;
     if (rootSegments.some((_segment, i) => i <= lastStartAbove && this.#hasSuffixAt(rootSegments, i))) {
-      throw ocflError(
-        'ID_INCOMPATIBLE_WITH_LAYOUT',
-        `The object id <${id}> is incompatible with layout extension ${this.name} because its path has '${suffix}' part-way through, which would put it inside another object.`,
-      );
+      throw this.incompatibleId(id, `its path has '${suffix}' part-way through, which would put it inside another object`);
     }
     if (hasOverlongSegment(objectRoot)) {
-      throw ocflError(
-        'ID_INCOMPATIBLE_WITH_LAYOUT',
-        `The object id <${id}> is incompatible with layout extension ${this.name} because its path has a segment longer than ${MAX_NAME_BYTES} bytes in UTF-8.`,
-      );
+      throw this.incompatibleId(id, `its path has a segment longer than ${MAX_NAME_BYTES} bytes in UTF-8`);
     }
     return objectRoot;
   }

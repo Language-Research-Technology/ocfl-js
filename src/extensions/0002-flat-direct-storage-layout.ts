@@ -1,6 +1,5 @@
 import path from 'node:path';
 import { OcflConstants } from '../constants.ts';
-import { ocflError } from '../error.ts';
 import { BuiltInLayout } from '../extension.ts';
 import { hasOverlongSegment, MAX_NAME_BYTES } from '../utils.ts';
 
@@ -25,7 +24,7 @@ class FlatDirectStorageLayout extends BuiltInLayout {
       reason = `it is longer than ${MAX_NAME_BYTES} bytes in UTF-8`;
     }
     if (reason) {
-      throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> is incompatible with layout extension ${this.name} because ${reason}.`);
+      throw this.incompatibleId(id, reason);
     }
 
     return id;
