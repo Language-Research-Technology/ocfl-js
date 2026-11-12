@@ -18,7 +18,7 @@ Two writers whose object roots nest would hold different locks, so neither lock 
 
 ### Locking
 
-- **A second writer is refused straight away.** `root.create`, `object.update` and `root.remove` take the object's lock (ADR 0002) before they write anything. If it is held they throw `UPDATE_IN_PROGRESS` and change nothing. The library never waits or queues.
+- **A second writer is refused straight away.** `root.create`, `object.update` and `root.remove` take the object's lock (ADR 0003) before they write anything. If it is held they throw `UPDATE_IN_PROGRESS` and change nothing. The library never waits or queues.
 - **Dead writers are not detected.** The library never expires a lock. The lock records no process id, host or heartbeat, and no operating-system file lock is used.
 - **The lock says whose it is.** It is a JSON object recording the object's `id`, the time it was taken as `lockedAt`, whether the object root existed then, and whether a remove has begun deleting. `UPDATE_IN_PROGRESS` carries `lockedAt`; whether that is too long ago is for the caller to judge. A lock file that exists refuses writers, even if it can't be read.
 - **A lock is written whole.** Its content is written beside it, flushed, then hard-linked into place, so it is never half-written and only one of two writers gets it. On a filesystem without hard links it is created exclusively in place.

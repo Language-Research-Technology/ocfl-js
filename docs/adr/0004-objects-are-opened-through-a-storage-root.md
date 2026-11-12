@@ -4,7 +4,7 @@
 
 The OCFL spec defines an OCFL object by its own declaration file, with no reference to a storage root, and gives an object no way to find its storage root. So an object can be read by its path alone.
 
-Writing one needs more. An update needs a workspace on the storage root's filesystem (ADR 0002) and a lock that every writer of the object uses (ADR 0004). An object opened by path has neither: it must write its new version straight into the object root, or search the directory tree for a storage root. A new object would also have to guess its OCFL version. And only the storage root's layout says which object root an id belongs at.
+Writing one needs more. An update needs a workspace on the storage root's filesystem (ADR 0003) and a lock that every writer of the object uses (ADR 0005). An object opened by path has neither: it must write its new version straight into the object root, or search the directory tree for a storage root. A new object would also have to guess its OCFL version. And only the storage root's layout says which object root an id belongs at.
 
 ocfl-java and rocfl open objects only through a storage root, and accept a bare object path only to validate it. ocfl-py and ocfl-go write objects by path, with no workspace and no locking. No known consumer of this library creates or updates an object outside a storage root, and the one that reads an object by path has the storage root at hand (`docs/consumers.md`).
 
