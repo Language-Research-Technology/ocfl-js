@@ -8,6 +8,10 @@ Terms used by this library for storing and versioning digital objects under the 
 The base directory holding OCFL objects, identified by its `0=ocfl_1.x` declaration.
 _Avoid_: Repository, store
 
+**Storage layout**:
+The rule a storage root uses to map an object id to the directory of its OCFL object, named in the root's `ocfl_layout.json`, with its parameters in `extensions/<name>/config.json`.
+_Avoid_: Layout extension, path mapping, storage scheme
+
 **OCFL object**:
 A directory holding one digital object's versions and its inventory. An opened OCFL object is the object as read at one moment; it does not change when later versions are committed.
 _Avoid_: Record, item, snapshot
