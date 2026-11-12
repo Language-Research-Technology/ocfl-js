@@ -29,7 +29,7 @@ New objects use sha512 digests and a `content` directory in each version.
 
 The library doesn't validate OCFL objects or storage roots against the OCFL specification. It reads and writes them; it doesn't tell you whether they conform.
 
-Some errors carry an `ocflCode`, such as `E058` for a missing inventory sidecar. That code names the OCFL rule the problem breaks, so you can look it up. It isn't a validation report: the library stops at the first problem it needs to stop at, and doesn't look for the rest.
+Some errors carry an `ocflCode`, such as `E058` for a missing inventory sidecar. That code names the OCFL rule the problem breaks, so you can look it up. It isn't a validation report: the library stops at the first problem it needs to stop at, and doesn't look for the rest. [Errors](/ocfl-js/guides/errors/#invalid_object) lists every error code and what to do about it.
 
 ### What it checks when it opens an object
 
@@ -52,7 +52,7 @@ If you read OCFL objects that another tool wrote, check them with an OCFL valida
 
 ## What it doesn't check or do
 
-- **An object that has lost its declaration isn't listed.** When it lists a storage root, the library treats only a directory with an object declaration (the `0=ocfl_object_1.x` file) as an object. A directory with an inventory but no declaration is searched like any other directory, not reported. So listing silently leaves out an object that has lost its declaration. Opening that object by its id fails with `INVALID_OBJECT`.
+- **An object that has lost its declaration isn't listed.** When it lists a storage root, the library treats only a directory with an object declaration (the `0=ocfl_object_1.x` file) as an object. A directory with an inventory but no declaration is searched like any other directory, not reported. So listing silently leaves out an object that has lost its declaration. Opening that object by its id fails with [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object).
 - **A create whose writer died isn't listed.** It stays out of the listing until you [recover it by its id](/ocfl-js/guides/concurrent-writers/#a-create-whose-writer-died).
 - **No lock for older writers.** Writers on ocfl-js 0.4, or on a beta from before the lock, don't take it, so [upgrade every writer of a storage root together](/ocfl-js/guides/concurrent-writers/#upgrade-every-writer-together).
 - **Linux, on a case-sensitive file system.** The library is supported and tested on Linux only. Windows isn't supported; WSL works, because it runs Linux. macOS isn't supported, and case-insensitive file systems are untested: there, two logical paths that differ only in case, such as `README.md` and `readme.md`, are the same file.
@@ -63,7 +63,7 @@ If you read OCFL objects that another tool wrote, check them with an OCFL valida
 
 ## Storage layouts
 
-A storage layout maps an object id to the directory that holds its OCFL object. You choose one when you create a storage root, and the library reads it back from `ocfl_layout.json` when you open the root. A storage root that declares any other layout is refused with `UNSUPPORTED_LAYOUT`.
+A storage layout maps an object id to the directory that holds its OCFL object. You choose one when you create a storage root, and the library reads it back from `ocfl_layout.json` when you open the root. A storage root that declares any other layout is refused with [`UNSUPPORTED_LAYOUT`](/ocfl-js/guides/errors/#unsupported_layout).
 
 | Layout | Where an object goes |
 |---|---|

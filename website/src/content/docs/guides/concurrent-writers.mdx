@@ -22,7 +22,7 @@ The library never removes a lock because of its age, and never removes one it di
 
 ## `UPDATE_IN_PROGRESS`: another writer holds the lock
 
-A create, update or remove that finds the lock taken throws an [`OcflError`](/ocfl-js/api/classes/ocflerror/) with code `UPDATE_IN_PROGRESS`, and changes nothing. Its `lockedAt` is the time the lock was taken.
+A create, update or remove that finds the lock taken throws an [`OcflError`](/ocfl-js/api/classes/ocflerror/) with code [`UPDATE_IN_PROGRESS`](/ocfl-js/guides/errors/#update_in_progress), and changes nothing. Its `lockedAt` is the time the lock was taken.
 
 <Code code={updateInProgress} lang="ts" />
 
@@ -35,7 +35,7 @@ Nothing was written, so you can wait and try again. If the lock stays, its write
 
 ## `OBJECT_OUT_OF_DATE`: the object changed since you opened it
 
-An opened OCFL object is the object as read at one moment. It doesn't change when another writer commits a later version. If you update an object that is no longer the head, the update throws `OBJECT_OUT_OF_DATE` and is discarded, so your change is never built on files you didn't see.
+An opened OCFL object is the object as read at one moment. It doesn't change when another writer commits a later version. If you update an object that is no longer the head, the update throws [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date) and is discarded, so your change is never built on files you didn't see.
 
 Open the object again and repeat the update. Any error other than `RECOVERY_NEEDED` means the update wasn't committed, so repeating it never applies a change twice.
 
@@ -45,7 +45,7 @@ The retry limit keeps a busy object from looping forever. Pick one that suits ho
 
 ## `RECOVERY_NEEDED`: the update may or may not be committed
 
-An update is committed at one moment: the rename that replaces the object's root `inventory.json`, its commit point. A failure before it discards everything and throws the original error. A failure after it, or a failure while discarding, throws `RECOVERY_NEEDED` with the failure as its `cause`. The version may or may not be committed, so don't simply repeat the update.
+An update is committed at one moment: the rename that replaces the object's root `inventory.json`, its commit point. A failure before it discards everything and throws the original error. A failure after it, or a failure while discarding, throws [`RECOVERY_NEEDED`](/ocfl-js/guides/errors/#recovery_needed) with the failure as its `cause`. The version may or may not be committed, so don't simply repeat the update.
 
 After `RECOVERY_NEEDED`:
 
@@ -101,4 +101,4 @@ The lock only keeps apart writers that take it. Writers on ocfl-js 0.4, or on a 
 
 Another tool writing to the same object is caught only if it has committed a new head by the time an update checks: the update then throws `OBJECT_OUT_OF_DATE`.
 
-See [`StorageRoot`](/ocfl-js/api/interfaces/storageroot/) and [`OcflObject`](/ocfl-js/api/interfaces/ocflobject/) in the API reference for every error each method throws.
+See [`StorageRoot`](/ocfl-js/api/interfaces/storageroot/) and [`OcflObject`](/ocfl-js/api/interfaces/ocflobject/) in the API reference for every error each method throws, and [Errors](/ocfl-js/guides/errors/) for what each code means and what to do.

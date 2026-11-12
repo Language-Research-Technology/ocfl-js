@@ -1,0 +1,192 @@
+---
+title: Errors
+description: Every OcflError code, what causes it, and what to do about it.
+sidebar:
+  order: 4
+---
+
+import { Code } from '@astrojs/starlight/components';
+import branchOnCode from '../../../examples/errors/branch-on-code.ts?raw';
+import listWithErrors from '../../../examples/errors/list-with-errors.ts?raw';
+import copyHead from '../../../examples/errors/copy-head.ts?raw';
+
+The library throws one error class, [`OcflError`](/ocfl-js/api/classes/ocflerror/), for anything you might handle. This page lists every value of its `code`, what causes it, and what to do.
+
+## Catching an `OcflError`
+
+Test `code`. The message names the object or path involved and is useful in logs, but it isn't part of the contract and may change.
+
+Two fields are set only some of the time:
+
+- `ocflCode` is the code the OCFL specification gives the rule that was broken, such as `E060`, when the fault has one. Only `INVALID_OBJECT` and `INVALID_STORAGE_ROOT` carry one.
+- `lockedAt` is when another writer took the object's lock. Only `UPDATE_IN_PROGRESS` sets it, and it is absent if the lock couldn't be read or was released in the meantime.
+
+`cause`, when set, is the error underneath. `RECOVERY_NEEDED` always sets it.
+
+<Code code={branchOnCode} lang="ts" />
+
+`objects()` doesn't throw for an object it can't open. It yields an `OcflError` with the code `INVALID_OBJECT` in that object's place and carries on listing:
+
+<Code code={listWithErrors} lang="ts" />
+
+### What isn't an `OcflError`
+
+- A `TypeError` means the call itself was wrong: an empty id, message or user name, an unknown storage layout or parameter given to `createStorageRoot`, or an extra option.
+- A `RangeError` means a byte range given to `OcflFile.stream()` has an end that isn't a whole number from 0, or a `start` after its `end`.
+- A plain `Error` means a draft was used after its update finished, or an update ended with draft operations still running. Await every operation.
+- File system errors, such as `ENOSPC` or `EACCES`, pass through untouched.
+
+None of these is retryable as it stands. Fix the call, or the file system.
+
+## Storage roots
+
+### `DIRECTORY_NOT_EMPTY`
+
+**Cause:** `createStorageRoot` was given a directory that already has something in it. Rarely, `create` throws it too, when something appeared in the new object's directory while its first version was being built.
+
+**What to do:** create the storage root in an empty or missing directory. To use a storage root that already exists, call `openStorageRoot`.
+
+### `INVALID_STORAGE_ROOT`
+
+**Cause:** `openStorageRoot` found no storage root it can read: the `0=ocfl_1.x` declaration is missing or wrong (`ocflCode` `E069` or `E080`), `ocfl_layout.json` is missing, or doesn't name a storage layout (`E070`), or the storage layout's `config.json` isn't a JSON object, is for another storage layout, or has parameters the storage layout refuses.
+
+**What to do:** check the path is a storage root. If it is, fix the declaration, `ocfl_layout.json` or `config.json`; the message names the file.
+
+### `UNSUPPORTED_LAYOUT`
+
+**Cause:** `openStorageRoot` found a storage root whose `ocfl_layout.json` names a storage layout the library doesn't have. The library has four: `0002-flat-direct-storage-layout`, `0003-hash-and-id-n-tuple-storage-layout`, `0004-hashed-n-tuple-storage-layout` and the local `000N-path-direct-storage-layout`.
+
+**What to do:** use another tool for this storage root. There is no way to add a storage layout to the library.
+
+## Finding objects
+
+### `OBJECT_NOT_FOUND`
+
+**Cause:** there is no object with this id. `open` also throws it for an object another writer is creating and hasn't committed. `remove` and `recover` throw it when there is nothing there at all.
+
+**What to do:** catch it instead of checking whether the object exists first; a check can be out of date by the time you act on it. To make the object, call `create`.
+
+### `OBJECT_EXISTS`
+
+**Cause:** `create` found an object already there, or another writer created it first.
+
+**What to do:** open the existing object, and `update` it if you meant to change it.
+
+### `ID_INCOMPATIBLE_WITH_LAYOUT`
+
+**Cause:** the storage root's storage layout can't place an object with this id. Either the storage layout can't map the id, or it maps it somewhere an object can't go: the storage root itself, outside it, or the `extensions` directory. Each storage layout has its own rules. For example, `0002-flat-direct-storage-layout` refuses an id with a `/` in it, `.`, `..`, `extensions`, or an id longer than 255 bytes, and the path-direct storage layout refuses an id with `.` or `..` segments, or one that ends with or contains its suffix.
+
+It is also thrown when the directory the id maps to holds an object with a different id, and by `create` when that directory isn't empty, is below a file, or is inside another object.
+
+**What to do:** choose another id, or a storage layout that suits your ids. If the directory holds another object or other files, look at what is there before doing anything; the message names the directory.
+
+### `INVALID_OBJECT`
+
+**Cause:** what the library read where the object should be isn't an object it can safely use. The inventory is missing, isn't JSON, is inconsistent, or names paths that would lead outside the object; the sidecar digest is missing or doesn't match; the object declaration is missing or wrong; or the object is inside another object. `ocflCode` names the OCFL rule, for example `E003` (no object declaration), `E033` (inventory isn't JSON) or `E060` (sidecar digest doesn't match).
+
+`open`, `update`, `remove`, `recover` and `objects()` can all give it. `update` throws it if the declaration has been removed or damaged since the object was opened.
+
+These are checks the library makes before it uses an inventory's values as file paths. They are not validation: an object that opens can still break OCFL rules the library never looks at. To check an object against the specification, use [an OCFL validator](/ocfl-js/#objects-written-by-other-tools). See [It doesn't validate](/ocfl-js/#it-doesnt-validate) for what the library checks and what it doesn't.
+
+**What to do:** don't retry; the object is damaged and needs a person to look at it. Repair it with the tool that made it, or from a backup. If you no longer want it, see [Removing a damaged object](#removing-a-damaged-object).
+
+### `MUTABLE_HEAD_ACTIVE`
+
+**Cause:** `update` found an active mutable head (`extensions/0005-mutable-head`) in the object. The library doesn't support that extension.
+
+**What to do:** commit or discard the mutable head with the tool that made it, then update the object.
+
+### `VERSION_LIMIT_REACHED`
+
+**Cause:** `update` can't name the next version. The object's version names are zero-padded, and OCFL requires a padded name to start with a zero, so `v01` to `v09` allows nine versions and `v001` to `v099` allows 99. Objects this library creates aren't padded and never reach a limit.
+
+**What to do:** the library can't add a version to this object. See [When the object is full](#when-the-object-is-full).
+
+## Writers and locks
+
+### `UPDATE_IN_PROGRESS`
+
+**Cause:** `create`, `update` or `remove` found the object's lock taken: another writer is creating, updating or removing it, or died doing so. The library refuses straight away, never waits, and never removes a lock because of its age. `lockedAt` says when the lock was taken.
+
+**What to do:** wait and try again. If you know the writer is dead, call `root.recover(id)` and then try again. Only call `recover` when no writer of the object is alive: it destroys a live writer's update. See [`UPDATE_IN_PROGRESS` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#update_in_progress-another-writer-holds-the-lock).
+
+### `OBJECT_OUT_OF_DATE`
+
+**Cause:** `update` found that a later version was committed after you opened the object, or the object was removed and created again. It is checked before your change runs and again just before commit. Nothing is committed.
+
+**What to do:** open the object again and repeat the update against the new head. See [`OBJECT_OUT_OF_DATE` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_out_of_date-the-object-changed-since-you-opened-it) for a retry loop.
+
+### `RECOVERY_NEEDED`
+
+**Cause:** a write failed at a point where the library can't tell, or can't put right, what happened. That is one of:
+
+- `create` or `update` failed after the commit point, or failed replacing the root inventory in a way that may have replaced it. The update may have been committed.
+- A failed update couldn't remove everything it had made.
+- `remove` failed part of the way through, so the object may be partly deleted.
+- An earlier writer left an unfinished version in the workspace. This is thrown before your change runs, and leaves the object unlocked.
+
+`cause` is the underlying failure. Apart from the last case, the object stays locked, so later writes get `UPDATE_IN_PROGRESS` until it is recovered. It can still be read.
+
+**What to do:** don't simply repeat the write. Once no writer of the object is alive, call `root.recover(id)`. After a `create` or `update`, open the object again and look at the head to see whether your version was committed; retry only if it wasn't. After a `remove`, `recover` finishes removing the object. See [`RECOVERY_NEEDED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#recovery_needed-the-update-may-or-may-not-be-committed).
+
+### `CROSS_FILESYSTEM_MOVE`
+
+**Cause:** the new version couldn't be moved from the workspace (`extensions/ocfl-js-workspace` in the storage root) into the object, because the two are on different file systems. Nothing is committed.
+
+**What to do:** keep the whole storage root on one file system. A mount point inside the storage root splits it.
+
+## Drafts
+
+These come from draft operations inside the function you pass to `create` or `update`. Unless you catch them there, the whole update is discarded, the object is left as it was, and the error is thrown from `create` or `update`.
+
+### `FILE_NOT_FOUND`
+
+**Cause:** `copy`, `rename` or `remove` was given a path with no file or directory in the draft, or `reinstate` a path with nothing at it in that version, or a version that doesn't exist.
+
+**What to do:** check the path against `object.head.files`, or against the version's `files` for `reinstate`.
+
+### `FILE_EXISTS`
+
+**Cause:** the operation would put a file where a directory is, or a file below another file. `copy`, `rename` and `reinstate` also throw it for a directory onto a target that already has files, without `{ merge: true }`.
+
+**What to do:** remove what is in the way first, or pass `{ merge: true }` to put the directory's files in among the target's.
+
+### `INVALID_LOGICAL_PATH`
+
+**Cause:** a logical path is empty, absolute, or has a `..` segment (a backslash counts as a separator); a `copy` or `rename` target is inside its source; or an `import` target is empty or names the top of the object, such as `.`.
+
+**What to do:** use a relative path without `..`. To import a directory's contents at the top of the object, leave out the target.
+
+### `SOURCE_CHANGED`
+
+**Cause:** a file changed while `import` was copying it in: the copy's digest doesn't match the source.
+
+**What to do:** retry once nothing is writing to the source.
+
+### `UNSUPPORTED_FILE_TYPE`
+
+**Cause:** `import` found a symbolic link, socket, device or anything else that isn't a regular file or directory.
+
+**What to do:** import the files the link points to, or leave them out.
+
+## When the library offers no way forward
+
+### When the object is full
+
+An object with zero-padded version names that has reached `VERSION_LIMIT_REACHED` can't take another version from this library. Either:
+
+- update it with the tool that made it, if that tool can renumber or otherwise carry on; or
+- copy its head into a new object, which has no padding and no limit. The new object needs a new id while the old one exists, and it starts again at version 1, so the earlier versions stay only in the old object.
+
+<Code code={copyHead} lang="ts" />
+
+### Removing a damaged object
+
+`remove` refuses an object it can't read with `INVALID_OBJECT`, because it can't confirm the directory holds the object you named. Nothing is deleted.
+
+If you are sure you want it gone:
+
+1. Make sure no writer of the object is alive.
+2. Delete the directory the message names, by hand. It is where the storage layout places the id.
+3. If the workspace (`extensions/ocfl-js-workspace` in the storage root) has a directory at the same path, delete that too.
+4. Remove any parent directories that leaves empty, up to the storage root.
