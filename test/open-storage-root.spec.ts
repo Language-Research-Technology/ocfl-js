@@ -7,7 +7,7 @@ import { createStorageRoot, type OcflError, openStorageRoot } from '../src/index
 import { DIGESTS_OF_ABC, eachDigest } from './helpers/digests-of-abc.ts';
 import { withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, HASHED_DEFAULTS } from './helpers/layouts.ts';
-import { ocflError } from './helpers/ocfl-error.ts';
+import { ocflError, rejection } from './helpers/ocfl-error.ts';
 import { STORAGE_FIXTURE, specFiles, writeFiles, writeObject, writeStorageRoot } from './helpers/storage-roots.ts';
 
 const FLAT = '0002-flat-direct-storage-layout';
@@ -263,18 +263,31 @@ describe('opening a storage root', () => {
     }
   });
 
-  describe('a storage root that breaks an OCFL rule', () => {
-    it('reports E069 when the root conformance declaration is missing', async () => {
+  describe('no storage root', () => {
+    it('reports STORAGE_ROOT_NOT_FOUND for an empty directory, leaving it empty', async () => {
       const rootPath = newPath();
       await fs.promises.mkdir(rootPath);
-      await assert.rejects(openStorageRoot(rootPath), ocflError('INVALID_STORAGE_ROOT', 'E069'));
+      const error = await rejection(openStorageRoot(rootPath), 'STORAGE_ROOT_NOT_FOUND');
+      assert.strictEqual(error.ocflCode, undefined);
       assert.deepStrictEqual(await fs.promises.readdir(rootPath), []);
     });
 
-    it('reports E069 when the root does not exist, without making it', async () => {
+    it('reports STORAGE_ROOT_NOT_FOUND naming the path when it does not exist, without making it', async () => {
       const rootPath = newPath();
-      await assert.rejects(openStorageRoot(rootPath), ocflError('INVALID_STORAGE_ROOT', 'E069'));
+      const error = await rejection(openStorageRoot(rootPath), 'STORAGE_ROOT_NOT_FOUND');
+      assert.strictEqual(error.ocflCode, undefined);
+      assert.ok(error.message.includes(rootPath));
       assert.ok(!fs.existsSync(rootPath));
+    });
+  });
+
+  describe('a storage root that breaks an OCFL rule', () => {
+    it('reports E069 naming the storage root when a directory with other files has no root conformance declaration', async () => {
+      const rootPath = newPath();
+      await writeFiles(rootPath, { 'other.txt': 'x' });
+      const error = await rejection(openStorageRoot(rootPath), 'INVALID_STORAGE_ROOT');
+      assert.strictEqual(error.ocflCode, 'E069');
+      assert.ok(error.message.includes(rootPath));
     });
 
     it('reports E069 when the root is a file', async () => {
@@ -283,15 +296,16 @@ describe('opening a storage root', () => {
       await assert.rejects(openStorageRoot(rootPath), ocflError('INVALID_STORAGE_ROOT', 'E069'));
     });
 
+    it('reports E069 when the root is below a file', async () => {
+      const file = newPath();
+      await fs.promises.writeFile(file, 'x');
+      await assert.rejects(openStorageRoot(path.join(file, 'root')), ocflError('INVALID_STORAGE_ROOT', 'E069'));
+    });
+
     it('reports E080 when the version declaration has the wrong contents', async () => {
       const rootPath = newPath();
       await writeFiles(rootPath, { '0=ocfl_1.1': 'wrong\n', 'ocfl_layout.json': declaring(HASHED) });
       await assert.rejects(openStorageRoot(rootPath), ocflError('INVALID_STORAGE_ROOT', 'E080'));
-    });
-
-    it('names the storage root', async () => {
-      const rootPath = newPath();
-      await assert.rejects(openStorageRoot(rootPath), (error: OcflError) => error.message.includes(rootPath));
     });
   });
 
@@ -300,6 +314,17 @@ describe('opening a storage root', () => {
       const rootPath = await handMadeRoot({ layoutFile: declaring(HASHED) });
       const declaration = (filePath: string) => path.basename(filePath).startsWith('0=ocfl_');
       await withFsFailure('readFile', declaration, () => assert.rejects(openStorageRoot(rootPath), { code: 'EACCES' }), 'EACCES');
+    });
+
+    it('passes through when a root with no declaration cannot be read', async () => {
+      const rootPath = newPath();
+      await fs.promises.mkdir(rootPath);
+      await withFsFailure(
+        'opendir',
+        (dir) => dir === rootPath,
+        () => assert.rejects(openStorageRoot(rootPath), { code: 'EACCES' }),
+        'EACCES',
+      );
     });
 
     it('passes through when ocfl_layout.json cannot be read', async () => {

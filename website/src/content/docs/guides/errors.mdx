@@ -9,6 +9,7 @@ import { Code } from '@astrojs/starlight/components';
 import branchOnCode from '../../../examples/errors/branch-on-code.ts?raw';
 import listWithErrors from '../../../examples/errors/list-with-errors.ts?raw';
 import copyHead from '../../../examples/errors/copy-head.ts?raw';
+import openOrCreate from '../../../examples/errors/open-or-create.ts?raw';
 
 The library throws one error class, [`OcflError`](/ocfl-js/api/classes/ocflerror/), for anything you might handle. This page lists every value of its `code`, what causes it, and what to do. Coming from 0.4, which threw plain `Error`s? See [Migrating from 0.4](/ocfl-js/guides/migrating-from-0-4/#errors).
 
@@ -47,9 +48,17 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 **What to do:** create the storage root in an empty or missing directory. To use a storage root that already exists, call `openStorageRoot`.
 
+### `STORAGE_ROOT_NOT_FOUND`
+
+**Cause:** `openStorageRoot` was given a path that doesn't exist, or an empty directory. There is no storage root there.
+
+**What to do:** to make one, call `createStorageRoot` with the same path. To open a storage root, or create it if it isn't there, catch this code and nothing else:
+
+<Code code={openOrCreate} lang="ts" />
+
 ### `INVALID_STORAGE_ROOT`
 
-**Cause:** `openStorageRoot` found no storage root it can read: the `0=ocfl_1.x` declaration is missing or wrong (`ocflCode` `E069` or `E080`), `ocfl_layout.json` is missing, or doesn't name a storage layout (`E070`), or the storage layout's `config.json` isn't a JSON object, is for another storage layout, or has parameters the storage layout refuses.
+**Cause:** `openStorageRoot` found no storage root it can read: the path is a file, is below a file, or is a directory with something in it, and its `0=ocfl_1.x` declaration is missing or wrong (`ocflCode` `E069` or `E080`), `ocfl_layout.json` is missing, or doesn't name a storage layout (`E070`), or the storage layout's `config.json` isn't a JSON object, is for another storage layout, or has parameters the storage layout refuses.
 
 **What to do:** check the path is a storage root. If it is, fix the declaration, `ocfl_layout.json` or `config.json`; the message names the file.
 

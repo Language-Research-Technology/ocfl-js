@@ -4,7 +4,7 @@ async function openOrCreate(path: string): Promise<StorageRoot> {
   try {
     return await openStorageRoot(path);
   } catch (error) {
-    if (!(error instanceof OcflError && error.code === 'INVALID_STORAGE_ROOT' && error.ocflCode === 'E069')) {
+    if (!(error instanceof OcflError && error.code === 'STORAGE_ROOT_NOT_FOUND')) {
       throw error;
     }
     return createStorageRoot(path, { layout: { extensionName: '000N-path-direct-storage-layout' } });
