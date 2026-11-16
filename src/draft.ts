@@ -5,7 +5,8 @@ import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants
 import * as Hashing from './digest.ts';
 import { ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
-import { type ContentRelease, type DeletePlan, type OcflObjectInventory, type RelistPlan, rootInventoryPaths, sidecarContent } from './inventory.ts';
+import type { ContentRelease, DeletePlan, OcflObjectInventory, RelistPlan } from './inventory.ts';
+import { rootInventoryPaths, sidecarContent } from './inventory-files.ts';
 import { lockKept, releaseLock, takeLock } from './lock.ts';
 import { checkLogicalPath, fileLogicalPath, invalidLogicalPath, normaliseLogicalPath } from './logical-path.ts';
 import { createError } from './ocfl-rules.ts';

@@ -1,8 +1,9 @@
 import { OcflConstants } from './constants.ts';
 import * as fileSystem from './file-system.ts';
-import { isStagedRootInventory, isVersionName, type OcflObjectInventory, rootInventoryPaths, sidecarContent, sidecarDigest } from './inventory.ts';
+import type { OcflObjectInventory } from './inventory.ts';
+import { isStagedRootInventory, isVersionName, rootInventoryPaths, sidecarContent, sidecarDigest } from './inventory-files.ts';
 import { type Lock, releaseLock } from './lock.ts';
-import { declarationWithoutInventory, enclosingObject, readInventory } from './ocfl-object.ts';
+import { declarationWithoutInventory, enclosingObject, readInventory } from './object-on-disk.ts';
 import { deleteObjectRoot } from './remove.ts';
 import { clearWorkspace, namesIn, objectWorkspace, removeAll } from './workspace.ts';
 

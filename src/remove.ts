@@ -4,7 +4,7 @@ import { OcflConstants } from './constants.ts';
 import type { OcflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { lockKept, markRemoving, releaseLock, takeLock } from './lock.ts';
-import { confirmedVersion, declarationWithoutInventory, hasObjectDeclaration, objectNotFound, readInventory, strayContents } from './ocfl-object.ts';
+import { confirmedVersion, declarationWithoutInventory, hasObjectDeclaration, objectNotFound, readInventory, strayContents } from './object-on-disk.ts';
 import { clearWorkspace, objectWorkspace } from './workspace.ts';
 
 const { INVENTORY_NAME, NAMASTE_T } = OcflConstants;
