@@ -11,7 +11,7 @@ import { type OcflFile, StoredFile } from './ocfl-file.ts';
 import type { StorageRoot } from './storage-root.ts';
 import * as store from './store.ts';
 import { assertNoMutableHead, updateTarget } from './transaction.ts';
-import { dirContents, findNamasteVersion, isNotFound, isNothingAtPath, pathExists } from './utils.ts';
+import { dirContents, findNamasteVersion, isNotFound, isNothingAtPath, parseJsonObject, pathExists } from './utils.ts';
 import { createError } from './validation.ts';
 import { objectWorkspace } from './workspace.ts';
 
@@ -289,6 +289,16 @@ async function isHeadVersionInventory(objectRoot: string, head: unknown, text: s
 }
 
 /**
+ * The id the root inventory of the object at `objectRoot` names, unchecked, for an object that can't be opened.
+ * @returns `undefined` if the inventory can't be read, isn't JSON, or its `id` isn't a string
+ */
+async function idInRootInventory(objectRoot: string): Promise<string | undefined> {
+  const text = await fs.promises.readFile(nodePath.join(objectRoot, INVENTORY_NAME), 'utf8').catch(() => undefined);
+  const id = text === undefined ? undefined : parseJsonObject(text)?.id;
+  return typeof id === 'string' ? id : undefined;
+}
+
+/**
  * Reads the root inventory of the object at `objectRoot` and checks it against its sidecar, or against its head version while a commit is replacing the sidecar.
  * @returns `undefined` if there is no inventory
  * @throws {@link OcflError} `INVALID_OBJECT` if the inventory or its sidecar is missing, corrupt or inconsistent
@@ -530,6 +540,7 @@ export {
   enclosingObject,
   type FixityProblem,
   hasObjectDeclaration,
+  idInRootInventory,
   type OcflObject,
   objectNotFound,
   openDeclaredObject,

@@ -1,11 +1,12 @@
-import { OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
+import { openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 
-for await (const object of root.objects()) {
-  if (object instanceof OcflError) {
-    console.warn(`${object.ocflCode ?? object.code}: ${object.message}`);
+for await (const entry of root.objects()) {
+  if ('error' in entry) {
+    const { objectRoot, id, error } = entry;
+    console.warn(`${objectRoot}${id ? ` (${id})` : ''}: ${error.ocflCode ?? error.code}`);
     continue;
   }
-  console.log(object.id, object.head.number);
+  console.log(entry.object.id, entry.object.head.number);
 }

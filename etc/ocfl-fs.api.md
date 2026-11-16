@@ -70,6 +70,15 @@ export type Layout = Readonly<Required<LayoutConfig>>;
 export type LayoutConfig = FlatDirectLayoutConfig | HashAndIdNTupleLayoutConfig | HashedNTupleLayoutConfig | PathDirectLayoutConfig;
 
 // @public
+export type ListedObject = {
+    readonly object: OcflObject;
+} | {
+    readonly error: OcflError;
+    readonly objectRoot: string;
+    readonly id?: string;
+};
+
+// @public
 export class OcflError extends Error {
     readonly code: OcflErrorCode;
     readonly lockedAt?: Date;
@@ -118,7 +127,7 @@ export interface PathDirectLayoutConfig {
 export interface StorageRoot {
     create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>): Promise<OcflObject>;
     readonly layout: Layout;
-    objects(): AsyncIterable<OcflObject | OcflError>;
+    objects(): AsyncIterable<ListedObject>;
     readonly ocflVersion: OcflVersion;
     open(id: string): Promise<OcflObject>;
     readonly path: string;

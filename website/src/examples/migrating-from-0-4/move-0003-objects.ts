@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { rename } from 'node:fs/promises';
 import path from 'node:path';
-import { OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
+import { openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 const layout = root.layout;
@@ -30,13 +30,14 @@ function tuples(id: string) {
   return Array.from({ length: numberOfTuples }, (_, i) => digest.slice(i * tupleSize, (i + 1) * tupleSize));
 }
 
-for await (const object of root.objects()) {
-  if (object instanceof OcflError) {
+for await (const entry of root.objects()) {
+  if ('error' in entry) {
     continue;
   }
-  const parent = path.join(root.path, ...tuples(object.id));
-  const from = path.join(parent, oldName(object.id));
-  const to = path.join(parent, newName(object.id));
+  const { id } = entry.object;
+  const parent = path.join(root.path, ...tuples(id));
+  const from = path.join(parent, oldName(id));
+  const to = path.join(parent, newName(id));
   if (from !== to && existsSync(from) && !existsSync(to)) {
     await rename(from, to);
   }

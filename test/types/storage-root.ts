@@ -1,4 +1,4 @@
-import { createStorageRoot, type Layout, type LayoutConfig, openStorageRoot, type StorageRoot } from '../../src/index.ts';
+import { createStorageRoot, type Layout, type LayoutConfig, type OcflErrorCode, type OcflObject, openStorageRoot, type StorageRoot } from '../../src/index.ts';
 
 export async function layoutIsRequired(path: string): Promise<void> {
   // @ts-expect-error the layout is required
@@ -67,4 +67,24 @@ export function layoutNarrowsByName(layout: Layout): number | string {
 export function createLike(path: string, root: StorageRoot): Promise<StorageRoot> {
   const layout: LayoutConfig = root.layout;
   return createStorageRoot(path, { layout });
+}
+
+export async function listedObjectsMustBeNarrowed(root: StorageRoot): Promise<void> {
+  for await (const entry of root.objects()) {
+    // @ts-expect-error a damaged object root has no object
+    entry.object.id;
+    if ('error' in entry) {
+      const code: OcflErrorCode = entry.error.code;
+      const objectRoot: string = entry.objectRoot;
+      const id: string | undefined = entry.id;
+      // @ts-expect-error read-only
+      entry.objectRoot = 'elsewhere';
+      void [code, objectRoot, id];
+    } else {
+      const object: OcflObject = entry.object;
+      // @ts-expect-error an object has no error
+      entry.error;
+      void object;
+    }
+  }
 }

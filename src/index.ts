@@ -11,6 +11,7 @@ export type {
   LayoutConfig,
   PathDirectLayoutConfig,
 } from './extensions/index.ts';
+export type { ListedObject } from './list.ts';
 export type { ByteRange, OcflFile } from './ocfl-file.ts';
 export type { FixityProblem, OcflObject, User, Version } from './ocfl-object.ts';
 export type { StorageRoot } from './storage-root.ts';

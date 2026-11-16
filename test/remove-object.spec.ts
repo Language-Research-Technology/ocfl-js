@@ -128,8 +128,8 @@ describe('root.remove', () => {
       await root.remove(ID);
 
       const ids = [];
-      for await (const object of root.objects()) {
-        ids.push('id' in object ? object.id : object);
+      for await (const entry of root.objects()) {
+        ids.push('object' in entry ? entry.object.id : entry);
       }
       assert.deepStrictEqual(ids, ['kept']);
     });
