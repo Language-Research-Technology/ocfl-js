@@ -32,7 +32,7 @@ Two fields are set only some of the time:
 ### What isn't an `OcflError`
 
 - A `TypeError` means the call itself was wrong: an empty id, message or user name, an unknown storage layout or parameter given to `createStorageRoot`, or an extra option.
-- A `RangeError` means a byte range given to `OcflFile.stream()` has an end that isn't a whole number from 0, or a `start` after its `end`.
+- A `RangeError` means a byte range given to `OcflFile.stream()` has an end that isn't a whole number from 0, a `start` after its `end`, or a `start` after the file's last byte.
 - A plain `Error` means a draft was used after its update finished, or an update ended with draft operations still running. Await every operation.
 - File system errors, such as `ENOSPC` or `EACCES`, pass through untouched.
 
@@ -82,9 +82,9 @@ It is also thrown when the directory the id maps to holds an object with a diffe
 
 ### `INVALID_OBJECT`
 
-**Cause:** what the library read where the object should be isn't an object it can safely use. The inventory is missing, isn't JSON, is inconsistent, or names paths that would lead outside the object; the sidecar digest is missing or doesn't match; the object declaration is missing or wrong, or declares a later OCFL version than the storage root's; or the object is inside another object. `ocflCode` names the OCFL rule, for example `E003` (no object declaration), `E033` (inventory isn't JSON), `E060` (sidecar digest doesn't match) or `E081` (a 1.1 object in a 1.0 storage root).
+**Cause:** what the library read where the object should be isn't an object it can safely use. The inventory is missing, isn't JSON, is inconsistent, or names paths that would lead outside the object; the sidecar digest is missing or doesn't match; the object declaration is missing or wrong, or declares a later OCFL version than the storage root's; or the object is inside another object. Reading a file throws it if the file's stored content isn't a regular file, such as a directory. `ocflCode` names the OCFL rule, for example `E003` (no object declaration), `E033` (inventory isn't JSON), `E060` (sidecar digest doesn't match) or `E081` (a 1.1 object in a 1.0 storage root).
 
-`open`, `update`, `remove`, recovering an unfinished write, and `objects()` can all give it. `update` throws it if the declaration has been removed or damaged since the object was opened.
+`open`, `update`, `remove`, recovering an unfinished write, `objects()`, and an `OcflFile`'s `size()`, `stream()`, `text()` and `bytes()` can all give it. `update` throws it if the declaration has been removed or damaged since the object was opened.
 
 These are checks the library makes before it uses an inventory's values as file paths. They are not validation: an object that opens can still break OCFL rules the library never looks at. To check an object against the specification, use [an OCFL validator](/ocfl-js/#objects-written-by-other-tools). See [It doesn't validate](/ocfl-js/#it-doesnt-validate) for what the library checks and what it doesn't.
 

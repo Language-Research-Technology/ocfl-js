@@ -4,6 +4,8 @@
 
 ```ts
 
+import type { Readable } from 'node:stream';
+
 // @public
 export interface ByteRange {
     readonly end?: number;
@@ -102,7 +104,7 @@ export interface OcflFile {
     readonly digest: string;
     readonly path: string;
     size(): Promise<number>;
-    stream(range?: ByteRange): ReadableStream<Uint8Array>;
+    stream(range?: ByteRange): Promise<Readable>;
     text(): Promise<string>;
 }
 

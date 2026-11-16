@@ -87,7 +87,7 @@ The digest directories haven't changed, only the last directory, named by the en
 | `file.logicalPath` | `file.path` |
 | `file.text(encoding)`, `asString()` | `file.text()`, which decodes UTF-8 |
 | `file.buffer()`, `asBuffer()` | `file.bytes()` |
-| `await file.stream()`, `asStream()` | `file.stream(range?)`, which returns a web `ReadableStream` straight away |
+| `await file.stream()`, `asStream()` | `await file.stream(range?)`, which resolves to a Node `Readable` once the content is open |
 | `file.stat()`, `file.size`, `file.lastModified` | `file.size()`; there's no modification time |
 | `object.update(fn)`, `update(fn, 'MERGE')` | `object.update(details, fn)`, which returns the updated object |
 | `object.update(fn, 'REPLACE')` | `object.update(details, fn)`, calling `draft.clear()` first |
@@ -153,7 +153,7 @@ for (const f of await object.files()) console.log(f.logicalPath, f.digest);
 - An opened object is the object as it was read. It never changes, even after `update()`: that returns a new object. To see what another process has committed since, open it again.
 - Versions are numbers: `object.versions.get(1)`, not `'v1'`. `object.head` is the latest. Each version has its `created` date, `message`, `user` and `files`, keyed by logical path. This replaces the inventory API (`getInventory()`, `versionState()`, `diffState()`, `toJSON()` and the rest): compare two versions' `files` maps to see what changed.
 - A file's `digest` is in lower-case hex. Files can't be looked up by digest or content path, and content paths aren't given out. The one place a stored file is named on disk is a fixity problem, which names a missing or changed stored file by its path from the storage root so you can restore it.
-- `file.stream()` returns a web `ReadableStream` without `await`, and takes an optional byte range: `file.stream({ start: 0, end: 1023 })`, with `end` included as in an HTTP Range header.
+- `await file.stream()` resolves to a Node `Readable`, and rejects first if the content can't be read. It takes an optional byte range: `await file.stream({ start: 0, end: 1023 })`, with `end` included as in an HTTP Range header.
 
 ## Creating and updating objects
 
