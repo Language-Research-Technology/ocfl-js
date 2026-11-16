@@ -4,7 +4,7 @@ import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
 import { checkedDetails, commitDraft, type Draft, type User, type VersionDetails } from './draft.ts';
-import { type OcflError, ocflError } from './error.ts';
+import { type OcflError, objectRootConflict, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { type Inventory, isVersionName, OcflObjectInventory, sidecarDigest, VersionNumber, validateStoredInventory } from './inventory.ts';
 import { isLocked, updateInProgress } from './lock.ts';
@@ -418,9 +418,9 @@ async function readInventory(objectRoot: string): Promise<OcflObjectInventory | 
   return inventory;
 }
 
-/** For an `objectRoot` that the layout gives to the object `id`, and that holds the object `found` */
+/** For an `objectRoot` that the storage layout gives to the object `id`, and that holds the object `found` */
 function holdsAnotherObject(objectRoot: string, found: string, id: string): OcflError {
-  return ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot} holds the object <${found}>, not <${id}>.`);
+  return objectRootConflict(objectRoot, id, `holds the object <${found}>`);
 }
 
 /** The nearest directory between the storage root and `objectRoot` that is itself an object, if any */
@@ -459,7 +459,7 @@ async function declaredVersion(storageRoot: string, objectRoot: string): Promise
 /**
  * The OCFL version declared by the object at `objectRoot`, whose root inventory is `inventory`, once it is known to be the object `id`.
  * @throws {@link OcflError} `INVALID_OBJECT` as {@link declaredVersion} does
- * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it is an object with another id
+ * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it is an object with another id
  */
 async function confirmedVersion(storageRoot: string, objectRoot: string, inventory: OcflObjectInventory, id: string): Promise<OcflVersion> {
   const ocflVersion = await declaredVersion(storageRoot, objectRoot);
@@ -485,11 +485,6 @@ function nestedObject(objectRoot: string, outer: string): OcflError {
   return createError('E082', objectRoot, `nested under the object at ${outer}`);
 }
 
-/** For an `objectRoot` that the layout gives to the object `id`, and that is inside the object at `outer` */
-function insideAnotherObject(objectRoot: string, id: string, outer: string): OcflError {
-  return ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is inside the object at ${outer}.`);
-}
-
 function objectNotFound(storageRoot: string, id: string): OcflError {
   return ocflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}.`);
 }
@@ -499,16 +494,44 @@ function declarationWithoutInventory(objectRoot: string): OcflError {
   return invalidObject(`${objectRoot} has an OCFL object declaration but no inventory.`, { ocflCode: 'E063' });
 }
 
+const STRAY_CONTENTS = {
+  'not empty': "holds files that aren't an OCFL object",
+  'a file': 'is a file',
+  'below a file': 'is below a file',
+} as const satisfies Record<Exclude<fileSystem.DirContents, 'empty'>, string>;
+
+/** For an `objectRoot` given to the object `id`, with no object declaration or inventory but `contents` */
+function strayContents(objectRoot: string, id: string, contents: Exclude<fileSystem.DirContents, 'empty'>): OcflError {
+  return objectRootConflict(objectRoot, id, STRAY_CONTENTS[contents]);
+}
+
+/** What is at `objectRoot`, which has no inventory, unless it is empty or has an object declaration */
+async function strayAt(objectRoot: string): Promise<Exclude<fileSystem.DirContents, 'empty'> | undefined> {
+  const contents = await fileSystem.dirContents(objectRoot);
+  return contents === 'empty' || (contents === 'not empty' && (await hasObjectDeclaration(objectRoot))) ? undefined : contents;
+}
+
+/** For an `objectRoot` given to the object `id`, with no committed inventory */
+async function noCommittedObject(storageRoot: string, objectRoot: string, id: string): Promise<OcflError> {
+  // A create writes the declaration first, and a writer holds its lock until it has finished
+  if ((await strayAt(objectRoot)) === undefined || (await isLocked(objectWorkspace(storageRoot, objectRoot)))) {
+    return objectNotFound(storageRoot, id);
+  }
+  // A writer may have finished between the two: a remove by deleting what it had left, a failed create by discarding what it made
+  const stray = await strayAt(objectRoot);
+  return stray === undefined ? objectNotFound(storageRoot, id) : strayContents(objectRoot, id, stray);
+}
+
 /**
  * Opens the object `id` that the layout of the storage root, of OCFL version `rootVersion`, places at `objectRoot`.
- * @throws {@link OcflError} `OBJECT_NOT_FOUND` if `objectRoot` has no inventory, and either no object declaration or a lock held: a create that isn't committed
- * @throws {@link OcflError} `INVALID_OBJECT` if it has only one of them and isn't locked, is inside another object, is of a later OCFL version than the storage root, or its inventory can't be used
- * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it holds an object with another id
+ * @throws {@link OcflError} `OBJECT_NOT_FOUND` if `objectRoot` has no inventory, and either nothing in it or a lock held: a create that isn't committed
+ * @throws {@link OcflError} `INVALID_OBJECT` if it has a declaration and no inventory and isn't locked, is inside another object, is of a later OCFL version than the storage root, or its inventory can't be used
+ * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it holds an object with another id, or, with no declaration, inventory or lock, holds anything else, is a file or is below one
  */
 async function openObject(storageRoot: string, objectRoot: string, id: string, rootVersion: OcflVersion): Promise<OcflObject> {
   const inventory = await committedInventory(storageRoot, objectRoot);
   if (!inventory) {
-    throw objectNotFound(storageRoot, id);
+    throw await noCommittedObject(storageRoot, objectRoot, id);
   }
   const ocflVersion = withinRootVersion(objectRoot, await confirmedVersion(storageRoot, objectRoot, inventory, id), rootVersion);
   return new OpenedObject(storageRoot, rootVersion, objectRoot, ocflVersion, inventory);
@@ -556,7 +579,7 @@ async function committedInventory(storageRoot: string, objectRoot: string): Prom
  * @param details - As {@link checkedDetails} returns them
  * @throws {@link OcflError} `OBJECT_EXISTS` if `objectRoot` has an object declaration or an inventory
  * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if it has a declaration, no inventory and a lock held: a create that isn't committed
- * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if it holds anything else, or is inside another object
+ * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it holds anything else, is below a file, or is inside another object
  */
 async function createObject(
   storageRoot: string,
@@ -576,15 +599,12 @@ async function createObject(
     throw ocflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}, where the storage root ${storageRoot} places <${id}>.`);
   }
   const contents = await fileSystem.dirContents(objectRoot);
-  if (contents === 'not empty') {
-    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is not empty.`);
-  }
-  if (contents === 'below a file') {
-    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is below a file.`);
+  if (contents !== 'empty') {
+    throw strayContents(objectRoot, id, contents);
   }
   const outer = await enclosingObject(storageRoot, objectRoot);
   if (outer !== undefined) {
-    throw insideAnotherObject(objectRoot, id, outer);
+    throw objectRootConflict(objectRoot, id, `is inside the object at ${outer}`);
   }
   const inventory = OcflObjectInventory._newVersion({
     id,
@@ -615,5 +635,6 @@ export {
   openDeclaredObject,
   openObject,
   readInventory,
+  strayContents,
   type Version,
 };

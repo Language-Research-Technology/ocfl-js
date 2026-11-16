@@ -139,7 +139,8 @@ interface StorageRoot {
    *
    * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id, or another writer is creating it and hasn't committed it.
    * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is missing, corrupt or inconsistent, the object has no declaration or an invalid one, its OCFL version is later than the storage root's (E081), or it is inside another object (E082).
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, or that directory holds another object.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold.
+   * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if that directory holds an object with another id, or holds files that aren't an object, is a file or is below one.
    * @throws `TypeError` if the id is missing or empty.
    * @throws The file system error if a file or directory the object is read from, or checked against, exists but can't be read.
    * @example
@@ -158,7 +159,8 @@ interface StorageRoot {
    * @throws {@link OcflError} `OBJECT_EXISTS` if an object with this id already exists.
    * @throws {@link OcflError} `DIRECTORY_NOT_EMPTY` if something appeared in the object's directory while its first version was being built. Nothing is created.
    * @throws {@link OcflError} `INVALID_OBJECT` if an invalid object declaration appeared in the object's directory while its first version was being built (E007). Nothing is created.
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, with its lock in the workspace, or that directory holds something else, is below a file, or is inside another object.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, with its lock in the workspace.
+   * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if that directory holds something else, is a file or is below one, or is inside another object.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object, or died creating it; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
@@ -204,8 +206,9 @@ interface StorageRoot {
    * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if the object is being updated or created, or a writer died doing so; `lockedAt` says since when. Nothing is deleted. After a dead writer, recover its unfinished write ({@link StorageRoot.unfinishedWrite}) and then `remove` again.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is deleted.
-   * @throws {@link OcflError} `INVALID_OBJECT` if the id's directory holds something that isn't an object, or an object whose inventory is missing, corrupt or inconsistent, so its id can't be confirmed; nothing is deleted.
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, with its lock in the workspace, or that directory holds a different object; nothing is deleted.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the id's directory holds an object whose inventory is missing, corrupt or inconsistent, so its id can't be confirmed; nothing is deleted.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, with its lock in the workspace; nothing is deleted.
+   * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if that directory holds an object with another id, or holds files that aren't an object, is a file or is below one; nothing is deleted.
    * @throws `TypeError` if the id is missing or empty.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting the object failed part of the way through, or it was deleted and its lock couldn't be released; `cause` is the failure. The object stays locked, and may be partly deleted: recovering its unfinished write ({@link StorageRoot.unfinishedWrite}) finishes removing it.
    * Also thrown if the remove was refused and its lock couldn't be released; nothing is deleted, and recovering only releases the lock, so `remove` again after it.
@@ -237,7 +240,8 @@ interface StorageRoot {
    * The unfinished write of an object: its create, update or remove whose lock is still held. Nothing is changed.
    *
    * @returns The write, or `undefined` if the object isn't locked
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, or that directory is locked by a writer of another id.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold.
+   * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if that directory is locked by a writer of another id.
    * @throws `TypeError` if the id is missing or empty.
    * @throws The file system error if the object's lock exists but can't be read.
    * @example

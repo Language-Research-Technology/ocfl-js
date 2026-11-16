@@ -80,7 +80,9 @@ export async function readIfExists(file: string): Promise<string | undefined> {
 }
 
 /** What is at `dirPath`: nothing or an empty directory, a file or a directory with something in it, or nothing because a parent is a file */
-export async function dirContents(dirPath: string): Promise<'empty' | 'not empty' | 'below a file'> {
+export type DirContents = 'empty' | 'not empty' | 'a file' | 'below a file';
+
+export async function dirContents(dirPath: string): Promise<DirContents> {
   let dir: fs.Dir;
   try {
     dir = await fs.promises.opendir(dirPath);
@@ -90,7 +92,7 @@ export async function dirContents(dirPath: string): Promise<'empty' | 'not empty
     }
     // ENOTDIR: either the path is a file, or one of its parents is and the path doesn't exist
     if (isNotDir(error)) {
-      return (await pathExists(dirPath)) ? 'not empty' : 'below a file';
+      return (await pathExists(dirPath)) ? 'a file' : 'below a file';
     }
     throw error;
   }
@@ -104,7 +106,8 @@ export async function dirContents(dirPath: string): Promise<'empty' | 'not empty
 }
 
 export async function isDirEmpty(dirPath: string): Promise<boolean> {
-  return (await dirContents(dirPath)) !== 'not empty';
+  const contents = await dirContents(dirPath);
+  return contents === 'empty' || contents === 'below a file';
 }
 
 async function createParents(filePath: string) {

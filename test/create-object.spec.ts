@@ -247,10 +247,10 @@ describe('creating an object', () => {
       await assertRefused(root, 'moved', ocflError('OBJECT_EXISTS'));
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for a directory that holds something else', async () => {
+    it('throws OBJECT_ROOT_CONFLICT for a directory that holds something else', async () => {
       const root = await newRoot();
       await writeFiles(objectRootOf(root, 'not-empty'), { 'stray.txt': 'x' });
-      await assertRefused(root, 'not-empty', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      await assertRefused(root, 'not-empty', ocflError('OBJECT_ROOT_CONFLICT'));
     });
 
     it('throws DIRECTORY_NOT_EMPTY when its place fills while the draft is assembled, leaving what is there', async () => {
@@ -267,18 +267,18 @@ describe('creating an object', () => {
       assertNoWorkspace(root);
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT where there is a file', async () => {
+    it('throws OBJECT_ROOT_CONFLICT where there is a file', async () => {
       const root = await newRoot();
       await writeFiles(root.path, { 'a-file': 'x' });
-      await assertRefused(root, 'a-file', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      await assertRefused(root, 'a-file', ocflError('OBJECT_ROOT_CONFLICT'));
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for a place inside an object another tool wrote', async () => {
+    it('throws OBJECT_ROOT_CONFLICT for a place inside an object another tool wrote', async () => {
       const root = await newRoot({ extensionName: PATH_DIRECT });
       await createObject(root, 'other', { 'a.txt': 'one' });
       await fs.promises.cp(path.join(root.path, 'other', '__object__'), path.join(root.path, 'outer'), { recursive: true });
-      await assertRefused(root, 'outer/inner', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
-      await assertRefused(root, 'outer/deep/inner', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      await assertRefused(root, 'outer/inner', ocflError('OBJECT_ROOT_CONFLICT'));
+      await assertRefused(root, 'outer/deep/inner', ocflError('OBJECT_ROOT_CONFLICT'));
     });
 
     it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id the layout cannot place', async () => {

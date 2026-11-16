@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { ocflError } from './error.ts';
+import { objectRootConflict } from './error.ts';
 import { type Lock, readLock, sameWriter, updateInProgress } from './lock.ts';
 import { recoverObject } from './recover.ts';
 import { deepFreeze } from './utils.ts';
@@ -74,7 +74,7 @@ function unfinishedWrite(storageRoot: string, objectRoot: string, seen: Lock): U
 
 /**
  * The unfinished write of `id`, whose object the storage root's layout places at `objectRoot`, or `undefined` if it isn't locked.
- * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the lock there is a writer's of another id
+ * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if the lock there is a writer's of another id
  */
 async function findUnfinishedWrite(storageRoot: string, objectRoot: string, id: string): Promise<UnfinishedWrite | undefined> {
   const lock = await readLock(objectWorkspace(storageRoot, objectRoot));
@@ -82,7 +82,7 @@ async function findUnfinishedWrite(storageRoot: string, objectRoot: string, id: 
     return undefined;
   }
   if (lock.id !== id) {
-    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is locked by a writer of <${lock.id}>.`);
+    throw objectRootConflict(objectRoot, id, `is locked by a writer of <${lock.id}>`);
   }
   return unfinishedWrite(storageRoot, objectRoot, lock);
 }
