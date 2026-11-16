@@ -172,7 +172,7 @@ await object.import('/data/crates/item-1', 'REPLACE');
 
 <Code code={depositService} lang="ts" />
 
-Try `create()` first and, when it throws `OBJECT_EXISTS`, open the object and update it. Checking whether it exists first can be beaten by another writer in between; the create can't. `draft.clear()` before `draft.import()` does what `'REPLACE'` did. [A deposit service](/ocfl-js/guides/use-cases/#a-deposit-service) explains this pattern in full.
+Try `create()` first and, when it throws `OBJECT_EXISTS`, open the object and update it. Checking whether it exists first can be beaten by another writer in between; the create can't. Another writer can still remove the object or commit a version between the steps, so `deposit` starts again from `create()` on `OBJECT_NOT_FOUND` or `OBJECT_OUT_OF_DATE`. `draft.clear()` before `draft.import()` does what `'REPLACE'` did. [A deposit service](/ocfl-js/guides/use-cases/#a-deposit-service) explains this pattern in full.
 
 0.4:
 
