@@ -160,7 +160,7 @@ for (const f of await object.files()) console.log(f.logicalPath, f.digest);
 
 ## Creating and updating objects
 
-0.4 created an object the first time it was updated. 1.0 creates it with `root.create()`, and `update()` works only on an object that exists. Every new version needs a message and a user: 0.4's `update(fn)` couldn't record them at all.
+0.4 created an object the first time it was updated. 1.0 creates it with `root.create()`, and `update()` works only on an object that exists. Every new version needs a message and a user: 0.4's `update(fn)` couldn't record them at all. A job with no person behind it [names the software as the user](/ocfl-js/guides/updating-objects/#when-no-person-makes-the-version).
 
 0.4:
 
