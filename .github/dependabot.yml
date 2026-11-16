@@ -1,30 +1,22 @@
 version: 2
+# Security updates only: a limit of 0 disables version-update PRs, while security-update PRs still
+# open under the repo's "Dependabot security updates" setting and use this file's commit-message.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-    cooldown:
-      default-days: 7
+    open-pull-requests-limit: 0
     commit-message:
       prefix: ci
       include: scope
-    groups:
-      github-actions:
-        patterns: ["*"]
 
   # Covers the whole pnpm workspace, website included
   - package-ecosystem: npm
     directory: /
     schedule:
       interval: weekly
-    cooldown:
-      default-days: 7
+    open-pull-requests-limit: 0
     commit-message:
       prefix: build
       include: scope
-    groups:
-      # Majors arrive one PR each, so one breaking upgrade can't hold back the rest
-      npm:
-        patterns: ["*"]
-        update-types: [minor, patch]
