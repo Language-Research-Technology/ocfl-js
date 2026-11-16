@@ -191,7 +191,7 @@ async function declaredVersion(storageRoot: string, objectRoot: string): Promise
     throw createError('E007', objectRoot);
   }
   if (!ocflVersion) {
-    throw invalidObject(`${objectRoot} has an inventory but no OCFL object declaration.`, { ocflCode: 'E003' });
+    throw createError('E003', objectRoot, 'it has an inventory but no object declaration');
   }
   if (outer !== undefined) {
     throw nestedObject(objectRoot, outer);

@@ -2,6 +2,7 @@ import { type OcflError, ocflError } from './error.ts';
 
 // The OCFL 1.1 validation codes this library raises: https://ocfl.io/1.1/spec/validation-codes.html
 type ValidationCode =
+  | 'E003'
   | 'E007'
   | 'E017'
   | 'E018'
@@ -25,6 +26,10 @@ type ValidationCode =
 type Violated = 'INVALID_OBJECT' | 'INVALID_STORAGE_ROOT';
 
 const RULES: Record<ValidationCode, [violated: Violated, description: string]> = {
+  E003: [
+    'INVALID_OBJECT',
+    'There MUST be exactly one version declaration file in the base directory of the OCFL Object Root giving the OCFL version in the filename.',
+  ],
   E007: ['INVALID_OBJECT', 'The text contents of the [version declaration] file must be the same as dvalue, followed by a newline (\\n).'],
   E017: ['INVALID_OBJECT', 'The contentDirectory value MUST NOT contain the forward slash (/) path separator.'],
   E018: ['INVALID_OBJECT', 'The contentDirectory value MUST NOT be either one or two periods (. or ..).'],

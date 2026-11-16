@@ -219,14 +219,21 @@ interface ObjectPlace {
 /** Only {@link ObjectDraft}'s own factory has it, so a draft's class can't make another draft */
 const STARTING = Symbol('starting a draft');
 
-/** @returns The path of the declaration file, if this call wrote one */
-async function ensureObjectDeclaration(root: string, ocflVersion: OcflVersion): Promise<string | undefined> {
+/**
+ * Writes the object declaration for a create into an empty object root; an update only checks that it is there
+ * @returns The path of the declaration file, if this call wrote one
+ * @throws {@link OcflError} `INVALID_OBJECT` with `E007` for an invalid declaration, or `E003` if an update finds none; `DIRECTORY_NOT_EMPTY` if a create finds none in a directory that isn't empty
+ */
+async function ensureObjectDeclaration(root: string, ocflVersion: OcflVersion, creating: boolean): Promise<string | undefined> {
   const declared = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, root);
   if (declared === '') {
     throw createError('E007', root);
   }
   if (declared) {
     return;
+  }
+  if (!creating) {
+    throw createError('E003', root, 'it has an inventory but no object declaration');
   }
   if (!(await fileSystem.isDirEmpty(root))) {
     throw ocflError('DIRECTORY_NOT_EMPTY', 'Cannot create an OCFL Object in a non-empty directory');
@@ -601,7 +608,8 @@ class ObjectDraft implements Draft {
     await fileSystem.writeFile(invDigestPath, digest);
     // Before anything in the object root changes, so a moved head never surfaces as a failed rename
     await assertUpToDate(this.#place.objectRoot, inventory);
-    this.#createdNamaste = await ensureObjectDeclaration(this.#place.objectRoot, this.#place.ocflVersion);
+    const creating = inventory.versionNumber.previous() === undefined;
+    this.#createdNamaste = await ensureObjectDeclaration(this.#place.objectRoot, this.#place.ocflVersion, creating);
     try {
       await fileSystem.move(this.#versionPath, objectVersionPath);
     } catch (error) {

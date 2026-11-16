@@ -8,6 +8,7 @@ import {
   assertVersionValid,
   createObject,
   DETAILS,
+  objectAtV1,
   objectRootOf,
   readInventory,
   snapshot,
@@ -125,6 +126,20 @@ describe('updating an object made by another tool', () => {
     assert.strictEqual((await readInventory(objectRoot)).head, 'v1');
     assert.ok(!fs.existsSync(path.join(objectRoot, 'v2')));
     assert.ok(!fs.existsSync(workspaceOf(root)));
+  });
+
+  it('throws INVALID_OBJECT with E003, committing nothing, when the version declaration is removed during the update', async () => {
+    const { root, object, objectRoot, before } = await objectAtV1(await newRoot(), 'declaration-removed');
+    const result = object.update(DETAILS, async (draft) => {
+      await draft.write('b.txt', 'b');
+      await fs.promises.rm(path.join(objectRoot, '0=ocfl_object_1.1'));
+    });
+    await assert.rejects(result, ocflError('INVALID_OBJECT', 'E003'));
+    const { '0=ocfl_object_1.1': _removed, ...undeclared } = before;
+    assert.deepStrictEqual(await snapshot(objectRoot), undeclared);
+    assert.ok(!fs.existsSync(workspaceOf(root)));
+    await fs.promises.writeFile(path.join(objectRoot, '0=ocfl_object_1.1'), 'ocfl_object_1.1\n');
+    assert.strictEqual((await object.update(DETAILS, async (draft) => draft.write('b.txt', 'b'))).head.number, 2);
   });
 
   it('writes the new version of a sha256 object with a data content directory in sha256 and data', async () => {
