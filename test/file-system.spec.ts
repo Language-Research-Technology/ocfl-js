@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, it, mock } from 'node:test';
-import * as store from '../src/store.ts';
+import * as fileSystem from '../src/file-system.ts';
 import { failRename, fsError, mountSeparately } from './helpers/fs-failures.ts';
 
-describe('store', () => {
+describe('fileSystem', () => {
   afterEach(() => {
     mock.restoreAll();
   });
@@ -21,25 +21,25 @@ describe('store', () => {
     });
 
     it('removes an empty directory', async () => {
-      await store.removeIfEmpty(dir);
+      await fileSystem.removeIfEmpty(dir);
       assert.equal(fs.existsSync(dir), false);
     });
 
     it('keeps a directory that has content', async () => {
       await fs.promises.writeFile(path.join(dir, 'a.txt'), 'a');
-      await store.removeIfEmpty(dir);
+      await fileSystem.removeIfEmpty(dir);
       assert.equal(fs.readFileSync(path.join(dir, 'a.txt'), 'utf8'), 'a');
     });
 
     it('ignores a missing directory', async () => {
-      await assert.doesNotReject(store.removeIfEmpty(path.join(dir, 'missing')));
+      await assert.doesNotReject(fileSystem.removeIfEmpty(path.join(dir, 'missing')));
     });
 
     it('reports any other failure', async () => {
       mock.method(fs.promises, 'rmdir', async () => {
         throw fsError('EACCES');
       });
-      await assert.rejects(store.removeIfEmpty(dir), { code: 'EACCES' });
+      await assert.rejects(fileSystem.removeIfEmpty(dir), { code: 'EACCES' });
     });
   });
 
@@ -55,7 +55,7 @@ describe('store', () => {
 
     it('removes a directory and what it holds', async () => {
       await fs.promises.writeFile(path.join(dir, 'a.txt'), 'a');
-      await store.removeQuietly(dir);
+      await fileSystem.removeQuietly(dir);
       assert.equal(fs.existsSync(dir), false);
     });
 
@@ -63,7 +63,7 @@ describe('store', () => {
       mock.method(fs.promises, 'rm', async () => {
         throw fsError('EACCES');
       });
-      await assert.doesNotReject(store.removeQuietly(dir));
+      await assert.doesNotReject(fileSystem.removeQuietly(dir));
     });
   });
 
@@ -91,7 +91,7 @@ describe('store', () => {
       await writeFiles(source, { 'new.txt': 'new' });
       mountSeparately(path.join(dir, 'src'));
 
-      await assert.rejects(store.move(source, target), { code: 'EXDEV' });
+      await assert.rejects(fileSystem.move(source, target), { code: 'EXDEV' });
 
       assert.deepEqual(await fs.promises.readdir(source), ['new.txt']);
       assert.equal(fs.existsSync(target), false);
@@ -101,7 +101,7 @@ describe('store', () => {
       await writeFiles(source, { 'a.txt': 'hello' });
       failRename('EACCES');
 
-      await assert.rejects(store.move(source, target), { code: 'EACCES' });
+      await assert.rejects(fileSystem.move(source, target), { code: 'EACCES' });
 
       assert.equal(await fs.promises.readFile(path.join(source, 'a.txt'), 'utf8'), 'hello');
       assert.equal(fs.existsSync(target), false);
@@ -110,10 +110,28 @@ describe('store', () => {
     it('moves a directory with rename on the same filesystem', async () => {
       await writeFiles(source, { 'a.txt': 'hello' });
 
-      await store.move(source, target);
+      await fileSystem.move(source, target);
 
       assert.equal(await fs.promises.readFile(path.join(target, 'a.txt'), 'utf8'), 'hello');
       assert.equal(fs.existsSync(source), false);
+    });
+  });
+
+  describe('relativeWithin', () => {
+    it('gives a path inside the root relative to it, and the root itself as empty', () => {
+      assert.strictEqual(fileSystem.relativeWithin('/srv/ocfl', 'a/b'), 'a/b');
+      assert.strictEqual(fileSystem.relativeWithin('/srv/ocfl', '/srv/ocfl/a/../b'), 'b');
+      assert.strictEqual(fileSystem.relativeWithin('/srv/ocfl', '.'), '');
+    });
+
+    it('gives nothing for a path outside the root', () => {
+      assert.strictEqual(fileSystem.relativeWithin('/srv/ocfl', '..'), undefined);
+      assert.strictEqual(fileSystem.relativeWithin('/srv/ocfl', '../ocfl-other/a'), undefined);
+      assert.strictEqual(fileSystem.relativeWithin('/srv/ocfl', '/srv'), undefined);
+    });
+
+    it('keeps a name inside the root that only starts with two dots', () => {
+      assert.strictEqual(fileSystem.relativeWithin('/srv/ocfl', '..a'), '..a');
     });
   });
 });

@@ -1,10 +1,9 @@
 import { OcflConstants } from './constants.ts';
+import * as fileSystem from './file-system.ts';
 import { isStagedRootInventory, isVersionName, type OcflObjectInventory, rootInventoryPaths, sidecarContent, sidecarDigest } from './inventory.ts';
 import { type Lock, releaseLock } from './lock.ts';
 import { declarationWithoutInventory, enclosingObject, readInventory } from './ocfl-object.ts';
 import { deleteObjectRoot } from './remove.ts';
-import * as store from './store.ts';
-import { readIfExists } from './utils.ts';
 import { clearWorkspace, namesIn, objectWorkspace, removeAll } from './workspace.ts';
 
 const { NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
@@ -22,11 +21,11 @@ function nextVersionName(inventory: OcflObjectInventory): string | undefined {
 /** Replaces the sidecar of the root inventory if it doesn't record that inventory's digest */
 async function completeSidecar(objectRoot: string, inventory: OcflObjectInventory): Promise<void> {
   const { sidecar, stagedSidecar } = rootInventoryPaths(objectRoot, inventory.digestAlgorithm);
-  if (sidecarDigest(await readIfExists(sidecar)) === inventory._digest) {
+  if (sidecarDigest(await fileSystem.readIfExists(sidecar)) === inventory._digest) {
     return;
   }
-  await store.writeFile(stagedSidecar, sidecarContent(inventory));
-  await store.move(stagedSidecar, sidecar);
+  await fileSystem.writeFile(stagedSidecar, sidecarContent(inventory));
+  await fileSystem.move(stagedSidecar, sidecar);
 }
 
 /**
@@ -74,7 +73,7 @@ async function recoverObject(storageRoot: string, objectRoot: string, lock: Lock
       await removeAll(objectRoot, [...rootNames.filter((name) => isStagedRootInventory(name) || name === FIRST_VERSION), ...declarations]);
     }
     if (!lock.objectRootExisted) {
-      await store.removeEmptyAncestors(objectRoot, storageRoot);
+      await fileSystem.removeEmptyAncestors(objectRoot, storageRoot);
     }
   }
   await releaseLock(workspace, storageRoot);

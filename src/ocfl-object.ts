@@ -1,17 +1,17 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
-import { OcflConstants, type OcflVersion } from './constants.ts';
+import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
 import { checkedDetails, commitDraft, type Draft, type User, type VersionDetails } from './draft.ts';
 import { type OcflError, ocflError } from './error.ts';
+import * as fileSystem from './file-system.ts';
 import { type Inventory, isVersionName, OcflObjectInventory, sidecarDigest, VersionNumber, validateStoredInventory } from './inventory.ts';
 import { isLocked, updateInProgress } from './lock.ts';
 import { type OcflFile, StoredFile } from './ocfl-file.ts';
 import { createError } from './ocfl-rules.ts';
 import type { StorageRoot } from './storage-root.ts';
-import * as store from './store.ts';
-import { dirContents, findNamasteVersion, isNotFound, isNothingAtPath, parseJsonObject, pathExists, pathFromStorageRoot } from './utils.ts';
+import { parseJsonObject } from './utils.ts';
 import { objectWorkspace } from './workspace.ts';
 
 const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
@@ -21,7 +21,7 @@ const FIXITY_CONCURRENCY = 10;
 
 /** @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE`, with `message`, if the object has an active mutable head (extension 0005) */
 async function assertNoMutableHead(objectRoot: string, message: string): Promise<void> {
-  if (await pathExists(nodePath.join(objectRoot, MUTABLE_HEAD_INVENTORY))) {
+  if (await fileSystem.pathExists(nodePath.join(objectRoot, MUTABLE_HEAD_INVENTORY))) {
     throw ocflError('MUTABLE_HEAD_ACTIVE', message);
   }
 }
@@ -166,7 +166,7 @@ class OpenedObject implements OcflObject {
     }
     const affected = affectedFiles(this.#inventory, new Set(failed.map(({ contentPath }) => contentPath)));
     const problems = failed.map(({ contentPath, expected, actual }): FixityProblem => {
-      const storedFile = pathFromStorageRoot(this.#storageRoot, nodePath.join(this.#root, contentPath));
+      const storedFile = fileSystem.pathFromStorageRoot(this.#storageRoot, nodePath.join(this.#root, contentPath));
       const common = { storedFile, affects: affected.get(contentPath) ?? [], expected };
       return actual === undefined ? { problem: 'missing', ...common } : { problem: 'changed', ...common, actual };
     });
@@ -207,9 +207,9 @@ function affectedFiles(inventory: OcflObjectInventory, contentPaths: ReadonlySet
 /** The digest of `file`, or `undefined` if it doesn't exist */
 async function digestIfExists(file: string, digestAlgorithm: DigestAlgorithm): Promise<string | undefined> {
   try {
-    return await Hashing.digest(digestAlgorithm, store.createReadable(file));
+    return await Hashing.digest(digestAlgorithm, fileSystem.createReadable(file));
   } catch (error) {
-    if (isNotFound(error)) {
+    if (fileSystem.isNotFound(error)) {
       return undefined;
     }
     throw error;
@@ -293,7 +293,7 @@ async function readIfPresent(file: string): Promise<string | undefined> {
   try {
     return await fs.promises.readFile(file, 'utf8');
   } catch (error) {
-    if (isNothingAtPath(error)) {
+    if (fileSystem.isNothingAtPath(error)) {
       return undefined;
     }
     throw error;
@@ -524,7 +524,7 @@ async function createObject(
   build: (draft: Draft) => Promise<unknown>,
 ): Promise<OcflObject> {
   const declared = await hasObjectDeclaration(objectRoot);
-  const hasInventory = await pathExists(nodePath.join(objectRoot, INVENTORY_NAME));
+  const hasInventory = await fileSystem.pathExists(nodePath.join(objectRoot, INVENTORY_NAME));
   if (declared || hasInventory) {
     const workspace = objectWorkspace(storageRoot, objectRoot);
     if (!hasInventory && (await isLocked(workspace))) {
@@ -532,7 +532,7 @@ async function createObject(
     }
     throw ocflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}, where the storage root ${storageRoot} places <${id}>.`);
   }
-  const contents = await dirContents(objectRoot);
+  const contents = await fileSystem.dirContents(objectRoot);
   if (contents === 'not empty') {
     throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `${objectRoot}, where the storage root places <${id}>, is not empty.`);
   }

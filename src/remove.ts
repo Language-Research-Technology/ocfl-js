@@ -2,10 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { type OcflError, ocflError } from './error.ts';
+import * as fileSystem from './file-system.ts';
 import { lockKept, markRemoving, releaseLock, takeLock } from './lock.ts';
 import { confirmedVersion, declarationWithoutInventory, hasObjectDeclaration, objectNotFound, readInventory } from './ocfl-object.ts';
-import * as store from './store.ts';
-import { hasErrorCode, isDirEmpty } from './utils.ts';
 import { clearWorkspace, objectWorkspace } from './workspace.ts';
 
 const { INVENTORY_NAME, NAMASTE_T } = OcflConstants;
@@ -23,7 +22,7 @@ function isNeededToOpen(name: string): boolean {
 async function assertHoldsObject(storageRoot: string, objectRoot: string, id: string): Promise<void> {
   const inventory = await readInventory(objectRoot);
   if (!inventory) {
-    if (await isDirEmpty(objectRoot)) {
+    if (await fileSystem.isDirEmpty(objectRoot)) {
       throw objectNotFound(storageRoot, id);
     }
     throw (await hasObjectDeclaration(objectRoot))
@@ -39,7 +38,7 @@ async function assertHoldsObject(storageRoot: string, objectRoot: string, id: st
  */
 async function deleteObjectRoot(storageRoot: string, objectRoot: string): Promise<void> {
   const names = await fs.promises.readdir(objectRoot).catch((error) => {
-    if (hasErrorCode(error, 'ENOENT')) {
+    if (fileSystem.isNotFound(error)) {
       return [];
     }
     throw error;
@@ -50,7 +49,7 @@ async function deleteObjectRoot(storageRoot: string, objectRoot: string): Promis
     }
   }
   await fs.promises.rm(objectRoot, { recursive: true, force: true });
-  await store.removeEmptyAncestorsQuietly(path.dirname(objectRoot), storageRoot);
+  await fileSystem.removeEmptyAncestorsQuietly(path.dirname(objectRoot), storageRoot);
 }
 
 /** For a remove that ended holding its lock */

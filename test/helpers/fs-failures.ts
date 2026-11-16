@@ -2,7 +2,6 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { mock } from 'node:test';
-import { isErrnoException } from '../../src/utils.ts';
 
 type FsMethod = 'mkdir' | 'open' | 'link' | 'rename' | 'copyFile' | 'writeFile' | 'readFile' | 'readdir' | 'rmdir' | 'rm' | 'opendir' | 'stat';
 type Fails = (source: string, target: string) => boolean;
@@ -113,7 +112,7 @@ export async function stillOpen(dirs: fs.Dir[]) {
       open.push(dir.path);
       await dir.close();
     } catch (error) {
-      if (!isErrnoException(error) || error.code !== 'ERR_DIR_CLOSED') {
+      if ((error as NodeJS.ErrnoException | undefined)?.code !== 'ERR_DIR_CLOSED') {
         throw error;
       }
     }

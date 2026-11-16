@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
-import { OcflConstants, type OcflVersion } from './constants.ts';
+import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
 import { checkedDetails, type Draft, type VersionDetails } from './draft.ts';
 import { type OcflError, ocflError } from './error.ts';
+import * as fileSystem from './file-system.ts';
 import type { BuiltInLayout } from './layouts/built-in-layout.ts';
 import { builtInLayoutClass, createLayout, type Layout, type LayoutConfig } from './layouts/index.ts';
 import { type ListedObject, listObjects } from './list.ts';
@@ -12,19 +13,8 @@ import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import { createError } from './ocfl-rules.ts';
 import { removeObject } from './remove.ts';
 import { SPEC_TEXT } from './spec-text.ts';
-import * as store from './store.ts';
 import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
-import {
-  deepFreeze,
-  findNamasteVersion,
-  isDirEmpty,
-  isNonEmptyString,
-  parseJsonObject,
-  pathFits,
-  readIfExists,
-  rejectUnknownKeys,
-  relativeWithin,
-} from './utils.ts';
+import { deepFreeze, isNonEmptyString, parseJsonObject, rejectUnknownKeys } from './utils.ts';
 import { longestWriterPath } from './workspace.ts';
 
 const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, NAMASTE_PREFIX_STORAGE, NAMASTE_T } = OcflConstants;
@@ -71,7 +61,7 @@ function declaredLayoutName(file: string, content: string): string {
  */
 async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion; layout: BuiltInLayout }> {
   const layoutPath = nodePath.join(root, OCFL_LAYOUT);
-  const [namaste, layoutRead] = await Promise.allSettled([findNamasteVersion(NAMASTE_PREFIX_STORAGE, root), readIfExists(layoutPath)]);
+  const [namaste, layoutRead] = await Promise.allSettled([findNamasteVersion(NAMASTE_PREFIX_STORAGE, root), fileSystem.readIfExists(layoutPath)]);
   if (namaste.status === 'rejected') {
     throw namaste.reason;
   }
@@ -95,7 +85,7 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion
     throw ocflError('UNSUPPORTED_LAYOUT', `Layout "${declaredName}", which the storage root ${root} declares, is not supported.`);
   }
   const configPath = nodePath.join(root, EXTENSIONS_DIR, declaredName, EXTENSION_CONFIG);
-  const content = await readIfExists(configPath);
+  const content = await fileSystem.readIfExists(configPath);
   const config = content === undefined ? undefined : parseJsonObject(content);
   if (content !== undefined && !config) {
     throw ocflError('INVALID_STORAGE_ROOT', `The layout config ${configPath} is not a JSON object.`);
@@ -121,18 +111,18 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion
 
 /** Write the files that make the empty directory `root` an OCFL 1.1 storage root */
 async function writeStorageRoot(root: string, layout: BuiltInLayout): Promise<void> {
-  await store.writeFile(nodePath.join(root, SPEC_TEXT_FILE), SPEC_TEXT);
-  await store.writeFile(nodePath.join(root, `${WORKSPACE_EXTENSION}.md`), WORKSPACE_EXTENSION_TEXT);
+  await fileSystem.writeFile(nodePath.join(root, SPEC_TEXT_FILE), SPEC_TEXT);
+  await fileSystem.writeFile(nodePath.join(root, `${WORKSPACE_EXTENSION}.md`), WORKSPACE_EXTENSION_TEXT);
   if (layout.documentation) {
-    await store.writeFile(nodePath.join(root, `${layout.name}.md`), layout.documentation);
+    await fileSystem.writeFile(nodePath.join(root, `${layout.name}.md`), layout.documentation);
   }
   if (layout.config) {
-    await store.writeFile(nodePath.join(root, EXTENSIONS_DIR, layout.name, EXTENSION_CONFIG), JSON.stringify(layout.config, null, 2));
+    await fileSystem.writeFile(nodePath.join(root, EXTENSIONS_DIR, layout.name, EXTENSION_CONFIG), JSON.stringify(layout.config, null, 2));
   }
-  await store.writeFile(nodePath.join(root, OCFL_LAYOUT), JSON.stringify({ extension: layout.name, description: layout.description }, null, 2));
+  await fileSystem.writeFile(nodePath.join(root, OCFL_LAYOUT), JSON.stringify({ extension: layout.name, description: layout.description }, null, 2));
   // Last, so that a root left half-written can't be opened, least of all with the default parameters of its layout
   const declaration = NAMASTE_PREFIX_STORAGE + OCFL_VERSION;
-  await store.writeFile(nodePath.join(root, NAMASTE_T + declaration), `${declaration}\n`);
+  await fileSystem.writeFile(nodePath.join(root, NAMASTE_T + declaration), `${declaration}\n`);
 }
 
 /** The base directory holding OCFL objects. */
@@ -256,7 +246,7 @@ interface StorageRoot {
  */
 function mappedObjectPath(root: string, layout: BuiltInLayout, id: string): string {
   const mapped = layout.map(id);
-  const relative = relativeWithin(root, nodePath.join(root, mapped));
+  const relative = fileSystem.relativeWithin(root, nodePath.join(root, mapped));
   // Case-insensitive, so a case-insensitive filesystem can't map an object root into extensions/
   if (!relative || relative.split(nodePath.sep)[0]?.toLowerCase() === EXTENSIONS_DIR) {
     throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> maps to "${mapped}", which can't hold an object in this storage root.`);
@@ -278,7 +268,7 @@ function checkedId(id: string): string {
  */
 async function placedObjectRoot(root: string, layout: BuiltInLayout, id: string, longest: (objectRoot: string) => string): Promise<string> {
   const objectRoot = nodePath.join(root, mappedObjectPath(root, layout, id));
-  if (!(await pathFits(longest(objectRoot)))) {
+  if (!(await fileSystem.pathFits(longest(objectRoot)))) {
     throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> maps to a path too long for this file system.`);
   }
   return objectRoot;
@@ -338,7 +328,7 @@ async function createStorageRoot(path: string, options: { layout: LayoutConfig }
   const layout = createLayout(options?.layout);
   rejectUnknownKeys(options, (option) => option === 'layout', 'createStorageRoot has no option');
   await fs.promises.mkdir(root, { recursive: true });
-  if (!(await isDirEmpty(root))) {
+  if (!(await fileSystem.isDirEmpty(root))) {
     throw ocflError('DIRECTORY_NOT_EMPTY', `Cannot create a storage root in ${root}, which is not empty.`);
   }
   await writeStorageRoot(root, layout);

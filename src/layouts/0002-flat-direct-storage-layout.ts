@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { OcflConstants } from '../constants.ts';
-import { hasOverlongSegment, MAX_NAME_BYTES } from '../utils.ts';
+import { hasOverlongSegment, MAX_NAME_BYTES } from '../file-system.ts';
 import { BuiltInLayout } from './built-in-layout.ts';
 
 /** Object directories named by their id, directly in the storage root. */
