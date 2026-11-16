@@ -17,7 +17,7 @@ Until 1.0.0 is out, fixes are released only as the next `1.0.0-beta` prerelease,
 | 1.0.0 betas   | Yes        |
 | 0.4 and older | No         |
 
-To upgrade from 0.4, see [Migrating from 0.4](https://language-research-technology.github.io/ocfl-js/guides/migrating-from-0-4/).
+To upgrade from 0.x, see [Upgrading from 0.x](https://language-research-technology.github.io/ocfl-js/guides/upgrading-from-0-x/).
 
 ## Scope
 

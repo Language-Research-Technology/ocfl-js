@@ -1,6 +1,6 @@
 ---
 title: Use cases and best practices
-description: The library applied to a deposit service, a read-only file server, an indexing job and a fixity check across a storage root, with practices that keep them safe.
+description: The library applied to a deposit service, a read-only file server, an indexing job, a fixity check across a storage root and writing a version out, with practices that keep them safe.
 sidebar:
   order: 5
 ---
@@ -10,8 +10,9 @@ import depositService from '../../../examples/use-cases/deposit-service.ts?raw';
 import fileServer from '../../../examples/use-cases/file-server.ts?raw';
 import indexingJob from '../../../examples/use-cases/indexing-job.ts?raw';
 import fixityCheck from '../../../examples/use-cases/fixity-check.ts?raw';
+import writeVersionOut from '../../../examples/use-cases/write-version-out.ts?raw';
 
-This guide shows the library at work in four common jobs, then lists the practices they share.
+This guide shows the library at work in common jobs, then lists the practices they share.
 
 ## A deposit service
 
@@ -85,6 +86,14 @@ A stored file that is there but can't be read, such as `EACCES` or `EIO`, throws
 Each problem names the stored file by its path from the storage root, as `storedFile`, and lists in `affects` every version and logical path that reads it, so you can see which of your files are hit. It is empty for a stored file no logical path reads, such as a second copy of one digest's content. Repair it by hand: copy a good copy from a backup to `storedFile` under the storage root. Writing the content again with `object.update` doesn't repair it, because an update that finds the content's digest already in the object keeps the stored file it has.
 
 Both digests are lowercase, even when an object written by another tool records them in uppercase.
+
+## Writing a version out
+
+This job writes a version's files to a directory, each under its logical path:
+
+<Code code={writeVersionOut} lang="ts" />
+
+The library doesn't check the logical paths in an inventory it reads, so an object written by another tool, or a damaged one, can hold a path such as `../../etc/passwd`. Check that each target stays inside the directory, as the example does, before you write it.
 
 ## Best practices
 
