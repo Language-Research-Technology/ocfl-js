@@ -6,7 +6,7 @@ import { checkedDetails, type Draft, type VersionDetails } from './draft.ts';
 import { type OcflError, ocflError } from './error.ts';
 import type { BuiltInLayout } from './extension.ts';
 import { builtInLayoutClass, createLayout, type Layout, type LayoutConfig } from './extensions/index.ts';
-import { listObjects } from './list.ts';
+import { type ListedObject, listObjects } from './list.ts';
 import { LOCK_NAME } from './lock.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import { removeObject } from './remove.ts';
@@ -180,9 +180,9 @@ interface StorageRoot {
   create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>): Promise<OcflObject>;
 
   /**
-   * Lists every object in the storage root, in no particular order. Each object is read when the listing reaches it.
-   * An object that can't be opened is yielded as an `INVALID_OBJECT` error whose message names its directory, and the listing carries on.
-   * A directory with an invalid object declaration is one of these: it isn't searched for objects. So is an object whose OCFL version is later than the storage root's (E081).
+   * Lists every object in the storage root, in no particular order. Each object is read when the listing reaches it, and yielded as `{ object }`.
+   * A damaged object root, one whose object can't be opened, is yielded as `{ error, objectRoot, id? }`, and the listing carries on.
+   * A directory with an invalid object declaration is a damaged object root: it isn't searched for objects. So is an object whose OCFL version is later than the storage root's (E081).
    *
    * An object that another writer is creating and hasn't committed is left out, and so is the `extensions` directory.
    * Leaving the loop early closes every directory the listing opened.
@@ -190,16 +190,16 @@ interface StorageRoot {
    * @throws The file system error that stopped the listing.
    * @example
    * ```ts
-   * for await (const object of root.objects()) {
-   *   if (object instanceof OcflError) {
-   *     console.warn(object.message);
+   * for await (const entry of root.objects()) {
+   *   if ('error' in entry) {
+   *     console.warn(`${entry.objectRoot}: ${entry.error.code} ${entry.error.ocflCode ?? ''}`);
    *     continue;
    *   }
-   *   await index(object.id, object.head.files);
+   *   await index(entry.object.id, entry.object.head.files);
    * }
    * ```
    */
-  objects(): AsyncIterable<OcflObject | OcflError>;
+  objects(): AsyncIterable<ListedObject>;
 
   /**
    * Deletes an object and all its versions, and the parent directories that leaves empty. The object's lock is held while it is deleted.

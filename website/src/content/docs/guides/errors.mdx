@@ -25,7 +25,7 @@ Two fields are set only some of the time:
 
 <Code code={branchOnCode} lang="ts" />
 
-`objects()` doesn't throw for an object it can't open. It yields an `OcflError` with the code `INVALID_OBJECT` in that object's place and carries on listing:
+`objects()` doesn't throw for an object it can't open. It yields `{ error, objectRoot, id? }` in that object's place and carries on listing. `error` has the code `INVALID_OBJECT`. `objectRoot` is the damaged object root's path from the storage root, and `id` is the id its root inventory names, absent when the inventory can't be read, isn't JSON or names none:
 
 <Code code={listWithErrors} lang="ts" />
 
@@ -193,6 +193,6 @@ An object with zero-padded version names that has reached `VERSION_LIMIT_REACHED
 If you are sure you want it gone:
 
 1. Make sure no writer of the object is alive.
-2. Delete the directory the message names, by hand. It is where the storage layout places the id.
+2. Delete the damaged object root by hand: the directory `objects()` gives as `objectRoot`, inside the storage root. It is where the storage layout places the id.
 3. If the workspace (`extensions/ocfl-js-workspace` in the storage root) has a directory at the same path, delete that too.
 4. Remove any parent directories that leaves empty, up to the storage root.

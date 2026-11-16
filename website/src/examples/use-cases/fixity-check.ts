@@ -1,31 +1,32 @@
-import { type FixityProblem, OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
+import { type FixityProblem, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 let failures = 0;
 
 for await (const entry of root.objects()) {
-  if (entry instanceof OcflError) {
+  if ('error' in entry) {
     failures++;
-    console.error(`Can't open an object: ${entry.message}`);
+    console.error(`${entry.objectRoot}: can't open the object (${entry.error.ocflCode ?? entry.error.code})`);
     continue;
   }
+  const { object } = entry;
 
   let problems: readonly FixityProblem[];
   try {
-    problems = await entry.checkFixity();
+    problems = await object.checkFixity();
   } catch (error) {
     // A stored file that can't be read, such as EACCES or EIO
     failures++;
-    console.error(`${entry.id}: fixity check failed`, error);
+    console.error(`${object.id}: fixity check failed`, error);
     continue;
   }
 
   for (const { problem, contentPath, expected, actual } of problems) {
     failures++;
     if (problem === 'missing') {
-      console.error(`${entry.id}: ${contentPath} is missing`);
+      console.error(`${object.id}: ${contentPath} is missing`);
     } else {
-      console.error(`${entry.id}: ${contentPath} has changed: expected ${expected}, found ${actual}`);
+      console.error(`${object.id}: ${contentPath} has changed: expected ${expected}, found ${actual}`);
     }
   }
 }

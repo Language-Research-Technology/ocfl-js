@@ -20,6 +20,10 @@ _Avoid_: Record, item, snapshot
 The directory of an OCFL object, where the storage layout places it in the storage root.
 _Avoid_: Object directory, object folder
 
+**Damaged object root**:
+An object root with an object declaration whose OCFL object the library can't open: its root inventory or sidecar is missing, corrupt or inconsistent, its declaration is invalid, or its OCFL version is later than the storage root's. Listing names it by its path from the storage root.
+_Avoid_: Invalid object, broken object, corrupt object
+
 **Root inventory**:
 The inventory in an object root, which names the object's head: its latest version. Its sidecar is the file beside it that records its digest.
 _Avoid_: Main inventory, top-level inventory

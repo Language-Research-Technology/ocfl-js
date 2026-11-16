@@ -1,18 +1,20 @@
-import { OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
+import { openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 const index = new Map<string, { version: number; files: string[] }>();
-const damaged: OcflError[] = [];
+const damaged: string[] = [];
 
 for await (const entry of root.objects()) {
-  if (entry instanceof OcflError) {
-    damaged.push(entry);
+  if ('error' in entry) {
+    const { objectRoot, id, error } = entry;
+    damaged.push(`${error.ocflCode ?? error.code}: ${objectRoot}${id ? ` (${id})` : ''}`);
     continue;
   }
-  index.set(entry.id, { version: entry.head.number, files: [...entry.head.files.keys()] });
+  const { object } = entry;
+  index.set(object.id, { version: object.head.number, files: [...object.head.files.keys()] });
 }
 
 console.log(`Indexed ${index.size} objects`);
-for (const error of damaged) {
-  console.warn(`${error.code}${error.ocflCode ? ` (${error.ocflCode})` : ''}: ${error.message}`);
+for (const line of damaged) {
+  console.warn(line);
 }
