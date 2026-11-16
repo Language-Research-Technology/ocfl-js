@@ -434,7 +434,7 @@ describe('copying in a draft', () => {
       const object = await createObject(root, newId(), { first: 'first' });
       const objectRoot = objectRootOf(root, object.id);
       const updated = await object.update(DETAILS, async (draft) => {
-        await assert.rejects(draft.import(path.join(source, 'metadata.json'), ''), ocflError('INVALID_LOGICAL_PATH'));
+        await assert.rejects(draft.import(path.join(source, 'metadata.json'), { target: '' }), ocflError('INVALID_LOGICAL_PATH'));
         await draft.import(path.join(source, 'metadata.json'));
         await draft.import(path.join(source, 'data'));
         await draft.copy('a', 'a2');

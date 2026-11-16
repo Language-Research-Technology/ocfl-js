@@ -14,6 +14,7 @@ import merge from '../../../examples/updating-objects/merge.ts?raw';
 import noChange from '../../../examples/updating-objects/no-change.ts?raw';
 import versionDetails from '../../../examples/updating-objects/version-details.ts?raw';
 import draftFiles from '../../../examples/updating-objects/draft-files.ts?raw';
+import importFilter from '../../../examples/updating-objects/import-filter.ts?raw';
 import cancelUpdate from '../../../examples/updating-objects/cancel-update.ts?raw';
 
 Every change to an OCFL object is one update, and every update adds at most one version. This guide covers what you can do in an update, the order things happen in, and what an update records.
@@ -38,7 +39,7 @@ Each operation takes logical paths: the paths of files as the object presents th
 | Operation | What it does |
 |---|---|
 | `write(path, content)` | Puts one file at `path`. `content` is text (stored as UTF-8), bytes, or a stream of either, such as a Node or web stream. |
-| `import(source, target?)` | Copies a file or directory from disk into the draft. |
+| `import(source, options?)` | Copies a file or directory from disk into the draft. |
 | `copy(source, target, options?)` | Copies a file, or every file below a directory, to another path in the draft. |
 | `rename(source, target, options?)` | Moves a file, or every file below a directory, to another path in the draft. |
 | `reinstate(path, version)` | Puts a file, or every file below a directory, back as it was in an earlier version, at the same path. |
@@ -55,12 +56,20 @@ There's no separate replace operation. Writing, importing, copying, renaming or 
 
 `import` reads from your file system, not from the object.
 
-- With a `target`, a file goes to that path and a directory's contents go below it.
+- With the `target` option, `{ target: 'raw' }`, a file goes to that path and a directory's contents go below it.
 - Without one, a file keeps its own name at the top of the object, and a directory's contents go at the top. The directory itself isn't included: importing `/data/item-1` gives `a.txt`, not `item-1/a.txt`.
-- Everything below a directory is imported, including hidden files.
+- Everything below a directory is imported, including hidden files, unless the `filter` option leaves it out. See [Leaving files out](#leaving-files-out).
 - Files already at the same paths are replaced. Other files in the draft stay.
-- A symbolic link, or anything else that isn't a regular file or directory, throws [`UNSUPPORTED_FILE_TYPE`](/ocfl-js/guides/errors/#unsupported_file_type). A file that changes while it is being read throws [`SOURCE_CHANGED`](/ocfl-js/guides/errors/#source_changed).
+- A symbolic link, or anything else that isn't a regular file or directory, that the filter doesn't leave out throws [`UNSUPPORTED_FILE_TYPE`](/ocfl-js/guides/errors/#unsupported_file_type). A file that changes while it is being read throws [`SOURCE_CHANGED`](/ocfl-js/guides/errors/#source_changed).
 - If any file fails, the first failure is thrown and the draft is left as it was before the import.
+
+#### Leaving files out
+
+`filter` is called for each file, directory and symbolic link below the source, with its path relative to the source (using `/`, such as `sub/.DS_Store`) and its [`fs.Dirent`](https://nodejs.org/api/fs.html#class-fsdirent). Return `true` to import the entry, or `false` to leave it out; anything else, such as a promise, throws a `TypeError`. A directory left out isn't read, so everything below it is left out too, as with the `filter` option of Node's `fs.cp()`. An entry left out never fails the import, so leaving out symbolic links below the source stops them throwing `UNSUPPORTED_FILE_TYPE`.
+
+<Code code={importFilter} lang="ts" />
+
+The filter isn't called for the source itself: a source that is a file is imported, and one that is a symbolic link still throws `UNSUPPORTED_FILE_TYPE`.
 
 ### copy and rename
 

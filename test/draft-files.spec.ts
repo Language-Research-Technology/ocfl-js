@@ -26,7 +26,7 @@ describe('listing the files of a draft', () => {
       await draft.copy('dir', 'copied');
       await draft.rename('copied/b.txt', 'moved.txt');
       await draft.remove('dir');
-      await draft.import(source, 'imported');
+      await draft.import(source, { target: 'imported' });
       await draft.reinstate('a.txt', 1);
       seen.push(new Map(await draft.files()));
     });

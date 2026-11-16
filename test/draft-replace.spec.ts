@@ -26,7 +26,7 @@ describe('replacing a file within one draft', () => {
       async (d, p, c) => {
         const source = path.join(temp.dir, `source-${count++}`);
         await fs.promises.writeFile(source, c);
-        await d.import(source, p);
+        await d.import(source, { target: p });
       },
     ],
   ];

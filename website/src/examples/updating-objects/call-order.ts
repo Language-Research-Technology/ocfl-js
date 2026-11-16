@@ -5,8 +5,8 @@ const object = await root.open('arcp://name,corpus/item/1');
 
 const updated = await object.update({ message: 'Add the third session', user: { name: 'Alice' } }, async (draft) => {
   await Promise.all([
-    draft.import('/data/session-3/audio', 'raw'),
-    draft.import('/data/session-3/photos', 'photos'),
+    draft.import('/data/session-3/audio', { target: 'raw' }),
+    draft.import('/data/session-3/photos', { target: 'photos' }),
     draft.write('raw/README.txt', 'Recorded on a handheld recorder'),
   ]);
 });
