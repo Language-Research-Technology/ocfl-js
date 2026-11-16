@@ -4,10 +4,10 @@
   "tags": ["-lintignore"],
   "workspaces": {
     ".": {
-      // Type-checked only, by test/tsconfig.json.
-      "entry": ["test/types/*.ts"],
-      // Loaded by semantic-release from the `preset` option, and the tools scripts/check-consumer.sh runs.
-      "ignoreDependencies": ["conventional-changelog-conventionalcommits", "publint", "@arethetypeswrong/cli"]
+      // test/types: type-checked only, by test/tsconfig.json. package-smoke.js: run by smoke-package.sh.
+      "entry": ["test/types/*.ts", "scripts/package-smoke.js"],
+      // Loaded by semantic-release from the `preset` option, and the tool check-package.sh runs.
+      "ignoreDependencies": ["conventional-changelog-conventionalcommits", "publint"]
     },
     "website": {
       // Type-checked only, by src/examples/tsconfig.json.
