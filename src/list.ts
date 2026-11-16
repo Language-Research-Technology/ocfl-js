@@ -3,7 +3,8 @@ import path from 'node:path';
 import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
 import { OcflError } from './error.ts';
 import { isNothingAtPath, pathFromStorageRoot } from './file-system.ts';
-import { idInRootInventory, type OcflObject, openDeclaredObject } from './ocfl-object.ts';
+import { idInRootInventory } from './object-on-disk.ts';
+import { type OcflObject, openDeclaredObject } from './ocfl-object.ts';
 
 const { EXTENSIONS_DIR, NAMASTE_PREFIX_OBJECT } = OcflConstants;
 

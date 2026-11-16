@@ -4,7 +4,7 @@ import { OcflConstants } from './constants.ts';
 import type { OcflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { lockKept, markRemoving, releaseLock, takeLock } from './lock.ts';
-import { confirmedVersion, declarationWithoutInventory, hasObjectDeclaration, objectNotFound, readInventory, strayContents } from './ocfl-object.ts';
+import { confirmedVersion, declarationWithoutInventory, hasObjectDeclaration, objectNotFound, readInventory, strayContents } from './object-on-disk.ts';
 import { clearWorkspace, objectWorkspace } from './workspace.ts';
 
 const { INVENTORY_NAME, NAMASTE_T } = OcflConstants;
@@ -20,7 +20,7 @@ function isNeededToOpen(name: string): boolean {
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it is an object with another id, or has no object declaration but holds something, is a file or is below one
  */
 async function assertHoldsObject(storageRoot: string, objectRoot: string, id: string): Promise<void> {
-  const inventory = await readInventory(objectRoot);
+  const inventory = await readInventory(storageRoot, objectRoot, { callerHoldsLock: true });
   if (!inventory) {
     const contents = await fileSystem.dirContents(objectRoot);
     if (contents === 'empty') {

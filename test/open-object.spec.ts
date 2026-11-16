@@ -529,15 +529,20 @@ describe('opening an object', () => {
       ['null', 'null'],
       ['a list', '[]'],
       ['a string', '"inventory"'],
-      ['an object with no manifest', JSON.stringify({ id: 'x', head: 'v1', digestAlgorithm: 'sha512', versions: {} })],
     ] as const) {
-      it(`throws INVALID_OBJECT for an inventory that is ${name}`, async () => {
+      it(`throws INVALID_OBJECT with E033 for an inventory that is ${name}`, async () => {
         const id = `shape-${name.replaceAll(' ', '-')}`;
         const objectRoot = await writeVersions(root.path, id, [{ 'a.txt': 'abc' }]);
         await writeInventory(objectRoot, content);
-        await assert.rejects(root.open(id), ocflError('INVALID_OBJECT'));
+        await assert.rejects(root.open(id), (error: OcflError) => invalid('E033')(error) && /is not a JSON object\.$/.test(error.message));
       });
     }
+
+    it('throws INVALID_OBJECT for an inventory that is an object with no manifest', async () => {
+      const objectRoot = await writeVersions(root.path, 'shape-no-manifest', [{ 'a.txt': 'abc' }]);
+      await writeInventory(objectRoot, JSON.stringify({ id: 'x', head: 'v1', digestAlgorithm: 'sha512', versions: {} }));
+      await assert.rejects(root.open('shape-no-manifest'), ocflError('INVALID_OBJECT'));
+    });
 
     /** A one-file object whose root inventory no longer matches its sidecar, or the inventory of its head version */
     const tampered = async (id: string) => {

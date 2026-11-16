@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { DETAILS, objectRootOf, readInventory, sha512, textFiles, useTempRoots } from './helpers/drafts.ts';
+import { DETAILS, lockObject, objectRootOf, readInventory, sha512, textFiles, useTempRoots } from './helpers/drafts.ts';
 import { ocflError } from './helpers/ocfl-error.ts';
 import { rewriteInventory, upperCased, writeForeignObject } from './helpers/storage-roots.ts';
 
@@ -33,6 +33,7 @@ describe('digests written in uppercase by another tool', () => {
       `${sha512(await fs.promises.readFile(path.join(objectRoot, 'v1', 'inventory.json'))).toUpperCase()} inventory.json\n`,
     );
     await fs.promises.writeFile(path.join(objectRoot, 'inventory.json.sha512'), `${sha512('an earlier inventory')} inventory.json\n`);
+    await lockObject(root, 'upper-head-sidecar');
 
     assert.deepStrictEqual(await textFiles((await root.open('upper-head-sidecar')).head), { 'a.txt': 'a' });
   });

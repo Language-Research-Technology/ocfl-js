@@ -4,11 +4,15 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value !== '';
 }
 
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /** `content` parsed as a JSON object, or `undefined` if it isn't one */
 function parseJsonObject(content: string): Record<string, unknown> | undefined {
   try {
     const value: unknown = JSON.parse(content);
-    return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+    return isJsonObject(value) ? value : undefined;
   } catch (_error) {
     return undefined;
   }
@@ -59,4 +63,4 @@ function rejectUnknownKeys(object: object, isKnown: (key: string) => boolean, re
   }
 }
 
-export { createLimiter, deepFreeze, isNonEmptyString, parseJsonObject, rejectUnknownKeys };
+export { createLimiter, deepFreeze, isJsonObject, isNonEmptyString, parseJsonObject, rejectUnknownKeys };
