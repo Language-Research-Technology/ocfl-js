@@ -14,7 +14,7 @@ The library throws one error class, [`OcflError`](/ocfl-js/api/classes/ocflerror
 
 ## Catching an `OcflError`
 
-Test `code`. The message names the object or path involved and is useful in logs, but it isn't part of the contract and may change.
+Test `code`. The message names the object or path involved and is useful in logs, but it isn't part of the contract and may change. New codes can arrive in a minor release, so a `switch` on `code` keeps a `default` branch.
 
 Two fields are set only some of the time:
 
