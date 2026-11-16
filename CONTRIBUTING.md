@@ -2,6 +2,8 @@
 
 Bug reports, fixes and new features are welcome. To report a security vulnerability, follow [SECURITY.md](SECURITY.md) instead of opening an issue. Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
+Before proposing a feature, check [`.out-of-scope/`](.out-of-scope/): it lists requests that were considered and rejected, with the reasons.
+
 ## Set up
 
 Clone the Git repo:
@@ -25,18 +27,24 @@ Installing also sets up the [Lefthook](https://lefthook.dev/) Git hooks, which r
 
 CI runs all of these on every pull request to `main`:
 
-| Command             | What it checks                                              |
-| ------------------- | ----------------------------------------------------------- |
-| `pnpm test`         | The test suite                                              |
-| `pnpm coverage`     | The test suite, failing unless it covers all of `src`       |
-| `pnpm lint:types`   | Types, in the source and the tests                          |
-| `pnpm lint:biome`   | Formatting and lint rules (`pnpm format` fixes what it can) |
-| `pnpm lint:knip`    | Unused files, exports and dependencies                      |
-| `pnpm lint:package` | That the packed package passes publint, installs and works  |
-| `pnpm lint:api`     | That the public API matches the API report                  |
-| `pnpm lint:docs`    | That the site's examples type-check and the site builds     |
+| Command             | What it checks                                                          |
+| ------------------- | ----------------------------------------------------------------------- |
+| `pnpm test`         | The test suite, including that `src/spec-text.ts` matches its source    |
+| `pnpm coverage`     | The test suite, failing unless it covers all of `src`                   |
+| `pnpm lint:types`   | Types, in the source, the tests and `scripts/`                          |
+| `pnpm lint:biome`   | Formatting and lint rules (`pnpm format` fixes what it can)             |
+| `pnpm lint:knip`    | Unused files, exports and dependencies                                  |
+| `pnpm lint:package` | That the packed package passes publint, installs and works, bundled too |
+| `pnpm lint:api`     | That the public API matches the API report                              |
+| `pnpm lint:docs`    | That the site's examples type-check and the site builds                 |
 
 Run a single test file with `node --test`, for example `node --test test/open-object.spec.ts`. Specs sit at the top of `test/`, named for the behaviour they cover, with `helpers/`, `types/` (compiled, never run), `types-dom/` (compiled the same way, with DOM typings) and `fixtures/` beside them. Specs of the public API import only the package entry, `src/index.ts`; unit specs of internals import the module they test.
+
+CI runs the tests on every Node.js version that still gets updates. When a version stops getting updates, a minor release can drop it from the matrix and from `engines`.
+
+## The specification text
+
+A new storage root gets a copy of the OCFL specification text. Its source is `resources/ocfl_1.1.md`, and `src/spec-text.ts` holds it as a string, so the library reads no files of its own at run time and still works when an app bundles it. Don't edit `src/spec-text.ts`: after changing the text, run `pnpm generate:spec-text`. `pnpm test` fails if the two differ.
 
 ## The API report
 

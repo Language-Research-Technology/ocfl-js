@@ -12,3 +12,5 @@ engineStrict: true
 allowBuilds:
   # Installs the git hooks.
   lefthook: true
+  # Only checks its platform binary, which pnpm installs as an optional dependency.
+  esbuild: false

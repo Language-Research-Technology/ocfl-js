@@ -1,7 +1,7 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": { "noEmit": true, "isolatedDeclarations": false, "rootDir": "${configDir}/.." },
-  "include": ["${configDir}/**/*.ts"],
+  "include": ["${configDir}/**/*.ts", "${configDir}/../scripts/**/*.ts"],
   // Compiled on its own, with DOM typings
   "exclude": ["${configDir}/types-dom"]
 }

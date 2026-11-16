@@ -14,13 +14,13 @@ This guide takes you from an empty directory to an OCFL object you can read back
 
 ## Install
 
-You need Node.js 22.12 or later, on Linux. The package is an ES module and ships its own types.
+You need Node.js 22.12 or later, on Linux. The package is an ES module and ships its own types. It supports the Node.js versions that still get updates; when a Node.js version stops getting updates, a minor release can drop it.
 
 ```sh
-pnpm add @ocfl/ocfl-fs
+pnpm add @ocfl/ocfl-fs@beta
 ```
 
-With npm or Yarn, use `npm install @ocfl/ocfl-fs` or `yarn add @ocfl/ocfl-fs`.
+With npm or Yarn, use `npm install @ocfl/ocfl-fs@beta` or `yarn add @ocfl/ocfl-fs@beta`. Until 1.0 is released, `@beta` is needed: without it you get 0.4, which has a different API.
 
 With TypeScript, you need TypeScript 5.7 or later, and `@types/node` in your project.
 

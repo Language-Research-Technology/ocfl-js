@@ -20,6 +20,8 @@ provenance, so there is no way to release around it. The environment only allows
 
 ## Stable releases
 
+Before the first stable release, remove `@beta` and the note about it from the install commands in `README.md` and `website/src/content/docs/guides/getting-started.mdx`.
+
 1. Go to **Actions → Publish Packages → Run workflow** and leave the branch as `main` (runs from
    anything other than `main` or `beta` are skipped).
 2. Leave **Dry run** ticked and run it. Check the logs for the version, the release notes and the
