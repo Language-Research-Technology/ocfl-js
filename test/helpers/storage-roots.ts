@@ -44,31 +44,64 @@ export async function writeObject(root: string, id: string): Promise<string> {
   return path.relative(root, await writeVersions(root, id, [{ 'a.txt': 'content' }]));
 }
 
+/** The OCFL 1.1 objects copied from the official OCFL fixtures, in `good-objects` and `bad-objects` */
+export const OCFL_FIXTURES: string = path.join(import.meta.dirname, '../fixtures/ocfl/1.1');
+
+const parsedOrEmpty = (text: string): Partial<Inventory> => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+};
+
+/** The official fixture objects of `kind`, by name, with each one's root inventory as parsed: a bad object's may lack any field */
+export function fixtureObjects(kind: 'good-objects' | 'bad-objects'): { name: string; dir: string; inventory: Partial<Inventory> }[] {
+  return fs
+    .readdirSync(path.join(OCFL_FIXTURES, kind))
+    .sort()
+    .map((name) => {
+      const dir = path.join(OCFL_FIXTURES, kind, name);
+      return { name, dir, inventory: parsedOrEmpty(fs.readFileSync(path.join(dir, 'inventory.json'), 'utf8')) };
+    });
+}
+
 /** The OCFL fixture object, which has three versions */
-export const SPEC_EX_FULL: string = path.join(import.meta.dirname, '../fixtures/ocfl/1.1/good-objects/spec-ex-full');
+export const SPEC_EX_FULL: string = path.join(OCFL_FIXTURES, 'good-objects/spec-ex-full');
 export const SPEC_EX_FULL_ID = 'ark:/12345/bcd987';
 
-/** Writes a storage root at `root` holding a copy of {@link SPEC_EX_FULL} in the directory `spec-ex-full/__object__` */
-export async function writeSpecExFullRoot(root: string): Promise<void> {
+/**
+ * Writes a storage root at `root` holding a copy of the fixture object at `fixture` in the directory `<fixture name>/__object__`,
+ * laid out path-direct so that `id` maps there
+ */
+export async function writeFixtureRoot(root: string, fixture: string, id: string): Promise<void> {
+  const name = path.basename(fixture);
   await writeFiles(root, {
     '0=ocfl_1.1': 'ocfl_1.1\n',
     'ocfl_layout.json': JSON.stringify({ extension: PATH_DIRECT }),
-    [`extensions/${PATH_DIRECT}/config.json`]: JSON.stringify({ extensionName: PATH_DIRECT, replace: [[SPEC_EX_FULL_ID, 'spec-ex-full']] }),
+    [`extensions/${PATH_DIRECT}/config.json`]: JSON.stringify({ extensionName: PATH_DIRECT, replace: [[id, name]] }),
   });
-  await fs.promises.cp(SPEC_EX_FULL, path.join(root, 'spec-ex-full', '__object__'), { recursive: true });
+  await fs.promises.cp(fixture, path.join(root, name, '__object__'), { recursive: true });
 }
+
+/** Writes a storage root at `root` holding a copy of {@link SPEC_EX_FULL} in the directory `spec-ex-full/__object__` */
+export const writeSpecExFullRoot = (root: string): Promise<void> => writeFixtureRoot(root, SPEC_EX_FULL, SPEC_EX_FULL_ID);
 
 type VersionFiles = Record<string, string | Uint8Array | null>;
 
+/** Every object root under `root`, found by its declaration rather than by the layout */
+export async function objectRootsIn(root: string): Promise<string[]> {
+  const entries = await fs.promises.readdir(root, { recursive: true, withFileTypes: true });
+  return entries.filter((e) => e.isFile() && e.name.startsWith('0=ocfl_object_')).map((e) => e.parentPath);
+}
+
 /** The directory of the object `id`, found in `root` by its declaration and inventory rather than by the layout */
 async function findObjectRoot(root: string, id: string): Promise<string> {
-  for (const entry of await fs.promises.readdir(root, { recursive: true, withFileTypes: true })) {
-    if (entry.isFile() && entry.name.startsWith('0=ocfl_object_')) {
-      const inventory = await fs.promises.readFile(path.join(entry.parentPath, 'inventory.json'), 'utf8').catch(() => '');
-      // Other objects in the root may have been damaged on purpose
-      if (inventory.includes(JSON.stringify(id))) {
-        return entry.parentPath;
-      }
+  for (const objectRoot of await objectRootsIn(root)) {
+    const inventory = await fs.promises.readFile(path.join(objectRoot, 'inventory.json'), 'utf8').catch(() => '');
+    // Other objects in the root may have been damaged on purpose
+    if (inventory.includes(JSON.stringify(id))) {
+      return objectRoot;
     }
   }
   throw new Error(`No object <${id}> in ${root}`);

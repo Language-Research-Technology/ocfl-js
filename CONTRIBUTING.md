@@ -27,18 +27,21 @@ Installing also sets up the [Lefthook](https://lefthook.dev/) Git hooks, which r
 
 CI runs all of these on every pull request to `main`:
 
-| Command             | What it checks                                                          |
-| ------------------- | ----------------------------------------------------------------------- |
-| `pnpm test`         | The test suite, including that `src/spec-text.ts` matches its source    |
-| `pnpm coverage`     | The test suite, failing unless it covers all of `src`                   |
-| `pnpm lint:types`   | Types, in the source, the tests and `scripts/`                          |
-| `pnpm lint:biome`   | Formatting and lint rules (`pnpm format` fixes what it can)             |
-| `pnpm lint:knip`    | Unused files, exports and dependencies                                  |
-| `pnpm lint:package` | That the packed package passes publint, installs and works, bundled too |
-| `pnpm lint:api`     | That the public API matches the API report                              |
-| `pnpm lint:docs`    | That the site's examples type-check and the site builds                 |
+| Command              | What it checks                                                          |
+| -------------------- | ----------------------------------------------------------------------- |
+| `pnpm test`          | The test suite, including that `src/spec-text.ts` matches its source    |
+| `pnpm coverage`      | The test suite, failing unless it covers all of `src`                   |
+| `pnpm lint:types`    | Types, in the source, the tests and `scripts/`                          |
+| `pnpm lint:biome`    | Formatting and lint rules (`pnpm format` fixes what it can)             |
+| `pnpm lint:knip`     | Unused files, exports and dependencies                                  |
+| `pnpm lint:package`  | That the packed package passes publint, installs and works, bundled too |
+| `pnpm lint:api`      | That the public API matches the API report                              |
+| `pnpm lint:docs`     | That the site's examples type-check and the site builds                 |
+| `pnpm check:ocfl-py` | That ocfl-py finds what the library writes valid (needs ocfl-py)        |
 
-Run a single test file with `node --test`, for example `node --test test/open-object.spec.ts`. Specs sit at the top of `test/`, named for the behaviour they cover, with `helpers/`, `types/` (compiled, never run), `types-dom/` (compiled the same way, with DOM typings) and `fixtures/` beside them. Specs of the public API import only the package entry, `src/index.ts`; unit specs of internals import the module they test.
+Run a single test file with `node --test`, for example `node --test test/open-object.spec.ts`. Specs sit at the top of `test/`, named for the behaviour they cover, with `helpers/`, `types/` (compiled, never run), `types-dom/` (compiled the same way, with DOM typings), `ocfl-py/` and `fixtures/` beside them. Specs of the public API import only the package entry, `src/index.ts`; unit specs of internals import the module they test.
+
+`pnpm check:ocfl-py` writes storage roots through the public API and validates every object in them with [ocfl-py](https://github.com/zimeon/ocfl-py)'s `ocfl-validate.py`. Install the version CI uses with `pip install --require-hashes -r test/ocfl-py/requirements.txt`, or point `OCFL_VALIDATE` at the validator. To move to a new version, change `test/ocfl-py/requirements.in` and run `uv pip compile --universal --python-version 3.13 --generate-hashes requirements.in -o requirements.txt` in that directory.
 
 CI runs the tests on every Node.js version that still gets updates. When a version stops getting updates, a minor release can drop it from the matrix and from `engines`.
 

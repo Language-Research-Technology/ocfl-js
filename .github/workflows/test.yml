@@ -115,3 +115,26 @@ jobs:
           name: package
       - name: Smoke test (package)
         run: scripts/smoke-package.sh package.tgz
+
+  # Checks what the library writes with another OCFL implementation
+  ocfl-py:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      pnpm_config_verify_deps_before_run: false
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "lts/*"
+          cache: pnpm
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: pip install --require-hashes -r test/ocfl-py/requirements.txt
+      - run: pnpm install --frozen-lockfile --filter @ocfl/ocfl-fs
+      - run: pnpm check:ocfl-py

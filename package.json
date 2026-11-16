@@ -49,6 +49,7 @@
     "format": "biome check --write .",
     "lint:types": "tsc --noEmit && tsc -p test && tsc -p test/types-dom",
     "test": "node --test 'test/**/*.spec.ts'",
+    "check:ocfl-py": "node test/ocfl-py/validate-output.ts",
     "coverage": "node --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-include-all --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test 'test/**/*.spec.ts'",
     "lint:docs": "pnpm build && pnpm --dir website check:examples && pnpm --dir website build"
   },
