@@ -8,7 +8,7 @@ import { type OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { type Inventory, isVersionName, OcflObjectInventory, sidecarDigest, VersionNumber, validateStoredInventory } from './inventory.ts';
 import { isLocked, updateInProgress } from './lock.ts';
-import { type OcflFile, StoredFile } from './ocfl-file.ts';
+import { type FileHistory, type OcflFile, StoredFile } from './ocfl-file.ts';
 import { createError } from './ocfl-rules.ts';
 import type { StorageRoot } from './storage-root.ts';
 import { parseJsonObject } from './utils.ts';
@@ -31,7 +31,7 @@ interface Version {
   /** Version number, starting at 1. */
   readonly number: number;
   /** When the version was committed. */
-  readonly created: Date;
+  readonly createdAt: Date;
   /** Why the version was made. Absent if whatever wrote the version recorded none. */
   readonly message?: string;
   /** Who made the version. Absent if whatever wrote the version recorded none. */
@@ -223,20 +223,55 @@ function versionNumbers(inventory: OcflObjectInventory): [number: number, name: 
     .sort(([a], [b]) => a - b);
 }
 
+/** Walks back from a file's own version, through the inventory's index of each version's digests, for as long as the file is unchanged */
+class ObjectHistory implements FileHistory {
+  readonly #inventory: OcflObjectInventory;
+  readonly #versions: ReadonlyMap<number, Version>;
+  readonly #order: readonly [number: number, name: string][];
+
+  constructor(inventory: OcflObjectInventory, versions: ReadonlyMap<number, Version>) {
+    this.#inventory = inventory;
+    this.#versions = versions;
+    this.#order = versionNumbers(inventory);
+  }
+
+  createdIn(path: string, version: number): Version {
+    return this.#earliest(path, version, (found) => found !== undefined);
+  }
+
+  modifiedIn(path: string, digest: string, version: number): Version {
+    return this.#earliest(path, version, (found) => found === digest);
+  }
+
+  /** The first of the versions up to `version` whose digests at `path` all pass `unbroken` */
+  #earliest(path: string, version: number, unbroken: (found: string | undefined) => boolean): Version {
+    let at = this.#order.findIndex(([number]) => number === version);
+    for (; at > 0; at--) {
+      const [, name] = this.#order[at - 1] as [number, string];
+      if (!unbroken(this.#inventory.getDigest(path, name))) {
+        break;
+      }
+    }
+    const [number] = this.#order[at] as [number, string];
+    return this.#versions.get(number) as Version;
+  }
+}
+
 class ObjectVersion implements Version {
   readonly number: number;
-  readonly created: Date;
+  readonly createdAt: Date;
   declare readonly message?: string;
   declare readonly user?: User;
   readonly #inventory: OcflObjectInventory;
   readonly #name: string;
   readonly #objectRoot: string;
+  readonly #history: ObjectHistory;
   #files: ReadonlyMap<string, OcflFile> | undefined;
 
-  constructor(inventory: OcflObjectInventory, number: number, name: string, objectRoot: string) {
+  constructor(inventory: OcflObjectInventory, number: number, name: string, objectRoot: string, history: ObjectHistory) {
     const { created, message, user } = inventory.versions[name] as Inventory['versions'][string];
     this.number = number;
-    this.created = new Date(created);
+    this.createdAt = new Date(created);
     if (typeof message === 'string') {
       this.message = message;
     }
@@ -246,6 +281,7 @@ class ObjectVersion implements Version {
     this.#inventory = inventory;
     this.#name = name;
     this.#objectRoot = objectRoot;
+    this.#history = history;
     Object.freeze(this);
   }
 
@@ -253,8 +289,8 @@ class ObjectVersion implements Version {
   get files(): ReadonlyMap<string, OcflFile> {
     if (!this.#files) {
       const files = new Map<string, OcflFile>();
-      for (const { logicalPath, digest, contentPath } of this.#inventory.files(this.#name)) {
-        files.set(logicalPath, new StoredFile(logicalPath, digest, this.#objectRoot, contentPath));
+      for (const { logicalPath: path, digest, contentPath } of this.#inventory.files(this.#name)) {
+        files.set(path, new StoredFile({ path, digest, version: this.number, objectRoot: this.#objectRoot, contentPath, history: this.#history }));
       }
       this.#files = files;
     }
@@ -263,7 +299,12 @@ class ObjectVersion implements Version {
 }
 
 function versionsOf(inventory: OcflObjectInventory, objectRoot: string): ReadonlyMap<number, Version> {
-  return new Map(versionNumbers(inventory).map(([number, name]) => [number, new ObjectVersion(inventory, number, name, objectRoot)]));
+  const versions = new Map<number, Version>();
+  const history = new ObjectHistory(inventory, versions);
+  for (const [number, name] of versionNumbers(inventory)) {
+    versions.set(number, new ObjectVersion(inventory, number, name, objectRoot, history));
+  }
+  return versions;
 }
 
 function invalidObject(message: string, options: { ocflCode?: string | undefined; cause?: unknown } = {}): OcflError {

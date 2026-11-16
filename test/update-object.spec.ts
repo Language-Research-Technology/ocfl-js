@@ -55,7 +55,7 @@ describe('updating an object', () => {
     assert.deepStrictEqual(await textFiles(opened.head), await textFiles(updated.head));
     assert.deepStrictEqual(await textFiles(opened.head), { 'a.txt': 'changed' });
     assert.strictEqual(updated.head.files.get('a.txt')!.digest, opened.head.files.get('a.txt')!.digest);
-    assert.deepStrictEqual(updated.head.created, opened.head.created);
+    assert.deepStrictEqual(updated.head.createdAt, opened.head.createdAt);
     assert.strictEqual(updated.ocflVersion, opened.ocflVersion);
     assert.strictEqual(updated.digestAlgorithm, opened.digestAlgorithm);
   });
@@ -63,14 +63,14 @@ describe('updating an object', () => {
   it('leaves the object it was called on as it was', async () => {
     const root = await newRoot();
     const object = await createObject(root, 'unchanging', { 'a.txt': 'a' });
-    const created = object.head.created;
+    const created = object.head.createdAt;
     await object.update(DETAILS, async (draft) => {
       await draft.write('a.txt', 'changed');
       await draft.write('b.txt', 'b');
     });
     assert.strictEqual(object.head.number, 1);
     assert.deepStrictEqual([...object.versions.keys()], [1]);
-    assert.deepStrictEqual(object.head.created, created);
+    assert.deepStrictEqual(object.head.createdAt, created);
     assert.deepStrictEqual(await textFiles(object.head), { 'a.txt': 'a' });
   });
 
@@ -104,10 +104,10 @@ describe('updating an object', () => {
     });
     assert.strictEqual(updated.head.message, 'second');
     assert.deepStrictEqual(updated.head.user, { name: 'Bob' });
-    assert.ok(updated.head.created.getTime() >= object.head.created.getTime());
+    assert.ok(updated.head.createdAt.getTime() >= object.head.createdAt.getTime());
     assert.strictEqual(updated.versions.get(1)!.message, 'first');
     assert.deepStrictEqual(updated.versions.get(1)!.user, { name: 'Alice', address: 'mailto:alice@example.org' });
-    assert.deepStrictEqual(updated.versions.get(1)!.created, object.head.created);
+    assert.deepStrictEqual(updated.versions.get(1)!.createdAt, object.head.createdAt);
 
     const inventory = await readInventory(objectRoot);
     assert.deepStrictEqual(inventory.versions.v1, firstInventory.versions.v1);

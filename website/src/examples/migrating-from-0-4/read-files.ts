@@ -15,7 +15,7 @@ try {
   }
 
   const first = object.versions.get(1);
-  console.log(first?.created, first?.message, first?.user?.name, first?.files.size);
+  console.log(first?.createdAt, first?.message, first?.user?.name, first?.files.size);
 } catch (error) {
   if (!(error instanceof OcflError && error.code === 'OBJECT_NOT_FOUND')) {
     throw error;

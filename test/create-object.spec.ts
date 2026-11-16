@@ -31,13 +31,13 @@ async function described(object: OcflObject): Promise<unknown> {
     digestAlgorithm: object.digestAlgorithm,
     head: object.head.number,
     versions: await Promise.all(
-      Array.from(object.versions.values(), async ({ number, created, message, user, files }) => ({
+      Array.from(object.versions.values(), async ({ number, createdAt, message, user, files }) => ({
         number,
-        created,
+        createdAt,
         message,
         user,
         digests: Object.fromEntries(Array.from(files, ([logicalPath, file]) => [logicalPath, file.digest])),
-        texts: await textFiles({ number, created, files }),
+        texts: await textFiles({ number, createdAt, files }),
       })),
     ),
   };
@@ -73,7 +73,7 @@ describe('creating an object', () => {
     );
     assert.strictEqual(object.head.message, 'Initial deposit');
     assert.deepStrictEqual(object.head.user, { name: 'Alice', address: 'https://orcid.org/0000-0001' });
-    assert.ok(object.head.created.getTime() >= before && object.head.created.getTime() <= Date.now());
+    assert.ok(object.head.createdAt.getTime() >= before && object.head.createdAt.getTime() <= Date.now());
     const { versions } = await readInventory(objectRootOf(root, 'recorded'));
     assert.strictEqual(versions.v1?.message, 'Initial deposit');
     assert.deepStrictEqual(versions.v1?.user, { name: 'Alice', address: 'https://orcid.org/0000-0001' });
@@ -191,7 +191,7 @@ describe('creating an object', () => {
           manifest: { [digest]: ['v1/content/test.txt'] },
           versions: {
             v1: {
-              created: object.head.created.toISOString(),
+              created: object.head.createdAt.toISOString(),
               message: 'test commit',
               user: { name: 'john', address: 'mailto:john@test.com' },
               state: { [digest]: ['test.txt'] },

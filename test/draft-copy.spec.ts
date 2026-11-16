@@ -32,7 +32,7 @@ async function described(object: OcflObject): Promise<unknown> {
     versions: await Promise.all(
       Array.from(object.versions.values(), async (version) => ({
         number: version.number,
-        created: version.created,
+        createdAt: version.createdAt,
         message: version.message,
         user: version.user,
         digests: Object.fromEntries(Array.from(version.files, ([logicalPath, file]) => [logicalPath, file.digest])),

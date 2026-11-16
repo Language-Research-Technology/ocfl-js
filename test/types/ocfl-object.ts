@@ -17,7 +17,7 @@ export function objectIsReadOnly(object: OcflObject, version: Version, file: Ocf
   // @ts-expect-error read-only
   object.versions.set(2, version);
   // @ts-expect-error read-only
-  version.created = new Date();
+  version.createdAt = new Date();
   // @ts-expect-error read-only
   version.files.delete('a.txt');
   // @ts-expect-error read-only
@@ -29,8 +29,23 @@ export function objectPropertiesAreNarrow(object: OcflObject): [number, Date, st
   const digestAlgorithm: 'sha256' | 'sha512' = object.digestAlgorithm;
   // @ts-expect-error a version that doesn't exist is undefined
   const missing: Version = object.versions.get(9);
-  const { number, created, message, user } = object.head;
-  return [number + ocflVersion.length + digestAlgorithm.length + (missing ? 1 : 0), created, message, user];
+  const { number, createdAt, message, user } = object.head;
+  // @ts-expect-error renamed createdAt
+  object.head.created;
+  return [number + ocflVersion.length + digestAlgorithm.length + (missing ? 1 : 0), createdAt, message, user];
+}
+
+export function fileDatesComeFromVersions(file: OcflFile): [Date, Date, Version, Version] {
+  // @ts-expect-error read-only
+  file.createdAt = new Date();
+  // @ts-expect-error read-only
+  file.modifiedAt = new Date();
+  // @ts-expect-error read-only
+  file.createdIn = file.modifiedIn;
+  // @ts-expect-error read-only
+  file.modifiedIn = file.createdIn;
+  const { createdAt, modifiedAt, createdIn, modifiedIn } = file;
+  return [createdAt, modifiedAt, createdIn, modifiedIn];
 }
 
 export function nothingOfTheOldObjectIsLeft(object: OcflObject, file: OcflFile): void {
