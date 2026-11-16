@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { describe, it } from 'node:test';
 import * as Hashing from '../src/digest.ts';
-import { DIGESTS_OF_ABC } from './helpers/digests-of-abc.ts';
+import { DIGESTS_OF_ABC, eachDigest } from './helpers/digests-of-abc.ts';
 
 describe('Hashing', () => {
   const inputData =
@@ -37,27 +37,18 @@ describe('Hashing', () => {
   });
 
   describe('digestSync', () => {
-    for (const [algorithm, expected] of Object.entries(DIGESTS_OF_ABC)) {
+    for (const [algorithm, expected] of eachDigest(DIGESTS_OF_ABC)) {
       it(`digests with ${algorithm} repeatedly`, () => {
         assert.strictEqual(Hashing.digestSync(algorithm, 'abc'), expected);
         assert.strictEqual(Hashing.digestSync(algorithm, 'abc'), expected);
       });
     }
-
-    it('rejects unsupported algorithms', () => {
-      assert.throws(() => Hashing.digestSync('blake2b-256', 'abc'), /Unsupported digest algorithm/);
-    });
   });
 
-  describe('digest algorithms', async () => {
-    for (const [algorithm, expected] of Object.entries(DIGESTS_OF_ABC)) {
+  describe('fixity algorithms', async () => {
+    for (const [algorithm, expected] of eachDigest(DIGESTS_OF_ABC)) {
       it(`calculates ${algorithm}`, async () => {
         assert.strictEqual(await Hashing.digest(algorithm, 'abc'), expected);
-      });
-    }
-    for (const name of ['constructor', '__proto__', 'toString']) {
-      it(`rejects ${name}, a property every object inherits`, async () => {
-        await assert.rejects(Hashing.digest(name, inputData), /Unsupported digest algorithm/);
       });
     }
     it('can correctly calculate BLAKE2b512', async () => {
@@ -80,8 +71,18 @@ describe('Hashing', () => {
         createHash('sha512').update(bytes.subarray(0, 2)).digest('hex'),
       );
     });
-    it('rejects unsupported algorithms', async () => {
-      await assert.rejects(Hashing.digest('blake2b-256', inputData), /Unsupported digest algorithm/);
-    });
+  });
+
+  describe('isFixityAlgorithm', () => {
+    for (const algorithm of Object.keys(DIGESTS_OF_ABC)) {
+      it(`accepts ${algorithm}`, () => {
+        assert.strictEqual(Hashing.isFixityAlgorithm(algorithm), true);
+      });
+    }
+    for (const name of ['blake2b-256', 'SHA256', 'size', '', 'constructor', '__proto__', 'toString']) {
+      it(`refuses ${JSON.stringify(name)}`, () => {
+        assert.strictEqual(Hashing.isFixityAlgorithm(name), false);
+      });
+    }
   });
 });

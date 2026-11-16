@@ -12,8 +12,8 @@ ocfl-java and rocfl open objects only through a storage root, and accept a bare 
 
 - **Objects come from a storage root.** `root.open(id)` opens an object by its id and `root.create(id, …)` makes one. Nothing in the package opens an object by its path.
 - **A new object takes its storage root's OCFL version.**
-- **A new object is always sha512 with a `content` directory.** `root.create` has no option for either: the inventory names `sha512` as the content algorithm and `content` as the content directory.
-- **An existing object keeps its own OCFL version and content algorithm.** An opened object reports the OCFL version its declaration gives and the content algorithm its inventory names. A 1.0 object in a 1.1 storage root opens, reports 1.0, and stays 1.0 when updated.
+- **A new object is always sha512 with a `content` directory.** `root.create` has no option for either: the inventory names `sha512` as the digest algorithm and `content` as the content directory.
+- **An existing object keeps its own OCFL version and digest algorithm.** An opened object reports the OCFL version its declaration gives and the digest algorithm its inventory names. A 1.0 object in a 1.1 storage root opens, reports 1.0, and stays 1.0 when updated.
 - **An object can't be of a later OCFL version than its storage root.** Opening, listing and updating a 1.1 object in a 1.0 storage root throw `INVALID_OBJECT` (E081).
 
 ## Consequences

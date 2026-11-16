@@ -1,10 +1,16 @@
 import crypto from 'node:crypto';
 
 /**
- * The algorithm an OCFL object addresses its content by: its inventory's `digestAlgorithm` (spec E025, E039).
- * Not a fixity algorithm, nor a layout's `digestAlgorithm`, which only hashes ids.
+ * A fixity algorithm this library supports: the five every OCFL client must (spec E027), and `sha512/256` (extension 0009).
+ * A hashed storage layout hashes object ids with one. The library doesn't read or write an inventory's `fixity` block.
  */
-type ContentAlgorithm = 'sha256' | 'sha512';
+type FixityAlgorithm = 'md5' | 'sha1' | 'sha256' | 'sha512' | 'sha512/256' | 'blake2b-512';
+
+/**
+ * The algorithm of an OCFL object's digests, of its content and of its inventory: its inventory's `digestAlgorithm` (spec E025, E039).
+ * Of the fixity algorithms, only these two may be an object's.
+ */
+type DigestAlgorithm = 'sha256' | 'sha512';
 
 type DataType = string | ArrayBufferView | ArrayBufferLike;
 
@@ -36,24 +42,25 @@ function toBytes(data: unknown): Uint8Array {
 }
 
 /** Each algorithm by its OCFL name, with the name `node:crypto` knows it by */
-const ALGORITHMS = new Map<string, { hexLength: number; nodeName: string }>([
-  ['md5', { hexLength: 32, nodeName: 'md5' }],
-  ['sha1', { hexLength: 40, nodeName: 'sha1' }],
-  ['sha256', { hexLength: 64, nodeName: 'sha256' }],
-  ['sha512', { hexLength: 128, nodeName: 'sha512' }],
-  ['sha512/256', { hexLength: 64, nodeName: 'sha512-256' }],
-  ['blake2b-512', { hexLength: 128, nodeName: 'blake2b512' }],
-]);
+const ALGORITHMS: Record<FixityAlgorithm, { hexLength: number; nodeName: string }> = {
+  md5: { hexLength: 32, nodeName: 'md5' },
+  sha1: { hexLength: 40, nodeName: 'sha1' },
+  sha256: { hexLength: 64, nodeName: 'sha256' },
+  sha512: { hexLength: 128, nodeName: 'sha512' },
+  'sha512/256': { hexLength: 64, nodeName: 'sha512-256' },
+  'blake2b-512': { hexLength: 128, nodeName: 'blake2b512' },
+};
+
+/** Whether `name` is a fixity algorithm this library supports, written exactly so */
+function isFixityAlgorithm(name: string): name is FixityAlgorithm {
+  return Object.hasOwn(ALGORITHMS, name);
+}
 
 /**
  * Create a hasher instance for the given algorithm.
  */
-function createHasher(algorithm: string): Hasher {
-  const definition = ALGORITHMS.get(algorithm);
-  if (!definition) {
-    throw new Error(`Unsupported digest algorithm: ${algorithm}`);
-  }
-  const hash = crypto.createHash(definition.nodeName);
+function createHasher(algorithm: FixityAlgorithm): Hasher {
+  const hash = crypto.createHash(ALGORITHMS[algorithm].nodeName);
   let hex: string | undefined;
   return {
     update(data) {
@@ -68,7 +75,7 @@ function createHasher(algorithm: string): Hasher {
   };
 }
 
-async function digest(algorithm: string, input: DataType | AsyncIterable<DataType>): Promise<string> {
+async function digest(algorithm: FixityAlgorithm, input: DataType | AsyncIterable<DataType>): Promise<string> {
   const hash = createHasher(algorithm);
   if (typeof input === 'object' && Symbol.asyncIterator in input) {
     for await (const chunk of input) {
@@ -80,7 +87,7 @@ async function digest(algorithm: string, input: DataType | AsyncIterable<DataTyp
   return hash.digest();
 }
 
-function digestSync(algorithm: string, input: DataType): string {
+function digestSync(algorithm: FixityAlgorithm, input: DataType): string {
   return createHasher(algorithm).update(input).digest();
 }
 
@@ -89,8 +96,8 @@ function normaliseDigest(digest: string): string {
   return digest.toLowerCase();
 }
 
-function getHexDigestLength(algorithm: string): number {
-  return ALGORITHMS.get(algorithm)?.hexLength ?? 0;
+function getHexDigestLength(algorithm: FixityAlgorithm): number {
+  return ALGORITHMS[algorithm].hexLength;
 }
 
-export { type ContentAlgorithm, createHasher, digest, digestSync, getHexDigestLength, normaliseDigest, toBytes };
+export { createHasher, type DigestAlgorithm, digest, digestSync, type FixityAlgorithm, getHexDigestLength, isFixityAlgorithm, normaliseDigest, toBytes };
