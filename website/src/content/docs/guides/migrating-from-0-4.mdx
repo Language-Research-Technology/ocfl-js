@@ -9,6 +9,7 @@ import { Code } from '@astrojs/starlight/components';
 import branchOnCode from '../../../examples/errors/branch-on-code.ts?raw';
 import listWithErrors from '../../../examples/errors/list-with-errors.ts?raw';
 import checkFixity from '../../../examples/migrating-from-0-4/check-fixity.ts?raw';
+import keepDates from '../../../examples/migrating-from-0-4/keep-dates.ts?raw';
 import move0003Objects from '../../../examples/migrating-from-0-4/move-0003-objects.ts?raw';
 import openOrCreate from '../../../examples/migrating-from-0-4/open-or-create.ts?raw';
 import readFiles from '../../../examples/migrating-from-0-4/read-files.ts?raw';
@@ -150,7 +151,7 @@ for (const f of await object.files()) console.log(f.logicalPath, f.digest);
 
 <Code code={readFiles} lang="ts" />
 
-- `root.open(id)` reads the inventory before it returns, so there's no `load()`. It throws `OBJECT_NOT_FOUND` when there's no object, instead of returning an object that later fails. Open the object and catch that error rather than checking first with `has()`: a check can be overtaken by another writer.
+- `root.open(id)` reads the inventory before it returns, so there's no `load()`. It throws `OBJECT_NOT_FOUND` when there's no object, instead of returning an object that later fails. Open the object and catch that error rather than checking first: a check can be overtaken by another writer. `root.has(id)` answers cheaply, without reading the inventory, when you only need to know whether an object exists.
 - An opened object is the object as it was read. It never changes, even after `update()`: that returns a new object. To see what another process has committed since, open it again.
 - Versions are numbers: `object.versions.get(1)`, not `'v1'`. `object.head` is the latest. Each version has its `createdAt` date, `message`, `user` and `files`, keyed by logical path. This replaces the inventory API (`getInventory()`, `versionState()`, `diffState()`, `toJSON()` and the rest): compare two versions' `files` maps to see what changed.
 - A file's `digest` is in lower-case hex. Files can't be looked up by digest or content path, and content paths aren't given out. The one place a stored file is named on disk is a fixity problem, which names a missing or changed stored file by its path from the storage root so you can restore it.
@@ -195,6 +196,12 @@ await object.update(async (t) => {
 - If the callback throws, the update is discarded and the error is rethrown. If it ends with the files the same as the head, [no version is written](/ocfl-js/guides/updating-objects/#an-update-that-changes-nothing) and `update()` returns the same object.
 - Await every operation. Operations take effect [in the order they were called](/ocfl-js/guides/updating-objects/#the-order-operations-take-effect-in), even when you start them together with `Promise.all`. An operation still unfinished when the callback returns makes the update fail with an `Error`, and nothing is committed.
 - A draft can't be used once its update has finished.
+
+### Keeping original dates
+
+Moving content into OCFL from another system, give each version's original date as `createdAt` in its details. Without it, every version is dated when it is committed. Dates must not go backwards: an update dated earlier than the head throws a `TypeError`, so add the versions oldest first.
+
+<Code code={keepDates} lang="ts" />
 
 ### Changes in the draft operations
 

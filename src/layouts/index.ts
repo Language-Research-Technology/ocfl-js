@@ -23,6 +23,11 @@ const BUILT_IN_LAYOUTS = {
   '0004-hashed-n-tuple-storage-layout': HashedNTupleStorageLayout,
 } satisfies Record<LayoutName, LayoutClass>;
 
+/** The storage layouts this library implements, by official extension name, as a list for a message */
+const IMPLEMENTED_LAYOUTS: string = Object.keys(BUILT_IN_LAYOUTS)
+  .map((name) => `"${name}"`)
+  .join(', ');
+
 /** The class of the layout with the official extension name `name`, or `undefined` if the library doesn't implement it */
 function builtInLayoutClass(name: string): LayoutClass | undefined {
   return Object.hasOwn(BUILT_IN_LAYOUTS, name) ? BUILT_IN_LAYOUTS[name as LayoutName] : undefined;
@@ -54,6 +59,7 @@ export {
   type FlatDirectLayoutConfig,
   type HashAndIdNTupleLayoutConfig,
   type HashedNTupleLayoutConfig,
+  IMPLEMENTED_LAYOUTS,
   type Layout,
   type LayoutConfig,
   type LayoutName,

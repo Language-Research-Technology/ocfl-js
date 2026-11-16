@@ -615,7 +615,7 @@ describe('opening an object', () => {
     it('passes on a file system error from reading the inventory', async () => {
       const objectRoot = await writeVersions(root.path, 'unreadable', [{ 'a.txt': 'abc' }]);
       await withFsFailure(
-        'readFile',
+        'open',
         path.join(objectRoot, 'inventory.json'),
         () => assert.rejects(root.open('unreadable'), (error: NodeJS.ErrnoException) => error.code === 'EACCES' && error.name === 'Error'),
         'EACCES',

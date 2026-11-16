@@ -108,10 +108,11 @@ async function readInventoryAttempt(
   attempt: 'first read' | 'second read' | 'own lock',
 ): Promise<OcflObjectInventory | undefined> {
   const file = nodePath.join(objectRoot, INVENTORY_NAME);
-  const text = await readIfPresent(file);
-  if (text === undefined) {
+  const read = await fileSystem.readWithIdentity(file);
+  if (read === undefined) {
     return undefined;
   }
+  const { text, identity } = read;
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -158,6 +159,7 @@ async function readInventoryAttempt(
   }
   checkVersions(inventory, file);
   inventory._digest = actual;
+  inventory._identity = identity;
   return inventory;
 }
 
@@ -179,6 +181,21 @@ async function enclosingObject(storageRoot: string, objectRoot: string): Promise
 /** Whether `dir` has an object declaration file, whatever it holds */
 async function hasObjectDeclaration(dir: string): Promise<boolean> {
   return (await findNamasteVersion(NAMASTE_PREFIX_OBJECT, dir)) !== undefined;
+}
+
+/**
+ * What a create finds at `objectRoot`, unread and unchecked: a committed object, which has a root inventory or an object declaration with no lock held;
+ * a create that holds its lock and hasn't committed; or neither
+ */
+async function objectState(storageRoot: string, objectRoot: string): Promise<'committed' | 'creating' | 'none'> {
+  const [hasInventory, declared] = await Promise.all([fileSystem.pathExists(nodePath.join(objectRoot, INVENTORY_NAME)), hasObjectDeclaration(objectRoot)]);
+  if (hasInventory) {
+    return 'committed';
+  }
+  if (!declared) {
+    return 'none';
+  }
+  return (await isLocked(objectWorkspace(storageRoot, objectRoot))) ? 'creating' : 'committed';
 }
 
 /**
@@ -294,6 +311,7 @@ export {
   idInRootInventory,
   noCommittedObject,
   objectNotFound,
+  objectState,
   readInventory,
   strayContents,
   withinRootVersion,

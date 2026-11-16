@@ -1,6 +1,8 @@
 import { type FixityProblem, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
+// Stop the whole run after six hours, between or part way through an object
+const signal = AbortSignal.timeout(6 * 60 * 60_000);
 let failures = 0;
 
 for await (const entry of root.objects()) {
@@ -13,11 +15,20 @@ for await (const entry of root.objects()) {
 
   let problems: readonly FixityProblem[];
   try {
-    problems = await object.checkFixity();
+    problems = await object.checkFixity({
+      signal,
+      onProgress: ({ checkedFiles, totalFiles }) => process.stderr.write(`\r${object.id}: ${checkedFiles}/${totalFiles}`),
+    });
+    process.stderr.write('\n');
   } catch (error) {
+    if (error === signal.reason) {
+      console.error(`\nOut of time: stopped at ${object.id}`);
+      failures++;
+      break;
+    }
     // A stored file that can't be read, such as EACCES or EIO
     failures++;
-    console.error(`${object.id}: fixity check failed`, error);
+    console.error(`\n${object.id}: fixity check failed`, error);
     continue;
   }
 

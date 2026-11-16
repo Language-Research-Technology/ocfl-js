@@ -1,8 +1,19 @@
 import { createServer } from 'node:http';
 import { pipeline } from 'node:stream/promises';
-import { type ByteRange, OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
+import { type ByteRange, OcflError, type OcflObject, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
+const opened = new Map<string, OcflObject>();
+
+/** The object as it is now: the one opened before while no version has been committed since, or else opened again */
+async function current(id: string): Promise<OcflObject> {
+  let object = opened.get(id);
+  if (!object || !(await object.isCurrent())) {
+    object = await root.open(id);
+    opened.set(id, object);
+  }
+  return object;
+}
 
 /** Reads `bytes=start-end` or `bytes=start-`; a suffix range such as `bytes=-500` isn't handled here. */
 function parseRange(header: string | undefined, size: number): Required<ByteRange> | undefined {
@@ -23,7 +34,7 @@ const server = createServer(async (request, response) => {
     return;
   }
   try {
-    const object = await root.open(id);
+    const object = await current(id);
     const file = object.head.files.get(path);
     if (!file) {
       response.writeHead(404).end();

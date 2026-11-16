@@ -29,6 +29,29 @@ interface VersionDetails {
   readonly message: string;
   /** Who is making it. */
   readonly user: User;
+  /**
+   * When the version is dated, such as its original date in a migration. Defaults to now. Can't be earlier than the head version's date.
+   *
+   * @example
+   * ```ts
+   * await root.create(id, { message, user, createdAt: new Date('2019-03-01T00:00:00Z') }, build);
+   * ```
+   */
+  readonly createdAt?: Date;
+}
+
+/** Options for `StorageRoot.create` and `OcflObject.update`. */
+interface UpdateOptions {
+  /**
+   * Cancels the create or update when aborted: draft operations started after that reject with its reason, and the draft is discarded once the callback settles.
+   * It is checked one last time just before the commit begins, and ignored after that.
+   *
+   * @example
+   * ```ts
+   * await object.update(details, (draft) => draft.import(dir), { signal: request.signal });
+   * ```
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /** Content for {@link Draft.write}: text (stored as UTF-8), bytes, or a stream of either, such as a Node or web stream. */
@@ -45,6 +68,7 @@ interface MergeOptions {
  *
  * It starts with the files of the head version (none, for a new object). Operations take effect in call order,
  * even when started together. Every logical path is normalised first (`./raw//1.wav` is `raw/1.wav`).
+ * Once the update's `signal` is aborted, every operation started after that rejects with its reason, and an import stops between files.
  */
 interface Draft {
   /**
@@ -167,14 +191,32 @@ interface Draft {
    * ```
    */
   clear(): Promise<void>;
+
+  /**
+   * The draft's files: each logical path, with its digest in lowercase in the object's digest algorithm, as `OcflFile.digest` gives it.
+   * Directories aren't listed. It takes its turn like any other operation, so it shows every operation started before it, and none started after.
+   * The map is a snapshot that later operations don't change. It gives no content.
+   *
+   * @throws `Error` if the update this draft belongs to has finished.
+   * @example
+   * ```ts
+   * await object.update(details, async (draft) => {
+   *   await draft.import(dir);
+   *   const files = await draft.files();
+   *   if (!files.has('ro-crate-metadata.json')) await draft.write('ro-crate-metadata.json', stub);
+   * });
+   * ```
+   */
+  files(): Promise<ReadonlyMap<string, string>>;
 }
 
 /**
+ * @param head - The head version's date, which `createdAt` can't be earlier than, if there is a head
  * @returns A copy of `details` holding only what a version records
- * @throws `TypeError` if the message or the user's name is missing or empty, or the user's address isn't a string
+ * @throws `TypeError` if the message or the user's name is missing or empty, the user's address isn't a string, or `createdAt` isn't a valid `Date` or is earlier than `head`
  */
-function checkedDetails(details: VersionDetails): VersionDetails {
-  const { message, user } = details ?? {};
+function checkedDetails(details: VersionDetails, head?: Date): VersionDetails {
+  const { message, user, createdAt } = details ?? {};
   if (!isNonEmptyString(message)) {
     throw new TypeError('The message of the version is required.');
   }
@@ -184,7 +226,19 @@ function checkedDetails(details: VersionDetails): VersionDetails {
   if (user.address !== undefined && typeof user.address !== 'string') {
     throw new TypeError('The address of the user making the version must be a string.');
   }
-  return { message, user: { name: user.name, ...(user.address !== undefined && { address: user.address }) } };
+  if (createdAt !== undefined) {
+    if (!(createdAt instanceof Date) || Number.isNaN(createdAt.getTime())) {
+      throw new TypeError(`The createdAt of the version must be a valid Date, not ${inspect(createdAt)}.`);
+    }
+    if (head && createdAt < head) {
+      throw new TypeError(`The createdAt of the version, ${createdAt.toISOString()}, is earlier than the head version's, ${head.toISOString()}.`);
+    }
+  }
+  return {
+    message,
+    user: { name: user.name, ...(user.address !== undefined && { address: user.address }) },
+    ...(createdAt !== undefined && { createdAt: new Date(createdAt) }),
+  };
 }
 
 function unsupportedContent(content: unknown): TypeError {
@@ -393,6 +447,7 @@ let commitDraft: (
   inventory: OcflObjectInventory,
   details: VersionDetails,
   change: (draft: Draft) => Promise<unknown>,
+  signal: AbortSignal | undefined,
 ) => Promise<OcflObjectInventory | undefined>;
 
 /**
@@ -421,22 +476,34 @@ class ObjectDraft implements Draft {
   #finished = false;
   #commitBlocker: { error: unknown } | undefined;
   #limit = createLimiter(IMPORT_CONCURRENCY);
+  #signal: AbortSignal | undefined;
 
   // Inside the class so it reaches the private commit and discard, which neither a draft nor its class exposes
   static {
-    commitDraft = async (place, inventory, details, change) => {
-      const draft = await ObjectDraft.#start(place, inventory);
+    commitDraft = async (place, inventory, details, change, signal) => {
+      signal?.throwIfAborted();
+      const draft = await ObjectDraft.#start(place, inventory, signal);
       try {
         await change(draft);
       } catch (error) {
+        // Decided as the callback settles, not after the discard, which a late abort mustn't turn into a cancellation
+        const cancelled = signal?.aborted ? { reason: signal.reason } : undefined;
         await draft.#discard({ error });
-        throw error;
+        throw cancelled ? cancelled.reason : error;
       }
       return draft.#commit(details);
     };
   }
 
-  private constructor(starting: symbol, place: ObjectPlace, workspace: string, inventory: OcflObjectInventory, versionPath: string, rootExisted: boolean) {
+  private constructor(
+    starting: symbol,
+    place: ObjectPlace,
+    workspace: string,
+    inventory: OcflObjectInventory,
+    versionPath: string,
+    rootExisted: boolean,
+    signal: AbortSignal | undefined,
+  ) {
     if (starting !== STARTING) {
       throw new TypeError('A draft is made only by an update.');
     }
@@ -446,9 +513,10 @@ class ObjectDraft implements Draft {
     this.#workspace = workspace;
     this.#inventory = inventory;
     this.#rootExisted = rootExisted;
+    this.#signal = signal;
   }
 
-  static async #start(place: ObjectPlace, inventory: OcflObjectInventory) {
+  static async #start(place: ObjectPlace, inventory: OcflObjectInventory, signal: AbortSignal | undefined) {
     const { storageRoot, objectRoot } = place;
     const workspace = objectWorkspace(storageRoot, objectRoot);
     const rootExisted = await fs.promises.stat(objectRoot).then(
@@ -479,7 +547,7 @@ class ObjectDraft implements Draft {
       }
       return refuse(error);
     }
-    return new ObjectDraft(STARTING, place, workspace, inventory, versionPath, rootExisted);
+    return new ObjectDraft(STARTING, place, workspace, inventory, versionPath, rootExisted, signal);
   }
 
   #getRealPath(logicalPath: string) {
@@ -520,6 +588,7 @@ class ObjectDraft implements Draft {
     const changed = this.#inventory._isChanged;
     let unconfirmed: { error: unknown } | undefined;
     try {
+      this.#signal?.throwIfAborted();
       const count = this.#queue.filter((p) => !p.done).length;
       if (count > 0) {
         throw new Error(`Unfinished operations detected (${count}). Make sure the callback is an async function that awaits every operation it starts.`);
@@ -591,7 +660,7 @@ class ObjectDraft implements Draft {
   async #replaceRootInventory(details: VersionDetails): Promise<{ error: unknown } | undefined> {
     const inventory = this.#inventory;
     const digestAlgorithm = inventory.digestAlgorithm;
-    inventory._stamp(new Date().toISOString(), details.message, details.user);
+    inventory._stamp((details.createdAt ?? new Date()).toISOString(), details.message, details.user);
 
     const objectVersionPath = path.join(this.#place.objectRoot, inventory.head);
     /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json */
@@ -629,6 +698,8 @@ class ObjectDraft implements Draft {
     this.#rootInventoryStaged = true;
     await fileSystem.copyFile(invPath, rootInv.stagedInventory);
     await fileSystem.copyFile(invDigestPath, rootInv.stagedSidecar);
+    // A rename keeps it, and no other writer can replace the root inventory while this one holds the lock
+    inventory._identity = await fileSystem.identityOf(rootInv.stagedInventory);
     try {
       await fileSystem.move(rootInv.stagedInventory, rootInv.inventory);
     } catch (error) {
@@ -798,7 +869,7 @@ class ObjectDraft implements Draft {
     const algorithm = this.#inventory.digestAlgorithm;
     const hashed = await Promise.all(
       files.map((file) =>
-        this.#limit(() => Hashing.digest(algorithm, fileSystem.createReadable(file.source))).then(
+        this.#limited(() => Hashing.digest(algorithm, fileSystem.createReadable(file.source))).then(
           (digest) => ({ ...file, digest }),
           (error: unknown) => ({ ...file, error }),
         ),
@@ -838,7 +909,7 @@ class ObjectDraft implements Draft {
         if (!staged.has(digest) && !this.#keepsContent(digest, imported)) {
           const staging = this.#stagingPath();
           staged.set(digest, staging);
-          await this.#limit(() => this.#stageImportedFile(source, staging, digest));
+          await this.#limited(() => this.#stageImportedFile(source, staging, digest));
         }
       }
     } catch (error) {
@@ -911,6 +982,13 @@ class ObjectDraft implements Draft {
     return this.#operate(() => this.#applyDelete(this.#inventory._planClear()));
   }
 
+  async files(): Promise<ReadonlyMap<string, string>> {
+    return this.#operate(async () => {
+      const inventory = this.#inventory;
+      return new Map(Array.from(inventory.files(inventory.head), ({ logicalPath, digest }) => [logicalPath, digest]));
+    });
+  }
+
   async #applyRelist(plan: RelistPlan) {
     await this.#applyContentReleases(plan.releases);
     this.#inventory._applyRelist(plan);
@@ -934,12 +1012,26 @@ class ObjectDraft implements Draft {
    */
   async #inTurn<T>(prepare: () => Promise<() => Promise<T>>): Promise<T> {
     this.#assertOpen();
+    this.#signal?.throwIfAborted();
     const prepared = prepare();
     // A rejection surfaces at this operation's turn, which may come much later
     prepared.catch(() => {});
-    const turn = this.#lastTurn.then(async () => (await prepared)());
+    // Prepared first, so nothing an operation started is still writing once the update is discarded
+    const turn = this.#lastTurn.then(async () => {
+      const step = await prepared;
+      this.#signal?.throwIfAborted();
+      return step();
+    });
     this.#lastTurn = turn.catch(() => {});
     return this.#track(turn);
+  }
+
+  /** Runs `task` within the draft's limit on files read at once, unless the update's signal is aborted by its turn */
+  #limited<T>(task: () => Promise<T>): Promise<T> {
+    return this.#limit(async () => {
+      this.#signal?.throwIfAborted();
+      return task();
+    });
   }
 
   #assertOpen() {
@@ -959,4 +1051,4 @@ class ObjectDraft implements Draft {
   }
 }
 
-export { checkedDetails, commitDraft, type Draft, type MergeOptions, type User, type VersionDetails, type WriteContent };
+export { checkedDetails, commitDraft, type Draft, type MergeOptions, type UpdateOptions, type User, type VersionDetails, type WriteContent };

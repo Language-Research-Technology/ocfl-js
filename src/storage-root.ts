@@ -2,13 +2,14 @@ import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
 import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
-import { checkedDetails, type Draft, type VersionDetails } from './draft.ts';
+import { checkedDetails, type Draft, type UpdateOptions, type VersionDetails } from './draft.ts';
 import { type OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import type { BuiltInLayout } from './layouts/built-in-layout.ts';
-import { builtInLayoutClass, createLayout, type Layout, type LayoutConfig } from './layouts/index.ts';
+import { builtInLayoutClass, createLayout, IMPLEMENTED_LAYOUTS, type Layout, type LayoutConfig } from './layouts/index.ts';
 import { type ListedObject, listObjects } from './list.ts';
 import { LOCK_NAME } from './lock.ts';
+import { objectState } from './object-on-disk.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import { createError } from './ocfl-rules.ts';
 import { removeObject } from './remove.ts';
@@ -43,6 +44,8 @@ unfinished write.
 
 const SPEC_TEXT_FILE = 'ocfl_1.1.md';
 
+const ISSUES_URL = 'https://github.com/Language-Research-Technology/ocfl-js/issues';
+
 /** @throws {@link OcflError} `INVALID_STORAGE_ROOT` (`E070`) if `content` has no string `extension` */
 function declaredLayoutName(file: string, content: string): string {
   const extension = parseJsonObject(content)?.extension;
@@ -76,13 +79,21 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion
     throw layoutRead.reason;
   }
   if (layoutRead.value === undefined) {
-    throw ocflError('INVALID_STORAGE_ROOT', `The storage root ${root} has no ${OCFL_LAYOUT}, so the layout of its objects is unknown.`);
+    throw ocflError(
+      'INVALID_STORAGE_ROOT',
+      `The storage root ${root} has no ${OCFL_LAYOUT}, so the layout of its objects is unknown. ` +
+        `Add an ${OCFL_LAYOUT} naming its storage layout, such as {"extension": "0004-hashed-n-tuple-storage-layout"}; this library implements ${IMPLEMENTED_LAYOUTS}.`,
+    );
   }
   const declaredName = declaredLayoutName(layoutPath, layoutRead.value);
   // Checked before the config is read: a declared name that is a path must not reach outside the root
   const layoutClass = builtInLayoutClass(declaredName);
   if (!layoutClass) {
-    throw ocflError('UNSUPPORTED_LAYOUT', `Layout "${declaredName}", which the storage root ${root} declares, is not supported.`);
+    throw ocflError(
+      'UNSUPPORTED_LAYOUT',
+      `The storage root ${root} declares the storage layout "${declaredName}", which this library doesn't implement; it implements ${IMPLEMENTED_LAYOUTS}. ` +
+        `To open this storage root, ask for "${declaredName}" to be added to the library at ${ISSUES_URL}.`,
+    );
   }
   const configPath = nodePath.join(root, EXTENSIONS_DIR, declaredName, EXTENSION_CONFIG);
   const content = await fileSystem.readIfExists(configPath);
@@ -153,6 +164,24 @@ interface StorageRoot {
   open(id: string): Promise<OcflObject>;
 
   /**
+   * Whether there is an object with this id: `true` exactly when {@link StorageRoot.create} would throw `OBJECT_EXISTS`.
+   * A create that another writer hasn't committed gives `false`. The inventory isn't read or checked, so a damaged object gives `true`, and {@link StorageRoot.open} then reports the damage.
+   *
+   * Another writer can create the object between `has()` and a `create()`; to create an object only if it is absent, catch `OBJECT_EXISTS` from `create()` instead.
+   *
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold.
+   * @throws `TypeError` if the id is missing or empty.
+   * @throws The file system error if the object's directory, inventory or lock can't be checked.
+   * @example
+   * ```ts
+   * if (!(await root.has(id))) {
+   *   await root.create(id, details, build);
+   * }
+   * ```
+   */
+  has(id: string): Promise<boolean>;
+
+  /**
    * Creates an object with the draft built by `build` as its first version. If `build` throws, nothing is created.
    * The object uses sha512 digests and the `content` directory, at the storage root's OCFL version.
    *
@@ -165,8 +194,9 @@ interface StorageRoot {
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs, if an earlier create left an unfinished version in the workspace, or the create was refused and its lock couldn't be released. Don't simply repeat the create: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object to see whether it was created.
-   * @throws `TypeError` if the id, the message or the user's name is missing or empty, or the user's address isn't a string.
+   * @throws `TypeError` if the id, the message or the user's name is missing or empty, the user's address isn't a string, or `createdAt` isn't a valid `Date`. Nothing is created.
    * @throws `Error` if `build` returned while draft operations it started were still running. Await every operation.
+   * @throws `options.signal.reason` if the signal is aborted before the commit begins, even if `build` caught the error a draft operation rejected with; nothing of the object is left, and it isn't locked. A signal already aborted is refused before the lock is taken.
    * @throws Whatever `build` or a draft operation throws; nothing of the object is left, and it isn't locked.
    * @throws The file system error that stopped the create before its root inventory was put in place; nothing is created.
    * @example
@@ -176,7 +206,7 @@ interface StorageRoot {
    * });
    * ```
    */
-  create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
+  create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObject>;
 
   /**
    * Lists every object in the storage root, in no particular order. Each object is read when the listing reaches it, and yielded as `{ object }`.
@@ -297,10 +327,14 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
     async open(id: string) {
       return openObject(root, await objectRootToRead(checkedId(id)), id, ocflVersion);
     },
-    async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>) {
+    async has(id: string) {
+      return (await objectState(root, await objectRootToRead(checkedId(id)))) === 'committed';
+    },
+    async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>, options: UpdateOptions = {}) {
       const objectId = checkedId(id);
       const checked = checkedDetails(details);
-      return createObject(root, await objectRootToWrite(objectId), objectId, ocflVersion, checked, build);
+      options.signal?.throwIfAborted();
+      return createObject(root, await objectRootToWrite(objectId), objectId, ocflVersion, checked, build, options.signal);
     },
     objects() {
       return listObjects(root, ocflVersion);
@@ -352,8 +386,8 @@ async function createStorageRoot(path: string, options: { layout: LayoutConfig }
 /**
  * Opens an existing storage root. Its layout is read from its own `ocfl_layout.json`.
  *
- * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if `path` is not a storage root, or has no `ocfl_layout.json`.
- * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if it declares a layout this library doesn't implement.
+ * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if `path` is not a storage root, or has no `ocfl_layout.json`; the message says to add one naming the storage layout, and lists the layouts this library implements.
+ * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if it declares a layout this library doesn't implement; the message names it, lists the layouts this library implements, and says to ask for it to be added.
  * @throws `TypeError` if `path` is missing or empty.
  * @throws The file system error if the storage root declaration, `ocfl_layout.json` or the storage layout's `config.json` exists but can't be read.
  * @example
