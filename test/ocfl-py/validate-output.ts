@@ -99,7 +99,7 @@ async function writeEveryOperation(root: StorageRoot, label: string, rootStructu
     await draft.write('bytes.bin', new Uint8Array([0, 1, 2, 3]));
     await draft.write('dir/streamed.txt', chunked());
     await draft.write('name with spaces and ünïcödé.txt', 'unicode\n');
-    await draft.import(source, 'imported');
+    await draft.import(source, { target: 'imported' });
   });
   const v2 = await object.update(DETAILS, async (draft) => {
     await draft.copy('text.txt', 'copies/text.txt');

@@ -95,10 +95,10 @@ The digest directories haven't changed, only the last directory, named by the en
 | `object.update(fn, 'REPLACE')` | `object.update(details, fn)`, calling `draft.clear()` first |
 | `object.update()` with no callback, then `t.commit(options)` or `t.rollback()` | `object.update(details, fn)`: it commits when `fn` returns and discards when it throws |
 | `object.import(source)`, `object.add(source)` | `object.update(details, (draft) => draft.import(source))` |
-| `object.import([[source, target], …])` | One `draft.import(source, target)` call for each, in one update |
+| `object.import([[source, target], …])` | One `draft.import(source, { target })` call for each, in one update |
 | `t.write(path, data, options)` | `draft.write(path, content)` |
 | `t.createWritable(path)`, `createWriteStream(path)` | `draft.write(path, stream)` |
-| `t.import(source, target)` | `draft.import(source, target)` |
+| `t.import(source, target)` | `draft.import(source, { target })` |
 | `t.copy(source, target)` | `draft.copy(source, target)` |
 | `t.rename(source, target)`, `t.move(source, target)` | `draft.rename(source, target)` |
 | `t.remove(path)`, `t.delete(path)` | `draft.remove(path)` |
@@ -208,8 +208,8 @@ Moving content into OCFL from another system, give each version's original date 
 
 [Updating objects](/ocfl-js/guides/updating-objects/#draft-operations) describes each operation in full. What changed from 0.4:
 
-- **`import()` without a target** puts a directory's contents at the top of the object, as `object.import()` did. 0.4's `t.import('/data/dir')` put them under `dir/`, so pass the name, `draft.import('/data/dir', 'dir')`, to keep that. A file keeps its own name. A target of `''` throws `INVALID_LOGICAL_PATH`: leave the target out instead.
-- `import()` copies hidden files too, and fails with `UNSUPPORTED_FILE_TYPE` on a symbolic link or anything else that isn't a regular file or directory. It fails with `SOURCE_CHANGED` when a file changes while it's being read. An import that fails adds none of its files.
+- **`import()` without a target** puts a directory's contents at the top of the object, as `object.import()` did. 0.4's `t.import('/data/dir')` put them under `dir/`, so pass the name, `draft.import('/data/dir', { target: 'dir' })`, to keep that. A file keeps its own name. A target of `''` throws `INVALID_LOGICAL_PATH`: leave the target out instead.
+- `import()` copies hidden files too, and fails with `UNSUPPORTED_FILE_TYPE` on a symbolic link or anything else that isn't a regular file or directory. Its `filter` option leaves entries out, such as `.git` directories, `.DS_Store` files and symbolic links. It fails with `SOURCE_CHANGED` when a file changes while it's being read. An import that fails adds none of its files.
 - **`write()`** takes a string (written as UTF-8), a `Uint8Array`, or any async iterable of them, such as a `ReadableStream` or a Node.js stream. Its third `options` argument is gone: decode first, for example with `Buffer.from(text, 'base64')`.
 - **`reinstate()`** takes a version number, returns nothing, and throws `FILE_NOT_FOUND` when that version had nothing at the path. A directory puts back every file that was below it.
 - **`remove()`** and **`rename()`** throw `FILE_NOT_FOUND` when nothing is at the path, instead of doing nothing.
@@ -284,7 +284,7 @@ for await (const object of storage) {
 | [`FILE_EXISTS`](/ocfl-js/guides/errors/#file_exists) | A file would go where a directory is or below another file, or `copy()` or `rename()` would put a directory onto one with files without `{ merge: true }` |
 | [`INVALID_LOGICAL_PATH`](/ocfl-js/guides/errors/#invalid_logical_path) | A logical path is empty, absolute or has a `..` segment; a `copy()` or `rename()` target is inside its source; or an `import()` target is empty or the top of the object |
 | [`SOURCE_CHANGED`](/ocfl-js/guides/errors/#source_changed) | `import()` finds a file changed while it was copied in |
-| [`UNSUPPORTED_FILE_TYPE`](/ocfl-js/guides/errors/#unsupported_file_type) | `import()` meets a symbolic link or anything else that isn't a regular file or directory |
+| [`UNSUPPORTED_FILE_TYPE`](/ocfl-js/guides/errors/#unsupported_file_type) | `import()` meets a symbolic link or anything else that isn't a regular file or directory, and its filter doesn't leave it out |
 
 Misuse, such as an argument of the wrong type, throws a plain `TypeError`, and file system errors such as `ENOSPC` pass through as they are. `OcflError` has no subclasses: 0.4's `ValidationError` and `NotImplementedError` are gone.
 

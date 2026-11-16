@@ -98,7 +98,7 @@ describe('importing into a draft', () => {
     it("puts a directory's contents under the target", async () => {
       const source = await newSource(tree);
       const object = await root.create(newId(), DETAILS, async (draft) => {
-        await draft.import(source, 'x/y');
+        await draft.import(source, { target: 'x/y' });
       });
       await assertHolds(root, object, { 'x/y/a.txt': 'a', 'x/y/sub/b.txt': 'b', 'x/y/.hidden': 'h' });
     });
@@ -114,7 +114,7 @@ describe('importing into a draft', () => {
     it('puts a file at the target', async () => {
       const source = await newSource(tree);
       const object = await root.create(newId(), DETAILS, async (draft) => {
-        await draft.import(path.join(source, 'a.txt'), 'docs/renamed.txt');
+        await draft.import(path.join(source, 'a.txt'), { target: 'docs/renamed.txt' });
       });
       await assertHolds(root, object, { 'docs/renamed.txt': 'a' });
     });
@@ -122,8 +122,8 @@ describe('importing into a draft', () => {
     it('normalises the target', async () => {
       const source = await newSource(tree);
       const object = await root.create(newId(), DETAILS, async (draft) => {
-        await draft.import(path.join(source, 'a.txt'), './docs//a.txt');
-        await draft.import(path.join(source, 'sub'), 'more/');
+        await draft.import(path.join(source, 'a.txt'), { target: './docs//a.txt' });
+        await draft.import(path.join(source, 'sub'), { target: 'more/' });
       });
       await assertHolds(root, object, { 'docs/a.txt': 'a', 'more/b.txt': 'b' });
     });
@@ -152,8 +152,8 @@ describe('importing into a draft', () => {
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.import(full);
         await draft.import(diffPaths);
-        await draft.import(path.join(source, 'metadata.json'), 'metadata.json');
-        await draft.import(path.join(source, 'data'), 'data');
+        await draft.import(path.join(source, 'metadata.json'), { target: 'metadata.json' });
+        await draft.import(path.join(source, 'data'), { target: 'data' });
       });
       assert.deepStrictEqual([...object.versions.keys()], [1]);
       assert.deepStrictEqual(
@@ -213,8 +213,8 @@ describe('importing into a draft', () => {
         const source = await newSource({ 'a.txt': 'new' });
         const object = await createObject(root, newId(), { a: 'a' });
         const returned = await object.update(DETAILS, async (draft) => {
-          await assert.rejects(draft.import(source, target), ocflError('INVALID_LOGICAL_PATH'));
-          await assert.rejects(draft.import(path.join(source, 'a.txt'), target), ocflError('INVALID_LOGICAL_PATH'));
+          await assert.rejects(draft.import(source, { target }), ocflError('INVALID_LOGICAL_PATH'));
+          await assert.rejects(draft.import(path.join(source, 'a.txt'), { target }), ocflError('INVALID_LOGICAL_PATH'));
         });
         assert.strictEqual(returned, object);
         await assertUnchanged(object, { a: 'a' });
@@ -228,7 +228,7 @@ describe('importing into a draft', () => {
       const id = newId();
       await assert.rejects(
         root.create(id, DETAILS, async (draft) => {
-          await draft.import(missing, '../escape.txt');
+          await draft.import(missing, { target: '../escape.txt' });
         }),
         ocflError('INVALID_LOGICAL_PATH'),
       );
@@ -268,7 +268,7 @@ describe('importing into a draft', () => {
       const other = await newSource({ 'other.txt': 'other' });
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.import(source);
-        await draft.import(path.join(other, 'other.txt'), './a.txt');
+        await draft.import(path.join(other, 'other.txt'), { target: './a.txt' });
       });
       await assertHolds(root, object, { 'a.txt': 'other' });
     });
@@ -289,7 +289,7 @@ describe('importing into a draft', () => {
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.write('a.txt', 'one');
         await draft.write('b.txt', 'two');
-        await draft.import(source, 'x');
+        await draft.import(source, { target: 'x' });
         await draft.import(source);
         await draft.import(reversed);
         await draft.import(source);
@@ -316,7 +316,7 @@ describe('importing into a draft', () => {
       const object = await createObject(root, newId(), files);
       await assert.rejects(
         object.update(DETAILS, async (draft) => {
-          await draft.import(path.join(source, 'new.txt'), 'd');
+          await draft.import(path.join(source, 'new.txt'), { target: 'd' });
         }),
         ocflError('FILE_EXISTS'),
       );
@@ -330,12 +330,127 @@ describe('importing into a draft', () => {
       await assert.rejects(
         root.create(id, DETAILS, async (draft) => {
           await draft.import(source);
-          await draft.import(path.join(file, 'sub.txt'), 'sub');
+          await draft.import(path.join(file, 'sub.txt'), { target: 'sub' });
         }),
         ocflError('FILE_EXISTS'),
       );
       await assertNothingCreated(id);
     });
+  });
+
+  describe('leaving entries out with a filter', () => {
+    it('leaves out the files the filter rejects, at any depth', async () => {
+      const source = await newSource({ 'a.txt': 'a', '.DS_Store': 'ds', 'sub/b.txt': 'b', 'sub/._b.txt': 'rf', 'sub/deeper/.DS_Store': 'ds' });
+      const object = await root.create(newId(), DETAILS, async (draft) => {
+        await draft.import(source, { filter: (_, entry) => entry.name !== '.DS_Store' && !entry.name.startsWith('._') });
+      });
+      await assertHolds(root, object, { 'a.txt': 'a', 'sub/b.txt': 'b' });
+    });
+
+    it('leaves out everything below a directory the filter rejects, without calling it for anything inside', async () => {
+      const source = await newSource({ 'a.txt': 'a', '.git/HEAD': 'ref', '.git/objects/ab/cd': 'blob', 'sub/.git/HEAD': 'ref', 'sub/b.txt': 'b' });
+      const seen: string[] = [];
+      const object = await root.create(newId(), DETAILS, async (draft) => {
+        await draft.import(source, {
+          target: 'raw',
+          filter: (relativePath, entry) => {
+            seen.push(relativePath);
+            return !(entry.isDirectory() && entry.name === '.git');
+          },
+        });
+      });
+      await assertHolds(root, object, { 'raw/a.txt': 'a', 'raw/sub/b.txt': 'b' });
+      assert.deepStrictEqual(seen.sort(), ['.git', 'a.txt', 'sub', 'sub/.git', 'sub/b.txt']);
+    });
+
+    it('imports the rest of a directory when the filter rejects its symlinks', async () => {
+      const source = await newSource({ 'a.txt': 'a', 'sub/b.txt': 'b' });
+      await fs.promises.symlink(path.join(source, 'a.txt'), path.join(source, 'link.txt'));
+      await fs.promises.symlink(path.join(source, 'sub'), path.join(source, 'sub/loop'));
+      const object = await root.create(newId(), DETAILS, async (draft) => {
+        await draft.import(source, { filter: (_, entry) => !entry.isSymbolicLink() });
+      });
+      await assertHolds(root, object, { 'a.txt': 'a', 'sub/b.txt': 'b' });
+    });
+
+    it('throws UNSUPPORTED_FILE_TYPE for a symlink the filter keeps, adding nothing', async () => {
+      const source = await newSource({ 'a.txt': 'a', 'sub/b.txt': 'b' });
+      await fs.promises.symlink(path.join(source, 'a.txt'), path.join(source, 'sub/link.txt'));
+      const object = await createObject(root, newId(), { a: 'a' });
+      await assert.rejects(
+        object.update(DETAILS, async (draft) => {
+          await draft.import(source, { filter: (relativePath) => relativePath !== 'a.txt' });
+        }),
+        ocflError('UNSUPPORTED_FILE_TYPE'),
+      );
+      await assertUnchanged(object, { a: 'a' });
+    });
+
+    it('imports a file named as the source without calling the filter', async () => {
+      const source = await newSource({ '.DS_Store': 'ds' });
+      const filter = mock.fn(() => false);
+      const object = await root.create(newId(), DETAILS, async (draft) => {
+        await draft.import(path.join(source, '.DS_Store'), { target: 'kept', filter });
+      });
+      await assertHolds(root, object, { kept: 'ds' });
+      assert.strictEqual(filter.mock.callCount(), 0);
+    });
+
+    for (const [name, result, shown] of [
+      ['a promise, as an async filter returns', Promise.resolve(false), 'Promise'],
+      ['undefined', undefined, 'undefined'],
+    ] as const) {
+      it(`throws a TypeError for a filter that returns ${name}, adding nothing`, async () => {
+        const source = await newSource({ 'a.txt': 'a' });
+        const object = await createObject(root, newId(), { a: 'a' });
+        await object.update(DETAILS, async (draft) => {
+          await assert.rejects(
+            draft.import(source, { filter: (() => result) as never }),
+            (e) => e instanceof TypeError && e.message.startsWith('The filter must return true or false, not') && e.message.includes(shown),
+          );
+        });
+        await assertUnchanged(object, { a: 'a' });
+      });
+    }
+
+    it('rejects with the error a filter throws, and the draft is left as it was', async () => {
+      const source = await newSource({ 'a.txt': 'a', 'b.txt': 'b' });
+      const object = await createObject(root, newId(), { a: 'a' });
+      const failure = new Error('filter failed');
+      const returned = await object.update(DETAILS, async (draft) => {
+        await assert.rejects(
+          draft.import(source, {
+            filter: (relativePath) => {
+              if (relativePath === 'b.txt') {
+                throw failure;
+              }
+              return true;
+            },
+          }),
+          (error) => error === failure,
+        );
+      });
+      assert.strictEqual(returned, object);
+      await assertUnchanged(object, { a: 'a' });
+    });
+  });
+
+  describe('options of the wrong type', () => {
+    for (const [name, options, message] of [
+      ['a string, as the target was before 1.0', 'raw', /Options must be an object, such as \{ target: 'raw' \}, not 'raw'/],
+      ['null', null, /Options must be an object, such as \{ target: 'raw' \}, not null/],
+      ['a target that is a number', { target: 1 }, /The target option must be a string, not 1/],
+      ['a filter that is a string', { filter: '.git' }, /The filter option must be a function, not '.git'/],
+    ] as const) {
+      it(`throws a TypeError for ${name}, adding nothing`, async () => {
+        const source = await newSource({ 'a.txt': 'a' });
+        const object = await createObject(root, newId(), { a: 'a' });
+        await object.update(DETAILS, async (draft) => {
+          await assert.rejects(draft.import(source, options as never), (e) => e instanceof TypeError && message.test(e.message));
+        });
+        await assertUnchanged(object, { a: 'a' });
+      });
+    }
   });
 
   describe('a source that is not regular files and directories', () => {
@@ -358,7 +473,7 @@ describe('importing into a draft', () => {
       const object = await createObject(root, newId(), { a: 'a' });
       await assert.rejects(
         object.update(DETAILS, async (draft) => {
-          await draft.import(source, 'in');
+          await draft.import(source, { target: 'in' });
         }),
         ocflError('UNSUPPORTED_FILE_TYPE'),
       );
@@ -374,7 +489,7 @@ describe('importing into a draft', () => {
       const object = await createObject(root, newId(), { a: 'a' });
       const returned = await object.update(DETAILS, async (draft) => {
         await assert.rejects(draft.import(dirLink), ocflError('UNSUPPORTED_FILE_TYPE'));
-        await assert.rejects(draft.import(fileLink, 'b'), ocflError('UNSUPPORTED_FILE_TYPE'));
+        await assert.rejects(draft.import(fileLink, { target: 'b' }), ocflError('UNSUPPORTED_FILE_TYPE'));
       });
       assert.strictEqual(returned, object);
       await assertUnchanged(object, { a: 'a' });
@@ -463,7 +578,7 @@ describe('importing into a draft', () => {
           const updated = await object.update(DETAILS, async (draft) => {
             await draft.write('in/c.txt', 'drafted c');
             await breakSource(source);
-            await assert.rejects(draft.import(source, 'in'), isFailure);
+            await assert.rejects(draft.import(source, { target: 'in' }), isFailure);
             mock.restoreAll();
             await draft.write('after.txt', 'after');
           });
@@ -483,7 +598,7 @@ describe('importing into a draft', () => {
             await withFsFailure(
               'rename',
               (_from, to) => to.endsWith(path.join('content', 'in', 'b.txt')),
-              () => assert.rejects(draft.import(source, 'in'), { code: 'EIO' }),
+              () => assert.rejects(draft.import(source, { target: 'in' }), { code: 'EIO' }),
             );
           }),
           { code: 'EIO' },
@@ -524,7 +639,7 @@ describe('importing into a draft', () => {
       const object = await createObject(root, newId(), { 'test.txt': text });
       const updated = await object.update(DETAILS, async (draft) => {
         await draft.import(source);
-        await draft.import(source, 'test2.txt');
+        await draft.import(source, { target: 'test2.txt' });
       });
       const inventory = await assertHolds(root, updated, { 'test.txt': text, 'test_input.txt': text, 'test2.txt': text });
       assert.deepStrictEqual(Object.values(inventory.manifest), [['v1/content/test.txt']]);
@@ -563,7 +678,7 @@ describe('importing into a draft', () => {
       await makeTree(second, 2, 8);
       const maxOpen = trackOpenFiles({ copies: true });
       const object = await root.create(newId(), DETAILS, async (draft) => {
-        await Promise.all([draft.import(first, 'a'), draft.import(second, 'b')]);
+        await Promise.all([draft.import(first, { target: 'a' }), draft.import(second, { target: 'b' })]);
       });
       assert.strictEqual(object.head.files.size, 128);
       assert.ok(maxOpen() <= CONCURRENCY_LIMIT, `${maxOpen()} files were open at once`);
@@ -592,8 +707,8 @@ describe('importing into a draft', () => {
         (draft) => draft.write('a.txt', 'written before'),
         (draft) => draft.import(source),
         (draft) => draft.write('b.txt', 'written after'),
-        (draft) => draft.import(path.join(source, 'sub/c.txt'), 'b.txt/../never'),
-        (draft) => draft.import(path.join(source, 'sub/c.txt'), 'd.txt'),
+        (draft) => draft.import(path.join(source, 'sub/c.txt'), { target: 'b.txt/../never' }),
+        (draft) => draft.import(path.join(source, 'sub/c.txt'), { target: 'd.txt' }),
       ];
       const settle = (step: Promise<void>) => step.catch(() => {});
       const sequential = await root.create(newId(), DETAILS, async (draft) => {
@@ -620,7 +735,7 @@ describe('importing into a draft', () => {
       });
       const before = await snapshot(root.path);
       await assert.rejects(leaked!.import(source), (e) => e instanceof Error && !ocflError('INVALID_LOGICAL_PATH')(e) && !(e instanceof TypeError));
-      await assert.rejects(leaked!.import(source, 'target'), Error);
+      await assert.rejects(leaked!.import(source, { target: 'target' }), Error);
       assert.deepStrictEqual(await snapshot(root.path), before);
       await assertHolds(root, object, { a: 'a' });
     });

@@ -197,7 +197,7 @@ These come from draft operations inside the function you pass to `create` or `up
 
 **Cause:** `import` found a symbolic link, socket, device or anything else that isn't a regular file or directory.
 
-**What to do:** import the files the link points to, or leave them out.
+**What to do:** import the files the link points to, or, for a link below the source, leave it out with `import`'s [`filter` option](/ocfl-js/guides/updating-objects/#leaving-files-out).
 
 ## When the library offers no way forward
 

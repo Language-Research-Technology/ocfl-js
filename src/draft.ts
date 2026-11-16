@@ -1,4 +1,4 @@
-import fs from 'node:fs';
+import fs, { type Dirent } from 'node:fs';
 import path from 'node:path';
 import { inspect } from 'node:util';
 import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
@@ -63,6 +63,24 @@ interface MergeOptions {
   readonly merge?: boolean | undefined;
 }
 
+/** Options for {@link Draft.import}. */
+interface ImportOptions {
+  /** Where in the draft the files go. Leave it out for the top. */
+  readonly target?: string | undefined;
+  /**
+   * Called for each entry below a directory `source`, with its path relative to `source` using `/`, such as `sub/.DS_Store`.
+   * Return `false` to leave the entry out; a directory left out is not read. Not called when `source` is a file.
+   *
+   * @example
+   * ```ts
+   * await draft.import('/data/crate', {
+   *   filter: (_, entry) => entry.name !== '.git' && entry.name !== '.DS_Store' && !entry.name.startsWith('._') && !entry.isSymbolicLink(),
+   * });
+   * ```
+   */
+  readonly filter?: ((relativePath: string, entry: Dirent) => boolean) | undefined;
+}
+
 /**
  * The changes being assembled during an update, which become one new version or are discarded.
  *
@@ -88,25 +106,28 @@ interface Draft {
   write(path: string, content: WriteContent): Promise<void>;
 
   /**
-   * Copies a file or directory from disk into the draft, at `target` or at the top. Files already there are replaced; the rest stay.
+   * Copies a file or directory from disk into the draft, at the `target` option or at the top. Files already there are replaced; the rest stay.
    *
    * Without a `target`, a directory's contents go at the top and a file keeps its own name there.
-   * Everything below a directory is copied, including hidden files. If a file fails, the first failure is thrown and the draft is left as it was.
+   * Everything below a directory is copied, including hidden files, except entries the `filter` option leaves out.
+   * If a file fails, the first failure is thrown and the draft is left as it was.
    *
-   * @throws {@link OcflError} `UNSUPPORTED_FILE_TYPE` if `source` is, or contains, anything but regular files and directories, such as a symlink.
+   * @throws {@link OcflError} `UNSUPPORTED_FILE_TYPE` if `source` is anything but a regular file or directory, such as a symlink, or contains one the filter keeps.
    * @throws {@link OcflError} `SOURCE_CHANGED` if a file changed while it was being read.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `target` is empty or leaves the object.
    * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory.
+   * @throws `TypeError` if `options` is not an object, `target` is not a string, `filter` is not a function or it returns anything but `true` or `false`.
    * @throws `Error` if the update this draft belongs to has finished.
+   * @throws The error `filter` throws.
    * @throws The file system error if `source`, or something below it, is missing or can't be read.
    * @example
    * ```ts
    * await object.update(details, async (draft) => {
-   *   await draft.import('/data/incoming/item-1', 'raw');
+   *   await draft.import('/data/incoming/item-1', { target: 'raw' });
    * });
    * ```
    */
-  import(source: string, target?: string): Promise<void>;
+  import(source: string, options?: ImportOptions): Promise<void>;
 
   /**
    * Copies a file, or every file below a directory, to `target` within the draft.
@@ -351,22 +372,37 @@ function recoveryNeeded(objectRoot: string, state: string, cause: unknown) {
   return lockKept(`The update of the object at ${objectRoot} ${state}`, 'then open the object again before retrying', cause);
 }
 
+function optionsObject(options: unknown, example: string): Record<string, unknown> {
+  if (options === undefined) {
+    return {};
+  }
+  if (typeof options !== 'object' || options === null) {
+    throw new TypeError(`Options must be an object, such as ${example}, not ${inspect(options)}`);
+  }
+  return options as Record<string, unknown>;
+}
+
 /**
  * @returns Whether `options` asks for a merge
  * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
  */
 function mergeOption(options: unknown): boolean {
-  if (options === undefined) {
-    return false;
-  }
-  if (typeof options !== 'object' || options === null) {
-    throw new TypeError(`Options must be an object, such as { merge: true }, not ${inspect(options)}`);
-  }
-  const { merge } = options as { merge?: unknown };
+  const { merge } = optionsObject(options, '{ merge: true }');
   if (merge !== undefined && typeof merge !== 'boolean') {
     throw new TypeError(`The merge option must be a boolean, not ${inspect(merge)}`);
   }
   return merge === true;
+}
+
+function importOptions(options: unknown): ImportOptions {
+  const checked = optionsObject(options, "{ target: 'raw' }");
+  if (checked.target !== undefined && typeof checked.target !== 'string') {
+    throw new TypeError(`The target option must be a string, not ${inspect(checked.target)}`);
+  }
+  if (checked.filter !== undefined && typeof checked.filter !== 'function') {
+    throw new TypeError(`The filter option must be a function, not ${inspect(checked.filter)}`);
+  }
+  return checked as ImportOptions;
 }
 
 function isAsyncIterable(data: unknown): data is AsyncIterable<unknown> {
@@ -398,7 +434,7 @@ interface HashedImportFile extends ImportFile {
 }
 
 /** Every file under `source`, with the logical path it becomes */
-async function listImportFiles(source: string, target: string | undefined): Promise<ImportFile[]> {
+async function listImportFiles(source: string, { target, filter }: ImportOptions): Promise<ImportFile[]> {
   const base = target === undefined ? undefined : importTarget(target);
   const stat = await fs.promises.lstat(source);
   if (stat.isFile()) {
@@ -408,15 +444,32 @@ async function listImportFiles(source: string, target: string | undefined): Prom
     throw unsupportedFileType(source);
   }
   const files: ImportFile[] = [];
-  for (const entry of await fs.promises.readdir(source, { recursive: true, withFileTypes: true })) {
-    const file = path.join(entry.parentPath, entry.name);
-    if (entry.isFile()) {
-      files.push({ source: file, logicalPath: path.posix.join(base ?? '', ...path.relative(source, file).split(path.sep)) });
-    } else if (!entry.isDirectory()) {
-      throw unsupportedFileType(file);
+  const walk = async (dir: string, relativeDir: string): Promise<void> => {
+    for (const entry of await fs.promises.readdir(dir, { withFileTypes: true })) {
+      const file = path.join(dir, entry.name);
+      const relativePath = relativeDir === '' ? entry.name : `${relativeDir}/${entry.name}`;
+      if (filter !== undefined && !keeps(filter, relativePath, entry)) {
+        continue;
+      }
+      if (entry.isFile()) {
+        files.push({ source: file, logicalPath: path.posix.join(base ?? '', relativePath) });
+      } else if (entry.isDirectory()) {
+        await walk(file, relativePath);
+      } else {
+        throw unsupportedFileType(file);
+      }
     }
-  }
+  };
+  await walk(source, '');
   return files;
+}
+
+function keeps(filter: NonNullable<ImportOptions['filter']>, relativePath: string, entry: Dirent): boolean {
+  const kept: unknown = filter(relativePath, entry);
+  if (typeof kept !== 'boolean') {
+    throw new TypeError(`The filter must return true or false, not ${inspect(kept)}`);
+  }
+  return kept;
 }
 
 /** `target` in the form copy() and rename() store, so two spellings of one path are the same path */
@@ -864,8 +917,8 @@ class ObjectDraft implements Draft {
   }
 
   /** @returns the step that adds the prepared files, which must run in the import's turn */
-  async #prepareImport(source: string, target: string | undefined): Promise<() => Promise<void>> {
-    const files = await listImportFiles(source, target);
+  async #prepareImport(source: string, options: ImportOptions | undefined): Promise<() => Promise<void>> {
+    const files = await listImportFiles(source, importOptions(options));
     const algorithm = this.#inventory.digestAlgorithm;
     const hashed = await Promise.all(
       files.map((file) =>
@@ -936,8 +989,8 @@ class ObjectDraft implements Draft {
   }
 
   // A failed import adds nothing, unless a copied file can't be put in place, which fails the commit
-  async import(source: string, target?: string): Promise<void> {
-    return this.#inTurn(() => this.#prepareImport(source, target));
+  async import(source: string, options?: ImportOptions): Promise<void> {
+    return this.#inTurn(() => this.#prepareImport(source, options));
   }
 
   async copy(source: string, target: string, options?: MergeOptions): Promise<void> {
@@ -1051,4 +1104,14 @@ class ObjectDraft implements Draft {
   }
 }
 
-export { checkedDetails, commitDraft, type Draft, type MergeOptions, type UpdateOptions, type User, type VersionDetails, type WriteContent };
+export {
+  checkedDetails,
+  commitDraft,
+  type Draft,
+  type ImportOptions,
+  type MergeOptions,
+  type UpdateOptions,
+  type User,
+  type VersionDetails,
+  type WriteContent,
+};

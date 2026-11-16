@@ -4,6 +4,7 @@
 
 ```ts
 
+import { Dirent } from 'node:fs';
 import type { Readable } from 'node:stream';
 
 // @public
@@ -25,7 +26,7 @@ export interface Draft {
     clear(): Promise<void>;
     copy(source: string, target: string, options?: MergeOptions): Promise<void>;
     files(): Promise<ReadonlyMap<string, string>>;
-    import(source: string, target?: string): Promise<void>;
+    import(source: string, options?: ImportOptions): Promise<void>;
     reinstate(path: string, version: number): Promise<void>;
     remove(path: string): Promise<void>;
     rename(source: string, target: string, options?: MergeOptions): Promise<void>;
@@ -79,6 +80,12 @@ export interface HashedNTupleLayoutConfig {
     numberOfTuples?: number;
     shortObjectRoot?: boolean;
     tupleSize?: number;
+}
+
+// @public
+export interface ImportOptions {
+    readonly filter?: ((relativePath: string, entry: Dirent) => boolean) | undefined;
+    readonly target?: string | undefined;
 }
 
 // @public
