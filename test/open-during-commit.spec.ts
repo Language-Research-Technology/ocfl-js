@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
 import type { StorageRoot } from '../src/index.ts';
-import { createObject, DETAILS, objectRootOf, placesOf, readInventory, textFiles, useTempRoots } from './helpers/drafts.ts';
+import { createObject, DETAILS, lockObject, objectRootOf, placesOf, readInventory, textFiles, useTempRoots } from './helpers/drafts.ts';
 import { ocflError } from './helpers/ocfl-error.ts';
 import { writeFiles, writeInventory } from './helpers/storage-roots.ts';
 
@@ -13,10 +13,11 @@ describe('opening an object while another writer is committing', () => {
   const { newRoot } = useTempRoots('ocfl-open-during-commit-');
 
   /**
-   * An object with versions 1 and 2, left as a commit of version 2 is between replacing the root inventory and replacing its sidecar.
-   * @returns The object root, and the sidecar the commit would go on to write
+   * An object with versions 1 and 2, as a commit of version 2 leaves it between replacing the root inventory and replacing its
+   * sidecar, but with no lock held: as a writer leaves it that has since finished, or as an object is damaged.
+   * @returns The object root, its lock, and the sidecar the commit would go on to write
    */
-  async function midCommit(root: StorageRoot, id: string) {
+  async function sidecarOfPreviousVersion(root: StorageRoot, id: string) {
     const objectRoot = objectRootOf(root, id);
     const sidecar = path.join(objectRoot, SIDECAR);
     const object = await createObject(root, id, { 'a.txt': 'one' });
@@ -26,7 +27,28 @@ describe('opening an object while another writer is committing', () => {
     });
     const committed = await fs.promises.readFile(sidecar);
     await fs.promises.writeFile(sidecar, previous);
-    return { objectRoot, sidecar, committed };
+    return { objectRoot, sidecar, committed, lock: placesOf(root, id).lock };
+  }
+
+  /** {@link sidecarOfPreviousVersion}, with the lock the committing writer holds */
+  async function midCommit(root: StorageRoot, id: string) {
+    const left = await sidecarOfPreviousVersion(root, id);
+    await lockObject(root, id);
+    return left;
+  }
+
+  /** Runs `finish` as the lock of `id` is first checked */
+  function finishingAtLockCheck(root: StorageRoot, id: string, finish: () => Promise<void>) {
+    const { lock } = placesOf(root, id);
+    const real = fs.promises.stat;
+    let finished = false;
+    mock.method(fs.promises, 'stat', async (...args: Parameters<typeof real>) => {
+      if (!finished && String(args[0]) === lock) {
+        finished = true;
+        await finish();
+      }
+      return real.apply(fs.promises, args);
+    });
   }
 
   const assertNewHead = async (root: StorageRoot, id: string) => {
@@ -65,9 +87,54 @@ describe('opening an object while another writer is committing', () => {
     const root = await newRoot();
     await createObject(root, 'first', { 'a.txt': 'one' });
     await fs.promises.rm(path.join(objectRootOf(root, 'first'), SIDECAR));
+    await lockObject(root, 'first');
     const object = await root.open('first');
     assert.strictEqual(object.head.number, 1);
     assert.deepStrictEqual(await textFiles(object.head), { 'a.txt': 'one' });
+  });
+
+  describe('a root inventory that is the inventory of the head version, with no lock held', () => {
+    afterEach(() => mock.restoreAll());
+
+    it('throws INVALID_OBJECT with E060 when its sidecar is that of the previous version', async () => {
+      const root = await newRoot();
+      await sidecarOfPreviousVersion(root, 'stale-sidecar');
+      await assert.rejects(root.open('stale-sidecar'), ocflError('INVALID_OBJECT', 'E060'));
+    });
+
+    it('throws INVALID_OBJECT with E058 when it has no sidecar', async () => {
+      const root = await newRoot();
+      const { sidecar } = await sidecarOfPreviousVersion(root, 'lost-sidecar');
+      await fs.promises.rm(sidecar);
+      await assert.rejects(root.open('lost-sidecar'), ocflError('INVALID_OBJECT', 'E058'));
+    });
+
+    it('is listed as a damaged object root', async () => {
+      const root = await newRoot();
+      await sidecarOfPreviousVersion(root, 'listed');
+      const listed = [];
+      for await (const entry of root.objects()) {
+        listed.push(entry);
+      }
+      assert.strictEqual(listed.length, 1);
+      const [entry] = listed;
+      assert.ok(entry && 'error' in entry);
+      assert.strictEqual(entry.objectRoot, 'listed');
+      assert.ok(ocflError('INVALID_OBJECT', 'E060')(entry.error));
+    });
+
+    it('opens when its writer replaces the sidecar and releases its lock as the lock is checked', async () => {
+      const root = await newRoot();
+      const { sidecar, committed, lock } = await midCommit(root, 'finishing');
+      let finished = false;
+      finishingAtLockCheck(root, 'finishing', async () => {
+        await fs.promises.writeFile(sidecar, committed);
+        await fs.promises.rm(lock);
+        finished = true;
+      });
+      await assertNewHead(root, 'finishing');
+      assert.ok(finished);
+    });
   });
 
   describe('a root inventory that is not the inventory of the head version', () => {
@@ -181,20 +248,6 @@ describe('opening an object while another writer is committing', () => {
 
   describe('a writer that finishes after the root inventory is found missing and before the lock is checked', () => {
     afterEach(() => mock.restoreAll());
-
-    /** Runs `finish` as the lock of `id` is first checked */
-    function finishingAtLockCheck(root: StorageRoot, id: string, finish: () => Promise<void>) {
-      const { lock } = placesOf(root, id);
-      const real = fs.promises.stat;
-      let finished = false;
-      mock.method(fs.promises, 'stat', async (...args: Parameters<typeof real>) => {
-        if (!finished && String(args[0]) === lock) {
-          finished = true;
-          await finish();
-        }
-        return real.apply(fs.promises, args);
-      });
-    }
 
     it('opens an object whose create commits', async () => {
       const root = await newRoot();

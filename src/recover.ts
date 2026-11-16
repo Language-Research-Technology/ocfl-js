@@ -48,7 +48,11 @@ async function recoverObject(storageRoot: string, objectRoot: string, lock: Lock
     await releaseLock(workspace, storageRoot);
     return;
   }
-  const [inventory, rootNames, outer] = await Promise.all([readInventory(objectRoot), namesIn(objectRoot), enclosingObject(storageRoot, objectRoot)]);
+  const [inventory, rootNames, outer] = await Promise.all([
+    readInventory(storageRoot, objectRoot),
+    namesIn(objectRoot),
+    enclosingObject(storageRoot, objectRoot),
+  ]);
   if (outer !== undefined || (inventory && inventory.id !== lock.id)) {
     await clearWorkspace(workspace);
     await releaseLock(workspace, storageRoot);

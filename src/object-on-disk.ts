@@ -81,11 +81,32 @@ async function idInRootInventory(objectRoot: string): Promise<string | undefined
 }
 
 /**
- * Reads the root inventory of the object at `objectRoot` and checks it against its sidecar, or against its head version while a commit is replacing the sidecar.
+ * Reads the root inventory of the object at `objectRoot`, in the storage root at `storageRoot`, and checks it against its sidecar.
+ * While another writer holds the object's lock, a commit may be replacing the sidecar, so the inventory of its head version is accepted instead.
+ * @param options.callerHoldsLock - Whether the caller holds the lock, so no other writer can be committing
  * @returns `undefined` if there is no inventory
  * @throws {@link OcflError} `INVALID_OBJECT` if the inventory or its sidecar is missing, corrupt or inconsistent
  */
-async function readInventory(objectRoot: string): Promise<OcflObjectInventory | undefined> {
+function readInventory(storageRoot: string, objectRoot: string, options: { callerHoldsLock?: boolean } = {}): Promise<OcflObjectInventory | undefined> {
+  return readInventoryAttempt(storageRoot, objectRoot, options.callerHoldsLock ? 'own lock' : 'first read');
+}
+
+/** `E058` or `E060` for the root inventory `file`, of digest `actual`, whose sidecar `sidecar` records `recorded` */
+function sidecarRefusal(file: string, digestAlgorithm: DigestAlgorithm, sidecar: string | undefined, recorded: string | undefined, actual: string): OcflError {
+  return sidecar === undefined
+    ? createError('E058', file, `no ${digestAlgorithm} sidecar`)
+    : createError('E060', file, `recorded=${recorded} actual=${actual}`);
+}
+
+/**
+ * {@link readInventory}. On a `'first read'` with no lock held, a sidecar that only a commit explains is read once more, as its
+ * writer may have replaced the sidecar and released the lock since the sidecar was read.
+ */
+async function readInventoryAttempt(
+  storageRoot: string,
+  objectRoot: string,
+  attempt: 'first read' | 'second read' | 'own lock',
+): Promise<OcflObjectInventory | undefined> {
   const file = nodePath.join(objectRoot, INVENTORY_NAME);
   const text = await readIfPresent(file);
   if (text === undefined) {
@@ -110,10 +131,15 @@ async function readInventory(objectRoot: string): Promise<OcflObjectInventory | 
   const actual = await Hashing.digest(digestAlgorithm, text);
   let inventory: OcflObjectInventory;
   try {
-    if (recorded !== actual && !(await isHeadVersionInventory(objectRoot, data.head, text, digestAlgorithm, actual))) {
-      throw sidecar === undefined
-        ? createError('E058', file, `no ${digestAlgorithm} sidecar`)
-        : createError('E060', file, `recorded=${recorded} actual=${actual}`);
+    if (recorded !== actual) {
+      const committing = attempt !== 'own lock' && (await isLocked(objectWorkspace(storageRoot, objectRoot)));
+      const mayRetry = attempt === 'first read' && !committing;
+      if (!(committing || mayRetry) || !(await isHeadVersionInventory(objectRoot, data.head, text, digestAlgorithm, actual))) {
+        throw sidecarRefusal(file, digestAlgorithm, sidecar, recorded, actual);
+      }
+      if (mayRetry) {
+        return readInventoryAttempt(storageRoot, objectRoot, 'second read');
+      }
     }
     validateStoredInventory(data, file);
     if (typeof data.head !== 'string') {
@@ -217,12 +243,12 @@ function declarationWithoutInventory(objectRoot: string): OcflError {
  * @throws {@link OcflError} `INVALID_OBJECT` with E063 if it has a declaration, no inventory and no lock held
  */
 async function committedInventory(storageRoot: string, objectRoot: string): Promise<OcflObjectInventory | undefined> {
-  const inventory = await readInventory(objectRoot);
+  const inventory = await readInventory(storageRoot, objectRoot);
   if (inventory || !(await hasObjectDeclaration(objectRoot)) || (await isLocked(objectWorkspace(storageRoot, objectRoot)))) {
     return inventory;
   }
   // Its writer may have finished between the two: a create by committing, a remove by deleting it
-  const reread = await readInventory(objectRoot);
+  const reread = await readInventory(storageRoot, objectRoot);
   if (!reread && (await hasObjectDeclaration(objectRoot))) {
     throw declarationWithoutInventory(objectRoot);
   }

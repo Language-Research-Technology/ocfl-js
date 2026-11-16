@@ -20,7 +20,7 @@ function isNeededToOpen(name: string): boolean {
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it is an object with another id, or has no object declaration but holds something, is a file or is below one
  */
 async function assertHoldsObject(storageRoot: string, objectRoot: string, id: string): Promise<void> {
-  const inventory = await readInventory(objectRoot);
+  const inventory = await readInventory(storageRoot, objectRoot, { callerHoldsLock: true });
   if (!inventory) {
     const contents = await fileSystem.dirContents(objectRoot);
     if (contents === 'empty') {

@@ -258,6 +258,16 @@ describe('root.remove', () => {
       await assertRefused(root, 'a-file/inner', 'OBJECT_ROOT_CONFLICT');
     });
 
+    it('throws INVALID_OBJECT with E060 for an object whose sidecar is that of its previous version, though remove holds the lock', async () => {
+      const { root, object, objectRoot } = await existingObject();
+      const sidecar = path.join(objectRoot, 'inventory.json.sha512');
+      const previous = await fs.promises.readFile(sidecar);
+      await object.update(DETAILS, writeB);
+      await fs.promises.writeFile(sidecar, previous);
+
+      await assertRefused(root, ID, 'INVALID_OBJECT', 'E060');
+    });
+
     it('throws INVALID_OBJECT for a directory whose object declaration has the wrong contents', async () => {
       const root = await newRoot();
       await writeFiles(path.join(root.path, 'bad-declaration'), { '0=ocfl_object_1.1': 'wrong\n' });
