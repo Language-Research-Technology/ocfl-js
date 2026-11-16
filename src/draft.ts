@@ -44,7 +44,6 @@ interface MergeOptions {
  *
  * It starts with the files of the head version (none, for a new object). Operations take effect in call order,
  * even when started together. Every logical path is normalised first (`./raw//1.wav` is `raw/1.wav`).
- * Using a draft after its update has finished throws an `Error`.
  */
 interface Draft {
   /**
@@ -53,6 +52,13 @@ interface Draft {
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
    * @throws {@link OcflError} `FILE_EXISTS` if `path` is a directory, or lies below a file.
    * @throws `TypeError` if `content` is not a {@link WriteContent}.
+   * @throws `Error` if the update this draft belongs to has finished.
+   * @example
+   * ```ts
+   * await object.update(details, async (draft) => {
+   *   await draft.write('ro-crate-metadata.json', JSON.stringify(metadata));
+   * });
+   * ```
    */
   write(path: string, content: WriteContent): Promise<void>;
 
@@ -66,6 +72,14 @@ interface Draft {
    * @throws {@link OcflError} `SOURCE_CHANGED` if a file changed while it was being read.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `target` is empty or leaves the object.
    * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory.
+   * @throws `Error` if the update this draft belongs to has finished.
+   * @throws The file system error if `source`, or something below it, is missing or can't be read.
+   * @example
+   * ```ts
+   * await object.update(details, async (draft) => {
+   *   await draft.import('/data/incoming/item-1', 'raw');
+   * });
+   * ```
    */
   import(source: string, target?: string): Promise<void>;
 
@@ -77,6 +91,13 @@ interface Draft {
    * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a file would go where a directory is, or below a file, as the draft stands before the operation.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
    * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
+   * @throws `Error` if the update this draft belongs to has finished.
+   * @example
+   * ```ts
+   * await object.update(details, async (draft) => {
+   *   await draft.copy('audio/1.wav', 'archive/1.wav');
+   * });
+   * ```
    */
   copy(source: string, target: string, options?: MergeOptions): Promise<void>;
 
@@ -88,6 +109,13 @@ interface Draft {
    * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a file would go where a directory is, or below a file, as the draft stands before the operation.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
    * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
+   * @throws `Error` if the update this draft belongs to has finished.
+   * @example
+   * ```ts
+   * await object.update(details, async (draft) => {
+   *   await draft.rename('scans', 'images', { merge: true });
+   * });
+   * ```
    */
   rename(source: string, target: string, options?: MergeOptions): Promise<void>;
 
@@ -98,6 +126,14 @@ interface Draft {
    * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
    * @throws `TypeError` if `version` is not a number.
+   * @throws `Error` if the update this draft belongs to has finished.
+   * @example
+   * ```ts
+   * await object.update(details, async (draft) => {
+   *   // Undo a bad edit: the transcript as it was in version 2
+   *   await draft.reinstate('transcript.txt', 2);
+   * });
+   * ```
    */
   reinstate(path: string, version: number): Promise<void>;
 
@@ -106,10 +142,29 @@ interface Draft {
    *
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `path` is not in the draft.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
+   * @throws `Error` if the update this draft belongs to has finished.
+   * @example
+   * ```ts
+   * await object.update(details, async (draft) => {
+   *   await draft.remove('tmp');
+   * });
+   * ```
    */
   remove(path: string): Promise<void>;
 
-  /** Removes every file from the draft. */
+  /**
+   * Removes every file from the draft. Earlier versions keep them.
+   *
+   * @throws `Error` if the update this draft belongs to has finished.
+   * @example
+   * ```ts
+   * await object.update(details, async (draft) => {
+   *   // Replace every file: start empty, then import the new set
+   *   await draft.clear();
+   *   await draft.import('/data/rebuilt/item-1');
+   * });
+   * ```
+   */
   clear(): Promise<void>;
 }
 

@@ -138,8 +138,10 @@ interface StorageRoot {
    * Reads an object's inventory and returns the object as it is now. It does not change when later versions are committed.
    *
    * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id, or another writer is creating it and hasn't committed it.
-   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is missing, corrupt or inconsistent, the object has no declaration, or its OCFL version is later than the storage root's (E081).
+   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is missing, corrupt or inconsistent, the object has no declaration or an invalid one, its OCFL version is later than the storage root's (E081), or it is inside another object (E082).
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, or that directory holds another object.
+   * @throws `TypeError` if the id is missing or empty.
+   * @throws The file system error if a file or directory the object is read from, or checked against, exists but can't be read.
    * @example
    * ```ts
    * const object = await root.open('arcp://name,corpus/item/1');
@@ -154,13 +156,17 @@ interface StorageRoot {
    * The object uses sha512 digests and the `content` directory, at the storage root's OCFL version.
    *
    * @throws {@link OcflError} `OBJECT_EXISTS` if an object with this id already exists.
+   * @throws {@link OcflError} `DIRECTORY_NOT_EMPTY` if something appeared in the object's directory while its first version was being built. Nothing is created.
+   * @throws {@link OcflError} `INVALID_OBJECT` if an invalid object declaration appeared in the object's directory while its first version was being built (E007). Nothing is created.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, with its lock in the workspace, or that directory holds something else, is below a file, or is inside another object.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object, or died creating it; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
-   * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs, if an earlier create left an unfinished version in the workspace. Don't simply repeat the create: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object to see whether it was created.
-   * @throws `TypeError` if the id, the message or the user's name is missing or empty.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs, if an earlier create left an unfinished version in the workspace, or the create was refused and its lock couldn't be released. Don't simply repeat the create: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object to see whether it was created.
+   * @throws `TypeError` if the id, the message or the user's name is missing or empty, or the user's address isn't a string.
+   * @throws `Error` if `build` returned while draft operations it started were still running. Await every operation.
    * @throws Whatever `build` or a draft operation throws; nothing of the object is left, and it isn't locked.
+   * @throws The file system error that stopped the create before its root inventory was put in place; nothing is created.
    * @example
    * ```ts
    * const object = await root.create(id, { message: 'Initial deposit', user: { name: 'Alice' } }, async (draft) => {
@@ -202,6 +208,8 @@ interface StorageRoot {
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, with its lock in the workspace, or that directory holds a different object; nothing is deleted.
    * @throws `TypeError` if the id is missing or empty.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting the object failed part of the way through, or it was deleted and its lock couldn't be released; `cause` is the failure. The object stays locked, and may be partly deleted: recovering its unfinished write ({@link StorageRoot.unfinishedWrite}) finishes removing it.
+   * Also thrown if the remove was refused and its lock couldn't be released; nothing is deleted, and recovering only releases the lock, so `remove` again after it.
+   * @throws The file system error that stopped the remove before it began deleting; nothing is deleted.
    * @example
    * ```ts
    * await root.remove('arcp://name,corpus/item/1');
@@ -231,6 +239,7 @@ interface StorageRoot {
    * @returns The write, or `undefined` if the object isn't locked
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, or that directory is locked by a writer of another id.
    * @throws `TypeError` if the id is missing or empty.
+   * @throws The file system error if the object's lock exists but can't be read.
    * @example
    * ```ts
    * const write = await root.unfinishedWrite(id);
@@ -315,7 +324,8 @@ function absolutePath(rootPath: string): string {
  * Creates a new OCFL 1.1 storage root in an empty or missing directory.
  *
  * @throws {@link OcflError} `DIRECTORY_NOT_EMPTY` if `path` holds anything.
- * @throws `TypeError` if the layout or one of its parameters is invalid, or `options` has a key other than `layout`.
+ * @throws `TypeError` if `path` is missing or empty, the layout or one of its parameters is invalid, or `options` has a key other than `layout`.
+ * @throws The file system error if the directory can't be made or written to.
  * @example
  * ```ts
  * const root = await createStorageRoot('/srv/ocfl', {
@@ -340,6 +350,8 @@ async function createStorageRoot(path: string, options: { layout: LayoutConfig }
  *
  * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if `path` is not a storage root, or has no `ocfl_layout.json`.
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if it declares a layout this library doesn't implement.
+ * @throws `TypeError` if `path` is missing or empty.
+ * @throws The file system error if the storage root declaration, `ocfl_layout.json` or the storage layout's `config.json` exists but can't be read.
  * @example
  * ```ts
  * const root = await openStorageRoot('/srv/ocfl');

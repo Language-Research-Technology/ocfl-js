@@ -12,12 +12,7 @@ interface ByteRange {
   readonly end?: number;
 }
 
-/**
- * A file in one version of an OCFL object.
- *
- * Each method rejects with {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file, such as a directory,
- * and with the file system error, such as `ENOENT` or `EACCES`, if it is missing or can't be read.
- */
+/** A file in one version of an OCFL object. */
 interface OcflFile {
   /** Logical path within the version, such as `audio/1.wav`. */
   readonly path: string;
@@ -37,7 +32,16 @@ interface OcflFile {
   readonly createdAt: Date;
   /** When {@link OcflFile.modifiedIn} was committed, such as for an HTTP `Last-Modified` header. From the inventory, never from the stored file. */
   readonly modifiedAt: Date;
-  /** Size in bytes. */
+  /**
+   * Size in bytes.
+   *
+   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file, such as a directory.
+   * @throws The file system error if the stored file is missing or can't be read.
+   * @example
+   * ```ts
+   * reply.header('content-length', await file.size());
+   * ```
+   */
   size(): Promise<number>;
   /**
    * Opens the content, or a byte range of it, as a stream. It rejects before resolving if the content can't be read, so a server
@@ -48,12 +52,38 @@ interface OcflFile {
    *
    * @throws `RangeError` if an end of the range isn't a whole number from 0, `start` is after `end`, or `start` is after the last
    * byte. An `end` after the last byte reads to the end.
-   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file, such as a directory.
+   * @throws The file system error if the stored file is missing or can't be read.
+   * @example
+   * ```ts
+   * // `start` and `end` from the request's `Range` header, checked against the size
+   * const size = await file.size();
+   * const body = await file.stream({ start, end });
+   * reply.code(206).header('content-range', `bytes ${start}-${end}/${size}`).send(body);
+   * ```
    */
   stream(range?: ByteRange): Promise<Readable>;
-  /** Reads the content as UTF-8 text. */
+  /**
+   * Reads the content as UTF-8 text.
+   *
+   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file, such as a directory.
+   * @throws The file system error if the stored file is missing or can't be read.
+   * @example
+   * ```ts
+   * const metadata = JSON.parse(await file.text());
+   * ```
+   */
   text(): Promise<string>;
-  /** Reads the content into memory. */
+  /**
+   * Reads the content into memory.
+   *
+   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file, such as a directory.
+   * @throws The file system error if the stored file is missing or can't be read.
+   * @example
+   * ```ts
+   * const checksum = createHash('md5').update(await file.bytes()).digest('base64');
+   * ```
+   */
   bytes(): Promise<Uint8Array<ArrayBuffer>>;
 }
 

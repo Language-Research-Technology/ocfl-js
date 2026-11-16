@@ -63,12 +63,14 @@ interface OcflObject {
    * @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE` if the object has an active mutable head (extension 0005).
    * @throws {@link OcflError} `VERSION_LIMIT_REACHED` if the object's version names are zero-padded and the next one couldn't start with a zero, as OCFL requires (E011): `v01` to `v09` leaves none.
    * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if a later version has been committed since this object was opened; open it again and retry.
-   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another update of this object is running; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile. The update never waits for it.
+   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is updating or removing this object, or died doing so; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile. The update never waits for it.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
-   * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `UPDATE_IN_PROGRESS`. Also thrown, before `change` runs, if an earlier update left an unfinished version in the workspace. Don't simply repeat the update: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object again to see whether it was committed.
-   * @throws `TypeError` if the message or the user's name is missing or empty.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `UPDATE_IN_PROGRESS`. Also thrown, before `change` runs, if an earlier update left an unfinished version in the workspace, or the update was refused and its lock couldn't be released. Don't simply repeat the update: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object again to see whether it was committed.
+   * @throws `TypeError` if the message or the user's name is missing or empty, or the user's address isn't a string.
+   * @throws `Error` if `change` returned while draft operations it started were still running. Await every operation.
    * @throws Whatever `change` or a draft operation throws; the update is discarded, and the object is as it was and isn't locked.
+   * @throws The file system error that stopped the update before the root inventory was replaced; the update is discarded.
    * @example
    * ```ts
    * const updated = await object.update({ message: 'Fix transcript', user: { name: 'Alice' } }, async (draft) => {

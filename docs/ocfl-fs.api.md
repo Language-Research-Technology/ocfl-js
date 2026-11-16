@@ -182,6 +182,4 @@ export interface VersionDetails {
 // @public
 export type WriteContent = string | Uint8Array | AsyncIterable<string | Uint8Array>;
 
-// (No @packageDocumentation comment for this package)
-
 ```
