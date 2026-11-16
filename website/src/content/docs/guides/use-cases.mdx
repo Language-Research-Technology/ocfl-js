@@ -39,7 +39,7 @@ A file server reads files from OCFL objects and sends them over HTTP. It never w
 - `file.stream(range)` reads only the bytes asked for. A [`ByteRange`](/ocfl-js/api/interfaces/byterange/) counts from 0 and includes its `end`, as an HTTP `Range` header does. A range that starts after it ends, or after the file's last byte, rejects with `RangeError` before anything is read, which the server answers with `416`.
 - A file's `digest` names its content, so it makes a good `ETag`: the same content has the same digest in every version.
 - `file.modifiedAt` is when the version that gave the file its current content was committed, which makes a good `Last-Modified`. It comes from the inventory, not the stored file, so copying or restoring the storage root doesn't change it. Content changed back to an earlier content counts as a change, so the date is that of the change back, not the earlier version's.
-- `await file.stream(range)` opens and checks the stored file before it resolves. One that is missing or can't be read rejects with the file system error, and one that isn't a regular file rejects with `INVALID_OBJECT`, all before any headers are sent, so the server answers `500`. A stored file removed once the stream is open is still read in full.
+- `await file.stream(range)` opens and checks the stored file before it resolves. One that is missing or isn't a regular file rejects with `INVALID_OBJECT`, and one that can't be read rejects with the file system error, all before any headers are sent, so the server answers `500`. A stored file removed once the stream is open is still read in full.
 - The stream holds the stored file open until it ends. `pipeline` destroys it if the client goes away; code that gets a stream and doesn't read it should `destroy()` it.
 - To serve an earlier version, read its files from `object.versions.get(number)?.files` instead of `object.head.files`.
 
@@ -64,7 +64,7 @@ This job runs a fixity check on every object in a storage root and reports what 
 
 It finds:
 
-- **a missing file:** the manifest lists a stored file that isn't there (`missing`);
+- **a missing file:** the manifest lists a stored file, and there is no regular file at its path (`missing`);
 - **changed content:** a stored file whose digest no longer matches the one recorded for it (`changed`).
 
 It doesn't find:
@@ -75,7 +75,7 @@ It doesn't find:
 
 It isn't validation: an object can pass the fixity check and still break the OCFL specification. To check that, use an OCFL validator, as described under [Objects written by other tools](/ocfl-js/#objects-written-by-other-tools).
 
-A stored file that can't be read for any reason but being missing, such as `EACCES` or `EIO`, throws instead of being reported. The job catches that for each object, so one unreadable file doesn't end the run.
+A stored file that is there but can't be read, such as `EACCES` or `EIO`, throws instead of being reported. The job catches that for each object, so one unreadable file doesn't end the run.
 
 `checkFixity({ signal, onProgress })` can be cancelled and report how far it has got:
 

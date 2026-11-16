@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -114,6 +115,30 @@ describe('checking the fixity of an object', () => {
     await fs.promises.rm(path.join(objectRootOf(root, 'missing'), 'v1/content/a.txt'));
     assert.deepStrictEqual(await object.checkFixity(), [
       { problem: 'missing', storedFile: 'missing/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
+    ]);
+  });
+
+  it('reports a stored file that is not a regular file as missing, and checks the rest', async () => {
+    const root = await temp.newRoot();
+    const object = await createObject(root, 'directory', { 'a.txt': 'abc', 'b.txt': 'b' });
+    const objectRoot = objectRootOf(root, 'directory');
+    await fs.promises.rm(path.join(objectRoot, 'v1/content/a.txt'));
+    await fs.promises.mkdir(path.join(objectRoot, 'v1/content/a.txt'));
+    await fs.promises.writeFile(path.join(objectRoot, 'v1/content/b.txt'), 'c');
+    assert.deepStrictEqual(await object.checkFixity(), [
+      { problem: 'missing', storedFile: 'directory/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
+      { problem: 'changed', storedFile: 'directory/v1/content/b.txt', affects: [{ version: 1, path: 'b.txt' }], expected: sha512('b'), actual: sha512('c') },
+    ]);
+  });
+
+  it('reports a stored file that is a named pipe as missing, without waiting for a writer', { timeout: 5000 }, async () => {
+    const root = await temp.newRoot();
+    const object = await createObject(root, 'fifo', { 'a.txt': 'abc' });
+    const stored = path.join(objectRootOf(root, 'fifo'), 'v1/content/a.txt');
+    await fs.promises.rm(stored);
+    execFileSync('mkfifo', [stored]);
+    assert.deepStrictEqual(await object.checkFixity(), [
+      { problem: 'missing', storedFile: 'fifo/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
     ]);
   });
 

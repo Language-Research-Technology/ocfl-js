@@ -73,7 +73,7 @@ A digest algorithm OCFL allows in an inventory's `fixity` block. The library sup
 _Avoid_: Layout algorithm
 
 **Fixity check**:
-Reading every stored file of an opened OCFL object again and comparing its digest with the one the inventory records. It reports each stored file that has changed or is missing; it does not look for extra files or read the inventory's `fixity` block.
+Reading every stored file of an opened OCFL object again and comparing its digest with the one the inventory records. It reports each stored file that has changed or is missing, and a stored file is missing when there is no regular file at its path; it does not look for extra files or read the inventory's `fixity` block.
 _Avoid_: Validation, verify, audit
 
 **Stored file**:
