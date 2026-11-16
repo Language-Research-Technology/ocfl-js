@@ -4,6 +4,19 @@ const root = await openStorageRoot('/srv/ocfl');
 
 /** Makes the object's head hold exactly the files in `directory`. */
 async function deposit(id: string, directory: string, user: User): Promise<OcflObject> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await depositOnce(id, directory, user);
+    } catch (error) {
+      const raced = error instanceof OcflError && (error.code === 'OBJECT_NOT_FOUND' || error.code === 'OBJECT_OUT_OF_DATE');
+      if (!raced || attempt === 3) {
+        throw error;
+      }
+    }
+  }
+}
+
+async function depositOnce(id: string, directory: string, user: User): Promise<OcflObject> {
   try {
     return await root.create(id, { message: 'First deposit', user }, async (draft) => {
       await draft.import(directory);
