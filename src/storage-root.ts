@@ -177,7 +177,7 @@ interface StorageRoot {
    * });
    * ```
    */
-  create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>): Promise<OcflObject>;
+  create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
 
   /**
    * Lists every object in the storage root, in no particular order. Each object is read when the listing reaches it, and yielded as `{ object }`.
@@ -293,7 +293,7 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
     async open(id: string) {
       return openObject(root, await objectRootToRead(checkedId(id)), id, ocflVersion);
     },
-    async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>) {
+    async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>) {
       const objectId = checkedId(id);
       const checked = checkedDetails(details);
       return createObject(root, await objectRootToWrite(objectId), objectId, ocflVersion, checked, build);

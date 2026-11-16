@@ -21,15 +21,11 @@ export type DigestAlgorithm = 'sha256' | 'sha512';
 // @public
 export interface Draft {
     clear(): Promise<void>;
-    copy(source: string, target: string, options?: {
-        merge: boolean;
-    }): Promise<void>;
+    copy(source: string, target: string, options?: MergeOptions): Promise<void>;
     import(source: string, target?: string): Promise<void>;
     reinstate(path: string, version: number): Promise<void>;
     remove(path: string): Promise<void>;
-    rename(source: string, target: string, options?: {
-        merge: boolean;
-    }): Promise<void>;
+    rename(source: string, target: string, options?: MergeOptions): Promise<void>;
     write(path: string, content: WriteContent): Promise<void>;
 }
 
@@ -82,6 +78,11 @@ export type ListedObject = {
 };
 
 // @public
+export interface MergeOptions {
+    readonly merge?: boolean | undefined;
+}
+
+// @public
 export class OcflError extends Error {
     readonly code: OcflErrorCode;
     readonly lockedAt?: Date;
@@ -93,7 +94,7 @@ export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_O
 
 // @public
 export interface OcflFile {
-    bytes(): Promise<Uint8Array>;
+    bytes(): Promise<Uint8Array<ArrayBuffer>>;
     readonly digest: string;
     readonly path: string;
     size(): Promise<number>;
@@ -108,7 +109,7 @@ export interface OcflObject {
     readonly head: Version;
     readonly id: string;
     readonly ocflVersion: OcflVersion;
-    update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject>;
+    update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
     readonly versions: ReadonlyMap<number, Version>;
 }
 
@@ -128,7 +129,7 @@ export interface PathDirectLayoutConfig {
 
 // @public
 export interface StorageRoot {
-    create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<void>): Promise<OcflObject>;
+    create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
     readonly layout: Layout;
     objects(): AsyncIterable<ListedObject>;
     readonly ocflVersion: OcflVersion;

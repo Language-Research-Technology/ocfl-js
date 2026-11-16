@@ -39,6 +39,11 @@ export async function createTakesTheDetailsFirstAndTheCallbackLast(root: Storage
   await root.create('an-id', { user: { name: 'Alice' } }, build);
   // @ts-expect-error the callback is async
   await root.create('an-id', details, () => {});
+  await root.create('an-id', details, (draft) => Promise.all([draft.write('a.txt', 'a'), draft.write('b.txt', 'b')]));
+  await root.create('an-id', details, async (draft) => {
+    await draft.write('a.txt', 'a');
+    return 'built';
+  });
   return root.create('an-id', details, build);
 }
 
@@ -54,6 +59,13 @@ export async function updateTakesTheDetailsFirstAndTheCallbackLast(object: OcflO
   await object.update({ message: 'A change' }, change);
   // @ts-expect-error there are no update modes
   await object.update(details, change, { mode: 'REPLACE' });
+  // @ts-expect-error the callback is async
+  await object.update(details, () => {});
+  await object.update(details, (draft) => Promise.all([draft.write('a.txt', 'a'), draft.write('b.txt', 'b')]));
+  await object.update(details, async (draft) => {
+    await draft.write('a.txt', 'a');
+    return 'changed';
+  });
   return object.update(details, change);
 }
 
