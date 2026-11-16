@@ -2,19 +2,19 @@ import nodePath from 'node:path';
 import { OcflConstants, type OcflVersion } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
-import { checkedDetails, commitDraft, type Draft, type User, type VersionDetails } from './draft.ts';
+import { checkedDetails, commitDraft, type Draft, type UpdateOptions, type User, type VersionDetails } from './draft.ts';
 import { OcflError, objectRootConflict, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { type Inventory, OcflObjectInventory, versionNumbers } from './inventory.ts';
-import { isLocked, updateInProgress } from './lock.ts';
+import { updateInProgress } from './lock.ts';
 import {
   assertNoMutableHead,
   committedInventory,
   confirmedVersion,
   declaredVersion,
   enclosingObject,
-  hasObjectDeclaration,
   noCommittedObject,
+  objectState,
   strayContents,
   withinRootVersion,
 } from './object-on-disk.ts';
@@ -68,8 +68,9 @@ interface OcflObject {
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `UPDATE_IN_PROGRESS`. Also thrown, before `change` runs, if an earlier update left an unfinished version in the workspace, or the update was refused and its lock couldn't be released. Don't simply repeat the update: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object again to see whether it was committed.
-   * @throws `TypeError` if the message or the user's name is missing or empty, or the user's address isn't a string.
+   * @throws `TypeError` if the message or the user's name is missing or empty, the user's address isn't a string, or `createdAt` isn't a valid `Date` or is earlier than the head version's date. Nothing is changed.
    * @throws `Error` if `change` returned while draft operations it started were still running. Await every operation.
+   * @throws `options.signal.reason` if the signal is aborted before the commit begins, even if `change` caught the error a draft operation rejected with; the update is discarded, and the object is as it was and isn't locked. A signal already aborted is refused before the lock is taken.
    * @throws Whatever `change` or a draft operation throws; the update is discarded, and the object is as it was and isn't locked.
    * @throws The file system error that stopped the update before the root inventory was replaced; the update is discarded.
    * @example
@@ -79,7 +80,7 @@ interface OcflObject {
    * });
    * ```
    */
-  update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
+  update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObject>;
 
   /**
    * Reads every stored file again and compares its digest with the inventory. An empty list means the object is intact.
@@ -87,9 +88,58 @@ interface OcflObject {
    * Each problem names its stored file by its path from the storage root, and lists the versions and logical paths that read it.
    * Problems are sorted by stored file.
    *
+   * `onProgress` is called after each stored file is checked, whether it passed, changed or is missing, and reaches every file before the check resolves.
+   * Aborting `signal` stops the check, and no stored file is still open or being read once it rejects.
+   *
+   * @throws `signal.reason` if `signal` is aborted, before anything is read if it already is.
+   * @throws Whatever `onProgress` throws, which stops the check.
    * @throws The file system error, such as `EACCES` or `EIO`, if a stored file can't be read for any reason but being missing.
+   * @example
+   * ```ts
+   * const problems = await object.checkFixity({
+   *   signal: AbortSignal.timeout(10 * 60_000),
+   *   onProgress: ({ checkedFiles, totalFiles }) => bar.update(checkedFiles / totalFiles),
+   * });
+   * ```
    */
-  checkFixity(): Promise<readonly FixityProblem[]>;
+  checkFixity(options?: FixityOptions): Promise<readonly FixityProblem[]>;
+
+  /**
+   * Whether the object's root inventory is still the file this object was read from: `false` once it has been replaced, changed or removed.
+   * Every commit replaces the root inventory, so a commit by any writer makes it `false`; an update that hasn't been committed doesn't.
+   * The object returned by {@link StorageRoot.create} or {@link OcflObject.update} is current straight away.
+   *
+   * A cheap check, not a guarantee: one `stat` of the root inventory, comparing its device, inode, size and modification time with those
+   * noted when it was read, and nothing read or validated. A file system can reuse an inode number, so a replaced root inventory of the same
+   * size and modification time could still give `true`, though that is unlikely.
+   *
+   * @throws The file system error if the root inventory can't be checked for any reason but being missing.
+   * @example
+   * ```ts
+   * let object = cache.get(id);
+   * if (!object || !(await object.isCurrent())) {
+   *   object = await root.open(id);
+   *   cache.set(id, object);
+   * }
+   * ```
+   */
+  isCurrent(): Promise<boolean>;
+}
+
+/** How far {@link OcflObject.checkFixity} has got. */
+interface FixityProgress {
+  /** Stored files checked so far. */
+  readonly checkedFiles: number;
+  /** Stored files the check reads in all. */
+  readonly totalFiles: number;
+}
+
+/** Options for {@link OcflObject.checkFixity}. */
+interface FixityOptions {
+  /** Stops the check when aborted. */
+  readonly signal?: AbortSignal | undefined;
+  /** Called after each stored file is checked. If it throws, the check stops and rejects with that error. */
+  readonly onProgress?: ((progress: FixityProgress) => void) | undefined;
 }
 
 /** One stored file that failed {@link OcflObject.checkFixity}. */
@@ -134,8 +184,9 @@ class OpenedObject implements OcflObject {
     Object.freeze(this);
   }
 
-  async update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject> {
-    const checked = checkedDetails(details);
+  async update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>, options: UpdateOptions = {}): Promise<OcflObject> {
+    const checked = checkedDetails(details, this.head.createdAt);
+    options.signal?.throwIfAborted();
     const declared = await declaredVersion(this.#storageRoot, this.#root).catch(async (error: unknown) => {
       if (error instanceof OcflError && error.ocflCode === 'E003' && (await fileSystem.isDirEmpty(this.#root))) {
         throw ocflError(
@@ -151,24 +202,52 @@ class OpenedObject implements OcflObject {
       `The object <${this.id}> has an active mutable head (extension 0005), which this library doesn't support; it can't be updated until the head is committed or removed.`,
     );
     const inventory = OcflObjectInventory._newVersion(this.#inventory);
-    const committed = await commitDraft({ storageRoot: this.#storageRoot, objectRoot: this.#root, ocflVersion: this.ocflVersion }, inventory, checked, change);
+    const place = { storageRoot: this.#storageRoot, objectRoot: this.#root, ocflVersion: this.ocflVersion };
+    const committed = await commitDraft(place, inventory, checked, change, options.signal);
     return committed ? new OpenedObject(this.#storageRoot, this.#rootVersion, this.#root, this.ocflVersion, committed) : this;
   }
 
-  async checkFixity(): Promise<readonly FixityProblem[]> {
+  async isCurrent(): Promise<boolean> {
+    let identity: fileSystem.FileIdentity;
+    try {
+      identity = await fileSystem.identityOf(nodePath.join(this.#root, INVENTORY_NAME));
+    } catch (error) {
+      if (fileSystem.isNothingAtPath(error)) {
+        return false;
+      }
+      throw error;
+    }
+    return fileSystem.sameIdentity(identity, this.#inventory._identity as fileSystem.FileIdentity);
+  }
+
+  async checkFixity(options: FixityOptions = {}): Promise<readonly FixityProblem[]> {
+    const { signal, onProgress } = options;
+    signal?.throwIfAborted();
+    const totalFiles = Object.values(this.#inventory.manifest).reduce((count, contentPaths) => count + contentPaths.length, 0);
     const storedFiles = storedFilesOf(this.#inventory);
     const failed: { contentPath: string; expected: string; actual: string | undefined }[] = [];
+    let checkedFiles = 0;
+    let stopped = false;
     // A worker that throws closes the shared iterator, which stops the others after the file each is reading
     const worker = async () => {
-      for (const [contentPath, expected] of storedFiles) {
-        const actual = await digestIfExists(nodePath.join(this.#root, contentPath), this.digestAlgorithm);
-        if (actual !== expected) {
-          failed.push({ contentPath, expected, actual });
+      try {
+        for (const [contentPath, expected] of storedFiles) {
+          const actual = await digestIfExists(nodePath.join(this.#root, contentPath), this.digestAlgorithm, signal);
+          if (actual !== expected) {
+            failed.push({ contentPath, expected, actual });
+          }
+          if (!stopped) {
+            onProgress?.({ checkedFiles: ++checkedFiles, totalFiles });
+          }
         }
+      } catch (error) {
+        stopped = true;
+        throw error;
       }
     };
     // Settled, not raced, so no file is still being read when the check ends
     const outcomes = await Promise.allSettled(Array.from({ length: FIXITY_CONCURRENCY }, worker));
+    signal?.throwIfAborted();
     const failure = outcomes.find((outcome) => outcome.status === 'rejected');
     if (failure) {
       throw failure.reason;
@@ -217,9 +296,9 @@ function affectedFiles(inventory: OcflObjectInventory, contentPaths: ReadonlySet
 }
 
 /** The digest of `file`, or `undefined` if it doesn't exist */
-async function digestIfExists(file: string, digestAlgorithm: DigestAlgorithm): Promise<string | undefined> {
+async function digestIfExists(file: string, digestAlgorithm: DigestAlgorithm, signal: AbortSignal | undefined): Promise<string | undefined> {
   try {
-    return await Hashing.digest(digestAlgorithm, fileSystem.createReadable(file));
+    return await fileSystem.withReadStream(file, signal, (bytes) => Hashing.digest(digestAlgorithm, bytes));
   } catch (error) {
     if (fileSystem.isNotFound(error)) {
       return undefined;
@@ -360,15 +439,14 @@ async function createObject(
   ocflVersion: OcflVersion,
   details: VersionDetails,
   build: (draft: Draft) => Promise<unknown>,
+  signal: AbortSignal | undefined,
 ): Promise<OcflObject> {
-  const declared = await hasObjectDeclaration(objectRoot);
-  const hasInventory = await fileSystem.pathExists(nodePath.join(objectRoot, INVENTORY_NAME));
-  if (declared || hasInventory) {
-    const workspace = objectWorkspace(storageRoot, objectRoot);
-    if (!hasInventory && (await isLocked(workspace))) {
-      throw await updateInProgress(workspace);
-    }
+  const state = await objectState(storageRoot, objectRoot);
+  if (state === 'committed') {
     throw ocflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}, where the storage root ${storageRoot} places <${id}>.`);
+  }
+  if (state === 'creating') {
+    throw await updateInProgress(objectWorkspace(storageRoot, objectRoot));
   }
   const contents = await fileSystem.dirContents(objectRoot);
   if (contents !== 'empty') {
@@ -384,7 +462,7 @@ async function createObject(
     type: `https://ocfl.io/${ocflVersion}/spec/#inventory`,
     contentDirectory: 'content',
   });
-  const committed = await commitDraft({ storageRoot, objectRoot, ocflVersion }, inventory, details, build);
+  const committed = await commitDraft({ storageRoot, objectRoot, ocflVersion }, inventory, details, build, signal);
   // A first version always differs from no version, so it is always committed
   /* node:coverage disable */
   if (!committed) {
@@ -394,4 +472,4 @@ async function createObject(
   return new OpenedObject(storageRoot, ocflVersion, objectRoot, ocflVersion, committed);
 }
 
-export { createObject, type FixityProblem, type OcflObject, openDeclaredObject, openObject, type Version };
+export { createObject, type FixityOptions, type FixityProblem, type FixityProgress, type OcflObject, openDeclaredObject, openObject, type Version };

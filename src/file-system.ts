@@ -79,6 +79,48 @@ export async function readIfExists(file: string): Promise<string | undefined> {
   }
 }
 
+/** What tells one state of a file from another: a replacement changes the inode, a rewrite in place the size or modification time */
+export interface FileIdentity {
+  readonly dev: bigint;
+  readonly ino: bigint;
+  readonly size: bigint;
+  readonly mtimeNs: bigint;
+}
+
+function identityFrom({ dev, ino, size, mtimeNs }: fs.BigIntStats): FileIdentity {
+  return { dev, ino, size, mtimeNs };
+}
+
+export function sameIdentity(a: FileIdentity, b: FileIdentity): boolean {
+  return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeNs === b.mtimeNs;
+}
+
+export async function identityOf(file: string): Promise<FileIdentity> {
+  return identityFrom(await fs.promises.stat(file, { bigint: true }));
+}
+
+/**
+ * The file's text, with the identity of the file it was read from, noted before reading so that a rewrite during the read changes it
+ * @returns `undefined` if nothing can be at its path
+ */
+export async function readWithIdentity(file: string): Promise<{ text: string; identity: FileIdentity } | undefined> {
+  let handle: fs.promises.FileHandle;
+  try {
+    handle = await fs.promises.open(file, 'r');
+  } catch (error) {
+    if (isNothingAtPath(error)) {
+      return undefined;
+    }
+    throw error;
+  }
+  try {
+    const identity = identityFrom(await handle.stat({ bigint: true }));
+    return { text: await handle.readFile('utf8'), identity };
+  } finally {
+    await handle.close();
+  }
+}
+
 /** What is at `dirPath`: nothing or an empty directory, a file or a directory with something in it, or nothing because a parent is a file */
 export type DirContents = 'empty' | 'not empty' | 'a file' | 'below a file';
 
@@ -112,6 +154,16 @@ export async function isDirEmpty(dirPath: string): Promise<boolean> {
 
 async function createParents(filePath: string) {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+}
+
+/** Runs `consume` on a stream of the file's bytes, which `signal` aborts, and settles only once the file is closed */
+export async function withReadStream<T>(filePath: string, signal: AbortSignal | undefined, consume: (bytes: AsyncIterable<Buffer>) => Promise<T>): Promise<T> {
+  const stream = fs.createReadStream(filePath, signal && { signal });
+  try {
+    return await consume(stream);
+  } finally {
+    await new Promise<void>((resolve) => stream.close(() => resolve()));
+  }
 }
 
 export function createReadable(filePath: string): ReadableStream {

@@ -24,6 +24,7 @@ export type DigestAlgorithm = 'sha256' | 'sha512';
 export interface Draft {
     clear(): Promise<void>;
     copy(source: string, target: string, options?: MergeOptions): Promise<void>;
+    files(): Promise<ReadonlyMap<string, string>>;
     import(source: string, target?: string): Promise<void>;
     reinstate(path: string, version: number): Promise<void>;
     remove(path: string): Promise<void>;
@@ -35,6 +36,12 @@ export interface Draft {
 export type FixityAlgorithm = 'md5' | 'sha1' | 'sha256' | 'sha512' | 'sha512/256' | 'blake2b-512';
 
 // @public
+export interface FixityOptions {
+    readonly onProgress?: ((progress: FixityProgress) => void) | undefined;
+    readonly signal?: AbortSignal | undefined;
+}
+
+// @public
 export interface FixityProblem {
     readonly actual?: string;
     readonly affects: readonly {
@@ -44,6 +51,12 @@ export interface FixityProblem {
     readonly expected: string;
     readonly problem: 'changed' | 'missing';
     readonly storedFile: string;
+}
+
+// @public
+export interface FixityProgress {
+    readonly checkedFiles: number;
+    readonly totalFiles: number;
 }
 
 // @public
@@ -114,12 +127,13 @@ export interface OcflFile {
 
 // @public
 export interface OcflObject {
-    checkFixity(): Promise<readonly FixityProblem[]>;
+    checkFixity(options?: FixityOptions): Promise<readonly FixityProblem[]>;
     readonly digestAlgorithm: DigestAlgorithm;
     readonly head: Version;
     readonly id: string;
+    isCurrent(): Promise<boolean>;
     readonly ocflVersion: OcflVersion;
-    update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
+    update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObject>;
     readonly versions: ReadonlyMap<number, Version>;
 }
 
@@ -139,7 +153,8 @@ export interface PathDirectLayoutConfig {
 
 // @public
 export interface StorageRoot {
-    create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
+    create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObject>;
+    has(id: string): Promise<boolean>;
     readonly layout: Layout;
     objects(): AsyncIterable<ListedObject>;
     readonly ocflVersion: OcflVersion;
@@ -159,6 +174,11 @@ export interface UnfinishedWrite {
 }
 
 // @public
+export interface UpdateOptions {
+    readonly signal?: AbortSignal | undefined;
+}
+
+// @public
 export interface User {
     readonly address?: string;
     readonly name: string;
@@ -175,6 +195,7 @@ export interface Version {
 
 // @public
 export interface VersionDetails {
+    readonly createdAt?: Date;
     readonly message: string;
     readonly user: User;
 }

@@ -200,21 +200,33 @@ describe('opening an object while another writer is committing', () => {
     await assert.rejects(root.open('partly-written'), ocflError('INVALID_OBJECT', 'E033'));
   });
 
-  /** The files of `objectRoot` read while `fn` runs, relative to it, in order */
+  /** The files of `objectRoot` read, whole or through a file handle, while `fn` runs, relative to it, in order */
   async function filesRead(objectRoot: string, fn: () => Promise<unknown>): Promise<string[]> {
     const read: string[] = [];
-    const real = fs.promises.readFile;
-    const spy = mock.method(fs.promises, 'readFile', (...args: Parameters<typeof real>) => {
-      const relative = path.relative(objectRoot, String(args[0]));
+    const note = (file: unknown) => {
+      const relative = path.relative(objectRoot, String(file));
       if (!relative.startsWith('..')) {
         read.push(relative);
       }
-      return real.apply(fs.promises, args);
-    });
+    };
+    const realReadFile = fs.promises.readFile;
+    const realOpen = fs.promises.open;
+    const spies = [
+      mock.method(fs.promises, 'readFile', (...args: Parameters<typeof realReadFile>) => {
+        note(args[0]);
+        return realReadFile.apply(fs.promises, args);
+      }),
+      mock.method(fs.promises, 'open', (...args: Parameters<typeof realOpen>) => {
+        note(args[0]);
+        return realOpen.apply(fs.promises, args);
+      }),
+    ];
     try {
       await fn();
     } finally {
-      spy.mock.restore();
+      for (const spy of spies) {
+        spy.mock.restore();
+      }
     }
     return read;
   }

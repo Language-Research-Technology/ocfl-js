@@ -31,9 +31,10 @@ Two fields are set only some of the time:
 
 ### What isn't an `OcflError`
 
-- A `TypeError` means the call itself was wrong: a required argument is missing or empty, an argument has the wrong type, an options object has an extra key, or `createStorageRoot` was given a storage layout or parameter it doesn't have or refuses. The API reference lists each method's.
+- A `TypeError` means the call itself was wrong: a required argument is missing or empty, an argument has the wrong type, an options object has an extra key, a version's `createdAt` is earlier than the head version's, or `createStorageRoot` was given a storage layout or parameter it doesn't have or refuses. The API reference lists each method's.
 - A `RangeError` means a byte range given to `OcflFile.stream()` has an end that isn't a whole number from 0, a `start` after its `end`, or a `start` after the file's last byte.
 - A plain `Error` means a draft was used after its update finished, or an update ended with draft operations still running. Await every operation.
+- An aborted `signal` rejects `checkFixity`, `create` or `update` with the signal's `reason`, whatever that is: an `AbortSignal.timeout()` gives a `TimeoutError` `DOMException`, and `controller.abort()` with no reason an `AbortError` one.
 - File system errors, such as `ENOSPC` or `EACCES`, pass through untouched.
 
 None of these is retryable as it stands. Fix the call, or the file system.
@@ -52,11 +53,13 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 **What to do:** check the path is a storage root. If it is, fix the declaration, `ocfl_layout.json` or `config.json`; the message names the file.
 
+A storage root with no `ocfl_layout.json` can't be opened: without it the library can't tell where each object is, and it doesn't guess. Add an `ocfl_layout.json` naming the storage layout the root's objects are laid out by, such as `{"extension": "0004-hashed-n-tuple-storage-layout"}`, with that storage layout's `config.json` under `extensions/` if it doesn't use the default parameters. The message lists the storage layouts the library has.
+
 ### `UNSUPPORTED_LAYOUT`
 
 **Cause:** `openStorageRoot` found a storage root whose `ocfl_layout.json` names a storage layout the library doesn't have. The library has four: `0002-flat-direct-storage-layout`, `0003-hash-and-id-n-tuple-storage-layout`, `0004-hashed-n-tuple-storage-layout` and the local `000N-path-direct-storage-layout`.
 
-**What to do:** use another tool for this storage root. There is no way to add a storage layout to the library.
+**What to do:** the message names the storage layout the root declares and lists the ones the library has. To open the storage root with this library, [ask for the storage layout to be added](https://github.com/Language-Research-Technology/ocfl-js/issues); until then, use another tool for it. A caller can't plug in a storage layout of its own.
 
 ## Finding objects
 

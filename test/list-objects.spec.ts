@@ -325,7 +325,7 @@ describe('root.objects', () => {
       await createObject(root, 'a', { 'a.txt': 'a' });
       const inventory = path.join(objectRootOf(root, 'a'), 'inventory.json');
 
-      await withFsFailure('readFile', inventory, () => assert.rejects(listed(root), { code: 'EACCES' }), 'EACCES');
+      await withFsFailure('open', inventory, () => assert.rejects(listed(root), { code: 'EACCES' }), 'EACCES');
     });
 
     it('is thrown when the storage root itself has gone', async () => {

@@ -37,7 +37,7 @@ describe('a draft', () => {
       draft = given;
     });
     assert.ok(draft);
-    assert.deepStrictEqual(callableMembers(draft), ['clear', 'copy', 'import', 'reinstate', 'remove', 'rename', 'write']);
+    assert.deepStrictEqual(callableMembers(draft), ['clear', 'copy', 'files', 'import', 'reinstate', 'remove', 'rename', 'write']);
     assert.deepStrictEqual(callableMembers(draft.constructor), []);
   });
 

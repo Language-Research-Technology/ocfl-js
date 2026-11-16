@@ -13,6 +13,8 @@ import replaceContent from '../../../examples/updating-objects/replace-content.t
 import merge from '../../../examples/updating-objects/merge.ts?raw';
 import noChange from '../../../examples/updating-objects/no-change.ts?raw';
 import versionDetails from '../../../examples/updating-objects/version-details.ts?raw';
+import draftFiles from '../../../examples/updating-objects/draft-files.ts?raw';
+import cancelUpdate from '../../../examples/updating-objects/cancel-update.ts?raw';
 
 Every change to an OCFL object is one update, and every update adds at most one version. This guide covers what you can do in an update, the order things happen in, and what an update records.
 
@@ -76,6 +78,12 @@ Reinstating from the head version undoes what the draft has done to that path so
 
 `remove` takes a file or a directory. A path that isn't in the draft throws `FILE_NOT_FOUND`. `clear` removes everything and never throws for an empty draft. Both change only the new version: every earlier version keeps its files.
 
+### files
+
+`files` lists what the draft holds: a map from each logical path to its digest, in lowercase and in the object's digest algorithm, as `OcflFile.digest` gives it. Directories aren't listed, and a new object's draft starts empty. It takes its turn like any other operation, so it shows every operation called before it, awaited or not, and none called after. The map is a snapshot: later operations don't change it. It gives no content.
+
+<Code code={draftFiles} lang="ts" />
+
 ### Catching an operation's error
 
 An operation that is refused with an [`OcflError`](/ocfl-js/api/classes/ocflerror/), such as `FILE_NOT_FOUND`, changes nothing in the draft. If you catch the error inside `change`, the update carries on without that operation. If you don't, the update is discarded. [Errors](/ocfl-js/guides/errors/#drafts) covers each code a draft operation can throw.
@@ -126,16 +134,28 @@ The lock and the out-of-date check still happen before `change` runs, so an upda
 
 A create always writes version 1, even with no files.
 
+## Cancelling an update
+
+`update` and `create` take an optional third argument, `{ signal }`, an [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal) such as a request's or `AbortSignal.timeout()`'s.
+
+<Code code={cancelUpdate} lang="ts" />
+
+- A signal that is already aborted rejects with its `reason` before the lock is taken, and nothing changes.
+- Once it is aborted, every draft operation called after that rejects with its `reason`, and an `import` stops between files rather than reading the rest.
+- When the callback returns or throws, if the signal is aborted, the draft is discarded as for any error: nothing is committed and the lock is released. The update rejects with the signal's `reason`, even if the callback caught the error an operation rejected with.
+- The signal is checked one last time just before the commit begins. After that it is ignored, and the update finishes as usual.
+
 ## Version details
 
 The first argument of `update` and `create` is the [version details](/ocfl-js/api/interfaces/versiondetails/) the new version records:
 
 - `message`: why the version was made. Required, and can't be empty.
 - `user`: who made it. `user.name` is required and can't be empty. `user.address` is optional: a URI for the user, such as a `mailto:` address or an ORCID.
+- `createdAt`: when the version is dated. Optional: without it, the library dates the version when it commits it, by the clock of the host doing the update. Give it to keep a version's original date, as in a migration. It can't be earlier than the head version's date; the same date, or one in the future, is allowed.
 
 Details that break these rules throw a `TypeError` before anything else happens.
 
-You don't set the time. The library records the version's `created` time when it commits the version, by the clock of the host doing the update. Each [version](/ocfl-js/api/interfaces/version/) gives back its `number`, `createdAt`, `message` and `user`. An object written by another tool may have versions with no message or user.
+The inventory records the date as an ISO 8601 UTC timestamp. Each [version](/ocfl-js/api/interfaces/version/) gives back its `number`, `createdAt`, `message` and `user`. An object written by another tool may have versions with no message or user.
 
 <Code code={versionDetails} lang="ts" />
 

@@ -12,6 +12,7 @@ import { STORAGE_FIXTURE, specFiles, writeFiles, writeObject, writeStorageRoot }
 
 const FLAT = '0002-flat-direct-storage-layout';
 const PATH_DIRECT = '000N-path-direct-storage-layout';
+const IMPLEMENTED_LAYOUTS = [PATH_DIRECT, FLAT, '0003-hash-and-id-n-tuple-storage-layout', HASHED];
 
 const declaring = (extension: unknown) => JSON.stringify({ extension });
 
@@ -163,6 +164,30 @@ describe('opening a storage root', () => {
     it('rejects a root with no ocfl_layout.json, saying why', async () => {
       const rootPath = await handMadeRoot();
       await assert.rejects(openStorageRoot(rootPath), invalidNaming('ocfl_layout.json'));
+    });
+
+    it('tells the owner of a root with no ocfl_layout.json to add one naming its layout, listing the layouts the library implements', async () => {
+      const rootPath = await handMadeRoot();
+      await assert.rejects(openStorageRoot(rootPath), (error: OcflError) => {
+        assert.match(error.message, /Add an ocfl_layout\.json naming its storage layout/);
+        for (const layout of IMPLEMENTED_LAYOUTS) {
+          assert.ok(error.message.includes(layout), `${layout} is not listed`);
+        }
+        return true;
+      });
+    });
+
+    it('names the declared layout, lists the implemented ones and says to ask for it, for a layout the library lacks', async () => {
+      const rootPath = await handMadeRoot({ layoutFile: declaring('0006-flat-omit-prefix-storage-layout') });
+      await assert.rejects(openStorageRoot(rootPath), (error: OcflError) => {
+        assert.strictEqual(error.code, 'UNSUPPORTED_LAYOUT');
+        assert.match(error.message, /"0006-flat-omit-prefix-storage-layout"/);
+        assert.match(error.message, /ask for .* to be added/);
+        for (const layout of IMPLEMENTED_LAYOUTS) {
+          assert.ok(error.message.includes(layout), `${layout} is not listed`);
+        }
+        return true;
+      });
     });
 
     for (const [problem, layoutFile] of [

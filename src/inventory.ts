@@ -1,6 +1,7 @@
 import type { OcflVersion } from './constants.ts';
 import { type DigestAlgorithm, normaliseDigest } from './digest.ts';
 import { ocflError } from './error.ts';
+import type { FileIdentity } from './file-system.ts';
 import { isVersionName, VersionNumber } from './inventory-files.ts';
 import { normaliseLogicalPath, parentDirectories } from './logical-path.ts';
 import { createError } from './ocfl-rules.ts';
@@ -178,6 +179,12 @@ class OcflObjectInventory {
    * @internal
    */
   _madeFrom: string | undefined;
+
+  /**
+   * The identity of the root inventory file this was read from, or committed as
+   * @internal
+   */
+  _identity: FileIdentity | undefined;
 
   /** The index of a version, made if it has none yet */
   #versionIndex(version: string): Map<string, string> {
