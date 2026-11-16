@@ -17,13 +17,16 @@ const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
 
 /** The person or system responsible for a version. */
 interface User {
-  /** Display name. */
+  /** Display name: a person's, or the software's when no person makes the version. */
   readonly name: string;
-  /** A URI for the user, such as `mailto:` or an ORCID. */
+  /** A URI for the user, such as `mailto:`, an ORCID, or the URL of software acting as the user. */
   readonly address?: string;
 }
 
-/** What a new version records about why and by whom it was made. */
+/**
+ * What a new version records about why and by whom it was made.
+ * A job with no person behind it names the software as the user, and says in the message what it did and where the content came from.
+ */
 interface VersionDetails {
   /** Why the version is being made. */
   readonly message: string;

@@ -16,6 +16,7 @@ import versionDetails from '../../../examples/updating-objects/version-details.t
 import draftFiles from '../../../examples/updating-objects/draft-files.ts?raw';
 import importFilter from '../../../examples/updating-objects/import-filter.ts?raw';
 import cancelUpdate from '../../../examples/updating-objects/cancel-update.ts?raw';
+import unattendedWriter from '../../../examples/updating-objects/unattended-writer.ts?raw';
 
 Every change to an OCFL object is one update, and every update adds at most one version. This guide covers what you can do in an update, the order things happen in, and what an update records.
 
@@ -159,7 +160,7 @@ A create always writes version 1, even with no files.
 The first argument of `update` and `create` is the [version details](/ocfl-js/api/interfaces/versiondetails/) the new version records:
 
 - `message`: why the version was made. Required, and can't be empty.
-- `user`: who made it. `user.name` is required and can't be empty. `user.address` is optional: a URI for the user, such as a `mailto:` address or an ORCID.
+- `user`: who made it. `user.name` is required and can't be empty. `user.address` is optional: a URI for the user, such as a `mailto:` address, an ORCID, or the software's URL when [no person makes the version](#when-no-person-makes-the-version).
 - `createdAt`: when the version is dated. Optional: without it, the library dates the version when it commits it, by the clock of the host doing the update. Give it to keep a version's original date, as in a migration. It can't be earlier than the head version's date; the same date, or one in the future, is allowed.
 
 Details that break these rules throw a `TypeError` before anything else happens.
@@ -167,5 +168,11 @@ Details that break these rules throw a `TypeError` before anything else happens.
 The inventory records the date as an ISO 8601 UTC timestamp. Each [version](/ocfl-js/api/interfaces/version/) gives back its `number`, `createdAt`, `message` and `user`. An object written by another tool may have versions with no message or user.
 
 <Code code={versionDetails} lang="ts" />
+
+### When no person makes the version
+
+A scheduled import or other job with no person behind it still needs a message and a user. Name the software as the user, with its URL as `user.address`, and say in the message what the job did and where the content came from.
+
+<Code code={unattendedWriter} lang="ts" />
 
 See [`Draft`](/ocfl-js/api/interfaces/draft/) and [`OcflObject`](/ocfl-js/api/interfaces/ocflobject/) in the API reference for every error each operation throws.
