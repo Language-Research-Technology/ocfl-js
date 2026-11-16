@@ -57,10 +57,11 @@ function declaredLayoutName(file: string, content: string): string {
 
 /**
  * Read the OCFL version and layout a storage root declares.
- * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if the storage root has no declaration (`E069`) or an invalid one (`E080`), has no `ocfl_layout.json` or one
+ * @throws {@link OcflError} `STORAGE_ROOT_NOT_FOUND` if `root` is missing, with no file above it, or is an empty directory.
+ * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if `root` is a file, is below one, or is a directory with something in it, and has no declaration (`E069`); or it has an invalid one (`E080`), has no `ocfl_layout.json` or one
  * with no string `extension` (`E070`), or its layout's `config.json` isn't a JSON object, is for another layout or has parameters the layout rejects.
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if `ocfl_layout.json` names a layout this library doesn't implement.
- * @throws The file system error if the storage root declaration, `ocfl_layout.json` or the layout's `config.json` exists but can't be read.
+ * @throws The file system error if `root` has no declaration and can't be read, or the storage root declaration, `ocfl_layout.json` or the layout's `config.json` exists but can't be read.
  */
 async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion; layout: BuiltInLayout }> {
   const layoutPath = nodePath.join(root, OCFL_LAYOUT);
@@ -73,6 +74,9 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion
     throw createError('E080', root);
   }
   if (!ocflVersion) {
+    if ((await fileSystem.dirContents(root)) === 'empty') {
+      throw ocflError('STORAGE_ROOT_NOT_FOUND', `There is no storage root at ${root}. Create one with createStorageRoot.`);
+    }
     throw createError('E069', root);
   }
   if (layoutRead.status === 'rejected') {
@@ -386,10 +390,11 @@ async function createStorageRoot(path: string, options: { layout: LayoutConfig }
 /**
  * Opens an existing storage root. Its layout is read from its own `ocfl_layout.json`.
  *
- * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if `path` is not a storage root, or has no `ocfl_layout.json`; the message says to add one naming the storage layout, and lists the layouts this library implements.
+ * @throws {@link OcflError} `STORAGE_ROOT_NOT_FOUND` if `path` is missing, with no file above it, or is an empty directory; {@link createStorageRoot} can make a storage root there.
+ * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if anything else at `path` is not a storage root, or it has no `ocfl_layout.json`; the message says to add one naming the storage layout, and lists the layouts this library implements.
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if it declares a layout this library doesn't implement; the message names it, lists the layouts this library implements, and says to ask for it to be added.
  * @throws `TypeError` if `path` is missing or empty.
- * @throws The file system error if the storage root declaration, `ocfl_layout.json` or the storage layout's `config.json` exists but can't be read.
+ * @throws The file system error if `path` has no declaration and can't be read, or the storage root declaration, `ocfl_layout.json` or the storage layout's `config.json` exists but can't be read.
  * @example
  * ```ts
  * const root = await openStorageRoot('/srv/ocfl');

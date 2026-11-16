@@ -69,7 +69,7 @@ The digest directories haven't changed, only the last directory, named by the en
 | --- | --- |
 | `ocfl.storage({ root })`, then `create()` or `load()` | `createStorageRoot(path, { layout })` or `openStorageRoot(path)` |
 | `ocfl.createStorage(config)`, `ocfl.loadStorage(config)` | `createStorageRoot(path, { layout })`, `openStorageRoot(path)` |
-| `storage.exists()` | `openStorageRoot(path)`, catching `INVALID_STORAGE_ROOT` |
+| `storage.exists()` | `openStorageRoot(path)`, catching `STORAGE_ROOT_NOT_FOUND` |
 | `storage.object(id)` for an existing object, then `load()` | `root.open(id)` |
 | `storage.object(id)` for a new object, then `update()` or `import()` | `root.create(id, details, build)` |
 | `ocfl.object({ root })`, `storage.object({ root })` | `root.open(id)`: objects are opened only through their storage root |
@@ -131,7 +131,7 @@ try {
 - A layout is chosen only as `{ extensionName, ...parameters }`. Class names such as `'HashedNTupleStorageLayout'`, layout objects such as `new ocfl.StorageLayout.PathDirectStorageLayout()`, and a bare name string are gone.
 - A parameter the layout doesn't have, or a wrongly typed one, throws a `TypeError` from `createStorageRoot()`. 0.4 ignored it.
 - `createStorageRoot()` takes no other option. `workspace`, `digestAlgorithm`, `contentDirectory`, `ocflVersion` and `fixityAlgorithms` are gone, and so is the second `{ fs }` argument. New storage roots are OCFL 1.1, and new objects are sha512 with a `content` directory.
-- `openStorageRoot()` reads the layout from the storage root's own `ocfl_layout.json` and `config.json`. It throws `INVALID_STORAGE_ROOT` when the directory isn't a storage root, or its layout files are missing or wrong, and `UNSUPPORTED_LAYOUT` for a layout the library doesn't have. 0.4 often carried on with no layout.
+- `openStorageRoot()` reads the layout from the storage root's own `ocfl_layout.json` and `config.json`. It throws `STORAGE_ROOT_NOT_FOUND` when the path doesn't exist or is an empty directory, `INVALID_STORAGE_ROOT` when something else is there that isn't a storage root, or its layout files are missing or wrong, and `UNSUPPORTED_LAYOUT` for a layout the library doesn't have. 0.4 often carried on with no layout.
 - `root.layout` gives the layout's parameters, defaults included. `ocfl.storageLayout()` and the layout classes are gone, so there's no way to map an id to a path outside a storage root.
 
 ## Reading objects and files
@@ -267,7 +267,8 @@ for await (const object of storage) {
 | [`OBJECT_EXISTS`](/ocfl-js/guides/errors/#object_exists) | `create()` finds an object already there, or another writer created it first |
 | [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date) | `update()` finds that a later version was committed, or the object was removed, since it was opened |
 | [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object) | An object can't be used safely: its inventory or sidecar is missing, damaged or inconsistent, its declaration is missing or wrong, or it is inside another object. `ocflCode` names the OCFL rule. `objects()` yields it as `entry.error`, with `entry.objectRoot`, instead of throwing |
-| [`INVALID_STORAGE_ROOT`](/ocfl-js/guides/errors/#invalid_storage_root) | `openStorageRoot()` finds a missing or wrong declaration (`E069`, `E080`), a missing `ocfl_layout.json` or one naming no storage layout (`E070`), or a `config.json` that isn't a JSON object, is for another storage layout or has parameters it refuses |
+| [`STORAGE_ROOT_NOT_FOUND`](/ocfl-js/guides/errors/#storage_root_not_found) | `openStorageRoot()` is given a path that doesn't exist, or an empty directory |
+| [`INVALID_STORAGE_ROOT`](/ocfl-js/guides/errors/#invalid_storage_root) | `openStorageRoot()` finds something with a missing or wrong declaration (`E069`, `E080`), a missing `ocfl_layout.json` or one naming no storage layout (`E070`), or a `config.json` that isn't a JSON object, is for another storage layout or has parameters it refuses |
 | [`UNSUPPORTED_LAYOUT`](/ocfl-js/guides/errors/#unsupported_layout) | `openStorageRoot()` finds a storage layout the library doesn't have |
 | [`ID_INCOMPATIBLE_WITH_LAYOUT`](/ocfl-js/guides/errors/#id_incompatible_with_layout) | The storage layout can't map the id, or maps it to the storage root, outside it, into `extensions` or to a path too long for the file system; or `create()` and `remove()` find the object's lock path too long |
 | [`OBJECT_ROOT_CONFLICT`](/ocfl-js/guides/errors/#object_root_conflict) | The id's directory holds an object with another id, or holds other files, is a file or is below one; `create()` would put the object inside another object; or `unfinishedWrite()` finds the lock of a writer of another id |
