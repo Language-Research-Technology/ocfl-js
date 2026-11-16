@@ -21,13 +21,11 @@ for await (const entry of root.objects()) {
     continue;
   }
 
-  for (const { problem, contentPath, expected, actual } of problems) {
+  for (const { problem, storedFile, affects, expected, actual } of problems) {
     failures++;
-    if (problem === 'missing') {
-      console.error(`${object.id}: ${contentPath} is missing`);
-    } else {
-      console.error(`${object.id}: ${contentPath} has changed: expected ${expected}, found ${actual}`);
-    }
+    const state = problem === 'missing' ? 'is missing' : `has changed: expected ${expected}, found ${actual}`;
+    const files = affects.map(({ version, path }) => `v${version}:${path}`).join(', ') || 'no file';
+    console.error(`${object.id}: ${storedFile} ${state}; restore it from a backup (affects ${files})`);
   }
 }
 

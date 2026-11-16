@@ -33,9 +33,11 @@ async function completeSidecar(objectRoot: string, inventory: OcflObjectInventor
  * Clears what the dead writer holding `lock` left of the object that the storage root's layout places at `objectRoot`, and releases the lock.
  * What was left before the commit point is discarded, a committed update is completed, and a remove that had begun deleting is finished. The lock goes last, so a failure keeps the object locked.
  *
- * Only what a dead writer can have left is removed from the object root: the version after the head, or with no root inventory
- * the declaration and first version of a create. A writer of an id whose directory holds another object, or is inside one, was refused
- * before it wrote anything there, so the object root is left alone.
+ * Only what a dead writer can have left is removed from the object root: staged root inventory files, and the version after the head or,
+ * with no root inventory, the declaration and first version of a create, and the object root and the layout directories above it that
+ * that leaves empty if the lock says the create made them. A root inventory lost from a committed object with only a first version is
+ * taken for a dead create too, since the lock doesn't say which kind of writer took it. A writer of an id whose directory holds another
+ * object, or is inside one, was refused before it wrote anything there, so the object root is left alone.
  * @throws {@link OcflError} `INVALID_OBJECT` if the root inventory can't be used, or the object has a declaration and no root inventory but isn't what a dead create leaves; changing nothing
  */
 async function recoverObject(storageRoot: string, objectRoot: string, lock: Lock): Promise<void> {

@@ -71,3 +71,7 @@ _Avoid_: Layout algorithm
 **Fixity check**:
 Reading every stored file of an opened OCFL object again and comparing its digest with the one the inventory records. It reports each stored file that has changed or is missing; it does not look for extra files or read the inventory's `fixity` block.
 _Avoid_: Validation, verify, audit
+
+**Stored file**:
+A file in an object root that holds the content of one digest. The manifest lists it by its content path, and a logical path reads the first stored file the manifest lists for its digest. A fixity check names it by its path from the storage root.
+_Avoid_: Content file, physical file

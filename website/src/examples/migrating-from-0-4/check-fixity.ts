@@ -8,6 +8,6 @@ for await (const entry of root.objects()) {
     continue;
   }
   for (const problem of await entry.object.checkFixity()) {
-    console.warn(entry.object.id, problem.problem, problem.contentPath);
+    console.warn(entry.object.id, problem.problem, problem.storedFile, problem.affects);
   }
 }

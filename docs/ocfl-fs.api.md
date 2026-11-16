@@ -35,9 +35,13 @@ export type FixityAlgorithm = 'md5' | 'sha1' | 'sha256' | 'sha512' | 'sha512/256
 // @public
 export interface FixityProblem {
     readonly actual?: string;
-    readonly contentPath: string;
+    readonly affects: readonly {
+        readonly version: number;
+        readonly path: string;
+    }[];
     readonly expected: string;
     readonly problem: 'changed' | 'missing';
+    readonly storedFile: string;
 }
 
 // @public
