@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { FixityAlgorithm } from '../digest.ts';
 import * as Hashing from '../digest.ts';
-import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
+import { BuiltInLayout, type OcflExtensionConfig } from './built-in-layout.ts';
 import { checkNTupleParameters } from './n-tuple.ts';
 
 /** Object directories named by their encoded id, nested under pieces of the id's digest. */

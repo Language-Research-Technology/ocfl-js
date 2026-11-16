@@ -10,7 +10,7 @@ export type {
   Layout,
   LayoutConfig,
   PathDirectLayoutConfig,
-} from './extensions/index.ts';
+} from './layouts/index.ts';
 export type { ListedObject } from './list.ts';
 export type { ByteRange, OcflFile } from './ocfl-file.ts';
 export type { FixityProblem, OcflObject, User, Version } from './ocfl-object.ts';

@@ -4,11 +4,12 @@ import { inspect } from 'node:util';
 import { OcflConstants, type OcflVersion } from './constants.ts';
 import { checkedDetails, type Draft, type VersionDetails } from './draft.ts';
 import { type OcflError, ocflError } from './error.ts';
-import type { BuiltInLayout } from './extension.ts';
-import { builtInLayoutClass, createLayout, type Layout, type LayoutConfig } from './extensions/index.ts';
+import type { BuiltInLayout } from './layouts/built-in-layout.ts';
+import { builtInLayoutClass, createLayout, type Layout, type LayoutConfig } from './layouts/index.ts';
 import { type ListedObject, listObjects } from './list.ts';
 import { LOCK_NAME } from './lock.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
+import { createError } from './ocfl-rules.ts';
 import { removeObject } from './remove.ts';
 import * as store from './store.ts';
 import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
@@ -23,7 +24,6 @@ import {
   rejectUnknownKeys,
   relativeWithin,
 } from './utils.ts';
-import { createError } from './validation.ts';
 import { longestWriterPath } from './workspace.ts';
 
 const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, NAMASTE_PREFIX_STORAGE, NAMASTE_T } = OcflConstants;

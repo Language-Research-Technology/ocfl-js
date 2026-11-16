@@ -1,6 +1,6 @@
 import { inspect } from 'node:util';
-import { type OcflError, ocflError } from './error.ts';
-import type { LayoutName } from './extensions/index.ts';
+import { type OcflError, ocflError } from '../error.ts';
+import type { LayoutName } from './index.ts';
 
 /** A layout's config as callers and config.json give it, before any checking */
 interface OcflExtensionConfig {

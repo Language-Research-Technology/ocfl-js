@@ -1,9 +1,9 @@
-import type { BuiltInLayout, OcflExtensionConfig } from '../extension.ts';
 import { rejectUnknownKeys } from '../utils.ts';
 import { type PathDirectLayoutConfig, PathDirectStorageLayout } from './000N-path-direct-storage-layout.ts';
 import { type FlatDirectLayoutConfig, FlatDirectStorageLayout } from './0002-flat-direct-storage-layout.ts';
 import { type HashAndIdNTupleLayoutConfig, HashAndIdNTupleStorageLayout } from './0003-hash-and-id-n-tuple-storage-layout.ts';
 import { type HashedNTupleLayoutConfig, HashedNTupleStorageLayout } from './0004-hashed-n-tuple-storage-layout.ts';
+import type { BuiltInLayout, OcflExtensionConfig } from './built-in-layout.ts';
 
 /** A storage layout to create a storage root with: its extension name plus any parameters, which default as its extension spec says. */
 type LayoutConfig = FlatDirectLayoutConfig | HashAndIdNTupleLayoutConfig | HashedNTupleLayoutConfig | PathDirectLayoutConfig;

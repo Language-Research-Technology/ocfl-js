@@ -1,9 +1,9 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { createError } from '../src/validation.ts';
+import { createError } from '../src/ocfl-rules.ts';
 import { ocflError } from './helpers/ocfl-error.ts';
 
-describe('validation.createError', () => {
+describe('ocfl-rules.createError', () => {
   it('builds an INVALID_OBJECT error carrying the spec code, with the rule, path and detail in its message', () => {
     const e = createError('E060', '/obj/inventory.json', 'recorded=a actual=b');
     assert.ok(ocflError('INVALID_OBJECT', 'E060')(e));
