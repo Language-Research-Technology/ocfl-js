@@ -57,7 +57,7 @@ export type NoInternalIsExported = [
   // @ts-expect-error not exported
   entryPoint.OcflStorageConfig,
   // @ts-expect-error not exported
-  entryPoint.OcflObjectTransaction,
+  entryPoint.ObjectDraft,
   // @ts-expect-error not exported
   entryPoint.OcflObjectInventory,
   // @ts-expect-error not exported

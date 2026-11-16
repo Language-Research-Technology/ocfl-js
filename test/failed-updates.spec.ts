@@ -493,6 +493,16 @@ describe('an update that fails or finishes early', () => {
       assert.deepStrictEqual(await snapshot(existing.root.path), before);
     });
 
+    it('throws that Error, not a TypeError, for a late write of content it does not accept', async () => {
+      const root = await newRoot();
+      let leaked: Draft | undefined;
+      await root.create(ID, DETAILS, async (draft) => {
+        leaked = draft;
+      });
+
+      await assert.rejects(leaked!.write('late.txt', 42 as never), isFinishedDraft);
+    });
+
     it('throws an Error while a failed update is still waiting for an earlier operation, and leaves nothing behind', async () => {
       const root = await newRoot();
       let release = () => {};

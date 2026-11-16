@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, it } from 'node:test';
 import { type Draft, type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
 import {
+  assertNoWorkspace,
   assertVersionValid,
   createObject,
   DETAILS,
@@ -250,6 +251,20 @@ describe('creating an object', () => {
       const root = await newRoot();
       await writeFiles(objectRootOf(root, 'not-empty'), { 'stray.txt': 'x' });
       await assertRefused(root, 'not-empty', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+    });
+
+    it('throws DIRECTORY_NOT_EMPTY when its place fills while the draft is assembled, leaving what is there', async () => {
+      const root = await newRoot();
+      const objectRoot = objectRootOf(root, 'filled');
+      await assert.rejects(
+        root.create('filled', DETAILS, async (draft) => {
+          await draft.write('a.txt', 'new');
+          await writeFiles(objectRoot, { 'stray.txt': 'x' });
+        }),
+        ocflError('DIRECTORY_NOT_EMPTY'),
+      );
+      assert.deepStrictEqual(await snapshot(objectRoot), { 'stray.txt': 'x' });
+      assertNoWorkspace(root);
     });
 
     it('throws ID_INCOMPATIBLE_WITH_LAYOUT where there is a file', async () => {
