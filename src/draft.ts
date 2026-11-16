@@ -1,25 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { inspect } from 'node:util';
-import { OcflConstants, type OcflVersion } from './constants.ts';
+import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
 import * as Hashing from './digest.ts';
 import { ocflError } from './error.ts';
+import * as fileSystem from './file-system.ts';
 import { type ContentRelease, type DeletePlan, type OcflObjectInventory, type RelistPlan, rootInventoryPaths, sidecarContent } from './inventory.ts';
 import { lockKept, releaseLock, takeLock } from './lock.ts';
+import { checkLogicalPath, fileLogicalPath, invalidLogicalPath, normaliseLogicalPath } from './logical-path.ts';
 import { createError } from './ocfl-rules.ts';
-import * as store from './store.ts';
-import {
-  createLimiter,
-  findNamasteVersion,
-  hasErrorCode,
-  isAlreadyExists,
-  isDirEmpty,
-  isNonEmptyString,
-  normaliseLogicalPath,
-  parseJsonObject,
-  readIfExists,
-  relativeWithin,
-} from './utils.ts';
+import { createLimiter, isNonEmptyString, parseJsonObject } from './utils.ts';
 import { objectWorkspace } from './workspace.ts';
 
 const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
@@ -182,12 +172,12 @@ async function ensureObjectDeclaration(root: string, ocflVersion: OcflVersion): 
   if (declared) {
     return;
   }
-  if (!(await isDirEmpty(root))) {
+  if (!(await fileSystem.isDirEmpty(root))) {
     throw ocflError('DIRECTORY_NOT_EMPTY', 'Cannot create an OCFL Object in a non-empty directory');
   }
   const declaration = NAMASTE_PREFIX_OBJECT + ocflVersion;
   const filePath = path.join(root, NAMASTE_T + declaration);
-  await store.writeFile(filePath, `${declaration}\n`);
+  await fileSystem.writeFile(filePath, `${declaration}\n`);
   return filePath;
 }
 
@@ -201,7 +191,7 @@ function headOf(content: string | undefined): string | null | undefined {
 }
 
 function readRootInventory(objectRoot: string): Promise<string | undefined> {
-  return readIfExists(path.join(objectRoot, INVENTORY_NAME));
+  return fileSystem.readIfExists(path.join(objectRoot, INVENTORY_NAME));
 }
 
 /** The head the root inventory on disk names, as {@link headOf} gives it */
@@ -242,27 +232,6 @@ async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory
  */
 function recoveryNeeded(objectRoot: string, state: string, cause: unknown) {
   return lockKept(`The update of the object at ${objectRoot} ${state}`, 'then open the object again before retrying', cause);
-}
-
-function invalidLogicalPath(logicalPath: string) {
-  return ocflError('INVALID_LOGICAL_PATH', `Logical path "${logicalPath}" must be a relative path without \`..\``);
-}
-
-// Backslash counts as a separator because path.normalize treats it as one on Windows
-function checkLogicalPath(logicalPath: string) {
-  if (logicalPath.startsWith('/') || path.isAbsolute(logicalPath) || logicalPath.split(/[/\\]/).includes('..')) {
-    throw invalidLogicalPath(logicalPath);
-  }
-}
-
-/** A file's logical path in the form the inventory lists, so two spellings of one path are the same path */
-function fileLogicalPath(logicalPath: string) {
-  checkLogicalPath(logicalPath);
-  const normalised = normaliseLogicalPath(logicalPath);
-  if (normalised === '.') {
-    throw ocflError('INVALID_LOGICAL_PATH', "A file's logical path can't be empty");
-  }
-  return normalised;
 }
 
 /**
@@ -438,7 +407,7 @@ class ObjectDraft implements Draft {
       await fs.promises.mkdir(versionPath);
     } catch (error) {
       // Kept locked, so that what an earlier writer left there never becomes part of a version
-      if (isAlreadyExists(error)) {
+      if (fileSystem.isAlreadyExists(error)) {
         throw lockKept(
           `The object at ${objectRoot} can't be updated: an earlier update left ${versionPath} behind`,
           'then open the object again before retrying',
@@ -454,7 +423,7 @@ class ObjectDraft implements Draft {
     checkLogicalPath(logicalPath);
     // Defence in depth: only a Windows drive-relative path such as C:x gets past checkLogicalPath
     /* node:coverage disable */
-    if (relativeWithin(path.resolve(this.#contentRoot), logicalPath) === undefined) {
+    if (fileSystem.relativeWithin(path.resolve(this.#contentRoot), logicalPath) === undefined) {
       throw invalidLogicalPath(logicalPath);
     }
     /* node:coverage enable */
@@ -515,7 +484,7 @@ class ObjectDraft implements Draft {
     }
     try {
       const rootInv = this.#rootInventoryPaths;
-      await store.move(rootInv.stagedSidecar, rootInv.sidecar);
+      await fileSystem.move(rootInv.stagedSidecar, rootInv.sidecar);
       await this.#releaseLock();
     } catch (error) {
       throw recoveryNeeded(this.#place.objectRoot, 'was committed, but could not be finished', error);
@@ -539,7 +508,7 @@ class ObjectDraft implements Draft {
       await fs.promises.rm(this.#createdNamaste, { recursive: true, force: true });
     }
     if (!this.#rootExisted) {
-      await store.removeEmptyAncestorsQuietly(root, this.#place.storageRoot);
+      await fileSystem.removeEmptyAncestorsQuietly(root, this.#place.storageRoot);
     }
     await this.#releaseLock();
   }
@@ -572,15 +541,15 @@ class ObjectDraft implements Draft {
     const digest = sidecarContent(inventory);
 
     // write inventory.json to workspace
-    await store.writeFile(invPath, inventoryContent);
-    await store.writeFile(invDigestPath, digest);
+    await fileSystem.writeFile(invPath, inventoryContent);
+    await fileSystem.writeFile(invDigestPath, digest);
     // Before anything in the object root changes, so a moved head never surfaces as a failed rename
     await assertUpToDate(this.#place.objectRoot, inventory);
     this.#createdNamaste = await ensureObjectDeclaration(this.#place.objectRoot, this.#place.ocflVersion);
     try {
-      await store.move(this.#versionPath, objectVersionPath);
+      await fileSystem.move(this.#versionPath, objectVersionPath);
     } catch (error) {
-      throw hasErrorCode(error, 'EXDEV')
+      throw fileSystem.hasErrorCode(error, 'EXDEV')
         ? ocflError(
             'CROSS_FILESYSTEM_MOVE',
             `Cannot move the new version into "${this.#place.objectRoot}": it is on a different filesystem from the workspace.`,
@@ -594,10 +563,10 @@ class ObjectDraft implements Draft {
     invPath = path.join(objectVersionPath, INVENTORY_NAME);
     invDigestPath = `${invPath}.${digestAlgorithm}`;
     this.#rootInventoryStaged = true;
-    await store.copyFile(invPath, rootInv.stagedInventory);
-    await store.copyFile(invDigestPath, rootInv.stagedSidecar);
+    await fileSystem.copyFile(invPath, rootInv.stagedInventory);
+    await fileSystem.copyFile(invDigestPath, rootInv.stagedSidecar);
     try {
-      await store.move(rootInv.stagedInventory, rootInv.inventory);
+      await fileSystem.move(rootInv.stagedInventory, rootInv.inventory);
     } catch (error) {
       // On NFS a rename can be applied though its reply is lost, so only the old head on disk, or for a create no root inventory, shows it
       // wasn't. A root inventory that can't be read or names no head counts as replaced
@@ -621,7 +590,7 @@ class ObjectDraft implements Draft {
     try {
       return await step();
     } catch (error) {
-      await store.removeQuietly(staging);
+      await fileSystem.removeQuietly(staging);
       throw error;
     }
   }
@@ -643,7 +612,7 @@ class ObjectDraft implements Draft {
       }
       await this.#applyContentReleases(releases, realPath, async () => {
         if (realPath) {
-          await store.move(staging, realPath);
+          await fileSystem.move(staging, realPath);
         } else if (!stage) {
           await fs.promises.rm(staging, { recursive: true, force: true });
         }
@@ -673,7 +642,7 @@ class ObjectDraft implements Draft {
       for (const { from, to } of [...setAside, ...remaining]) {
         if (to !== undefined) {
           filling = to;
-          await store.move(from, to);
+          await fileSystem.move(from, to);
           moved.push({ from, to });
         }
       }
@@ -685,7 +654,7 @@ class ObjectDraft implements Draft {
           await this.#pruneEmptyDirectories(path.dirname(filling));
         }
         for (const { from, to } of moved.reverse()) {
-          await store.move(to, from);
+          await fileSystem.move(to, from);
           await this.#pruneEmptyDirectories(path.dirname(to));
         }
       } catch {
@@ -727,7 +696,7 @@ class ObjectDraft implements Draft {
 
   /** A version shouldn't contain empty directories, so remove any at or above `start`, up to and including the content directory */
   async #pruneEmptyDirectories(start: string) {
-    await store.removeEmptyAncestorsQuietly(start, this.#versionPath);
+    await fileSystem.removeEmptyAncestorsQuietly(start, this.#versionPath);
   }
 
   async write(logicalPath: string, data: WriteContent): Promise<void> {
@@ -742,19 +711,19 @@ class ObjectDraft implements Draft {
       const staging = this.#stagingPath();
       if (isAsyncIterable(content)) {
         const hash = Hashing.createHasher(digestAlgo);
-        await this.#removeStagedOnFailure(staging, () => store.writeFile(staging, hashedBytes(content, hash)));
+        await this.#removeStagedOnFailure(staging, () => fileSystem.writeFile(staging, hashedBytes(content, hash)));
         const digest = hash.digest();
         return () => this.#addContent(target, digest, staging);
       }
       const digest = await Hashing.digest(digestAlgo, content);
-      return () => this.#addContent(target, digest, staging, () => store.writeFile(staging, content));
+      return () => this.#addContent(target, digest, staging, () => fileSystem.writeFile(staging, content));
     });
   }
 
   /** The source was hashed before the copy, so the copy is hashed too, to check they're the same bytes */
   async #stageImportedFile(source: string, staging: string, digest: string) {
-    await store.copyFile(source, staging);
-    if ((await Hashing.digest(this.#inventory.digestAlgorithm, store.createReadable(staging))) !== digest) {
+    await fileSystem.copyFile(source, staging);
+    if ((await Hashing.digest(this.#inventory.digestAlgorithm, fileSystem.createReadable(staging))) !== digest) {
       throw ocflError('SOURCE_CHANGED', `"${source}" changed while it was being imported`);
     }
   }
@@ -765,7 +734,7 @@ class ObjectDraft implements Draft {
     const algorithm = this.#inventory.digestAlgorithm;
     const hashed = await Promise.all(
       files.map((file) =>
-        this.#limit(() => Hashing.digest(algorithm, store.createReadable(file.source))).then(
+        this.#limit(() => Hashing.digest(algorithm, fileSystem.createReadable(file.source))).then(
           (digest) => ({ ...file, digest }),
           (error: unknown) => ({ ...file, error }),
         ),
@@ -809,7 +778,7 @@ class ObjectDraft implements Draft {
         }
       }
     } catch (error) {
-      await Promise.all(Array.from(staged.values(), store.removeQuietly));
+      await Promise.all(Array.from(staged.values(), fileSystem.removeQuietly));
       throw error;
     }
     return staged;

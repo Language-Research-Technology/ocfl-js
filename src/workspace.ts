@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
+import { isNothingAtPath } from './file-system.ts';
 import { isVersionName } from './inventory.ts';
 import { isStagedLock, LOCK_NAME, type Lock, readLockFile, stagedLockPath } from './lock.ts';
-import { isNothingAtPath } from './utils.ts';
 
 const { EXTENSIONS_DIR, WORKSPACE_EXTENSION } = OcflConstants;
 

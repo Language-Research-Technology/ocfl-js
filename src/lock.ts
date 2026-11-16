@@ -6,8 +6,8 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { type OcflError, ocflError } from './error.ts';
-import * as store from './store.ts';
-import { hasErrorCode, isAlreadyExists, isNotFound, isNothingAtPath, parseJsonObject, pathExists } from './utils.ts';
+import * as fileSystem from './file-system.ts';
+import { parseJsonObject } from './utils.ts';
 
 const LOCK_NAME = 'lock';
 /** Prefix of the file a lock's content is written to before it is put in place, so a lock is never seen half-written */
@@ -68,7 +68,7 @@ async function readLockFile(file: string): Promise<Lock | undefined> {
   try {
     handle = await fs.promises.open(file, 'r');
   } catch (error) {
-    if (isNothingAtPath(error)) {
+    if (fileSystem.isNothingAtPath(error)) {
       return undefined;
     }
     throw error;
@@ -82,7 +82,7 @@ async function readLockFile(file: string): Promise<Lock | undefined> {
     }
     content = length > MAX_LOCK_LENGTH ? undefined : buffer.toString('utf8', 0, length);
   } catch (error) {
-    if (!hasErrorCode(error, 'EISDIR')) {
+    if (!fileSystem.hasErrorCode(error, 'EISDIR')) {
       throw error;
     }
   } finally {
@@ -129,12 +129,12 @@ async function putLock(lock: string, content: string, exclusive: boolean): Promi
       await fs.promises.rename(staged, lock);
     }
   } catch (error) {
-    if (!(exclusive && isAlreadyExists(error))) {
+    if (!(exclusive && fileSystem.isAlreadyExists(error))) {
       throw error;
     }
     placed = false;
   } finally {
-    await store.removeQuietly(staged);
+    await fileSystem.removeQuietly(staged);
   }
   return placed;
 }
@@ -149,10 +149,10 @@ async function linkLock(staged: string, lock: string): Promise<void> {
   try {
     await fs.promises.link(staged, lock);
   } catch (error) {
-    if (isAlreadyExists(error) && (await fs.promises.stat(staged)).nlink === 2) {
+    if (fileSystem.isAlreadyExists(error) && (await fs.promises.stat(staged)).nlink === 2) {
       return;
     }
-    if (hasErrorCode(error, 'EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS')) {
+    if (fileSystem.hasErrorCode(error, 'EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS')) {
       throw ocflError(
         'UNSUPPORTED_FILESYSTEM',
         `Couldn't hard-link the lock ${lock}: the storage root's file system doesn't support hard links, which locks need, or refused this one.`,
@@ -193,10 +193,10 @@ async function createLockInWorkspace(workspace: string, storageRoot: string, con
     return await putLock(lockPath(workspace), content, true);
   } catch (error) {
     // Not found: another update's clean-up removed the empty workspace before the lock was created in it
-    if (isNotFound(error) && attempt < MAX_LOCK_ATTEMPTS) {
+    if (fileSystem.isNotFound(error) && attempt < MAX_LOCK_ATTEMPTS) {
       return createLockInWorkspace(workspace, storageRoot, content, attempt + 1);
     }
-    await store.removeEmptyAncestorsQuietly(workspace, storageRoot);
+    await fileSystem.removeEmptyAncestorsQuietly(workspace, storageRoot);
     throw error;
   }
 }
@@ -204,7 +204,7 @@ async function createLockInWorkspace(workspace: string, storageRoot: string, con
 /** Removes the object's lock, and the workspace directories that leaves empty */
 async function releaseLock(workspace: string, storageRoot: string): Promise<void> {
   await fs.promises.rm(lockPath(workspace), { force: true });
-  await store.removeEmptyAncestorsQuietly(workspace, storageRoot);
+  await fileSystem.removeEmptyAncestorsQuietly(workspace, storageRoot);
 }
 
 /**
@@ -236,7 +236,7 @@ function lockKept(outcome: string, advice: string, cause: unknown): OcflError {
 
 /** Whether the object's lock is held */
 async function isLocked(workspace: string): Promise<boolean> {
-  return pathExists(lockPath(workspace));
+  return fileSystem.pathExists(lockPath(workspace));
 }
 
 export type { Lock };

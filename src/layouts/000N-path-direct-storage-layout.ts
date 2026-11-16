@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { inspect } from 'node:util';
-import { hasOverlongSegment, MAX_NAME_BYTES } from '../utils.ts';
+import { hasOverlongSegment, MAX_NAME_BYTES } from '../file-system.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from './built-in-layout.ts';
 
 /** Object directories at the path spelled by their id. */
