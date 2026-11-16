@@ -6,6 +6,7 @@ import { type OcflObject, openStorageRoot, type StorageRoot } from '../src/index
 import { DIGESTS_OF_ABC } from './helpers/digests-of-abc.ts';
 import {
   assertVersionValid,
+  attemptUpdate,
   createObject,
   DETAILS,
   objectAtV1,
@@ -25,17 +26,6 @@ import { SPEC_EX_FULL_ID, writeFiles, writeForeignObject, writeInventory, writeS
 describe('updating an object made by another tool', () => {
   const temp = useTempRoots('ocfl-update-foreign-objects-');
   const { newRoot } = temp;
-
-  /** Tries an update that would write a file, and reports whether its callback ran */
-  async function attemptUpdate(object: OcflObject): Promise<{ result: Promise<OcflObject>; called: () => boolean }> {
-    let called = false;
-    const result = object.update(DETAILS, async (draft) => {
-      called = true;
-      await draft.write('b.txt', 'b');
-    });
-    await result.catch(() => {});
-    return { result, called: () => called };
-  }
 
   describe('with a mutable head (extension 0005)', () => {
     const headInventoryOf = (objectRoot: string) => path.join(objectRoot, 'extensions', '0005-mutable-head', 'head', 'inventory.json');
@@ -109,6 +99,31 @@ describe('updating an object made by another tool', () => {
     const initial = await snapshot(root.path);
     const { result, called } = await attemptUpdate(object);
     await assert.rejects(result, ocflError('INVALID_OBJECT', 'E007'));
+    assert.strictEqual(called(), false);
+    assert.deepStrictEqual(await snapshot(root.path), initial);
+  });
+
+  it('throws INVALID_OBJECT with E003 when the version declaration has been removed and the root inventory kept', async () => {
+    const root = await newRoot();
+    const object = await createObject(root, 'undeclared', { 'a.txt': 'a' });
+    await fs.promises.rm(path.join(objectRootOf(root, 'undeclared'), '0=ocfl_object_1.1'));
+    const initial = await snapshot(root.path);
+    const { result, called } = await attemptUpdate(object);
+    await assert.rejects(result, ocflError('INVALID_OBJECT', 'E003'));
+    assert.strictEqual(called(), false);
+    assert.deepStrictEqual(await snapshot(root.path), initial);
+  });
+
+  it('throws INVALID_OBJECT with E003 when the version declaration and root inventory have been removed and versions kept', async () => {
+    const root = await newRoot();
+    const object = await createObject(root, 'gutted', { 'a.txt': 'a' });
+    const objectRoot = objectRootOf(root, 'gutted');
+    for (const name of ['0=ocfl_object_1.1', 'inventory.json', 'inventory.json.sha512']) {
+      await fs.promises.rm(path.join(objectRoot, name));
+    }
+    const initial = await snapshot(root.path);
+    const { result, called } = await attemptUpdate(object);
+    await assert.rejects(result, ocflError('INVALID_OBJECT', 'E003'));
     assert.strictEqual(called(), false);
     assert.deepStrictEqual(await snapshot(root.path), initial);
   });

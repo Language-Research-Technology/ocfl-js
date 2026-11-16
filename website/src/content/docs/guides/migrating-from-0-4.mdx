@@ -258,7 +258,7 @@ for await (const object of storage) {
 | --- | --- |
 | [`OBJECT_NOT_FOUND`](/ocfl-js/guides/errors/#object_not_found) | `open()` or `remove()` finds nothing where the id maps, or `open()` finds an object whose creation isn't committed |
 | [`OBJECT_EXISTS`](/ocfl-js/guides/errors/#object_exists) | `create()` finds an object already there, or another writer created it first |
-| [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date) | `update()` finds that a later version was committed, or the object was removed and created again, since it was opened |
+| [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date) | `update()` finds that a later version was committed, or the object was removed, since it was opened |
 | [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object) | An object can't be used safely: its inventory or sidecar is missing, damaged or inconsistent, its declaration is missing or wrong, or it is inside another object. `ocflCode` names the OCFL rule. `objects()` yields it as `entry.error`, with `entry.objectRoot`, instead of throwing |
 | [`INVALID_STORAGE_ROOT`](/ocfl-js/guides/errors/#invalid_storage_root) | `openStorageRoot()` finds a missing or wrong declaration (`E069`, `E080`), a missing `ocfl_layout.json` or one naming no storage layout (`E070`), or a `config.json` that isn't a JSON object, is for another storage layout or has parameters it refuses |
 | [`UNSUPPORTED_LAYOUT`](/ocfl-js/guides/errors/#unsupported_layout) | `openStorageRoot()` finds a storage layout the library doesn't have |

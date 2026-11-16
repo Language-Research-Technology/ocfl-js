@@ -196,6 +196,17 @@ export async function objectAtV1(root: StorageRoot, id: string) {
   return { root, object, ...places, before: await snapshot(places.objectRoot) };
 }
 
+/** Tries an update that would write a file, and reports whether its callback ran */
+export async function attemptUpdate(object: OcflObject): Promise<{ result: Promise<OcflObject>; called: () => boolean }> {
+  let called = false;
+  const result = object.update(DETAILS, async (draft) => {
+    called = true;
+    await draft.write('b.txt', 'b');
+  });
+  await result.catch(() => {});
+  return { result, called: () => called };
+}
+
 /** Asserts that `update` on `object` wrote nothing: no version, no workspace, the disk as it was */
 export async function assertWritesNothing(root: StorageRoot, object: OcflObject, update: () => Promise<unknown>): Promise<void> {
   const objectRoot = objectRootOf(root, object.id);

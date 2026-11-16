@@ -94,7 +94,7 @@ The storage root is in a state a person needs to look at, often from an object m
 
 **Cause:** what the library read where the object should be isn't an object it can safely use. The inventory is missing, isn't JSON, is inconsistent, or names paths that would lead outside the object; the sidecar digest is missing or doesn't match; the object declaration is missing or wrong, or declares a later OCFL version than the storage root's; or the object is inside another object. Reading a file throws it if the file's stored content isn't a regular file, such as a directory. `ocflCode` names the OCFL rule, for example `E003` (no object declaration), `E033` (inventory isn't JSON), `E060` (sidecar digest doesn't match) or `E081` (a 1.1 object in a 1.0 storage root).
 
-`open`, `update`, `remove`, recovering an unfinished write, `objects()`, and an `OcflFile`'s `size()`, `stream()`, `text()` and `bytes()` can all give it. `update` throws it if the declaration has been removed or damaged since the object was opened. Rarely, `create` throws it when an invalid declaration appeared in the new object's directory while its first version was being built.
+`open`, `update`, `remove`, recovering an unfinished write, `objects()`, and an `OcflFile`'s `size()`, `stream()`, `text()` and `bytes()` can all give it. `update` throws it if the declaration has been damaged since the object was opened, or removed while anything remains in the object root. Rarely, `create` throws it when an invalid declaration appeared in the new object's directory while its first version was being built.
 
 These are checks the library makes before it uses an inventory's values as file paths. They are not validation: an object that opens can still break OCFL rules the library never looks at. To check an object against the specification, use [an OCFL validator](/ocfl-js/#objects-written-by-other-tools). See [It doesn't validate](/ocfl-js/#it-doesnt-validate) for what the library checks and what it doesn't.
 
@@ -122,9 +122,9 @@ These are checks the library makes before it uses an inventory's values as file 
 
 ### `OBJECT_OUT_OF_DATE`
 
-**Cause:** `update` found that a later version was committed after you opened the object, or the object was removed and created again. It is checked before your change runs and again just before commit. Nothing is committed.
+**Cause:** `update` found that a later version was committed after you opened the object, or the object was removed, whether or not it was created again. It is checked before your change runs and again just before commit. Nothing is committed.
 
-**What to do:** open the object again and repeat the update against the new head. See [`OBJECT_OUT_OF_DATE` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_out_of_date-the-object-changed-since-you-opened-it) for a retry loop.
+**What to do:** open the object again and repeat the update against the new head. If the object was removed, opening it throws `OBJECT_NOT_FOUND`. See [`OBJECT_OUT_OF_DATE` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_out_of_date-the-object-changed-since-you-opened-it) for a retry loop.
 
 ### `RECOVERY_NEEDED`
 
