@@ -20,7 +20,7 @@ It needs Node.js 22.12 or later, and is an ES module with its own types; with Ty
 
 It's supported on Linux only, on a case-sensitive file system with hard links; WSL works, macOS and Windows aren't supported. It's designed for local file systems and NFS, but CI tests only on a local file system and simulates NFS's lost replies; see [Sharing a storage root over NFS](https://language-research-technology.github.io/ocfl-js/guides/concurrent-writers/#sharing-a-storage-root-over-nfs).
 
-Upgrading from 0.4? See [Migrating from 0.4](https://language-research-technology.github.io/ocfl-js/guides/migrating-from-0-4/).
+Upgrading from 0.x? See [Upgrading from 0.x](https://language-research-technology.github.io/ocfl-js/guides/upgrading-from-0-x/).
 
 ## Example
 

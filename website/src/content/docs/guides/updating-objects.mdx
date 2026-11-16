@@ -17,6 +17,8 @@ import draftFiles from '../../../examples/updating-objects/draft-files.ts?raw';
 import importFilter from '../../../examples/updating-objects/import-filter.ts?raw';
 import cancelUpdate from '../../../examples/updating-objects/cancel-update.ts?raw';
 import unattendedWriter from '../../../examples/updating-objects/unattended-writer.ts?raw';
+import keepDates from '../../../examples/updating-objects/keep-dates.ts?raw';
+import removeFileFromHistory from '../../../examples/updating-objects/remove-file-from-history.ts?raw';
 
 Every change to an OCFL object is one update, and every update adds at most one version. This guide covers what you can do in an update, the order things happen in, and what an update records.
 
@@ -86,7 +88,7 @@ Reinstating from the head version undoes what the draft has done to that path so
 
 ### remove and clear
 
-`remove` takes a file or a directory. A path that isn't in the draft throws `FILE_NOT_FOUND`. `clear` removes everything and never throws for an empty draft. Both change only the new version: every earlier version keeps its files.
+`remove` takes a file or a directory. A path that isn't in the draft throws `FILE_NOT_FOUND`. `clear` removes everything and never throws for an empty draft. Both change only the new version: every earlier version keeps its files. To take a file out of every version, see [Removing a file from every version](#removing-a-file-from-every-version).
 
 ### files
 
@@ -169,10 +171,24 @@ The inventory records the date as an ISO 8601 UTC timestamp. Each [version](/ocf
 
 <Code code={versionDetails} lang="ts" />
 
+### Keeping original dates
+
+Moving content from another system, add its versions oldest first, each with its original `createdAt`:
+
+<Code code={keepDates} lang="ts" />
+
 ### When no person makes the version
 
 A scheduled import or other job with no person behind it still needs a message and a user. Name the software as the user, with its URL as `user.address`, and say in the message what the job did and where the content came from.
 
 <Code code={unattendedWriter} lang="ts" />
+
+## Removing a file from every version
+
+OCFL versions don't change once committed, and the OCFL implementation notes say purging isn't supported directly. To take a file out of an object's history, create a new object without it, then remove the original:
+
+<Code code={removeFileFromHistory} lang="ts" />
+
+The new object needs its own id. This copies only the head, so the new object starts with one version. To keep the history, create one version in the new object for each version of the original.
 
 See [`Draft`](/ocfl-js/api/interfaces/draft/) and [`OcflObject`](/ocfl-js/api/interfaces/ocflobject/) in the API reference for every error each operation throws.
