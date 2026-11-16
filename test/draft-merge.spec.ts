@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
-import type { Draft, StorageRoot } from '../src/index.ts';
+import type { Draft, MergeOptions, StorageRoot } from '../src/index.ts';
 import {
   assertHolds,
   assertRefusesWith,
@@ -31,8 +31,8 @@ describe('merging a directory into another in a draft', () => {
     root = await temp.newRoot();
   });
 
-  const MERGE = { merge: true };
-  type Transfer = (draft: Draft, source: string, target: string, options?: { merge: boolean }) => Promise<void>;
+  const MERGE: MergeOptions = { merge: true };
+  type Transfer = (draft: Draft, source: string, target: string, options?: MergeOptions) => Promise<void>;
   const operations: [name: 'copy' | 'rename', transfer: Transfer][] = [
     ['copy', (draft, source, target, options) => draft.copy(source, target, options)],
     ['rename', (draft, source, target, options) => draft.rename(source, target, options)],

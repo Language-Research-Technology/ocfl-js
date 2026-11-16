@@ -27,7 +27,7 @@ interface OcflFile {
   /** Reads the content as UTF-8 text. */
   text(): Promise<string>;
   /** Reads the content into memory. */
-  bytes(): Promise<Uint8Array>;
+  bytes(): Promise<Uint8Array<ArrayBuffer>>;
 }
 
 class StoredFile implements OcflFile {
@@ -61,7 +61,7 @@ class StoredFile implements OcflFile {
     return fs.promises.readFile(this.#storedPath, 'utf8');
   }
 
-  async bytes(): Promise<Uint8Array> {
+  async bytes(): Promise<Uint8Array<ArrayBuffer>> {
     return fs.promises.readFile(this.#storedPath);
   }
 }

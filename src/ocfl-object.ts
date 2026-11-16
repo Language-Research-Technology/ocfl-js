@@ -77,7 +77,7 @@ interface OcflObject {
    * });
    * ```
    */
-  update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject>;
+  update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
 
   /**
    * Reads every stored file again and compares its digest with the inventory. An empty list means the object is intact.
@@ -128,7 +128,7 @@ class OpenedObject implements OcflObject {
     Object.freeze(this);
   }
 
-  async update(details: VersionDetails, change: (draft: Draft) => Promise<void>): Promise<OcflObject> {
+  async update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject> {
     const checked = checkedDetails(details);
     withinRootVersion(this.#root, await declaredVersion(this.#storageRoot, this.#root), this.#rootVersion);
     await assertNoMutableHead(
@@ -495,7 +495,7 @@ async function createObject(
   id: string,
   ocflVersion: OcflVersion,
   details: VersionDetails,
-  build: (draft: Draft) => Promise<void>,
+  build: (draft: Draft) => Promise<unknown>,
 ): Promise<OcflObject> {
   const declared = await hasObjectDeclaration(objectRoot);
   const hasInventory = await pathExists(nodePath.join(objectRoot, INVENTORY_NAME));

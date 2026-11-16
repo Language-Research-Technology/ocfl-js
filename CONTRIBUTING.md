@@ -36,7 +36,7 @@ CI runs all of these on every pull request to `main`:
 | `pnpm lint:api`      | That the public API matches the API report                          |
 | `pnpm lint:docs`     | That the site's examples type-check and the site builds             |
 
-Run a single test file with `node --test`, for example `node --test test/open-object.spec.ts`. Specs sit at the top of `test/`, named for the behaviour they cover, with `helpers/`, `types/` (compiled, never run) and `fixtures/` beside them. Specs of the public API import only the package entry, `src/index.ts`; unit specs of internals import the module they test.
+Run a single test file with `node --test`, for example `node --test test/open-object.spec.ts`. Specs sit at the top of `test/`, named for the behaviour they cover, with `helpers/`, `types/` (compiled, never run), `types-dom/` (compiled the same way, with DOM typings) and `fixtures/` beside them. Specs of the public API import only the package entry, `src/index.ts`; unit specs of internals import the module they test.
 
 ## The API report
 

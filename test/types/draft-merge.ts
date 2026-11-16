@@ -1,4 +1,4 @@
-import type { Draft } from '../../src/index.ts';
+import type { Draft, MergeOptions } from '../../src/index.ts';
 
 export async function copyAndRenameTakeAMergeOption(draft: Draft): Promise<void> {
   await draft.copy('a', 'b', { merge: true });
@@ -7,16 +7,18 @@ export async function copyAndRenameTakeAMergeOption(draft: Draft): Promise<void>
   await draft.rename('a', 'b', { merge: false });
   await draft.copy('a', 'b', undefined);
   await draft.rename('a', 'b', undefined);
+  await draft.copy('a', 'b', {});
+  await draft.rename('a', 'b', {});
 
-  const options: { merge: boolean } = { merge: Math.random() < 0.5 };
+  const forwarded: { merge?: boolean | undefined } = {};
+  await draft.copy('a', 'b', { merge: forwarded.merge });
+  await draft.rename('a', 'b', { merge: forwarded.merge });
+
+  const options: MergeOptions = Math.random() < 0.5 ? { merge: true } : {};
   const copied: Promise<void> = draft.copy('a', 'b', options);
   const renamed: Promise<void> = draft.rename('a', 'b', options);
   await Promise.all([copied, renamed]);
 
-  // @ts-expect-error merge is required when options are given
-  await draft.copy('a', 'b', {});
-  // @ts-expect-error merge is required when options are given
-  await draft.rename('a', 'b', {});
   // @ts-expect-error merge is the only option
   await draft.copy('a', 'b', { merge: true, overwrite: true });
   // @ts-expect-error merge is the only option

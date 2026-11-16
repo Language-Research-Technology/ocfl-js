@@ -4,7 +4,7 @@ import path from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants, type OcflVersion } from './constants.ts';
 import * as Hashing from './digest.ts';
-import type { VersionDetails, WriteContent } from './draft.ts';
+import type { MergeOptions, VersionDetails, WriteContent } from './draft.ts';
 import { ocflError } from './error.ts';
 import { type ContentRelease, type DeletePlan, type OcflObjectInventory, type RelistPlan, rootInventoryPaths, sidecarContent } from './inventory.ts';
 import { lockKept, releaseLock, takeLock } from './lock.ts';
@@ -716,7 +716,7 @@ class OcflObjectTransaction {
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
    * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
    */
-  async copy(source: string, target: string, options?: { merge: boolean }): Promise<void> {
+  async copy(source: string, target: string, options?: MergeOptions): Promise<void> {
     return this.#transact(async () => {
       const merge = mergeOption(options);
       const plan = this.#inventory._planCopy(fileLogicalPath(source), fileLogicalPath(target), merge);
@@ -736,7 +736,7 @@ class OcflObjectTransaction {
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
    * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
    */
-  async rename(source: string, target: string, options?: { merge: boolean }): Promise<void> {
+  async rename(source: string, target: string, options?: MergeOptions): Promise<void> {
     return this.#transact(async () => {
       const merge = mergeOption(options);
       const plan = this.#inventory._planRename(fileLogicalPath(source), fileLogicalPath(target), merge);

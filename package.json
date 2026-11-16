@@ -46,7 +46,7 @@
     "lint:api": "tsc && api-extractor run",
     "api:update": "tsc && api-extractor run --local",
     "format": "biome check --write .",
-    "lint:types": "tsc --noEmit && tsc -p test",
+    "lint:types": "tsc --noEmit && tsc -p test && tsc -p test/types-dom",
     "test": "node --test 'test/**/*.spec.ts'",
     "coverage": "node --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-include-all --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test 'test/**/*.spec.ts'",
     "lint:docs": "tsc && pnpm --dir website check:examples && pnpm --dir website build"

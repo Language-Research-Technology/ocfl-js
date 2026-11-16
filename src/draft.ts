@@ -14,6 +14,12 @@ interface VersionDetails {
 /** Content for {@link Draft.write}: text (stored as UTF-8), bytes, or a stream of either, such as a Node or web stream. */
 type WriteContent = string | Uint8Array | AsyncIterable<string | Uint8Array>;
 
+/** Options for {@link Draft.copy} and {@link Draft.rename}. */
+interface MergeOptions {
+  /** Whether a directory goes file by file into a `target` that already has files. Defaults to `false`. */
+  readonly merge?: boolean | undefined;
+}
+
 /**
  * The changes being assembled during an update, which become one new version or are discarded.
  *
@@ -53,7 +59,7 @@ interface Draft {
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
    * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
    */
-  copy(source: string, target: string, options?: { merge: boolean }): Promise<void>;
+  copy(source: string, target: string, options?: MergeOptions): Promise<void>;
 
   /**
    * Moves a file, or every file below a directory, to `target` within the draft.
@@ -64,7 +70,7 @@ interface Draft {
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
    * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
    */
-  rename(source: string, target: string, options?: { merge: boolean }): Promise<void>;
+  rename(source: string, target: string, options?: MergeOptions): Promise<void>;
 
   /**
    * Puts a file, or every file below a directory, back as it was in an earlier version, at the same path.
@@ -165,11 +171,11 @@ class ObjectDraft implements Draft {
     return this.#open.import(source, target);
   }
 
-  async copy(source: string, target: string, options?: { merge: boolean }): Promise<void> {
+  async copy(source: string, target: string, options?: MergeOptions): Promise<void> {
     return this.#open.copy(source, target, options);
   }
 
-  async rename(source: string, target: string, options?: { merge: boolean }): Promise<void> {
+  async rename(source: string, target: string, options?: MergeOptions): Promise<void> {
     return this.#open.rename(source, target, options);
   }
 
@@ -195,7 +201,7 @@ async function commitDraft(
   target: UpdateTarget,
   inventory: OcflObjectInventory,
   details: VersionDetails,
-  change: (draft: Draft) => Promise<void>,
+  change: (draft: Draft) => Promise<unknown>,
 ): Promise<OcflObjectInventory | undefined> {
   const transaction = await OcflObjectTransaction._create(target, inventory);
   const draft = new ObjectDraft(transaction);
@@ -210,4 +216,4 @@ async function commitDraft(
   return transaction._commit(details);
 }
 
-export { checkedDetails, commitDraft, type Draft, type VersionDetails, type WriteContent };
+export { checkedDetails, commitDraft, type Draft, type MergeOptions, type VersionDetails, type WriteContent };

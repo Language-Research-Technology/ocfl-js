@@ -1,0 +1,5 @@
+{
+  // A consumer whose project also has DOM typings
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "lib": ["es2024", "dom"], "rootDir": "${configDir}/../.." }
+}
