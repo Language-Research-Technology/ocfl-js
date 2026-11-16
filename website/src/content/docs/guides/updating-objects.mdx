@@ -135,7 +135,7 @@ The first argument of `update` and `create` is the [version details](/ocfl-js/ap
 
 Details that break these rules throw a `TypeError` before anything else happens.
 
-You don't set the time. The library records the version's `created` time when it commits the version, by the clock of the host doing the update. Each [version](/ocfl-js/api/interfaces/version/) gives back its `number`, `created`, `message` and `user`. An object written by another tool may have versions with no message or user.
+You don't set the time. The library records the version's `created` time when it commits the version, by the clock of the host doing the update. Each [version](/ocfl-js/api/interfaces/version/) gives back its `number`, `createdAt`, `message` and `user`. An object written by another tool may have versions with no message or user.
 
 <Code code={versionDetails} lang="ts" />
 

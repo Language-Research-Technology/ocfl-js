@@ -75,3 +75,11 @@ _Avoid_: Validation, verify, audit
 **Stored file**:
 A file in an object root that holds the content of one digest. The manifest lists it by its content path, and a logical path reads the first stored file the manifest lists for its digest. A fixity check names it by its path from the storage root.
 _Avoid_: Content file, physical file
+
+**Created in**:
+The version in which a file's logical path was created: the first of the versions up to the file's own that all have the logical path, with any content. A logical path removed and later added again is created again, and a rename creates the new logical path. Its time is the file's created-at time, from the inventory.
+_Avoid_: Birth time, added in
+
+**Modified in**:
+The version in which a file's logical path took its current content: the first of the versions up to the file's own that all have the logical path with the same digest. Content changed and later changed back is modified again, rather than taking the earlier version's time. Its time is the file's modified-at time, from the inventory and never from the stored file.
+_Avoid_: Last modified (of a stored file), mtime, changed in

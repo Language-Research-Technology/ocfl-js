@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import nodePath from 'node:path';
 import type { Readable } from 'node:stream';
 import { ocflError } from './error.ts';
+import type { Version } from './ocfl-object.ts';
 
 /** Part of a file's content. Both ends are byte offsets from 0, and `end` is included, as in an HTTP `Range` header. */
 interface ByteRange {
@@ -22,6 +23,20 @@ interface OcflFile {
   readonly path: string;
   /** Lowercase hex digest of the content, in the object's {@link OcflObject.digestAlgorithm}. */
   readonly digest: string;
+  /**
+   * The version in which this logical path was created: the first of the versions up to this file's own that all have it, with
+   * any content. A logical path removed and later added again is created again, and a rename creates the new logical path.
+   */
+  readonly createdIn: Version;
+  /**
+   * The version in which this logical path took its current content: the first of the versions up to this file's own that all
+   * have it with this digest. Content changed and later changed back is modified again.
+   */
+  readonly modifiedIn: Version;
+  /** When {@link OcflFile.createdIn} was committed. From the inventory, never from the stored file, whose times change when it is copied or restored. */
+  readonly createdAt: Date;
+  /** When {@link OcflFile.modifiedIn} was committed, such as for an HTTP `Last-Modified` header. From the inventory, never from the stored file. */
+  readonly modifiedAt: Date;
   /** Size in bytes. */
   size(): Promise<number>;
   /**
@@ -42,19 +57,55 @@ interface OcflFile {
   bytes(): Promise<Uint8Array<ArrayBuffer>>;
 }
 
+/** Finds the versions of an object in which a logical path of one of its versions was created and modified */
+interface FileHistory {
+  createdIn(path: string, version: number): Version;
+  modifiedIn(path: string, digest: string, version: number): Version;
+}
+
+interface StoredFileOptions {
+  readonly path: string;
+  readonly digest: string;
+  /** The number of the version the file is in */
+  readonly version: number;
+  readonly objectRoot: string;
+  /** Where the content is stored, relative to `objectRoot` */
+  readonly contentPath: string;
+  readonly history: FileHistory;
+}
+
 class StoredFile implements OcflFile {
   readonly path: string;
   readonly digest: string;
   readonly #objectRoot: string;
   readonly #contentPath: string;
+  readonly #version: number;
+  readonly #history: FileHistory;
 
-  /** @param contentPath - Where the content is stored, relative to `objectRoot` */
-  constructor(path: string, digest: string, objectRoot: string, contentPath: string) {
+  constructor({ path, digest, version, objectRoot, contentPath, history }: StoredFileOptions) {
     this.path = path;
     this.digest = digest;
+    this.#version = version;
     this.#objectRoot = objectRoot;
     this.#contentPath = contentPath;
+    this.#history = history;
     Object.freeze(this);
+  }
+
+  get createdIn(): Version {
+    return this.#history.createdIn(this.path, this.#version);
+  }
+
+  get modifiedIn(): Version {
+    return this.#history.modifiedIn(this.path, this.digest, this.#version);
+  }
+
+  get createdAt(): Date {
+    return this.createdIn.createdAt;
+  }
+
+  get modifiedAt(): Date {
+    return this.modifiedIn.createdAt;
   }
 
   get #storedPath(): string {
@@ -125,4 +176,4 @@ function checkRange(range: ByteRange | undefined): void {
   }
 }
 
-export { type ByteRange, type OcflFile, StoredFile };
+export { type ByteRange, type FileHistory, type OcflFile, StoredFile };

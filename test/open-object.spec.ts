@@ -120,7 +120,7 @@ describe('opening an object', () => {
 
     it('gives when each version was created as a Date', async () => {
       const object = await root.open(SPEC_EX_FULL_ID);
-      const created = object.versions.get(2)!.created;
+      const created = object.versions.get(2)!.createdAt;
       assert.ok(created instanceof Date);
       assert.strictEqual(created.toISOString(), '2018-02-02T02:02:02.000Z');
     });

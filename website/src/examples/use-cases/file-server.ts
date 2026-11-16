@@ -36,6 +36,7 @@ const server = createServer(async (request, response) => {
     const body = await file.stream(range);
     response.writeHead(range ? 206 : 200, {
       etag: `"${file.digest}"`,
+      'last-modified': file.modifiedAt.toUTCString(),
       'content-length': range ? range.end - range.start + 1 : size,
       ...(range && { 'content-range': `bytes ${range.start}-${range.end}/${size}` }),
     });

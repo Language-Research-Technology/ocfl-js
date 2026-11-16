@@ -101,7 +101,11 @@ export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_O
 // @public
 export interface OcflFile {
     bytes(): Promise<Uint8Array<ArrayBuffer>>;
+    readonly createdAt: Date;
+    readonly createdIn: Version;
     readonly digest: string;
+    readonly modifiedAt: Date;
+    readonly modifiedIn: Version;
     readonly path: string;
     size(): Promise<number>;
     stream(range?: ByteRange): Promise<Readable>;
@@ -162,7 +166,7 @@ export interface User {
 
 // @public
 export interface Version {
-    readonly created: Date;
+    readonly createdAt: Date;
     readonly files: ReadonlyMap<string, OcflFile>;
     readonly message?: string;
     readonly number: number;
