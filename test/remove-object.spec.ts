@@ -6,11 +6,13 @@ import { createStorageRoot, type LayoutConfig, openStorageRoot, type StorageRoot
 import {
   assertHolds,
   assertNoWorkspace,
+  attemptUpdate,
   createObject,
   DETAILS,
   lockObject,
   lockOf,
   objectAtV1,
+  objectRootOf,
   recover,
   snapshot,
   textFiles,
@@ -108,6 +110,19 @@ describe('root.remove', () => {
 
       await assertHolds(root, updated, { 'new.txt': 'new', 'c.txt': 'c' });
       assert.strictEqual(updated.head.number, 2);
+    });
+
+    it('makes an object opened before it out of date, refusing its update before the callback runs', async () => {
+      const { root, object } = await existingObject();
+      await root.remove(ID);
+
+      const { result, called } = await attemptUpdate(object);
+
+      await assert.rejects(result, ocflError('OBJECT_OUT_OF_DATE'));
+      assert.strictEqual(called(), false);
+      assert.ok(!fs.existsSync(objectRootOf(root, ID)));
+      assertNoWorkspace(root);
+      await assert.rejects(root.open(ID), ocflError('OBJECT_NOT_FOUND'));
     });
 
     it('makes an object opened before it out of date, even once an object with the same id is created', async () => {

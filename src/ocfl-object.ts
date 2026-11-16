@@ -3,7 +3,7 @@ import { OcflConstants, type OcflVersion } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
 import { checkedDetails, commitDraft, type Draft, type User, type VersionDetails } from './draft.ts';
-import { objectRootConflict, ocflError } from './error.ts';
+import { OcflError, objectRootConflict, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { type Inventory, OcflObjectInventory, versionNumbers } from './inventory.ts';
 import { isLocked, updateInProgress } from './lock.ts';
@@ -60,10 +60,10 @@ interface OcflObject {
    * The update is committed when the root inventory is replaced: any error but `RECOVERY_NEEDED` means it wasn't committed and can be repeated.
    * This object never changes, whatever the outcome.
    *
-   * @throws {@link OcflError} `INVALID_OBJECT` if the object's declaration has been removed or damaged, or now declares a later OCFL version than the storage root's (E081), or the object is now inside another object, since it was opened.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the object's declaration has been damaged, or removed while anything remains in its object root, or now declares a later OCFL version than the storage root's (E081), or the object is now inside another object, since it was opened.
    * @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE` if the object has an active mutable head (extension 0005).
    * @throws {@link OcflError} `VERSION_LIMIT_REACHED` if the object's version names are zero-padded and the next one couldn't start with a zero, as OCFL requires (E011): `v01` to `v09` leaves none.
-   * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if a later version has been committed since this object was opened; open it again and retry.
+   * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if a later version has been committed, or the object removed, since this object was opened; open it again and retry.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is updating or removing this object, or died doing so; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile. The update never waits for it.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
@@ -136,7 +136,16 @@ class OpenedObject implements OcflObject {
 
   async update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject> {
     const checked = checkedDetails(details);
-    withinRootVersion(this.#root, await declaredVersion(this.#storageRoot, this.#root), this.#rootVersion);
+    const declared = await declaredVersion(this.#storageRoot, this.#root).catch(async (error: unknown) => {
+      if (error instanceof OcflError && error.ocflCode === 'E003' && (await fileSystem.isDirEmpty(this.#root))) {
+        throw ocflError(
+          'OBJECT_OUT_OF_DATE',
+          `The object at ${this.#root} was opened at ${this.#inventory.head}, and has since been removed. Open it again and retry.`,
+        );
+      }
+      throw error;
+    });
+    withinRootVersion(this.#root, declared, this.#rootVersion);
     await assertNoMutableHead(
       this.#root,
       `The object <${this.id}> has an active mutable head (extension 0005), which this library doesn't support; it can't be updated until the head is committed or removed.`,
