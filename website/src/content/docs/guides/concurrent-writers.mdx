@@ -80,7 +80,7 @@ Every held lock is an **unfinished write**: a create, update or remove whose wri
 - a create that wasn't committed is discarded;
 - a remove that had begun deleting is finished.
 
-It never makes a version the head, and never removes a version directory other than the one the dead writer was adding. If the lock has been released since you got the write, it does nothing. If another writer has taken the lock since, it throws `UPDATE_IN_PROGRESS` and changes nothing. If it fails part of the way through, the lock is still there and you can recover the write again.
+It never makes a version the head, and never removes a version directory other than the one the dead writer was adding, with one exception: the lock doesn't record whether its writer was a create, so an object that has only a first version and has lost its root inventory is taken for a dead create, and its first version is removed. If the lock has been released since you got the write, it does nothing. If another writer has taken the lock since, it throws `UPDATE_IN_PROGRESS` and changes nothing. If it fails part of the way through, the lock is still there and you can recover the write again.
 
 :::danger[Recovering destroys a live writer's update]
 Call `write.recover()` only when you know its writer is no longer alive. If it is, recovery destroys its update and lets a second writer in beside it. Nothing in the library guards against this: it can't tell a live writer from a dead one, and it takes your word.
@@ -92,7 +92,7 @@ Two recoveries of the same unfinished write at once aren't kept apart, whether t
 
 You know a writer is dead when, for example, it is your own process and it has stopped, or the host that ran it has been restarted. A `lockedAt` from long ago is a hint, not proof: a writer can stall for minutes on a slow mount and then carry on.
 
-Don't delete a lock by hand. Recovery uses what the lock records to decide what to clear, and a dead create whose lock was removed by hand can't be recovered: its object root then has to be removed by hand too.
+Don't delete a lock by hand. Recovery uses what the lock records to decide what to clear, and a write whose lock was removed by hand is no longer an unfinished write, so it can't be recovered. A version its dead writer left in the workspace makes the next create or update of the object throw `RECOVERY_NEEDED` and keep its lock, so that write can then be recovered; the next remove deletes it. A dead create's object root has to be removed by hand.
 
 ### When a writer dies
 

@@ -1,3 +1,7 @@
+/**
+ * Each object's lock keeps its writers apart. A held lock refuses every other writer and is never expired, since nothing on shared
+ * storage tells a dead writer from a slow one: it records no process id, host or heartbeat, and no operating-system file lock is used.
+ */
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -138,8 +142,8 @@ async function putLock(lock: string, content: string, exclusive: boolean): Promi
 /**
  * Links `staged` to `lock`. `EEXIST` with `staged` linked twice means the link was made: a retried NFS request whose first reply
  * was lost.
- * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the file system refuses the hard link: `EPERM` is how some, such as FAT,
- * say they have none, but it also comes from an immutable or append-only directory
+ * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the file system refuses the hard link with `EPERM`, `ENOTSUP`, `EOPNOTSUPP`
+ * or `ENOSYS`. `EPERM` is how some, such as FAT, say they have none, but it also comes from an immutable or append-only directory
  */
 async function linkLock(staged: string, lock: string): Promise<void> {
   try {
@@ -170,7 +174,8 @@ async function updateInProgress(workspace: string): Promise<OcflError> {
  * @param workspace - The object's directory in the workspace of the storage root at `storageRoot`
  * @param objectRootExisted - Recorded in the lock, for recovery
  * @returns What the lock records
- * @throws {@link OcflError} `UPDATE_IN_PROGRESS`, with `lockedAt` if the lock can be read, if the lock is already taken
+ * @throws {@link OcflError} `UPDATE_IN_PROGRESS`, with `lockedAt` if the lock can be read, if the lock is already taken. A lock file that
+ * exists refuses, even if it can't be read
  * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the lock can't be hard-linked into place; nothing is left behind
  */
 async function takeLock(workspace: string, storageRoot: string, id: string, objectRootExisted: boolean): Promise<Lock> {

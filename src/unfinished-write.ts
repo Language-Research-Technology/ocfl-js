@@ -29,7 +29,7 @@ interface UnfinishedWrite {
    * A remove that had begun deleting the object is finished. An update that wasn't committed is discarded: its unfinished version in the workspace, the directory of the version after the head
    * in the object, and staged inventory files are removed. A create that wasn't committed is discarded: the declaration and first version of an object that never
    * got an inventory, and its directory if the create made it. An update that was committed is completed by writing the root inventory's sidecar.
-   * A version is never made the head, and no other version directory is ever removed. If the write's directory holds another id's object, or is inside
+   * A version is never made the head, and no other version directory is removed, except the first version of an object that has lost its root inventory, which is taken for a dead create. If the write's directory holds another id's object, or is inside
    * another object, its writer was refused before it wrote anything there: only the lock and what is left in the workspace are removed.
    *
    * After `RECOVERY_NEEDED`, recover the write and then open the object again before retrying: the head shows whether the update was committed.

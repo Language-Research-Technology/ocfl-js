@@ -523,7 +523,10 @@ class ObjectDraft implements Draft {
     return this.#inventory;
   }
 
-  /** Remove everything this draft created. Only before the root inventory is replaced. */
+  /**
+   * Remove everything this draft created, including an object root it made and the layout directories above it that that leaves empty,
+   * then release the lock. Only before the root inventory is replaced: nothing puts a replaced root inventory back.
+   */
   async #undo() {
     const root = this.#place.objectRoot;
     const rootInv = this.#rootInventoryPaths;
@@ -596,7 +599,8 @@ class ObjectDraft implements Draft {
     try {
       await store.move(rootInv.stagedInventory, rootInv.inventory);
     } catch (error) {
-      // On NFS a rename can be applied though its reply is lost, so only the old head on disk shows it wasn't
+      // On NFS a rename can be applied though its reply is lost, so only the old head on disk, or for a create no root inventory, shows it
+      // wasn't. A root inventory that can't be read or names no head counts as replaced
       const notReplaced = await headOnDisk(this.#place.objectRoot).then(
         (head) => head === inventory.versionNumber.previous()?.toString(),
         () => false,

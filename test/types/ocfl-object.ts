@@ -1,4 +1,4 @@
-import type { ByteRange, OcflFile, OcflObject, StorageRoot, User, Version } from '../../src/index.ts';
+import type { ByteRange, FixityProblem, OcflFile, OcflObject, StorageRoot, User, Version } from '../../src/index.ts';
 
 export async function openTakesOnlyAnId(root: StorageRoot): Promise<OcflObject> {
   // @ts-expect-error an object is opened by its id, not its path
@@ -44,6 +44,15 @@ export function nothingOfTheOldObjectIsLeft(object: OcflObject, file: OcflFile):
   // @ts-expect-error the size is read from disk
   const size: number = file.size;
   void size;
+}
+
+export function fixityProblemNamesTheStoredFileFromTheStorageRoot(problem: FixityProblem): [string, string[], string | undefined] {
+  // @ts-expect-error a stored file is named from the storage root, not the object
+  problem.contentPath;
+  // @ts-expect-error read-only
+  problem.affects.push({ version: 1, path: 'a.txt' });
+  const files: string[] = problem.affects.map(({ version, path }) => `v${version}:${path}`);
+  return [problem.storedFile, files, problem.actual];
 }
 
 export async function fileContent(file: OcflFile, range: ByteRange): Promise<[number, string, Uint8Array]> {

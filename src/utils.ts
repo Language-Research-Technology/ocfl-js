@@ -45,6 +45,11 @@ function relativeWithin(root: string, target: string): string | undefined {
   return relative;
 }
 
+/** `target`'s path from `storageRoot`, with `/` between directories on every platform, as the public API gives it */
+function pathFromStorageRoot(storageRoot: string, target: string): string {
+  return path.relative(storageRoot, target).split(path.sep).join('/');
+}
+
 /** The file's text, or `undefined` if it doesn't exist */
 async function readIfExists(file: string): Promise<string | undefined> {
   try {
@@ -216,6 +221,7 @@ export {
   parseJsonObject,
   pathExists,
   pathFits,
+  pathFromStorageRoot,
   readIfExists,
   rejectUnknownKeys,
   relativeWithin,

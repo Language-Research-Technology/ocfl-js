@@ -73,6 +73,8 @@ It isn't validation: an object can pass the fixity check and still break the OCF
 
 A stored file that can't be read for any reason but being missing, such as `EACCES` or `EIO`, throws instead of being reported. The job catches that for each object, so one unreadable file doesn't end the run.
 
+Each problem names the stored file by its path from the storage root, as `storedFile`, and lists in `affects` every version and logical path that reads it, so you can see which of your files are hit. It is empty for a stored file no logical path reads, such as a second copy of one digest's content. Repair it by hand: copy a good copy from a backup to `storedFile` under the storage root. Writing the content again with `object.update` doesn't repair it, because an update that finds the content's digest already in the object keeps the stored file it has.
+
 Both digests are lowercase, even when an object written by another tool records them in uppercase.
 
 ## Best practices

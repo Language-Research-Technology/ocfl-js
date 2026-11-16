@@ -11,7 +11,7 @@ import { type OcflFile, StoredFile } from './ocfl-file.ts';
 import { createError } from './ocfl-rules.ts';
 import type { StorageRoot } from './storage-root.ts';
 import * as store from './store.ts';
-import { dirContents, findNamasteVersion, isNotFound, isNothingAtPath, parseJsonObject, pathExists } from './utils.ts';
+import { dirContents, findNamasteVersion, isNotFound, isNothingAtPath, parseJsonObject, pathExists, pathFromStorageRoot } from './utils.ts';
 import { objectWorkspace } from './workspace.ts';
 
 const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
@@ -81,6 +81,8 @@ interface OcflObject {
   /**
    * Reads every stored file again and compares its digest with the inventory. An empty list means the object is intact.
    * Covers the versions this object knows about. Does not look for extra files or check the `fixity` block.
+   * Each problem names its stored file by its path from the storage root, and lists the versions and logical paths that read it.
+   * Problems are sorted by stored file.
    *
    * @throws The file system error, such as `EACCES` or `EIO`, if a stored file can't be read for any reason but being missing.
    */
@@ -91,8 +93,10 @@ interface OcflObject {
 interface FixityProblem {
   /** `changed` if the content no longer matches its digest, `missing` if the stored file is gone. */
   readonly problem: 'changed' | 'missing';
-  /** Where the stored file is, relative to the object, such as `v1/content/audio/1.wav`. */
-  readonly contentPath: string;
+  /** The stored file's path from the storage root, with `/` between directories, such as `a1b/c2d/item-1/v1/content/audio/1.wav`. Never absolute. */
+  readonly storedFile: string;
+  /** Every version, by number, and logical path that reads the stored file, by version then path. Empty if none does, as for a second stored file of one digest. */
+  readonly affects: readonly { readonly version: number; readonly path: string }[];
   /** The digest the inventory records, in lowercase. */
   readonly expected: string;
   /** The digest found on disk, in lowercase. Absent when the file is missing. */
@@ -141,13 +145,13 @@ class OpenedObject implements OcflObject {
 
   async checkFixity(): Promise<readonly FixityProblem[]> {
     const storedFiles = storedFilesOf(this.#inventory);
-    const problems: FixityProblem[] = [];
+    const failed: { contentPath: string; expected: string; actual: string | undefined }[] = [];
     // A worker that throws closes the shared iterator, which stops the others after the file each is reading
     const worker = async () => {
       for (const [contentPath, expected] of storedFiles) {
-        const problem = await checkStoredFile(this.#root, contentPath, this.digestAlgorithm, expected);
-        if (problem) {
-          problems.push(problem);
+        const actual = await digestIfExists(nodePath.join(this.#root, contentPath), this.digestAlgorithm);
+        if (actual !== expected) {
+          failed.push({ contentPath, expected, actual });
         }
       }
     };
@@ -157,7 +161,16 @@ class OpenedObject implements OcflObject {
     if (failure) {
       throw failure.reason;
     }
-    return problems.sort((a, b) => Number(a.contentPath > b.contentPath) - Number(a.contentPath < b.contentPath));
+    if (failed.length === 0) {
+      return [];
+    }
+    const affected = affectedFiles(this.#inventory, new Set(failed.map(({ contentPath }) => contentPath)));
+    const problems = failed.map(({ contentPath, expected, actual }): FixityProblem => {
+      const storedFile = pathFromStorageRoot(this.#storageRoot, nodePath.join(this.#root, contentPath));
+      const common = { storedFile, affects: affected.get(contentPath) ?? [], expected };
+      return actual === undefined ? { problem: 'missing', ...common } : { problem: 'changed', ...common, actual };
+    });
+    return problems.sort((a, b) => Number(a.storedFile > b.storedFile) - Number(a.storedFile < b.storedFile));
   }
 }
 
@@ -170,23 +183,37 @@ function* storedFilesOf(inventory: OcflObjectInventory): Generator<[contentPath:
   }
 }
 
-/** The problem with the stored file at `contentPath` of the object at `objectRoot`, if it doesn't have the digest `expected` */
-async function checkStoredFile(
-  objectRoot: string,
-  contentPath: string,
-  digestAlgorithm: DigestAlgorithm,
-  expected: string,
-): Promise<FixityProblem | undefined> {
-  let actual: string;
+/**
+ * Each version and logical path that reads one of the stored files at `contentPaths`, by version then path, keyed by that content path.
+ * A logical path reads the first content path the manifest gives its digest, so a later one for the same digest is read by none.
+ */
+function affectedFiles(inventory: OcflObjectInventory, contentPaths: ReadonlySet<string>): Map<string, FixityProblem['affects']> {
+  const affected = new Map<string, { version: number; path: string }[]>();
+  for (const [version, name] of versionNumbers(inventory)) {
+    const files = [...inventory.files(name)].filter(({ contentPath }) => contentPaths.has(contentPath));
+    files.sort((a, b) => Number(a.logicalPath > b.logicalPath) - Number(a.logicalPath < b.logicalPath));
+    for (const { logicalPath, contentPath } of files) {
+      let entries = affected.get(contentPath);
+      if (!entries) {
+        entries = [];
+        affected.set(contentPath, entries);
+      }
+      entries.push({ version, path: logicalPath });
+    }
+  }
+  return affected;
+}
+
+/** The digest of `file`, or `undefined` if it doesn't exist */
+async function digestIfExists(file: string, digestAlgorithm: DigestAlgorithm): Promise<string | undefined> {
   try {
-    actual = await Hashing.digest(digestAlgorithm, store.createReadable(nodePath.join(objectRoot, contentPath)));
+    return await Hashing.digest(digestAlgorithm, store.createReadable(file));
   } catch (error) {
     if (isNotFound(error)) {
-      return { problem: 'missing', contentPath, expected };
+      return undefined;
     }
     throw error;
   }
-  return actual === expected ? undefined : { problem: 'changed', contentPath, expected, actual };
 }
 
 /** Each version's number and name, oldest first */

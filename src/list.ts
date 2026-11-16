@@ -3,7 +3,7 @@ import path from 'node:path';
 import { OcflConstants, type OcflVersion } from './constants.ts';
 import { OcflError } from './error.ts';
 import { idInRootInventory, type OcflObject, openDeclaredObject } from './ocfl-object.ts';
-import { findNamasteVersion, isNothingAtPath } from './utils.ts';
+import { findNamasteVersion, isNothingAtPath, pathFromStorageRoot } from './utils.ts';
 
 const { EXTENSIONS_DIR, NAMASTE_PREFIX_OBJECT } = OcflConstants;
 
@@ -54,7 +54,7 @@ async function listedObjectAt(
     if (!(error instanceof OcflError && error.code === 'INVALID_OBJECT')) {
       throw error;
     }
-    const damaged = { error, objectRoot: path.relative(storageRoot, objectRoot).split(path.sep).join('/') };
+    const damaged = { error, objectRoot: pathFromStorageRoot(storageRoot, objectRoot) };
     const id = await idInRootInventory(objectRoot);
     return id === undefined ? damaged : { ...damaged, id };
   }
