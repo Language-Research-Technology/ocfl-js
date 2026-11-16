@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { createLayout } from '../src/extensions/index.ts';
+import { createLayout } from '../src/layouts/index.ts';
 
 const NAME = '000N-path-direct-storage-layout';
 const configured = (params: Record<string, unknown>) => createLayout({ extensionName: NAME, ...params });

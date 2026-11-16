@@ -2,8 +2,8 @@ import nodePath from 'node:path';
 import { OcflConstants, type OcflVersion } from './constants.ts';
 import { type DigestAlgorithm, normaliseDigest } from './digest.ts';
 import { ocflError } from './error.ts';
+import { createError } from './ocfl-rules.ts';
 import { normaliseLogicalPath, parentDirectories } from './utils.ts';
-import { createError } from './validation.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { createLayout } from '../src/extensions/index.ts';
+import { createLayout } from '../src/layouts/index.ts';
 
 describe('the 0002 flat direct layout', () => {
   const layout = createLayout({ extensionName: '0002-flat-direct-storage-layout' });

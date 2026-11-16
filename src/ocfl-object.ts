@@ -8,11 +8,11 @@ import { type OcflError, ocflError } from './error.ts';
 import { type Inventory, isVersionName, OcflObjectInventory, sidecarDigest, VersionNumber, validateStoredInventory } from './inventory.ts';
 import { isLocked, updateInProgress } from './lock.ts';
 import { type OcflFile, StoredFile } from './ocfl-file.ts';
+import { createError } from './ocfl-rules.ts';
 import type { StorageRoot } from './storage-root.ts';
 import * as store from './store.ts';
 import { assertNoMutableHead, updateTarget } from './transaction.ts';
 import { dirContents, findNamasteVersion, isNotFound, isNothingAtPath, parseJsonObject, pathExists } from './utils.ts';
-import { createError } from './validation.ts';
 import { objectWorkspace } from './workspace.ts';
 
 const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;

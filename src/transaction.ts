@@ -8,6 +8,7 @@ import type { VersionDetails, WriteContent } from './draft.ts';
 import { ocflError } from './error.ts';
 import { type ContentRelease, type DeletePlan, type OcflObjectInventory, type RelistPlan, rootInventoryPaths, sidecarContent } from './inventory.ts';
 import { lockKept, releaseLock, takeLock } from './lock.ts';
+import { createError } from './ocfl-rules.ts';
 import * as store from './store.ts';
 import {
   createLimiter,
@@ -21,7 +22,6 @@ import {
   readIfExists,
   relativeWithin,
 } from './utils.ts';
-import { createError } from './validation.ts';
 import { objectWorkspace } from './workspace.ts';
 
 const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;

@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { inspect } from 'node:util';
-import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 import { hasOverlongSegment, MAX_NAME_BYTES } from '../utils.ts';
+import { BuiltInLayout, type OcflExtensionConfig } from './built-in-layout.ts';
 
 /** Object directories at the path spelled by their id. */
 interface PathDirectLayoutConfig {

@@ -1,7 +1,7 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
 import type { FixityAlgorithm } from '../src/digest.ts';
-import { createLayout } from '../src/extensions/index.ts';
+import { createLayout } from '../src/layouts/index.ts';
 import { eachDigest } from './helpers/digests-of-abc.ts';
 
 const DIGESTS_OF_OBJECT_01 = {

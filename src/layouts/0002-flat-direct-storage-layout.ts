@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { OcflConstants } from '../constants.ts';
-import { BuiltInLayout } from '../extension.ts';
 import { hasOverlongSegment, MAX_NAME_BYTES } from '../utils.ts';
+import { BuiltInLayout } from './built-in-layout.ts';
 
 /** Object directories named by their id, directly in the storage root. */
 interface FlatDirectLayoutConfig {
