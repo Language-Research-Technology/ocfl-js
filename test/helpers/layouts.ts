@@ -1,3 +1,4 @@
+export const HASH_AND_ID = '0003-hash-and-id-n-tuple-storage-layout';
 export const HASHED = '0004-hashed-n-tuple-storage-layout';
 export const PATH_DIRECT = '000N-path-direct-storage-layout';
 
