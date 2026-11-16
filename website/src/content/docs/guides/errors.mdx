@@ -31,7 +31,7 @@ Two fields are set only some of the time:
 
 ### What isn't an `OcflError`
 
-- A `TypeError` means the call itself was wrong: an empty id, message or user name, an unknown storage layout or parameter given to `createStorageRoot`, or an extra option.
+- A `TypeError` means the call itself was wrong: a required argument is missing or empty, an argument has the wrong type, an options object has an extra key, or `createStorageRoot` was given a storage layout or parameter it doesn't have or refuses. The API reference lists each method's.
 - A `RangeError` means a byte range given to `OcflFile.stream()` has an end that isn't a whole number from 0, a `start` after its `end`, or a `start` after the file's last byte.
 - A plain `Error` means a draft was used after its update finished, or an update ended with draft operations still running. Await every operation.
 - File system errors, such as `ENOSPC` or `EACCES`, pass through untouched.
@@ -76,7 +76,7 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 **Cause:** the storage root's storage layout can't place an object with this id. Either the storage layout can't map the id, or it maps it somewhere an object can't go: the storage root itself, outside it, the `extensions` directory, or a path too long for the file system (with the path-direct storage layout, an id of many long segments). Each storage layout has its own rules. For example, `0002-flat-direct-storage-layout` refuses an id with a `/` in it, `.`, `..`, `extensions`, or an id longer than 255 bytes, and the path-direct storage layout refuses an id with `.` or `..` segments, or one that ends with or contains its suffix.
 
-It is also thrown when the directory the id maps to holds an object with a different id, and by `create` when that directory isn't empty, is below a file, or is inside another object. `create` and `remove` also throw it when the object's lock in the workspace would be too long for the file system, even if its directory isn't, so such an object can be opened but not changed.
+It is also thrown when the directory the id maps to holds an object with a different id, and by `create` when that directory isn't empty, is below a file, or is inside another object. `create` and `remove` also throw it when the object's lock in the workspace would be too long for the file system, even if its directory isn't, so such an object can be opened but not changed. `root.unfinishedWrite(id)` throws it when the id's directory is locked by a writer of another id.
 
 **What to do:** choose another id, or a storage layout that suits your ids. If the directory holds another object or other files, look at what is there before doing anything; the message names the directory.
 
@@ -84,7 +84,7 @@ It is also thrown when the directory the id maps to holds an object with a diffe
 
 **Cause:** what the library read where the object should be isn't an object it can safely use. The inventory is missing, isn't JSON, is inconsistent, or names paths that would lead outside the object; the sidecar digest is missing or doesn't match; the object declaration is missing or wrong, or declares a later OCFL version than the storage root's; or the object is inside another object. Reading a file throws it if the file's stored content isn't a regular file, such as a directory. `ocflCode` names the OCFL rule, for example `E003` (no object declaration), `E033` (inventory isn't JSON), `E060` (sidecar digest doesn't match) or `E081` (a 1.1 object in a 1.0 storage root).
 
-`open`, `update`, `remove`, recovering an unfinished write, `objects()`, and an `OcflFile`'s `size()`, `stream()`, `text()` and `bytes()` can all give it. `update` throws it if the declaration has been removed or damaged since the object was opened.
+`open`, `update`, `remove`, recovering an unfinished write, `objects()`, and an `OcflFile`'s `size()`, `stream()`, `text()` and `bytes()` can all give it. `update` throws it if the declaration has been removed or damaged since the object was opened. Rarely, `create` throws it when an invalid declaration appeared in the new object's directory while its first version was being built.
 
 These are checks the library makes before it uses an inventory's values as file paths. They are not validation: an object that opens can still break OCFL rules the library never looks at. To check an object against the specification, use [an OCFL validator](/ocfl-js/#objects-written-by-other-tools). See [It doesn't validate](/ocfl-js/#it-doesnt-validate) for what the library checks and what it doesn't.
 
@@ -123,11 +123,13 @@ These are checks the library makes before it uses an inventory's values as file 
 - `create` or `update` failed after the commit point, or failed replacing the root inventory in a way that may have replaced it. The update may have been committed.
 - A failed update couldn't remove everything it had made.
 - `remove` failed part of the way through, so the object may be partly deleted.
+- `remove` deleted the object but couldn't release its lock.
+- `create`, `update` or `remove` was refused and couldn't release the lock it had taken. Apart from the lock, nothing is changed.
 - An earlier writer left an unfinished version in the workspace. This is thrown before your change runs.
 
 `cause` is the underlying failure. The object stays locked, so later writes get `UPDATE_IN_PROGRESS` until it is recovered, and it is among the storage root's unfinished writes. It can still be read.
 
-**What to do:** don't simply repeat the write. Once no writer of the object is alive, recover its unfinished write: `(await root.unfinishedWrite(id))?.recover()`. After a `create` or `update`, open the object again and look at the head to see whether your version was committed; retry only if it wasn't. After a `remove`, recovering finishes removing the object. See [`RECOVERY_NEEDED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#recovery_needed-the-update-may-or-may-not-be-committed).
+**What to do:** don't simply repeat the write. Once no writer of the object is alive, recover its unfinished write: `(await root.unfinishedWrite(id))?.recover()`. After a `create` or `update`, open the object again and look at the head to see whether your version was committed; retry only if it wasn't. After a `remove` that had begun deleting, recovering finishes removing the object. After a refused write, recovering only releases the lock: nothing was changed, so repeat the write. See [`RECOVERY_NEEDED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#recovery_needed-the-update-may-or-may-not-be-committed).
 
 ### `CROSS_FILESYSTEM_MOVE`
 
