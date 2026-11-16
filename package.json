@@ -38,22 +38,21 @@
     "resources"
   ],
   "scripts": {
-    "build": "tsc",
-    "prepack": "tsc",
+    "build": "rm -rf dist && tsc",
+    "prepack": "pnpm build",
     "lint:knip": "knip",
     "lint:biome": "biome check .",
-    "lint:consumer": "scripts/check-consumer.sh",
-    "lint:api": "tsc && api-extractor run",
-    "api:update": "tsc && api-extractor run --local",
+    "lint:package": "scripts/check-package.sh",
+    "lint:api": "pnpm build && api-extractor run",
+    "api:update": "pnpm build && api-extractor run --local",
     "format": "biome check --write .",
     "lint:types": "tsc --noEmit && tsc -p test",
     "test": "node --test 'test/**/*.spec.ts'",
     "coverage": "node --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-include-all --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test 'test/**/*.spec.ts'",
-    "lint:docs": "tsc && pnpm --dir website check:examples && pnpm --dir website build"
+    "lint:docs": "pnpm build && pnpm --dir website check:examples && pnpm --dir website build"
   },
   "packageManager": "pnpm@12.18.0",
   "devDependencies": {
-    "@arethetypeswrong/cli": "^0.18.5",
     "@biomejs/biome": "^2.6.6",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",

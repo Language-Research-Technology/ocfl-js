@@ -1,6 +1,6 @@
 # Contributing
 
-Bug reports, fixes and new features are welcome. To report a security vulnerability, follow [SECURITY.md](SECURITY.md) instead of opening an issue.
+Bug reports, fixes and new features are welcome. To report a security vulnerability, follow [SECURITY.md](SECURITY.md) instead of opening an issue. Everyone taking part follows the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## Set up
 
@@ -25,16 +25,16 @@ Installing also sets up the [Lefthook](https://lefthook.dev/) Git hooks, which r
 
 CI runs all of these on every pull request to `main`:
 
-| Command              | What it checks                                                      |
-| -------------------- | ------------------------------------------------------------------- |
-| `pnpm test`          | The test suite                                                      |
-| `pnpm coverage`      | The test suite, failing unless it covers all of `src`               |
-| `pnpm lint:types`    | Types, in the source and the tests                                  |
-| `pnpm lint:biome`    | Formatting and lint rules (`pnpm format` fixes what it can)         |
-| `pnpm lint:knip`     | Unused files, exports and dependencies                              |
-| `pnpm lint:consumer` | That the packed package passes publint and attw, installs and works |
-| `pnpm lint:api`      | That the public API matches the API report                          |
-| `pnpm lint:docs`     | That the site's examples type-check and the site builds             |
+| Command             | What it checks                                              |
+| ------------------- | ----------------------------------------------------------- |
+| `pnpm test`         | The test suite                                              |
+| `pnpm coverage`     | The test suite, failing unless it covers all of `src`       |
+| `pnpm lint:types`   | Types, in the source and the tests                          |
+| `pnpm lint:biome`   | Formatting and lint rules (`pnpm format` fixes what it can) |
+| `pnpm lint:knip`    | Unused files, exports and dependencies                      |
+| `pnpm lint:package` | That the packed package passes publint, installs and works  |
+| `pnpm lint:api`     | That the public API matches the API report                  |
+| `pnpm lint:docs`    | That the site's examples type-check and the site builds     |
 
 Run a single test file with `node --test`, for example `node --test test/open-object.spec.ts`. Specs sit at the top of `test/`, named for the behaviour they cover, with `helpers/`, `types/` (compiled, never run) and `fixtures/` beside them. Specs of the public API import only the package entry, `src/index.ts`; unit specs of internals import the module they test.
 
