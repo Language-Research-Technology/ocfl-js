@@ -4,6 +4,7 @@ import { ocflError } from './error.ts';
 import { isVersionName, VersionNumber } from './inventory-files.ts';
 import { normaliseLogicalPath, parentDirectories } from './logical-path.ts';
 import { createError } from './ocfl-rules.ts';
+import { isJsonObject } from './utils.ts';
 
 /** `T` and everything nested in it, read-only at compile time. The data isn't frozen. */
 type DeepReadonly<T> = { readonly [K in keyof T]: DeepReadonly<T[K]> };
@@ -74,10 +75,6 @@ function headVersion(data: Inventory): InventoryVersion {
     throw headNotInVersionsError(data.id, data.head);
   }
   return version;
-}
-
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Whether `block` maps each digest to an array of content paths, as a manifest does */

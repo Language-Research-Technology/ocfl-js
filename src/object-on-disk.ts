@@ -9,7 +9,7 @@ import { type Inventory, OcflObjectInventory, validateStoredInventory, versionNu
 import { isVersionName, sidecarDigest } from './inventory-files.ts';
 import { isLocked } from './lock.ts';
 import { createError } from './ocfl-rules.ts';
-import { parseJsonObject } from './utils.ts';
+import { isJsonObject, parseJsonObject } from './utils.ts';
 import { objectWorkspace } from './workspace.ts';
 
 const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
@@ -91,13 +91,17 @@ async function readInventory(objectRoot: string): Promise<OcflObjectInventory | 
   if (text === undefined) {
     return undefined;
   }
-  let data: Inventory;
+  let parsed: unknown;
   try {
-    data = JSON.parse(text);
+    parsed = JSON.parse(text);
   } catch (cause) {
     throw invalidObject(`The inventory ${file} is not valid JSON.`, { ocflCode: 'E033', cause });
   }
-  const digestAlgorithm: unknown = data?.digestAlgorithm;
+  if (!isJsonObject(parsed)) {
+    throw invalidObject(`The inventory ${file} is not a JSON object.`, { ocflCode: 'E033' });
+  }
+  const data = parsed as unknown as Inventory;
+  const digestAlgorithm: unknown = data.digestAlgorithm;
   if (digestAlgorithm !== 'sha256' && digestAlgorithm !== 'sha512') {
     throw invalidObject(`The inventory ${file} has a digestAlgorithm that is not sha256 or sha512.`, { ocflCode: 'E025' });
   }
