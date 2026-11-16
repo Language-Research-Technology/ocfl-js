@@ -3,7 +3,7 @@ import nodePath from 'node:path';
 import { OcflConstants, type OcflVersion } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
-import { assertNoMutableHead, checkedDetails, commitDraft, type Draft, updateTarget, type VersionDetails } from './draft.ts';
+import { checkedDetails, commitDraft, type Draft, type User, type VersionDetails } from './draft.ts';
 import { type OcflError, ocflError } from './error.ts';
 import { type Inventory, isVersionName, OcflObjectInventory, sidecarDigest, VersionNumber, validateStoredInventory } from './inventory.ts';
 import { isLocked, updateInProgress } from './lock.ts';
@@ -14,16 +14,16 @@ import * as store from './store.ts';
 import { dirContents, findNamasteVersion, isNotFound, isNothingAtPath, parseJsonObject, pathExists } from './utils.ts';
 import { objectWorkspace } from './workspace.ts';
 
-const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
+const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
+const MUTABLE_HEAD_INVENTORY = nodePath.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
 
 const FIXITY_CONCURRENCY = 10;
 
-/** The person or system responsible for a version. */
-interface User {
-  /** Display name. */
-  readonly name: string;
-  /** A URI for the user, such as `mailto:` or an ORCID. */
-  readonly address?: string;
+/** @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE`, with `message`, if the object has an active mutable head (extension 0005) */
+async function assertNoMutableHead(objectRoot: string, message: string): Promise<void> {
+  if (await pathExists(nodePath.join(objectRoot, MUTABLE_HEAD_INVENTORY))) {
+    throw ocflError('MUTABLE_HEAD_ACTIVE', message);
+  }
 }
 
 /** One version of an OCFL object. */
@@ -135,7 +135,7 @@ class OpenedObject implements OcflObject {
       `The object <${this.id}> has an active mutable head (extension 0005), which this library doesn't support; it can't be updated until the head is committed or removed.`,
     );
     const inventory = OcflObjectInventory._newVersion(this.#inventory);
-    const committed = await commitDraft(updateTarget(this.#storageRoot, this.#root, this.ocflVersion), inventory, checked, change);
+    const committed = await commitDraft({ storageRoot: this.#storageRoot, objectRoot: this.#root, ocflVersion: this.ocflVersion }, inventory, checked, change);
     return committed ? new OpenedObject(this.#storageRoot, this.#rootVersion, this.#root, this.ocflVersion, committed) : this;
   }
 
@@ -522,7 +522,7 @@ async function createObject(
     type: `https://ocfl.io/${ocflVersion}/spec/#inventory`,
     contentDirectory: 'content',
   });
-  const committed = await commitDraft(updateTarget(storageRoot, objectRoot, ocflVersion), inventory, details, build);
+  const committed = await commitDraft({ storageRoot, objectRoot, ocflVersion }, inventory, details, build);
   // A first version always differs from no version, so it is always committed
   /* node:coverage disable */
   if (!committed) {
@@ -545,6 +545,5 @@ export {
   openDeclaredObject,
   openObject,
   readInventory,
-  type User,
   type Version,
 };

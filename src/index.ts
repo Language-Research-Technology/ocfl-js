@@ -1,6 +1,6 @@
 export type { OcflVersion } from './constants.ts';
 export type { DigestAlgorithm, FixityAlgorithm } from './digest.ts';
-export type { Draft, MergeOptions, VersionDetails, WriteContent } from './draft.ts';
+export type { Draft, MergeOptions, User, VersionDetails, WriteContent } from './draft.ts';
 export type { OcflErrorCode } from './error.ts';
 export { OcflError } from './error.ts';
 export type {
@@ -13,7 +13,7 @@ export type {
 } from './layouts/index.ts';
 export type { ListedObject } from './list.ts';
 export type { ByteRange, OcflFile } from './ocfl-file.ts';
-export type { FixityProblem, OcflObject, User, Version } from './ocfl-object.ts';
+export type { FixityProblem, OcflObject, Version } from './ocfl-object.ts';
 export type { StorageRoot } from './storage-root.ts';
 export { createStorageRoot, openStorageRoot } from './storage-root.ts';
 export type { UnfinishedWrite } from './unfinished-write.ts';

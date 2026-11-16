@@ -6,7 +6,6 @@ import * as Hashing from './digest.ts';
 import { ocflError } from './error.ts';
 import { type ContentRelease, type DeletePlan, type OcflObjectInventory, type RelistPlan, rootInventoryPaths, sidecarContent } from './inventory.ts';
 import { lockKept, releaseLock, takeLock } from './lock.ts';
-import type { User } from './ocfl-object.ts';
 import { createError } from './ocfl-rules.ts';
 import * as store from './store.ts';
 import {
@@ -18,11 +17,20 @@ import {
   isNonEmptyString,
   normaliseLogicalPath,
   parseJsonObject,
-  pathExists,
   readIfExists,
   relativeWithin,
 } from './utils.ts';
 import { objectWorkspace } from './workspace.ts';
+
+const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
+
+/** The person or system responsible for a version. */
+interface User {
+  /** Display name. */
+  readonly name: string;
+  /** A URI for the user, such as `mailto:` or an ORCID. */
+  readonly address?: string;
+}
 
 /** What a new version records about why and by whom it was made. */
 interface VersionDetails {
@@ -141,59 +149,29 @@ function isTextOrBytes(content: unknown): content is string | Uint8Array {
   return typeof content === 'string' || content instanceof Uint8Array;
 }
 
-async function* checkedChunks(stream: AsyncIterable<unknown>): AsyncGenerator<string | Uint8Array> {
-  for await (const chunk of stream) {
-    if (!isTextOrBytes(chunk)) {
-      throw unsupportedContent(chunk);
-    }
-    yield chunk;
-  }
-}
-
 /**
- * @returns `content`, with what a stream yields checked as it is read
- * @throws `TypeError` if `content` is not a {@link WriteContent}
+ * @returns `content`; a stream's chunks are checked by {@link hashedBytes} as it is read
+ * @throws `TypeError` if `content` is not text, bytes or a stream
  */
-function checkedContent(content: unknown): WriteContent {
-  if (isTextOrBytes(content)) {
+function checkedContent(content: unknown): string | Uint8Array | AsyncIterable<unknown> {
+  if (isTextOrBytes(content) || isAsyncIterable(content)) {
     return content;
   }
-  if (!isAsyncIterable(content)) {
-    throw unsupportedContent(content);
-  }
-  return checkedChunks(content);
+  throw unsupportedContent(content);
 }
 
-const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
-const MUTABLE_HEAD_INVENTORY = path.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
-
-export interface UpdateTarget {
-  /** Absolute path of the object root */
-  readonly root: string;
-  /** This object's directory in the storage root's workspace */
-  readonly workspace: string;
+/** Where the object a draft updates is */
+interface ObjectPlace {
   /** Absolute path of the storage root, where removing empty directories stops */
   readonly storageRoot: string;
+  /** Absolute path of the object root, inside the storage root */
+  readonly objectRoot: string;
   /** Declared when the first commit creates the object */
   readonly ocflVersion: OcflVersion;
 }
 
-/** @param objectRoot - Absolute, and inside the storage root at the absolute path `root` */
-function updateTarget(root: string, objectRoot: string, ocflVersion: OcflVersion): UpdateTarget {
-  return {
-    root: objectRoot,
-    workspace: objectWorkspace(root, objectRoot),
-    storageRoot: root,
-    ocflVersion,
-  };
-}
-
-/** @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE`, with `message`, if the object has an active mutable head (extension 0005) */
-async function assertNoMutableHead(objectRoot: string, message: string): Promise<void> {
-  if (await pathExists(path.join(objectRoot, MUTABLE_HEAD_INVENTORY))) {
-    throw ocflError('MUTABLE_HEAD_ACTIVE', message);
-  }
-}
+/** Only {@link ObjectDraft}'s own factory has it, so a draft's class can't make another draft */
+const STARTING = Symbol('starting a draft');
 
 /** @returns The path of the declaration file, if this call wrote one */
 async function ensureObjectDeclaration(root: string, ocflVersion: OcflVersion): Promise<string | undefined> {
@@ -309,15 +287,19 @@ function isAsyncIterable(data: unknown): data is AsyncIterable<unknown> {
   return typeof (data as AsyncIterable<unknown> | null)?.[Symbol.asyncIterator] === 'function';
 }
 
+/** @throws `TypeError` at the first chunk that is not text or bytes */
 async function* hashedBytes(source: AsyncIterable<unknown>, hash: ReturnType<typeof Hashing.createHasher>) {
   for await (const chunk of source) {
+    if (!isTextOrBytes(chunk)) {
+      throw unsupportedContent(chunk);
+    }
     const bytes = Hashing.toBytes(chunk);
     hash.update(bytes);
     yield bytes;
   }
 }
 
-/** Files imports read or copy at once, across all the imports in a transaction */
+/** Files imports read or copy at once, across all the imports in a draft */
 const IMPORT_CONCURRENCY = 10;
 
 interface ImportFile {
@@ -370,23 +352,33 @@ interface TrackedPromise<T> extends Promise<T> {
 }
 
 /**
- * A Transaction represent an atomic update on an OCFL Object.
- * When a transaction is commited, all changes are saved as a new version.
- *
+ * Runs `change` on a draft of the version `inventory` is at, then commits it, or discards it if `change` throws.
+ * @param inventory - Already at its new version
+ * @returns The committed inventory, or `undefined` if the draft ended the same as the previous version
+ */
+let commitDraft: (
+  place: ObjectPlace,
+  inventory: OcflObjectInventory,
+  details: VersionDetails,
+  change: (draft: Draft) => Promise<unknown>,
+) => Promise<OcflObjectInventory | undefined>;
+
+/**
  * Operations called concurrently, such as with `Promise.all`, give the same result as awaiting
  * them one after another in the order they were called. A failed operation
  * rejects its own promise and leaves nothing behind; later operations carry on. An operation
  * waits for all the earlier ones, so one whose input never ends holds up those called after it.
- * If a failed operation's changes to the stored files can't be undone, the commit discards the transaction and throws that operation's error.
+ * If a failed operation's changes to the stored files can't be undone, the commit discards the draft and throws that operation's error.
  *
- * The transaction is committed when the root inventory is replaced. A failure before that discards everything
- * the transaction made and releases the object's lock. A failure after it, a failed replacement that may have
+ * The draft is committed when the root inventory is replaced. A failure before that discards everything
+ * the draft made and releases the object's lock. A failure after it, a failed replacement that may have
  * happened all the same, or a failure to discard, throws `RECOVERY_NEEDED` and keeps the lock.
  */
-class OcflObjectTransaction {
+class ObjectDraft implements Draft {
   #versionPath: string;
   #contentRoot: string;
-  #target: UpdateTarget;
+  #place: ObjectPlace;
+  #workspace: string;
   #inventory: OcflObjectInventory;
   #rootExisted: boolean;
   #createdNamaste: string | undefined;
@@ -394,52 +386,68 @@ class OcflObjectTransaction {
   #queue: TrackedPromise<unknown>[] = [];
   #lastTurn: Promise<unknown> = Promise.resolve();
   #stagedCount = 0;
-  #ended = false;
+  #finished = false;
   #commitBlocker: { error: unknown } | undefined;
   #limit = createLimiter(IMPORT_CONCURRENCY);
 
-  private constructor(target: UpdateTarget, inventory: OcflObjectInventory, versionPath: string, rootExisted: boolean) {
+  // Inside the class so it reaches the private commit and discard, which neither a draft nor its class exposes
+  static {
+    commitDraft = async (place, inventory, details, change) => {
+      const draft = await ObjectDraft.#start(place, inventory);
+      try {
+        await change(draft);
+      } catch (error) {
+        await draft.#discard({ error });
+        throw error;
+      }
+      return draft.#commit(details);
+    };
+  }
+
+  private constructor(starting: symbol, place: ObjectPlace, workspace: string, inventory: OcflObjectInventory, versionPath: string, rootExisted: boolean) {
+    if (starting !== STARTING) {
+      throw new TypeError('A draft is made only by an update.');
+    }
     this.#versionPath = versionPath;
     this.#contentRoot = path.join(versionPath, inventory.contentDirectory);
-    this.#target = target;
+    this.#place = place;
+    this.#workspace = workspace;
     this.#inventory = inventory;
     this.#rootExisted = rootExisted;
   }
 
-  /**
-   * Create a new transaction instance.
-   * @internal
-   */
-  static async _create(target: UpdateTarget, inventory: OcflObjectInventory) {
-    const rootExisted = await fs.promises.stat(target.root).then(
+  static async #start(place: ObjectPlace, inventory: OcflObjectInventory) {
+    const { storageRoot, objectRoot } = place;
+    const workspace = objectWorkspace(storageRoot, objectRoot);
+    const rootExisted = await fs.promises.stat(objectRoot).then(
       () => true,
       () => false,
     );
-    await takeLock(target.workspace, target.storageRoot, inventory.id, rootExisted);
-    const versionPath = path.join(target.workspace, inventory.head);
+    await takeLock(workspace, storageRoot, inventory.id, rootExisted);
+    const versionPath = path.join(workspace, inventory.head);
     const refuse = async (error: unknown): Promise<never> => {
       try {
-        await releaseLock(target.workspace, target.storageRoot);
+        await releaseLock(workspace, storageRoot);
       } catch {
-        throw recoveryNeeded(target.root, 'was refused, and its lock could not be released', error);
+        throw recoveryNeeded(objectRoot, 'was refused, and its lock could not be released', error);
       }
       throw error;
     };
-    await assertUpToDate(target.root, inventory).catch(refuse);
+    await assertUpToDate(objectRoot, inventory).catch(refuse);
     try {
       await fs.promises.mkdir(versionPath);
     } catch (error) {
       // Kept locked, so that what an earlier writer left there never becomes part of a version
       if (isAlreadyExists(error)) {
         throw lockKept(
-          `The object at ${target.root} can't be updated: an earlier update left ${versionPath} behind`,
+          `The object at ${objectRoot} can't be updated: an earlier update left ${versionPath} behind`,
           'then open the object again before retrying',
           error,
         );
       }
       return refuse(error);
     }
-    return new OcflObjectTransaction(target, inventory, versionPath, rootExisted);
+    return new ObjectDraft(STARTING, place, workspace, inventory, versionPath, rootExisted);
   }
 
   #getRealPath(logicalPath: string) {
@@ -454,76 +462,70 @@ class OcflObjectTransaction {
   }
 
   /**
-   * Discards all the changes made in this transaction, which failed with `failure`; the caller then throws it.
-   * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if something the transaction made can't be removed; `cause` is `failure`
-   * @internal
+   * Discards everything this draft made.
+   * @param failure - What the update failed with, if it did, which the caller then throws
+   * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if something the draft made can't be removed; `cause` is the failure, or else what stopped the removal
    */
-  async _discardAfter(failure: unknown): Promise<void> {
-    await this.#discard({ error: failure });
-  }
-
-  /** @param failure - Holds the `cause` of the `RECOVERY_NEEDED` thrown, which is otherwise what stopped the undo */
   async #discard(failure?: { error: unknown }): Promise<void> {
-    if (this.#ended) {
-      return;
-    }
     // Before waiting, so no operation started meanwhile is accepted and then overlaps the undo
-    this.#ended = true;
+    this.#finished = true;
     await Promise.allSettled(this.#queue);
     try {
       await this.#undo();
     } catch (undoFailure) {
-      throw recoveryNeeded(this.#target.root, 'was not committed, and what it made could not all be removed', failure ? failure.error : undoFailure);
+      throw recoveryNeeded(this.#place.objectRoot, 'was not committed, and what it made could not all be removed', failure ? failure.error : undoFailure);
     }
   }
 
   /**
-   * Commit all the changes made in this transaction to the actual OCFL Object.
+   * Saves the draft as the object's new version, or discards it if it is the same as the previous version.
    * @param details - Recorded in the version entry of the inventory
-   * @returns The committed inventory, or `undefined` if nothing was committed: there were no changes, or the transaction had already ended
+   * @returns The committed inventory, or `undefined` if there were no changes
    * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if the commit failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made can't be removed; `cause` is the failure
-   * @internal
    */
-  async _commit(details: VersionDetails): Promise<OcflObjectInventory | undefined> {
-    if (!this.#ended) {
-      let unconfirmed: { error: unknown } | undefined;
-      try {
-        const count = this.#queue.filter((p) => !p.done).length;
-        if (count > 0) {
-          throw new Error(`Unfinished operations detected (${count}). Make sure the callback is an async function that awaits every operation it starts.`);
-        }
-        if (this.#commitBlocker) {
-          throw this.#commitBlocker.error;
-        }
-        // if there is no changes, abort commit
-        if (!this.#inventory._isChanged) {
-          // If this throws, the discard below does nothing: the transaction has ended
-          await this.#discard();
-          return;
-        }
+  async #commit(details: VersionDetails): Promise<OcflObjectInventory | undefined> {
+    this.#finished = true;
+    const changed = this.#inventory._isChanged;
+    let unconfirmed: { error: unknown } | undefined;
+    try {
+      const count = this.#queue.filter((p) => !p.done).length;
+      if (count > 0) {
+        throw new Error(`Unfinished operations detected (${count}). Make sure the callback is an async function that awaits every operation it starts.`);
+      }
+      if (this.#commitBlocker) {
+        throw this.#commitBlocker.error;
+      }
+      if (changed) {
         unconfirmed = await this.#replaceRootInventory(details);
-      } catch (error) {
-        await this._discardAfter(error);
-        throw error;
       }
-      this.#ended = true;
-      if (unconfirmed) {
-        throw recoveryNeeded(this.#target.root, 'may have been committed: replacing its root inventory failed, but may have taken effect', unconfirmed.error);
-      }
-      try {
-        const rootInv = this.#rootInventoryPaths;
-        await store.move(rootInv.stagedSidecar, rootInv.sidecar);
-        await this.#releaseLock();
-      } catch (error) {
-        throw recoveryNeeded(this.#target.root, 'was committed, but could not be finished', error);
-      }
-      return this.#inventory;
+    } catch (error) {
+      await this.#discard({ error });
+      throw error;
     }
+    if (!changed) {
+      await this.#discard();
+      return;
+    }
+    if (unconfirmed) {
+      throw recoveryNeeded(
+        this.#place.objectRoot,
+        'may have been committed: replacing its root inventory failed, but may have taken effect',
+        unconfirmed.error,
+      );
+    }
+    try {
+      const rootInv = this.#rootInventoryPaths;
+      await store.move(rootInv.stagedSidecar, rootInv.sidecar);
+      await this.#releaseLock();
+    } catch (error) {
+      throw recoveryNeeded(this.#place.objectRoot, 'was committed, but could not be finished', error);
+    }
+    return this.#inventory;
   }
 
-  /** Remove everything this transaction created. Only before the root inventory is replaced. */
+  /** Remove everything this draft created. Only before the root inventory is replaced. */
   async #undo() {
-    const root = this.#target.root;
+    const root = this.#place.objectRoot;
     const rootInv = this.#rootInventoryPaths;
     if (this.#rootInventoryStaged) {
       await fs.promises.rm(rootInv.stagedInventory, { recursive: true, force: true });
@@ -534,17 +536,17 @@ class OcflObjectTransaction {
       await fs.promises.rm(this.#createdNamaste, { recursive: true, force: true });
     }
     if (!this.#rootExisted) {
-      await store.removeEmptyAncestorsQuietly(root, this.#target.storageRoot);
+      await store.removeEmptyAncestorsQuietly(root, this.#place.storageRoot);
     }
     await this.#releaseLock();
   }
 
   async #releaseLock() {
-    await releaseLock(this.#target.workspace, this.#target.storageRoot);
+    await releaseLock(this.#workspace, this.#place.storageRoot);
   }
 
   get #rootInventoryPaths() {
-    return rootInventoryPaths(this.#target.root, this.#inventory.digestAlgorithm);
+    return rootInventoryPaths(this.#place.objectRoot, this.#inventory.digestAlgorithm);
   }
 
   /**
@@ -556,7 +558,7 @@ class OcflObjectTransaction {
     const digestAlgorithm = inventory.digestAlgorithm;
     inventory._stamp(new Date().toISOString(), details.message, details.user);
 
-    const objectVersionPath = path.join(this.#target.root, inventory.head);
+    const objectVersionPath = path.join(this.#place.objectRoot, inventory.head);
     /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json */
     let invPath = path.join(this.#versionPath, INVENTORY_NAME);
     /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json.sha512 */
@@ -570,13 +572,16 @@ class OcflObjectTransaction {
     await store.writeFile(invPath, inventoryContent);
     await store.writeFile(invDigestPath, digest);
     // Before anything in the object root changes, so a moved head never surfaces as a failed rename
-    await assertUpToDate(this.#target.root, inventory);
-    this.#createdNamaste = await ensureObjectDeclaration(this.#target.root, this.#target.ocflVersion);
+    await assertUpToDate(this.#place.objectRoot, inventory);
+    this.#createdNamaste = await ensureObjectDeclaration(this.#place.objectRoot, this.#place.ocflVersion);
     try {
       await store.move(this.#versionPath, objectVersionPath);
     } catch (error) {
       throw hasErrorCode(error, 'EXDEV')
-        ? ocflError('CROSS_FILESYSTEM_MOVE', `Cannot move the new version into "${this.#target.root}": it is on a different filesystem from the workspace.`)
+        ? ocflError(
+            'CROSS_FILESYSTEM_MOVE',
+            `Cannot move the new version into "${this.#place.objectRoot}": it is on a different filesystem from the workspace.`,
+          )
         : error;
     }
     this.#versionPath = objectVersionPath;
@@ -592,7 +597,7 @@ class OcflObjectTransaction {
       await store.move(rootInv.stagedInventory, rootInv.inventory);
     } catch (error) {
       // On NFS a rename can be applied though its reply is lost, so only the old head on disk shows it wasn't
-      const notReplaced = await headOnDisk(this.#target.root).then(
+      const notReplaced = await headOnDisk(this.#place.objectRoot).then(
         (head) => head === inventory.versionNumber.previous()?.toString(),
         () => false,
       );
@@ -721,18 +726,12 @@ class OcflObjectTransaction {
     await store.removeEmptyAncestorsQuietly(start, this.#versionPath);
   }
 
-  /**
-   * Write data to a file at `logicalPath`
-   * @param logicalPath - A path relative to the object content directory, stored in its normalised form: `./a//b` is `a/b`
-   * @param data - The file's content. A string, or a string chunk, is written as UTF-8; decode base64 or hex
-   * first, e.g. `Buffer.from(text, 'base64')`.
-   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `logicalPath` is empty or absolute, or contains `..`
-   * @throws {@link OcflError} `FILE_EXISTS` if `logicalPath` is an existing directory, or is inside an existing file. An existing file is replaced.
-   */
   async write(logicalPath: string, data: WriteContent): Promise<void> {
+    // Before the content check, so a finished draft refuses any content with the same Error
     this.#assertOpen();
+    const checked = checkedContent(data);
     // Copied now: the caller may change their buffer before this write's turn
-    const content = isAsyncIterable(data) || typeof data === 'string' ? data : new Uint8Array(Hashing.toBytes(data));
+    const content = checked instanceof Uint8Array ? new Uint8Array(checked) : checked;
     return this.#inTurn(async () => {
       const target = fileLogicalPath(logicalPath);
       const digestAlgo = this.#inventory.digestAlgorithm;
@@ -828,74 +827,30 @@ class OcflObjectTransaction {
     );
   }
 
-  /**
-   * Copy a file or directory from the local filesystem into the object, recursively.
-   * `t.import('/src/data')` puts the directory's contents at the object root, and
-   * `t.import('/src/data', 'data')` puts them under `data/`. A file without a target keeps its own name.
-   * Everything under a directory is imported, including hidden files.
-   * @param source - A path to a file or directory in the local filesystem
-   * @param target - The logical path the source becomes
-   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `target` is empty or absolute, or contains `..`
-   * @throws {@link OcflError} `UNSUPPORTED_FILE_TYPE` if `source` is, or contains, anything other than a regular file or directory, such as a symlink
-   * @throws {@link OcflError} `FILE_EXISTS` if a file would be an existing directory, or inside an existing file, importing nothing. An existing file is replaced.
-   * @throws {@link OcflError} `SOURCE_CHANGED` if a file changed while it was being imported
-   * @throws The error of the first file that can't be imported, as it is. A failed import adds nothing, unless a copied file can't be put in place, which fails the commit.
-   */
+  // A failed import adds nothing, unless a copied file can't be put in place, which fails the commit
   async import(source: string, target?: string): Promise<void> {
     return this.#inTurn(() => this.#prepareImport(source, target));
   }
 
-  /**
-   * Duplicate the logical path `source` as a different logical path `target`, both paths will then point
-   * to the same content path and bitstreams. `source` can be a file or a directory.
-   * @param source - The logical path to be copied
-   * @param target - The target logical path. A file already there is replaced; the same path as `source` does nothing.
-   * @param options - With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay
-   * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set, or if a file would go where a directory is, or below a file, as things stand before the operation
-   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
-   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
-   */
   async copy(source: string, target: string, options?: MergeOptions): Promise<void> {
-    return this.#transact(async () => {
+    return this.#operate(async () => {
       const merge = mergeOption(options);
       const plan = this.#inventory._planCopy(fileLogicalPath(source), fileLogicalPath(target), merge);
       await this.#applyRelist(plan);
     });
   }
 
-  /**
-   * Changes the logical path of existing content. This is similar to move operation in file systems
-   * Unless renaming files that are not yet commited, this operation will NOT rename the actual file name referenced by the manifest.
-   * `source` can be a file or a directory.
-   * @param source - The logical path to be renamed
-   * @param target - The target logical path. A file already there is replaced; the same path as `source` does nothing.
-   * @param options - With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay
-   * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` doesn't exist
-   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set, or if a file would go where a directory is, or below a file, as things stand before the operation
-   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`
-   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
-   */
+  // Content this version stored moves with its path; earlier versions' content stays where the manifest has it
   async rename(source: string, target: string, options?: MergeOptions): Promise<void> {
-    return this.#transact(async () => {
+    return this.#operate(async () => {
       const merge = mergeOption(options);
       const plan = this.#inventory._planRename(fileLogicalPath(source), fileLogicalPath(target), merge);
       await this.#applyRelist(plan);
     });
   }
 
-  /**
-   * Put a file, or every file below a directory, back as it was in an earlier version, at the same logical path.
-   * Files now at the same paths are replaced; other files below a directory stay.
-   * @param logicalPath - The logical path of a file or directory in `version`
-   * @param version - The number of an existing version, which can be the latest
-   * @throws {@link OcflError} `FILE_NOT_FOUND` if the version doesn't exist or has nothing at `logicalPath`
-   * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory
-   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `logicalPath` is empty or leaves the object
-   * @throws `TypeError` if `version` is not a number
-   */
   async reinstate(logicalPath: string, version: number): Promise<void> {
-    return this.#transact(async () => {
+    return this.#operate(async () => {
       if (typeof version !== 'number') {
         throw new TypeError(`The version must be a number, such as 1, not ${inspect(version)}`);
       }
@@ -904,14 +859,8 @@ class OcflObjectTransaction {
     });
   }
 
-  /**
-   * Remove a file, or every file below a directory
-   * @param logicalPath - A path relative to the object content directory
-   * @throws {@link OcflError} `FILE_NOT_FOUND` if nothing is at `logicalPath`
-   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `logicalPath` is empty or leaves the object
-   */
   async remove(logicalPath: string): Promise<void> {
-    return this.#transact(async () => {
+    return this.#operate(async () => {
       const inventory = this.#inventory;
       const plan = inventory._planDelete(fileLogicalPath(logicalPath));
       if (plan.paths.length === 0) {
@@ -921,9 +870,8 @@ class OcflObjectTransaction {
     });
   }
 
-  /** Remove every file */
   async clear(): Promise<void> {
-    return this.#transact(() => this.#applyDelete(this.#inventory._planClear()));
+    return this.#operate(() => this.#applyDelete(this.#inventory._planClear()));
   }
 
   async #applyRelist(plan: RelistPlan) {
@@ -937,13 +885,12 @@ class OcflObjectTransaction {
   }
 
   /** `#inTurn` for an operation with nothing to prepare */
-  async #transact<T>(op: () => Promise<T>): Promise<T> {
+  async #operate<T>(op: () => Promise<T>): Promise<T> {
     return this.#inTurn(async () => op);
   }
 
   /**
-   * A function wrapper to provide safe mutating operation that
-   * will check if a transaction is already committed and track any unfinished promises.
+   * Runs an operation in its turn, once the draft is checked to be open, and tracks it until it settles.
    * `prepare` starts straight away and may overlap other operations, so it mustn't touch the
    * inventory or content directory. The step it resolves to runs once every operation called
    * earlier has finished.
@@ -959,8 +906,8 @@ class OcflObjectTransaction {
   }
 
   #assertOpen() {
-    if (this.#ended) {
-      throw new Error('Transaction already commited');
+    if (this.#finished) {
+      throw new Error('The update this draft belongs to has finished.');
     }
   }
 
@@ -975,87 +922,4 @@ class OcflObjectTransaction {
   }
 }
 
-class ObjectDraft implements Draft {
-  readonly #transaction: OcflObjectTransaction;
-  #finished = false;
-
-  constructor(transaction: OcflObjectTransaction) {
-    this.#transaction = transaction;
-  }
-
-  get #open(): OcflObjectTransaction {
-    if (this.#finished) {
-      throw new Error('The update this draft belongs to has finished.');
-    }
-    return this.#transaction;
-  }
-
-  /** @internal */
-  _finish(): void {
-    this.#finished = true;
-  }
-
-  async write(path: string, content: WriteContent): Promise<void> {
-    return this.#open.write(path, checkedContent(content));
-  }
-
-  async import(source: string, target?: string): Promise<void> {
-    return this.#open.import(source, target);
-  }
-
-  async copy(source: string, target: string, options?: MergeOptions): Promise<void> {
-    return this.#open.copy(source, target, options);
-  }
-
-  async rename(source: string, target: string, options?: MergeOptions): Promise<void> {
-    return this.#open.rename(source, target, options);
-  }
-
-  async reinstate(path: string, version: number): Promise<void> {
-    return this.#open.reinstate(path, version);
-  }
-
-  async remove(path: string): Promise<void> {
-    return this.#open.remove(path);
-  }
-
-  async clear(): Promise<void> {
-    return this.#open.clear();
-  }
-}
-
-/**
- * Runs `change` on a draft of the version `inventory` is at, then commits it, or discards it if `change` throws.
- * @param inventory - Already at its new version
- * @returns The committed inventory, or `undefined` if the draft ended the same as the previous version
- */
-async function commitDraft(
-  target: UpdateTarget,
-  inventory: OcflObjectInventory,
-  details: VersionDetails,
-  change: (draft: Draft) => Promise<unknown>,
-): Promise<OcflObjectInventory | undefined> {
-  const transaction = await OcflObjectTransaction._create(target, inventory);
-  const draft = new ObjectDraft(transaction);
-  try {
-    await change(draft);
-  } catch (error) {
-    draft._finish();
-    await transaction._discardAfter(error);
-    throw error;
-  }
-  draft._finish();
-  return transaction._commit(details);
-}
-
-export {
-  assertNoMutableHead,
-  checkedDetails,
-  commitDraft,
-  type Draft,
-  type MergeOptions,
-  OcflObjectTransaction,
-  updateTarget,
-  type VersionDetails,
-  type WriteContent,
-};
+export { checkedDetails, commitDraft, type Draft, type MergeOptions, type User, type VersionDetails, type WriteContent };

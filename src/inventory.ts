@@ -236,7 +236,7 @@ export interface RelistPlan extends DeletePlan {
 }
 
 /**
- * An OCFL object's inventory. Only a transaction changes it, while it builds a new version.
+ * An OCFL object's inventory. Only a draft changes it, while it builds a new version.
  */
 class OcflObjectInventory {
   #data: Inventory;
