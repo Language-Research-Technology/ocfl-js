@@ -12,5 +12,5 @@ for (const [logicalPath, file] of object.versions.get(1)?.files ?? []) {
     throw new Error(`Logical path "${logicalPath}" is outside ${targetDir}`);
   }
   await mkdir(path.dirname(target), { recursive: true });
-  await writeFile(target, file.stream());
+  await writeFile(target, await file.stream());
 }

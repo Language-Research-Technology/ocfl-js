@@ -1,5 +1,4 @@
 import { createServer } from 'node:http';
-import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { type ByteRange, OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
 
@@ -33,14 +32,14 @@ const server = createServer(async (request, response) => {
 
     const size = await file.size();
     const range = parseRange(request.headers.range, size);
-    // Throws RangeError before any headers are sent
-    const body = file.stream(range);
+    // Rejects before any headers are sent
+    const body = await file.stream(range);
     response.writeHead(range ? 206 : 200, {
       etag: `"${file.digest}"`,
       'content-length': range ? range.end - range.start + 1 : size,
       ...(range && { 'content-range': `bytes ${range.start}-${range.end}/${size}` }),
     });
-    await pipeline(Readable.fromWeb(body), response);
+    await pipeline(body, response);
   } catch (error) {
     if (response.headersSent) {
       response.destroy();

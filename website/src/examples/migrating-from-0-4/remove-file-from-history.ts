@@ -6,7 +6,7 @@ const original = await root.open('original-id');
 await root.create('new-id', { message: 'Copy of original-id without secret.txt', user: { name: 'Alice' } }, async (draft) => {
   for (const [path, file] of original.head.files) {
     if (path !== 'secret.txt') {
-      await draft.write(path, file.stream());
+      await draft.write(path, await file.stream());
     }
   }
 });

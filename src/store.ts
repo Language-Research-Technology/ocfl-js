@@ -7,8 +7,8 @@ async function createParents(filePath: string) {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
 }
 
-export function createReadable(filePath: string, options?: unknown): ReadableStream {
-  return Readable.toWeb(fs.createReadStream(filePath, options as Parameters<typeof fs.createReadStream>[1])) as ReadableStream;
+export function createReadable(filePath: string): ReadableStream {
+  return Readable.toWeb(fs.createReadStream(filePath)) as ReadableStream;
 }
 
 /** A string is written as UTF-8 */

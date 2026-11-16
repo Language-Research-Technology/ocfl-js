@@ -1,12 +1,26 @@
 import assert from 'node:assert';
+import { once } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { Readable } from 'node:stream';
+import { text } from 'node:stream/consumers';
 import { after, before, describe, it } from 'node:test';
-import { createStorageRoot, type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
+import { createStorageRoot, type OcflFile, type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
+import { ocflError } from './helpers/ocfl-error.ts';
 import { SPEC_EX_FULL, SPEC_EX_FULL_ID, writeSpecExFullRoot, writeVersions } from './helpers/storage-roots.ts';
 
-const textOf = (stream: ReadableStream<Uint8Array>) => new Response(stream).text();
+/** How many of this process's file descriptors are open on `filePath` */
+const timesOpen = (filePath: string) => {
+  const target = fs.realpathSync(filePath);
+  return fs.readdirSync('/proc/self/fd').filter((fd) => {
+    try {
+      return fs.readlinkSync(`/proc/self/fd/${fd}`) === target;
+    } catch {
+      return false;
+    }
+  }).length;
+};
 
 describe('reading the files of an object', () => {
   let tempdir: string;
@@ -45,9 +59,9 @@ describe('reading the files of an object', () => {
       assert.ok((await stored('v1/content/image.tiff')).equals(bytes));
     });
 
-    it('reads a file as a web stream', async () => {
-      const stream = object.head.files.get('image.tiff')!.stream();
-      assert.ok(stream instanceof ReadableStream);
+    it('reads a file as a Node stream', async () => {
+      const stream = await object.head.files.get('image.tiff')!.stream();
+      assert.ok(stream instanceof Readable);
       const chunks: Uint8Array[] = [];
       for await (const chunk of stream) {
         assert.ok(chunk instanceof Uint8Array);
@@ -95,7 +109,7 @@ describe('reading the files of an object', () => {
       await writeVersions(root.path, 'ranges', [{ 'a.txt': 'abcdef' }]);
       object = await root.open('ranges');
     });
-    const read = (range?: { start?: number; end?: number }) => textOf(object.head.files.get('a.txt')!.stream(range));
+    const read = async (range?: { start?: number; end?: number }) => text(await object.head.files.get('a.txt')!.stream(range));
 
     for (const [name, range, expected] of [
       ['from start to end, with the end included', { start: 1, end: 3 }, 'bcd'],
@@ -105,7 +119,6 @@ describe('reading the files of an object', () => {
       ['of the last byte', { start: 5, end: 5 }, 'f'],
       ['that ends at the last byte', { start: 3, end: 5 }, 'def'],
       ['that ends past the end of the file', { start: 3, end: 99 }, 'def'],
-      ['that starts past the end of the file', { start: 6 }, ''],
       ['with neither end', {}, 'abcdef'],
       ['that is left out', undefined, 'abcdef'],
     ] as const) {
@@ -118,11 +131,95 @@ describe('reading the files of an object', () => {
       ['that starts after it ends', { start: 3, end: 1 }],
       ['with a negative start', { start: -1 }],
       ['with a fractional end', { end: 1.5 }],
+      ['that starts past the end of the file', { start: 6 }],
     ] as const) {
-      it(`throws RangeError for a range ${name}`, () => {
-        assert.throws(() => object.head.files.get('a.txt')!.stream(range), RangeError);
+      it(`rejects with RangeError a range ${name}`, async () => {
+        await assert.rejects(object.head.files.get('a.txt')!.stream(range), RangeError);
       });
     }
+  });
+
+  describe('a byte range of an empty file', () => {
+    let file: OcflFile;
+    before(async () => {
+      await writeVersions(root.path, 'empty-range', [{ 'empty.txt': '' }]);
+      file = (await root.open('empty-range')).head.files.get('empty.txt')!;
+    });
+
+    it('reads nothing when the range is left out or has neither end', async () => {
+      assert.strictEqual(await text(await file.stream()), '');
+      assert.strictEqual(await text(await file.stream({})), '');
+    });
+
+    it('rejects with RangeError a range with a start', async () => {
+      await assert.rejects(file.stream({ start: 0 }), RangeError);
+    });
+  });
+
+  describe('a stream', () => {
+    let objectRoot: string;
+    let object: OcflObject;
+    before(async () => {
+      objectRoot = await writeVersions(root.path, 'held-open', [{ 'a.txt': 'abcdef', 'b.txt': 'abc' }]);
+      object = await root.open('held-open');
+    });
+
+    it('reads in full a stored file removed after it opened', async () => {
+      const stream = await object.head.files.get('a.txt')!.stream();
+      await fs.promises.rm(path.join(objectRoot, 'v1/content/a.txt'));
+      assert.strictEqual(await text(stream), 'abcdef');
+    });
+
+    it('closes the stored file when it is destroyed before its end', async () => {
+      const stream = await object.head.files.get('b.txt')!.stream({ end: 0 });
+      assert.strictEqual(timesOpen(path.join(objectRoot, 'v1/content/b.txt')), 1);
+      stream.destroy();
+      await once(stream, 'close');
+      assert.strictEqual(timesOpen(path.join(objectRoot, 'v1/content/b.txt')), 0);
+    });
+
+    it('closes the stored file when it rejects a range', async () => {
+      await assert.rejects(object.head.files.get('b.txt')!.stream({ start: 3 }), RangeError);
+      assert.strictEqual(timesOpen(path.join(objectRoot, 'v1/content/b.txt')), 0);
+    });
+  });
+
+  describe('a stored file that cannot be read', { skip: process.getuid?.() === 0 }, () => {
+    let file: OcflFile;
+    before(async () => {
+      const objectRoot = await writeVersions(root.path, 'unreadable-content', [{ 'a.txt': 'abc' }]);
+      await fs.promises.chmod(path.join(objectRoot, 'v1/content/a.txt'), 0o000);
+      file = (await root.open('unreadable-content')).head.files.get('a.txt')!;
+    });
+
+    it('rejects streaming, reading its text or bytes with the file system error', async () => {
+      await assert.rejects(file.stream(), { code: 'EACCES' });
+      await assert.rejects(file.text(), { code: 'EACCES' });
+      await assert.rejects(file.bytes(), { code: 'EACCES' });
+    });
+  });
+
+  describe('a stored file that is a directory', () => {
+    let file: OcflFile;
+    let objectRoot: string;
+    before(async () => {
+      objectRoot = await writeVersions(root.path, 'directory-content', [{ 'a.txt': 'abc' }]);
+      await fs.promises.rm(path.join(objectRoot, 'v1/content/a.txt'));
+      await fs.promises.mkdir(path.join(objectRoot, 'v1/content/a.txt'));
+      file = (await root.open('directory-content')).head.files.get('a.txt')!;
+    });
+
+    it('rejects streaming, reading its size, text or bytes as an invalid object', async () => {
+      await assert.rejects(file.stream(), ocflError('INVALID_OBJECT'));
+      await assert.rejects(file.size(), ocflError('INVALID_OBJECT'));
+      await assert.rejects(file.text(), ocflError('INVALID_OBJECT'));
+      await assert.rejects(file.bytes(), ocflError('INVALID_OBJECT'));
+    });
+
+    it('does not leave it open', async () => {
+      await assert.rejects(file.stream(), ocflError('INVALID_OBJECT'));
+      assert.strictEqual(timesOpen(path.join(objectRoot, 'v1/content/a.txt')), 0);
+    });
   });
 
   describe('a stored file that is missing', () => {
@@ -138,17 +235,16 @@ describe('reading the files of an object', () => {
       assert.strictEqual(await object.head.files.get('b.txt')!.text(), 'kept');
     });
 
-    it('surfaces as an error on the stream when it is read', async () => {
-      const stream = object.head.files.get('a.txt')!.stream();
-      assert.ok(stream instanceof ReadableStream);
-      await assert.rejects(textOf(stream), { code: 'ENOENT' });
-    });
-
-    it('rejects reading its size, text or bytes', async () => {
+    it('rejects streaming, reading its size, text or bytes', async () => {
       const file = object.head.files.get('a.txt')!;
+      await assert.rejects(file.stream(), { code: 'ENOENT' });
       await assert.rejects(file.size(), { code: 'ENOENT' });
       await assert.rejects(file.text(), { code: 'ENOENT' });
       await assert.rejects(file.bytes(), { code: 'ENOENT' });
+    });
+
+    it('rejects an invalid range before it opens the stored file', async () => {
+      await assert.rejects(object.head.files.get('a.txt')!.stream({ start: 3, end: 1 }), RangeError);
     });
   });
 });
