@@ -156,6 +156,7 @@ for (const f of await object.files()) console.log(f.logicalPath, f.digest);
 - Versions are numbers: `object.versions.get(1)`, not `'v1'`. `object.head` is the latest. Each version has its `createdAt` date, `message`, `user` and `files`, keyed by logical path. This replaces the inventory API (`getInventory()`, `versionState()`, `diffState()`, `toJSON()` and the rest): compare two versions' `files` maps to see what changed.
 - A file's `digest` is in lower-case hex. Files can't be looked up by digest or content path, and content paths aren't given out. The one place a stored file is named on disk is a fixity problem, which names a missing or changed stored file by its path from the storage root so you can restore it.
 - `await file.stream()` resolves to a Node `Readable`, and rejects first if the content can't be read. It takes an optional byte range: `await file.stream({ start: 0, end: 1023 })`, with `end` included as in an HTTP Range header.
+- A stored file the inventory lists that is missing, or isn't a regular file, is damage: `size()`, `stream()`, `text()` and `bytes()` reject with `INVALID_OBJECT`, with the file system error, if any, as its `cause`, not with `ENOENT`. Code that treats `ENOENT` as "not found" no longer answers 404 for a damaged object. A file that is there but can't be read, such as `EACCES`, still rejects with the file system error.
 
 ## Creating and updating objects
 

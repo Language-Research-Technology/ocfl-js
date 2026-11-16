@@ -156,9 +156,51 @@ async function createParents(filePath: string) {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
 }
 
-/** Runs `consume` on a stream of the file's bytes, which `signal` aborts, and settles only once the file is closed */
-export async function withReadStream<T>(filePath: string, signal: AbortSignal | undefined, consume: (bytes: AsyncIterable<Buffer>) => Promise<T>): Promise<T> {
-  const stream = fs.createReadStream(filePath, signal && { signal });
+export interface OpenFile {
+  readonly handle: fs.promises.FileHandle;
+  readonly size: number;
+}
+
+/** Why there is no regular file at a path, with the error that said so, if any */
+export interface AbsentFile {
+  readonly absent: 'missing' | 'not a file';
+  readonly cause?: unknown;
+}
+
+/** Opens the regular file at `filePath` for reading, without waiting on a named pipe */
+export async function openRegularFile(filePath: string): Promise<OpenFile | AbsentFile> {
+  let handle: fs.promises.FileHandle;
+  try {
+    handle = await fs.promises.open(filePath, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK);
+  } catch (error) {
+    if (isNothingAtPath(error)) {
+      return { absent: 'missing', cause: error };
+    }
+    // Opening a socket
+    if (hasErrorCode(error, 'ENXIO')) {
+      return { absent: 'not a file', cause: error };
+    }
+    throw error;
+  }
+  let isFile = false;
+  try {
+    const stats = await handle.stat();
+    isFile = stats.isFile();
+    return isFile ? { handle, size: stats.size } : { absent: 'not a file' };
+  } finally {
+    if (!isFile) {
+      await handle.close();
+    }
+  }
+}
+
+/** Runs `consume` on a stream of the open file's bytes, which `signal` aborts, and settles only once the file is closed */
+export async function withReadStream<T>(
+  handle: fs.promises.FileHandle,
+  signal: AbortSignal | undefined,
+  consume: (bytes: AsyncIterable<Buffer>) => Promise<T>,
+): Promise<T> {
+  const stream = handle.createReadStream({ signal });
   try {
     return await consume(stream);
   } finally {

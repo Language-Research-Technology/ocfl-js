@@ -12,6 +12,8 @@ export default {
       entry: ['test/types/*.ts', 'scripts/package-smoke.js'],
       // Loaded by semantic-release from the `preset` option, and the tools check-package.sh runs.
       ignoreDependencies: ['conventional-changelog-conventionalcommits', 'publint', 'esbuild', ...unusedOnBeta],
+      // A system tool the tests run to make a named pipe.
+      ignoreBinaries: ['mkfifo'],
     },
     website: {
       // Type-checked only, by src/examples/tsconfig.json.

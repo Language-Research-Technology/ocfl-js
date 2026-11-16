@@ -1,13 +1,15 @@
 import assert from 'node:assert';
+import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import fs from 'node:fs';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 import { after, before, describe, it } from 'node:test';
 import { createStorageRoot, type OcflFile, type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
-import { ocflError } from './helpers/ocfl-error.ts';
+import { ocflError, rejection } from './helpers/ocfl-error.ts';
 import { SPEC_EX_FULL, SPEC_EX_FULL_ID, writeSpecExFullRoot, writeVersions } from './helpers/storage-roots.ts';
 
 /** How many of this process's file descriptors are open on `filePath` */
@@ -21,6 +23,16 @@ const timesOpen = (filePath: string) => {
     }
   }).length;
 };
+
+/** Every read of `file` rejects as an invalid object that names it as missing, caused by the file system error `code` */
+async function assertEveryReadMissing(file: OcflFile, code: string) {
+  for (const read of [() => file.stream(), () => file.size(), () => file.text(), () => file.bytes()]) {
+    const error = await rejection(read(), 'INVALID_OBJECT');
+    assert.ok(error.message.includes(`${file.path},`), error.message);
+    assert.match(error.message, /is missing/);
+    assert.strictEqual((error.cause as NodeJS.ErrnoException).code, code);
+  }
+}
 
 describe('reading the files of an object', () => {
   let tempdir: string;
@@ -192,7 +204,8 @@ describe('reading the files of an object', () => {
       file = (await root.open('unreadable-content')).head.files.get('a.txt')!;
     });
 
-    it('rejects streaming, reading its text or bytes with the file system error', async () => {
+    it('rejects streaming, reading its size, text or bytes with the file system error', async () => {
+      await assert.rejects(file.size(), { code: 'EACCES' });
       await assert.rejects(file.stream(), { code: 'EACCES' });
       await assert.rejects(file.text(), { code: 'EACCES' });
       await assert.rejects(file.bytes(), { code: 'EACCES' });
@@ -216,9 +229,43 @@ describe('reading the files of an object', () => {
       await assert.rejects(file.bytes(), ocflError('INVALID_OBJECT'));
     });
 
+    it('says it is not a file, not that it is missing', async () => {
+      const error = await rejection(file.size(), 'INVALID_OBJECT');
+      assert.match(error.message, /is not a file/);
+      assert.doesNotMatch(error.message, /missing/);
+    });
+
     it('does not leave it open', async () => {
       await assert.rejects(file.stream(), ocflError('INVALID_OBJECT'));
       assert.strictEqual(timesOpen(path.join(objectRoot, 'v1/content/a.txt')), 0);
+    });
+  });
+
+  describe('a stored file that is a named pipe or a socket', () => {
+    let server: net.Server;
+    after(() => server?.close());
+
+    it('rejects reading a named pipe as not a file, without waiting for a writer', { timeout: 5000 }, async () => {
+      const objectRoot = await writeVersions(root.path, 'fifo-content', [{ 'a.txt': 'abc' }]);
+      await fs.promises.rm(path.join(objectRoot, 'v1/content/a.txt'));
+      execFileSync('mkfifo', [path.join(objectRoot, 'v1/content/a.txt')]);
+      const file = (await root.open('fifo-content')).head.files.get('a.txt')!;
+      for (const read of [() => file.stream(), () => file.size(), () => file.text(), () => file.bytes()]) {
+        const error = await rejection(read(), 'INVALID_OBJECT');
+        assert.match(error.message, /is not a file/);
+      }
+    });
+
+    it('rejects reading a socket as not a file', async () => {
+      const objectRoot = await writeVersions(root.path, 'socket-content', [{ 'a.txt': 'abc' }]);
+      await fs.promises.rm(path.join(objectRoot, 'v1/content/a.txt'));
+      server = net.createServer();
+      await new Promise<void>((resolve) => server.listen(path.join(objectRoot, 'v1/content/a.txt'), resolve));
+      const file = (await root.open('socket-content')).head.files.get('a.txt')!;
+      for (const read of [() => file.stream(), () => file.size(), () => file.text(), () => file.bytes()]) {
+        const error = await rejection(read(), 'INVALID_OBJECT');
+        assert.match(error.message, /is not a file/);
+      }
     });
   });
 
@@ -235,12 +282,15 @@ describe('reading the files of an object', () => {
       assert.strictEqual(await object.head.files.get('b.txt')!.text(), 'kept');
     });
 
-    it('rejects streaming, reading its size, text or bytes', async () => {
-      const file = object.head.files.get('a.txt')!;
-      await assert.rejects(file.stream(), { code: 'ENOENT' });
-      await assert.rejects(file.size(), { code: 'ENOENT' });
-      await assert.rejects(file.text(), { code: 'ENOENT' });
-      await assert.rejects(file.bytes(), { code: 'ENOENT' });
+    it('rejects streaming, reading its size, text or bytes as an invalid object, caused by the file system error', async () => {
+      await assertEveryReadMissing(object.head.files.get('a.txt')!, 'ENOENT');
+    });
+
+    it('rejects reading a stored file whose content directory is a file as missing', async () => {
+      const objectRoot = await writeVersions(root.path, 'content-is-a-file', [{ 'a.txt': 'abc' }]);
+      await fs.promises.rm(path.join(objectRoot, 'v1/content'), { recursive: true });
+      await fs.promises.writeFile(path.join(objectRoot, 'v1/content'), '');
+      await assertEveryReadMissing((await root.open('content-is-a-file')).head.files.get('a.txt')!, 'ENOTDIR');
     });
 
     it('rejects an invalid range before it opens the stored file', async () => {

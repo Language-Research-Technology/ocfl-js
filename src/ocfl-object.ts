@@ -144,7 +144,7 @@ interface FixityOptions {
 
 /** One stored file that failed {@link OcflObject.checkFixity}. */
 interface FixityProblem {
-  /** `changed` if the content no longer matches its digest, `missing` if the stored file is gone. */
+  /** `changed` if the content no longer matches its digest, `missing` if there is no regular file at the stored file's path. */
   readonly problem: 'changed' | 'missing';
   /** The stored file's path from the storage root, with `/` between directories, such as `a1b/c2d/item-1/v1/content/audio/1.wav`. Never absolute. */
   readonly storedFile: string;
@@ -152,7 +152,7 @@ interface FixityProblem {
   readonly affects: readonly { readonly version: number; readonly path: string }[];
   /** The digest the inventory records, in lowercase. */
   readonly expected: string;
-  /** The digest found on disk, in lowercase. Absent when the file is missing. */
+  /** The digest found on disk, in lowercase. Absent when the stored file is missing. */
   readonly actual?: string;
 }
 
@@ -232,7 +232,7 @@ class OpenedObject implements OcflObject {
     const worker = async () => {
       try {
         for (const [contentPath, expected] of storedFiles) {
-          const actual = await digestIfExists(nodePath.join(this.#root, contentPath), this.digestAlgorithm, signal);
+          const actual = await digestOfStoredFile(nodePath.join(this.#root, contentPath), this.digestAlgorithm, signal);
           if (actual !== expected) {
             failed.push({ contentPath, expected, actual });
           }
@@ -295,16 +295,13 @@ function affectedFiles(inventory: OcflObjectInventory, contentPaths: ReadonlySet
   return affected;
 }
 
-/** The digest of `file`, or `undefined` if it doesn't exist */
-async function digestIfExists(file: string, digestAlgorithm: DigestAlgorithm, signal: AbortSignal | undefined): Promise<string | undefined> {
-  try {
-    return await fileSystem.withReadStream(file, signal, (bytes) => Hashing.digest(digestAlgorithm, bytes));
-  } catch (error) {
-    if (fileSystem.isNotFound(error)) {
-      return undefined;
-    }
-    throw error;
+/** The digest of the stored file at `file`, or `undefined` if it is missing or isn't a regular file */
+async function digestOfStoredFile(file: string, digestAlgorithm: DigestAlgorithm, signal: AbortSignal | undefined): Promise<string | undefined> {
+  const opened = await fileSystem.openRegularFile(file);
+  if ('absent' in opened) {
+    return undefined;
   }
+  return fileSystem.withReadStream(opened.handle, signal, (bytes) => Hashing.digest(digestAlgorithm, bytes));
 }
 
 /** Walks back from a file's own version, through the inventory's index of each version's digests, for as long as the file is unchanged */

@@ -1,7 +1,8 @@
-import fs from 'node:fs';
+import type fs from 'node:fs';
 import nodePath from 'node:path';
 import type { Readable } from 'node:stream';
 import { ocflError } from './error.ts';
+import { openRegularFile } from './file-system.ts';
 import type { Version } from './ocfl-object.ts';
 
 /** Part of a file's content. Both ends are byte offsets from 0, and `end` is included, as in an HTTP `Range` header. */
@@ -143,9 +144,9 @@ class StoredFile implements OcflFile {
   }
 
   async size(): Promise<number> {
-    const stats = await fs.promises.stat(this.#storedPath);
-    this.#assertRegularFile(stats);
-    return stats.size;
+    const { handle, size } = await this.#open();
+    await handle.close();
+    return size;
   }
 
   async stream(range?: ByteRange): Promise<Readable> {
@@ -176,21 +177,13 @@ class StoredFile implements OcflFile {
   }
 
   async #open(): Promise<{ handle: fs.promises.FileHandle; size: number }> {
-    const handle = await fs.promises.open(this.#storedPath, 'r');
-    try {
-      const stats = await handle.stat();
-      this.#assertRegularFile(stats);
-      return { handle, size: stats.size };
-    } catch (error) {
-      await handle.close();
-      throw error;
+    const opened = await openRegularFile(this.#storedPath);
+    if ('absent' in opened) {
+      throw ocflError('INVALID_OBJECT', `The content of ${this.path}, ${this.#contentPath} in ${this.#objectRoot}, is ${opened.absent}.`, {
+        cause: opened.cause,
+      });
     }
-  }
-
-  #assertRegularFile(stats: fs.Stats): void {
-    if (!stats.isFile()) {
-      throw ocflError('INVALID_OBJECT', `The content of ${this.path}, ${this.#contentPath} in ${this.#objectRoot}, is not a file.`);
-    }
+    return opened;
   }
 }
 
