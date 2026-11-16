@@ -6,8 +6,8 @@
     ".": {
       // test/types: type-checked only, by test/tsconfig.json. package-smoke.js: run by smoke-package.sh.
       "entry": ["test/types/*.ts", "scripts/package-smoke.js"],
-      // Loaded by semantic-release from the `preset` option, and the tool check-package.sh runs.
-      "ignoreDependencies": ["conventional-changelog-conventionalcommits", "publint"]
+      // Loaded by semantic-release from the `preset` option, and the tools check-package.sh runs.
+      "ignoreDependencies": ["conventional-changelog-conventionalcommits", "publint", "esbuild"]
     },
     "website": {
       // Type-checked only, by src/examples/tsconfig.json.

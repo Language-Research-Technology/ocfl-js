@@ -1,16 +1,24 @@
-# ocfl-js - An OCFL implementation in Node.js
+# @ocfl/ocfl-fs
 
-`@ocfl/ocfl-fs` is a TypeScript library for keeping versioned digital objects under the [Oxford Common File Layout (OCFL)](https://ocfl.io/) on a local file system. It reads and writes storage roots and the OCFL objects in them.
+[![npm (beta)](https://img.shields.io/npm/v/@ocfl/ocfl-fs/beta)](https://www.npmjs.com/package/@ocfl/ocfl-fs)
+[![CI](https://github.com/Language-Research-Technology/ocfl-js/actions/workflows/publish.yml/badge.svg?branch=main&event=push)](https://github.com/Language-Research-Technology/ocfl-js/actions/workflows/publish.yml)
+[![Licence: GPL-3.0-or-later](https://img.shields.io/npm/l/@ocfl/ocfl-fs)](LICENSE)
+
+`@ocfl/ocfl-fs`, from the ocfl-js repository, is a TypeScript library for keeping versioned digital objects under the [Oxford Common File Layout (OCFL)](https://ocfl.io/) on a local file system. It reads and writes storage roots and the OCFL objects in them.
 
 **Documentation: <https://language-research-technology.github.io/ocfl-js/>**
 
 ## Installation
 
 ```bash
-pnpm add @ocfl/ocfl-fs
+pnpm add @ocfl/ocfl-fs@beta
 ```
 
-It needs Node.js 22.12 or later, and is an ES module with its own types; with TypeScript, it needs TypeScript 5.7 or later and `@types/node`. It's supported and tested on Linux only, on a case-sensitive file system with hard links, local or NFS; WSL works, macOS and Windows aren't supported.
+Until 1.0 is released, `@beta` is needed: without it you get 0.4, which has a different API.
+
+It needs Node.js 22.12 or later, and is an ES module with its own types; with TypeScript, it needs TypeScript 5.7 or later and `@types/node`. It supports the Node.js versions that still get updates; when a Node.js version stops getting updates, a minor release can drop it.
+
+It's supported on Linux only, on a case-sensitive file system with hard links; WSL works, macOS and Windows aren't supported. It's designed for local file systems and NFS, but CI tests only on a local file system and simulates NFS's lost replies; see [Sharing a storage root over NFS](https://language-research-technology.github.io/ocfl-js/guides/concurrent-writers/#sharing-a-storage-root-over-nfs).
 
 Upgrading from 0.4? See [Migrating from 0.4](https://language-research-technology.github.io/ocfl-js/guides/migrating-from-0-4/).
 

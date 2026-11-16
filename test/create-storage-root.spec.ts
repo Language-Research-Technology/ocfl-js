@@ -146,7 +146,18 @@ describe('creating a storage root', () => {
     const rootPath = newPath();
     await createStorageRoot(rootPath, { layout: { extensionName: HASHED } });
     const resource = path.join(import.meta.dirname, '../resources/ocfl_1.1.md');
-    assert.deepStrictEqual(await fs.promises.readFile(path.join(rootPath, 'ocfl_1.1.md')), await fs.promises.readFile(resource));
+    assert.deepStrictEqual(
+      await fs.promises.readFile(path.join(rootPath, 'ocfl_1.1.md')),
+      await fs.promises.readFile(resource),
+      'src/spec-text.ts is out of date with resources/ocfl_1.1.md: run pnpm generate:spec-text',
+    );
+    assert.deepStrictEqual(await specFiles(rootPath), ['ocfl_1.1.md']);
+  });
+
+  it("creates a storage root without reading the package's resources", async () => {
+    const rootPath = newPath();
+    const fromPackage = (source: string) => source.includes('/resources/');
+    await withFsFailure('readFile', fromPackage, () => createStorageRoot(rootPath, { layout: { extensionName: HASHED } }), 'ENOENT');
     assert.deepStrictEqual(await specFiles(rootPath), ['ocfl_1.1.md']);
   });
 

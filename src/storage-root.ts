@@ -11,6 +11,7 @@ import { LOCK_NAME } from './lock.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import { createError } from './ocfl-rules.ts';
 import { removeObject } from './remove.ts';
+import { SPEC_TEXT } from './spec-text.ts';
 import * as store from './store.ts';
 import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
 import {
@@ -119,8 +120,8 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion
 }
 
 /** Write the files that make the empty directory `root` an OCFL 1.1 storage root */
-async function writeStorageRoot(root: string, layout: BuiltInLayout, specText: Buffer): Promise<void> {
-  await store.writeFile(nodePath.join(root, SPEC_TEXT_FILE), specText);
+async function writeStorageRoot(root: string, layout: BuiltInLayout): Promise<void> {
+  await store.writeFile(nodePath.join(root, SPEC_TEXT_FILE), SPEC_TEXT);
   await store.writeFile(nodePath.join(root, `${WORKSPACE_EXTENSION}.md`), WORKSPACE_EXTENSION_TEXT);
   if (layout.documentation) {
     await store.writeFile(nodePath.join(root, `${layout.name}.md`), layout.documentation);
@@ -340,9 +341,7 @@ async function createStorageRoot(path: string, options: { layout: LayoutConfig }
   if (!(await isDirEmpty(root))) {
     throw ocflError('DIRECTORY_NOT_EMPTY', `Cannot create a storage root in ${root}, which is not empty.`);
   }
-  // Read before the first write: a failed create can't be retried once the root is non-empty
-  const specText = await fs.promises.readFile(new URL(`../resources/${SPEC_TEXT_FILE}`, import.meta.url));
-  await writeStorageRoot(root, layout, specText);
+  await writeStorageRoot(root, layout);
   return storageRoot(root, OCFL_VERSION, layout);
 }
 
