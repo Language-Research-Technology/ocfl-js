@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import { OcflConstants, type OcflVersion } from './constants.ts';
-import type { ContentAlgorithm } from './digest.ts';
+import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
 import { checkedDetails, commitDraft, type Draft, type VersionDetails } from './draft.ts';
 import { type OcflError, ocflError } from './error.ts';
@@ -48,7 +48,7 @@ interface OcflObject {
   /** OCFL version the object conforms to. */
   readonly ocflVersion: OcflVersion;
   /** Algorithm of every {@link OcflFile.digest} in this object. */
-  readonly digestAlgorithm: ContentAlgorithm;
+  readonly digestAlgorithm: DigestAlgorithm;
   /** Every version, keyed by version number, oldest first. */
   readonly versions: ReadonlyMap<number, Version>;
   /** The latest version. */
@@ -103,7 +103,7 @@ interface FixityProblem {
 class OpenedObject implements OcflObject {
   readonly id: string;
   readonly ocflVersion: OcflVersion;
-  readonly digestAlgorithm: ContentAlgorithm;
+  readonly digestAlgorithm: DigestAlgorithm;
   readonly versions: ReadonlyMap<number, Version>;
   readonly head: Version;
   readonly #inventory: OcflObjectInventory;
@@ -175,7 +175,7 @@ function* storedFilesOf(inventory: OcflObjectInventory): Generator<[contentPath:
 async function checkStoredFile(
   objectRoot: string,
   contentPath: string,
-  digestAlgorithm: ContentAlgorithm,
+  digestAlgorithm: DigestAlgorithm,
   expected: string,
 ): Promise<FixityProblem | undefined> {
   let actual: string;
@@ -278,7 +278,7 @@ async function readIfPresent(file: string): Promise<string | undefined> {
  * Whether the root inventory `text`, of digest `digest`, is the inventory of its head version `head`, as that version's own sidecar confirms.
  * A commit replaces the root inventory and then its sidecar, so between the two the root inventory is right and its sidecar is not.
  */
-async function isHeadVersionInventory(objectRoot: string, head: unknown, text: string, digestAlgorithm: ContentAlgorithm, digest: string): Promise<boolean> {
+async function isHeadVersionInventory(objectRoot: string, head: unknown, text: string, digestAlgorithm: DigestAlgorithm, digest: string): Promise<boolean> {
   // Not yet validated, so it could name anything
   if (typeof head !== 'string' || !isVersionName(head)) {
     return false;

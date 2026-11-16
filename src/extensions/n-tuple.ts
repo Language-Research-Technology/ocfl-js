@@ -3,7 +3,7 @@ import * as Hashing from '../digest.ts';
 
 const MAX_TUPLE_PARAMETER = 32;
 
-/** The parameters the 0003 and 0004 layouts share */
+/** The parameters the 0003 and 0004 layouts share, as given: a config.json isn't type-checked */
 interface NTupleParameters {
   digestAlgorithm: string;
   tupleSize: number;
@@ -22,10 +22,10 @@ function checkTupleParameter(name: string, value: number) {
  * @throws `TypeError` if a parameter breaks the extension's constraints
  */
 function checkNTupleParameters({ digestAlgorithm, tupleSize, numberOfTuples }: NTupleParameters): number {
-  const digestLength = Hashing.getHexDigestLength(digestAlgorithm);
-  if (!digestLength) {
-    throw new TypeError(`Layout parameter digestAlgorithm must name a supported digest algorithm, not ${inspect(digestAlgorithm)}.`);
+  if (!Hashing.isFixityAlgorithm(digestAlgorithm)) {
+    throw new TypeError(`Layout parameter digestAlgorithm must name a supported fixity algorithm, not ${inspect(digestAlgorithm)}.`);
   }
+  const digestLength = Hashing.getHexDigestLength(digestAlgorithm);
   checkTupleParameter('tupleSize', tupleSize);
   checkTupleParameter('numberOfTuples', numberOfTuples);
   if ((tupleSize === 0) !== (numberOfTuples === 0)) {

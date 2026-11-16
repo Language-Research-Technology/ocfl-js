@@ -11,12 +11,12 @@ export interface ByteRange {
 }
 
 // @public
-export type ContentAlgorithm = 'sha256' | 'sha512';
-
-// @public
 export function createStorageRoot(path: string, options: {
     layout: LayoutConfig;
 }): Promise<StorageRoot>;
+
+// @public
+export type DigestAlgorithm = 'sha256' | 'sha512';
 
 // @public
 export interface Draft {
@@ -34,6 +34,9 @@ export interface Draft {
 }
 
 // @public
+export type FixityAlgorithm = 'md5' | 'sha1' | 'sha256' | 'sha512' | 'sha512/256' | 'blake2b-512';
+
+// @public
 export interface FixityProblem {
     readonly actual?: string;
     readonly contentPath: string;
@@ -48,7 +51,7 @@ export interface FlatDirectLayoutConfig {
 
 // @public
 export interface HashAndIdNTupleLayoutConfig {
-    digestAlgorithm?: string;
+    digestAlgorithm?: FixityAlgorithm;
     extensionName: '0003-hash-and-id-n-tuple-storage-layout';
     numberOfTuples?: number;
     tupleSize?: number;
@@ -56,7 +59,7 @@ export interface HashAndIdNTupleLayoutConfig {
 
 // @public
 export interface HashedNTupleLayoutConfig {
-    digestAlgorithm?: string;
+    digestAlgorithm?: FixityAlgorithm;
     extensionName: '0004-hashed-n-tuple-storage-layout';
     numberOfTuples?: number;
     shortObjectRoot?: boolean;
@@ -101,7 +104,7 @@ export interface OcflFile {
 // @public
 export interface OcflObject {
     checkFixity(): Promise<readonly FixityProblem[]>;
-    readonly digestAlgorithm: ContentAlgorithm;
+    readonly digestAlgorithm: DigestAlgorithm;
     readonly head: Version;
     readonly id: string;
     readonly ocflVersion: OcflVersion;

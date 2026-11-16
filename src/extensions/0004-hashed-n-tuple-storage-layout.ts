@@ -1,4 +1,5 @@
 import path from 'node:path';
+import type { FixityAlgorithm } from '../digest.ts';
 import * as Hashing from '../digest.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from '../extension.ts';
 import { checkNTupleParameters } from './n-tuple.ts';
@@ -8,7 +9,7 @@ interface HashedNTupleLayoutConfig {
   /** Name of the layout's OCFL extension. */
   extensionName: '0004-hashed-n-tuple-storage-layout';
   /** Algorithm used to hash the id. Defaults to `sha256`. */
-  digestAlgorithm?: string;
+  digestAlgorithm?: FixityAlgorithm;
   /** Characters of the digest in each directory level. Defaults to 3. */
   tupleSize?: number;
   /** Number of directory levels. Defaults to 3. */

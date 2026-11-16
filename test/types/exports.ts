@@ -1,8 +1,9 @@
 import type * as entryPoint from '../../src/index.ts';
 import type {
   ByteRange,
-  ContentAlgorithm,
+  DigestAlgorithm,
   Draft,
+  FixityAlgorithm,
   FixityProblem,
   FlatDirectLayoutConfig,
   HashAndIdNTupleLayoutConfig,
@@ -25,8 +26,9 @@ import type {
 
 export type EveryExportedType = [
   ByteRange,
-  ContentAlgorithm,
+  DigestAlgorithm,
   Draft,
+  FixityAlgorithm,
   FixityProblem,
   FlatDirectLayoutConfig,
   HashAndIdNTupleLayoutConfig,

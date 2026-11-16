@@ -60,9 +60,13 @@ _Avoid_: Repair, unlock, roll back
 A create, update or remove of an OCFL object whose lock is still held: its writer is still working, or died. The library can't tell which. An OCFL object is recovered only through its unfinished write.
 _Avoid_: Stale lock, orphan, leftover
 
-**Content algorithm**:
-The digest algorithm an OCFL object addresses its content by, `sha512` or `sha256`, named by its inventory's `digestAlgorithm`. Fixity values may use other algorithms, and a storage layout's digest algorithm only hashes object ids; neither is a content algorithm.
-_Avoid_: Digest algorithm (unqualified), hash algorithm
+**Digest algorithm**:
+The algorithm an OCFL object's digests use, `sha512` or `sha256`, named by its inventory's `digestAlgorithm`: every content digest in its manifest and state, and its inventory's sidecar. Every digest algorithm is a fixity algorithm, but not the reverse. A hashed storage layout's `digestAlgorithm` parameter names a fixity algorithm, not an object's digest algorithm.
+_Avoid_: Content algorithm, hash algorithm
+
+**Fixity algorithm**:
+A digest algorithm OCFL allows in an inventory's `fixity` block. The library supports six: `md5`, `sha1`, `sha256`, `sha512`, `sha512/256` and `blake2b-512`. A hashed storage layout hashes object ids with one, named by its `digestAlgorithm` parameter.
+_Avoid_: Layout algorithm
 
 **Fixity check**:
 Reading every stored file of an opened OCFL object again and comparing its digest with the one the inventory records. It reports each stored file that has changed or is missing; it does not look for extra files or read the inventory's `fixity` block.

@@ -1,6 +1,6 @@
 import nodePath from 'node:path';
 import { OcflConstants, type OcflVersion } from './constants.ts';
-import { type ContentAlgorithm, normaliseDigest } from './digest.ts';
+import { type DigestAlgorithm, normaliseDigest } from './digest.ts';
 import { ocflError } from './error.ts';
 import { normaliseLogicalPath, parentDirectories } from './utils.ts';
 import { createError } from './validation.ts';
@@ -35,7 +35,7 @@ interface Inventory {
    * within the OCFL Object and for the Inventory Digest.
    * This MUST be the algorithm used in the manifest and state blocks
    */
-  digestAlgorithm: ContentAlgorithm;
+  digestAlgorithm: DigestAlgorithm;
   /** The version directory name of the most recent version of the object. */
   head: string;
   manifest: InventoryDigests;
@@ -355,7 +355,7 @@ class OcflObjectInventory {
   get id(): string {
     return this.#data.id;
   }
-  get digestAlgorithm(): ContentAlgorithm {
+  get digestAlgorithm(): DigestAlgorithm {
     return this.#data.digestAlgorithm;
   }
   get head(): string {

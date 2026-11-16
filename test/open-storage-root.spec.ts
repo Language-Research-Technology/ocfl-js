@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { createStorageRoot, type OcflError, openStorageRoot } from '../src/index.ts';
-import { DIGESTS_OF_ABC } from './helpers/digests-of-abc.ts';
+import { DIGESTS_OF_ABC, eachDigest } from './helpers/digests-of-abc.ts';
 import { withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, HASHED_DEFAULTS } from './helpers/layouts.ts';
 import { ocflError } from './helpers/ocfl-error.ts';
@@ -150,7 +150,7 @@ describe('opening a storage root', () => {
       await assert.rejects(openStorageRoot(rootPath), (error: OcflError) => invalidNaming(configFile)(error) && error.cause instanceof TypeError);
     });
 
-    for (const [digestAlgorithm, digest] of Object.entries(DIGESTS_OF_ABC)) {
+    for (const [digestAlgorithm, digest] of eachDigest(DIGESTS_OF_ABC)) {
       it(`creates, writes to and reopens a root hashed with ${digestAlgorithm}`, async () => {
         const rootPath = newPath();
         const layout = { extensionName: HASHED, digestAlgorithm, tupleSize: 1, numberOfTuples: 1 } as const;

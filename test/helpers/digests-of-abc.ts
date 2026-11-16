@@ -1,3 +1,5 @@
+import type { FixityAlgorithm } from '../../src/digest.ts';
+
 export const DIGESTS_OF_ABC = {
   md5: '900150983cd24fb0d6963f7d28e17f72',
   sha1: 'a9993e364706816aba3e25717850c26c9cd0d89d',
@@ -5,4 +7,9 @@ export const DIGESTS_OF_ABC = {
   sha512: 'ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f',
   'sha512/256': '53048e2681941ef99b2e29b76b4c7dabe4c2d0c634fc6d46e0e2f13107e7af23',
   'blake2b-512': 'ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923',
-};
+} satisfies Record<FixityAlgorithm, string>;
+
+/** Each algorithm in `table` with its digest, keeping the algorithm's type that `Object.entries` loses */
+export function eachDigest<A extends FixityAlgorithm>(table: Record<A, string>): [A, string][] {
+  return Object.entries(table) as [A, string][];
+}

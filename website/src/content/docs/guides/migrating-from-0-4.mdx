@@ -279,7 +279,7 @@ Misuse, such as an argument of the wrong type, throws a plain `TypeError`, and f
 
 ## Digests and layouts
 
-- Object content uses sha256 or sha512. The hashed layouts take `md5`, `sha1`, `sha256`, `sha512`, `sha512/256` or `blake2b-512`, written exactly so. `crc32` and `size` can no longer be a layout's `digestAlgorithm`, and `blake2b-160`, `blake2b-256` and `blake2b-384` have gone.
+- Object content uses sha256 or sha512. The hashed layouts take `md5`, `sha1`, `sha256`, `sha512`, `sha512/256` or `blake2b-512`, written exactly so; the `FixityAlgorithm` type names them, so TypeScript catches a typo. `crc32` and `size` can no longer be a layout's `digestAlgorithm`, and `blake2b-160`, `blake2b-256` and `blake2b-384` have gone.
 - `OcflDigest` is gone. Use `createHash()` from `node:crypto` to compute a digest yourself.
 - The layouts are a fixed set: `0002-flat-direct-storage-layout`, `0003-hash-and-id-n-tuple-storage-layout`, `0004-hashed-n-tuple-storage-layout` and `000N-path-direct-storage-layout`. They can't be subclassed or registered.
 - The path-direct `replace` option takes `[find, replacement]` pairs of strings. Each replaces only the first occurrence of `find`.
