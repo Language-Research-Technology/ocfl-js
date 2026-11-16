@@ -229,26 +229,33 @@ describe('root.remove', () => {
       await assertRefused(root, 'empty', 'OBJECT_NOT_FOUND');
     });
 
-    it('throws INVALID_OBJECT for a directory with no object declaration', async () => {
+    it('throws OBJECT_ROOT_CONFLICT for a directory with no object declaration', async () => {
       const root = await newRoot();
       await writeFiles(path.join(root.path, 'not-an-object'), { 'stray.txt': 'keep me' });
 
-      await assertRefused(root, 'not-an-object', 'INVALID_OBJECT');
+      await assertRefused(root, 'not-an-object', 'OBJECT_ROOT_CONFLICT');
     });
 
-    it('throws INVALID_OBJECT for a directory with no object declaration, leaving what is in the workspace for it alone', async () => {
+    it('throws OBJECT_ROOT_CONFLICT for a directory with no object declaration, leaving what is in the workspace for it alone', async () => {
       const root = await newRoot();
       await writeFiles(path.join(root.path, 'not-an-object'), { 'stray.txt': 'stray' });
       await writeFiles(path.join(workspaceOf(root), 'not-an-object', 'v1'), { 'leftover.txt': 'keep me' });
 
-      await assertRefused(root, 'not-an-object', 'INVALID_OBJECT');
+      await assertRefused(root, 'not-an-object', 'OBJECT_ROOT_CONFLICT');
     });
 
-    it('throws INVALID_OBJECT for a file where the object would be', async () => {
+    it('throws OBJECT_ROOT_CONFLICT for a file where the object would be', async () => {
       const root = await newRoot();
       await writeFiles(root.path, { 'stray.txt': 'keep me' });
 
-      await assertRefused(root, 'stray.txt', 'INVALID_OBJECT');
+      await assertRefused(root, 'stray.txt', 'OBJECT_ROOT_CONFLICT');
+    });
+
+    it('throws OBJECT_ROOT_CONFLICT for a place below a file', async () => {
+      const root = await newRoot({ extensionName: PATH_DIRECT });
+      await writeFiles(root.path, { 'a-file': 'keep me' });
+
+      await assertRefused(root, 'a-file/inner', 'OBJECT_ROOT_CONFLICT');
     });
 
     it('throws INVALID_OBJECT for a directory whose object declaration has the wrong contents', async () => {
@@ -288,15 +295,15 @@ describe('root.remove', () => {
       await assertRefused(root, 'outer/inner', 'INVALID_OBJECT', 'E082');
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id the layout maps to the directory of another object', async () => {
+    it('throws OBJECT_ROOT_CONFLICT for an id the layout maps to the directory of another object', async () => {
       const root = await newRoot({ extensionName: PATH_DIRECT, omitScheme: true });
       await createObject(root, 'https://example.org/object', { 'a.txt': 'a' });
       await writeFiles(path.join(workspaceOf(root), 'example.org', 'object', 'v2', 'content'), { 'half-written.txt': 'keep me' });
 
-      await assertRefused(root, 'http://example.org/object', 'ID_INCOMPATIBLE_WITH_LAYOUT');
+      await assertRefused(root, 'http://example.org/object', 'OBJECT_ROOT_CONFLICT');
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id that normalises to the directory of another object', async () => {
+    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id whose .. segment would reach the directory of another object', async () => {
       const root = await newRoot(NESTED);
       await createObject(root, 'other', { 'a.txt': 'a' });
 
@@ -427,8 +434,8 @@ describe('root.remove', () => {
         () => rejection(root.remove('http://example.org/object'), 'RECOVERY_NEEDED'),
       );
 
-      assert.ok(ocflError('ID_INCOMPATIBLE_WITH_LAYOUT')(error.cause));
-      await assert.rejects(root.unfinishedWrite('https://example.org/object'), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      assert.ok(ocflError('OBJECT_ROOT_CONFLICT')(error.cause));
+      await assert.rejects(root.unfinishedWrite('https://example.org/object'), ocflError('OBJECT_ROOT_CONFLICT'));
       await recover(root, 'http://example.org/object');
       assert.deepStrictEqual(await snapshot(path.join(root.path, 'example.org')), before);
       assert.strictEqual(await root.unfinishedWrite('https://example.org/object'), undefined);

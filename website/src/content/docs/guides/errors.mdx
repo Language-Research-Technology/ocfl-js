@@ -62,7 +62,7 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 ### `OBJECT_NOT_FOUND`
 
-**Cause:** there is no object with this id. `open` also throws it for an object another writer is creating and hasn't committed. `remove` throws it when there is nothing there at all.
+**Cause:** there is no object with this id: nothing is in the directory the storage layout maps it to. `open` also throws it for an object another writer is creating and hasn't committed.
 
 **What to do:** catch it instead of checking whether the object exists first; a check can be out of date by the time you act on it. To make the object, call `create`.
 
@@ -76,9 +76,19 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 **Cause:** the storage root's storage layout can't place an object with this id. Either the storage layout can't map the id, or it maps it somewhere an object can't go: the storage root itself, outside it, the `extensions` directory, or a path too long for the file system (with the path-direct storage layout, an id of many long segments). Each storage layout has its own rules. For example, `0002-flat-direct-storage-layout` refuses an id with a `/` in it, `.`, `..`, `extensions`, or an id longer than 255 bytes, and the path-direct storage layout refuses an id with `.` or `..` segments, or one that ends with or contains its suffix.
 
-It is also thrown when the directory the id maps to holds an object with a different id, and by `create` when that directory isn't empty, is below a file, or is inside another object. `create` and `remove` also throw it when the object's lock in the workspace would be too long for the file system, even if its directory isn't, so such an object can be opened but not changed. `root.unfinishedWrite(id)` throws it when the id's directory is locked by a writer of another id.
+`create` and `remove` also throw it when the object's lock in the workspace would be too long for the file system, even if its directory isn't, so such an object can be opened but not changed.
 
-**What to do:** choose another id, or a storage layout that suits your ids. If the directory holds another object or other files, look at what is there before doing anything; the message names the directory.
+The id is at fault, not what is in the storage root. Apart from a lock path that is too long, no object can have this id in this storage root, so a reader can treat it as not found.
+
+**What to do:** choose another id, or a storage layout that suits your ids.
+
+### `OBJECT_ROOT_CONFLICT`
+
+**Cause:** the storage layout places the id, but the directory it maps to holds the wrong thing. `open` and `remove` throw it when that directory holds an object with a different id, or has no object declaration but holds other files, is a file, or is below one. `create` throws it when the directory isn't empty, is a file or is below one, or is inside another object. `unfinishedWrite` throws it when the object's lock in the workspace belongs to a writer of a different id.
+
+The storage root is in a state a person needs to look at, often from an object moved or copied by hand, or written by a tool with another storage layout. A server should log it, not treat it as not found.
+
+**What to do:** don't retry. Look at what is in the directory before doing anything; the message names it.
 
 ### `INVALID_OBJECT`
 

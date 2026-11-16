@@ -3,12 +3,13 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, before, describe, it } from 'node:test';
+import { after, before, describe, it, mock } from 'node:test';
 import { createStorageRoot, type LayoutConfig, type OcflError, openStorageRoot, type StorageRoot } from '../src/index.ts';
 import { DIGESTS_OF_ABC } from './helpers/digests-of-abc.ts';
+import { lockObject } from './helpers/drafts.ts';
 import { withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
-import { ocflError } from './helpers/ocfl-error.ts';
+import { ocflError, rejection } from './helpers/ocfl-error.ts';
 import {
   rewriteInventory,
   SPEC_EX_FULL_ID,
@@ -254,12 +255,43 @@ describe('opening an object', () => {
       await assert.rejects((await newRoot({ extensionName: HASHED })).open('missing'), ocflError('OBJECT_NOT_FOUND'));
     });
 
-    it('throws OBJECT_NOT_FOUND for a directory with no inventory', async () => {
+    it('throws OBJECT_NOT_FOUND for an empty directory', async () => {
       const root = await newRoot();
       await fs.promises.mkdir(path.join(root.path, 'empty'));
-      await writeFiles(path.join(root.path, 'stray'), { 'notes.txt': 'not an object' });
       await assert.rejects(root.open('empty'), ocflError('OBJECT_NOT_FOUND'));
-      await assert.rejects(root.open('stray'), ocflError('OBJECT_NOT_FOUND'));
+    });
+
+    it('throws OBJECT_ROOT_CONFLICT for a directory of files that are not an object', async () => {
+      const root = await newRoot();
+      await writeFiles(path.join(root.path, 'stray'), { 'notes.txt': 'not an object' });
+      await assert.rejects(root.open('stray'), ocflError('OBJECT_ROOT_CONFLICT'));
+    });
+
+    it('throws OBJECT_NOT_FOUND for a directory of files that a writer finishes deleting while it looks', async () => {
+      const root = await newRoot();
+      const objectRoot = path.join(root.path, 'going');
+      await writeFiles(objectRoot, { 'inventory.json.sha512': 'left by a remove' });
+      const real = fs.promises.opendir;
+      let opened = 0;
+      const spy = mock.method(fs.promises, 'opendir', async (...args: Parameters<typeof real>) => {
+        if (String(args[0]) === objectRoot && ++opened === 2) {
+          await fs.promises.rm(objectRoot, { recursive: true });
+        }
+        return real.apply(fs.promises, args);
+      });
+      try {
+        await assert.rejects(root.open('going'), ocflError('OBJECT_NOT_FOUND'));
+      } finally {
+        spy.mock.restore();
+      }
+      assert.strictEqual(opened, 2);
+    });
+
+    it('throws OBJECT_NOT_FOUND for a directory of files whose object another writer holds the lock of', async () => {
+      const root = await newRoot();
+      await writeFiles(path.join(root.path, 'creating'), { 'notes.txt': 'not yet an object' });
+      await lockObject(root, 'creating');
+      await assert.rejects(root.open('creating'), ocflError('OBJECT_NOT_FOUND'));
     });
 
     it('throws INVALID_OBJECT with E063 for a directory with an object declaration but no inventory', async () => {
@@ -281,12 +313,12 @@ describe('opening an object', () => {
       );
     });
 
-    it('throws OBJECT_NOT_FOUND when the place of the id is a file, or below one', async () => {
+    it('throws OBJECT_ROOT_CONFLICT when the place of the id is a file, or below one', async () => {
       const root = await newRoot({ extensionName: PATH_DIRECT });
       await writeFiles(root.path, { 'a-file': 'not an object', 'b/__object__': 'not an object' });
-      await assert.rejects(root.open('b'), ocflError('OBJECT_NOT_FOUND'));
-      await assert.rejects(root.open('a-file'), ocflError('OBJECT_NOT_FOUND'));
-      await assert.rejects(root.open('a-file/below'), ocflError('OBJECT_NOT_FOUND'));
+      await assert.rejects(root.open('b'), ocflError('OBJECT_ROOT_CONFLICT'));
+      await assert.rejects(root.open('a-file'), ocflError('OBJECT_ROOT_CONFLICT'));
+      await assert.rejects(root.open('a-file/below'), ocflError('OBJECT_ROOT_CONFLICT'));
     });
 
     it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id with a segment too long to be the name of a directory', async () => {
@@ -610,10 +642,11 @@ describe('opening an object', () => {
       await assert.rejects(root.open('../outside/x'), incompatible);
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT when the directory of the id holds an object with another id', async () => {
+    it('throws OBJECT_ROOT_CONFLICT, with no ocflCode, when the directory of the id holds an object with another id', async () => {
       const root = await newRoot({ extensionName: PATH_DIRECT, omitScheme: true });
       await writeVersions(root.path, 'http://example.org/shared', [{ 'a.txt': 'abc' }]);
-      await assert.rejects(root.open('https://example.org/shared'), incompatible);
+      const error = await rejection(root.open('https://example.org/shared'), 'OBJECT_ROOT_CONFLICT');
+      assert.strictEqual(error.ocflCode, undefined);
       assert.strictEqual((await root.open('http://example.org/shared')).id, 'http://example.org/shared');
     });
   });

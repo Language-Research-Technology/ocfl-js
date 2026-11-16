@@ -24,6 +24,10 @@ _Avoid_: Object directory, object folder
 An object root with an object declaration whose OCFL object the library can't open: its root inventory or sidecar is missing, corrupt or inconsistent, its declaration is invalid, or its OCFL version is later than the storage root's. Listing names it by its path from the storage root.
 _Avoid_: Invalid object, broken object, corrupt object
 
+**Object root conflict**:
+An object root that the storage layout gives to an id but that holds the wrong thing: an OCFL object with another id, files that aren't an object, a file, a place below a file or inside another OCFL object, or a lock of a writer of another id. The id is fine; the storage root needs a person to look at it.
+_Avoid_: Id collision, wrong object
+
 **Root inventory**:
 The inventory in an object root, which names the object's head: its latest version. Its sidecar is the file beside it that records its digest.
 _Avoid_: Main inventory, top-level inventory

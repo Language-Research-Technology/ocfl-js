@@ -7,6 +7,7 @@ type OcflErrorCode =
   | 'INVALID_STORAGE_ROOT'
   | 'UNSUPPORTED_LAYOUT'
   | 'ID_INCOMPATIBLE_WITH_LAYOUT'
+  | 'OBJECT_ROOT_CONFLICT'
   | 'DIRECTORY_NOT_EMPTY'
   | 'UPDATE_IN_PROGRESS'
   | 'RECOVERY_NEEDED'
@@ -62,4 +63,12 @@ class OcflError extends Error {
 
 const ocflError: (code: OcflErrorCode, message: string, options?: OcflErrorOptions) => OcflError = OcflError._create;
 
-export { OcflError, type OcflErrorCode, ocflError };
+/**
+ * For an `objectRoot` that the storage layout gives to the object `id`, but that holds the wrong thing.
+ * @param what - Completes "…places <id>, …", such as "is not empty"
+ */
+function objectRootConflict(objectRoot: string, id: string, what: string): OcflError {
+  return ocflError('OBJECT_ROOT_CONFLICT', `${objectRoot}, where the storage root places <${id}>, ${what}.`);
+}
+
+export { OcflError, type OcflErrorCode, objectRootConflict, ocflError };
