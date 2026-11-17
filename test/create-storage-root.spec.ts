@@ -228,7 +228,10 @@ describe('creating a storage root', () => {
     await createStorageRoot(rootPath, { layout: { extensionName: HASHED } });
     const text = await fs.promises.readFile(path.join(rootPath, 'ocfl-js-workspace.md'), 'utf8');
     assert.match(text, /extensions\/ocfl-js-workspace\/<object path>\//);
-    assert.match(text, /^- `lock`: the object's lock, a JSON object\. `id` is the id of the object, `lockedAt` the time\n {2}the lock was taken/m);
+    assert.match(
+      text,
+      /^- `lock`: the object's lock, a JSON object\. `id` is the id of the object, `operation` what\n {2}its writer is doing \(`create`, `update` or `remove`\), `lockedAt` the time the lock was taken/m,
+    );
     assert.match(text, /^- `<version>\/`/m);
   });
 

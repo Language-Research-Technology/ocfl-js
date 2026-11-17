@@ -124,18 +124,18 @@ class ObjectWrite {
   #workspace: string;
   #inventory: OcflObjectInventory;
   #versionPath: string;
-  #rootExisted: boolean;
+  #lock: Lock;
   #createdNamaste: string | undefined;
   #rootInventoryPaths: ReturnType<typeof rootInventoryPaths>;
   #rootInventoryStaged = false;
 
-  constructor(place: ObjectPlace, workspace: string, inventory: OcflObjectInventory, versionPath: string, rootExisted: boolean) {
+  constructor(place: ObjectPlace, workspace: string, inventory: OcflObjectInventory, versionPath: string, lock: Lock) {
     this.#place = place;
     this.#rootInventoryPaths = rootInventoryPaths(place.objectRoot, inventory.digestAlgorithm);
     this.#workspace = workspace;
     this.#inventory = inventory;
     this.#versionPath = versionPath;
-    this.#rootExisted = rootExisted;
+    this.#lock = lock;
   }
 
   /**
@@ -192,7 +192,7 @@ class ObjectWrite {
       if (this.#createdNamaste) {
         await fs.promises.rm(this.#createdNamaste, { recursive: true, force: true });
       }
-      if (!this.#rootExisted) {
+      if (!this.#lock.objectRootExisted) {
         await fileSystem.removeEmptyAncestorsQuietly(objectRoot, storageRoot);
       }
       if (this.#createdNamaste || this.#versionPath.startsWith(objectRoot + path.sep)) {
@@ -225,8 +225,7 @@ class ObjectWrite {
     // Before anything in the object root changes, so a moved head never surfaces as a failed rename
     await assertUpToDate(objectRoot, inventory);
     await flusher.flushTree(this.#versionPath);
-    const creating = inventory.versionNumber.previous() === undefined;
-    this.#createdNamaste = await ensureObjectDeclaration(objectRoot, ocflVersion, creating);
+    this.#createdNamaste = await ensureObjectDeclaration(objectRoot, ocflVersion, this.#lock.operation === 'create');
     try {
       await fileSystem.move(this.#versionPath, objectVersionPath);
     } catch (error) {
@@ -275,7 +274,8 @@ async function startWrite(place: ObjectPlace, inventory: OcflObjectInventory): P
     () => true,
     () => false,
   );
-  await takeLock(workspace, storageRoot, inventory.id, rootExisted);
+  const operation = inventory.versionNumber.previous() === undefined ? 'create' : 'update';
+  const lock = await takeLock(workspace, storageRoot, inventory.id, rootExisted, operation);
   const versionPath = path.join(workspace, inventory.head);
   const refuse = async (error: unknown): Promise<never> => {
     try {
@@ -301,7 +301,7 @@ async function startWrite(place: ObjectPlace, inventory: OcflObjectInventory): P
     }
     return refuse(error);
   }
-  return new ObjectWrite(place, workspace, inventory, versionPath, rootExisted);
+  return new ObjectWrite(place, workspace, inventory, versionPath, lock);
 }
 
 /** The name an update of `inventory` gives its version, or `undefined` if there can be no further version */
@@ -331,7 +331,7 @@ async function completeSidecar(objectRoot: string, inventory: OcflObjectInventor
  * Only what a dead writer can have left is removed from the object root: staged root inventory files, and the version after the head or,
  * with no root inventory, the declaration and first version of a create, and the object root and the layout directories above it that
  * that leaves empty if the lock says the create made them. A root inventory lost from a committed object with only a first version is
- * taken for a dead create too, since the lock doesn't say which kind of writer took it. A writer of an id whose directory holds another
+ * taken for a dead create too, whatever operation the lock records. A writer of an id whose directory holds another
  * object, or is inside one, was refused before it wrote anything there, so the object root is left alone.
  * @throws {@link OcflError} `INVALID_OBJECT` if the root inventory can't be used, or the object has a declaration and no root inventory but isn't what a dead create leaves; changing nothing
  */

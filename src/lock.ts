@@ -16,14 +16,23 @@ const MAX_LOCK_ATTEMPTS = 3;
 /** Larger than the lock of any sane id, so a large file named `lock` is known not to be one without reading all of it */
 const MAX_LOCK_LENGTH = 64 * 1024;
 
+type Operation = 'create' | 'update' | 'remove';
+const OPERATIONS: Record<Operation, true> = { create: true, update: true, remove: true };
+
+function isOperation(value: unknown): value is Operation {
+  return typeof value === 'string' && Object.hasOwn(OPERATIONS, value);
+}
+
 interface Lock {
   /** The id of the object its writer is creating, updating or removing */
   id: string;
+  /** What its writer is doing to the object */
+  operation: Operation;
   /** When the lock was taken */
   lockedAt: Date;
   /** False if its writer found no object root, so whatever is there afterwards it made */
   objectRootExisted: boolean;
-  /** Whether its writer had begun deleting the object root */
+  /** Whether its writer had begun deleting the object root: only ever for a remove */
   removing: boolean;
 }
 
@@ -37,27 +46,50 @@ function stagedLockPath(lock: string): string {
   return path.join(path.dirname(lock), `${STAGED_LOCK_PREFIX}${randomUUID()}`);
 }
 
-function formatLock({ id, lockedAt, objectRootExisted, removing }: Lock): string {
-  return JSON.stringify({ id, lockedAt: lockedAt.toISOString(), objectRootExisted, ...(removing ? { removing } : {}) });
+function formatLock({ id, operation, lockedAt, objectRootExisted, removing }: Lock): string {
+  return JSON.stringify({ id, operation, lockedAt: lockedAt.toISOString(), objectRootExisted, ...(removing ? { removing } : {}) });
 }
 
-/** What `content` records if it has the fields {@link formatLock} gives, or `undefined`. Other fields, which a later release may add, are ignored. */
+/** The operation of a lock written before locks recorded one */
+function inferredOperation(objectRootExisted: boolean, removing: boolean): Operation {
+  if (removing) {
+    return 'remove';
+  }
+  return objectRootExisted ? 'update' : 'create';
+}
+
+/**
+ * What `content` records if it has the fields {@link formatLock} gives, or `undefined`. Other fields, which a later release may add, are ignored.
+ * A lock with no `operation`, as earlier releases wrote, is given the likeliest one.
+ */
 function parseLock(content: string): Lock | undefined {
-  const { id, lockedAt, objectRootExisted, removing } = parseJsonObject(content) ?? {};
+  const { id, operation, lockedAt, objectRootExisted, removing } = parseJsonObject(content) ?? {};
   if (typeof id !== 'string' || id === '' || typeof lockedAt !== 'string' || typeof objectRootExisted !== 'boolean') {
     return undefined;
   }
-  if (removing !== undefined && removing !== true) {
+  if ((removing !== undefined && removing !== true) || (operation !== undefined && !isOperation(operation))) {
+    return undefined;
+  }
+  if (removing === true && operation !== undefined && operation !== 'remove') {
     return undefined;
   }
   const time = new Date(lockedAt);
   if (Number.isNaN(time.getTime()) || time.toISOString() !== lockedAt) {
     return undefined;
   }
-  return { id, lockedAt: time, objectRootExisted, removing: removing === true };
+  return {
+    id,
+    operation: isOperation(operation) ? operation : inferredOperation(objectRootExisted, removing === true),
+    lockedAt: time,
+    objectRootExisted,
+    removing: removing === true,
+  };
 }
 
-/** Whether two locks were taken by the same writer, whether or not it has since begun removing the object */
+/**
+ * Whether two locks were taken by the same writer, whether or not it has since begun removing the object.
+ * `operation` isn't compared: an earlier release's remove has none, and is read as another operation until it begins deleting.
+ */
 function sameWriter(a: Lock, b: Lock): boolean {
   return a.id === b.id && a.lockedAt.getTime() === b.lockedAt.getTime() && a.objectRootExisted === b.objectRootExisted;
 }
@@ -173,13 +205,14 @@ async function updateInProgress(workspace: string): Promise<OcflError> {
  * Takes the lock of the object `id`, without waiting for a writer that holds it.
  * @param workspace - The object's directory in the workspace of the storage root at `storageRoot`
  * @param objectRootExisted - Recorded in the lock, for recovery
+ * @param operation - Recorded in the lock, for whoever finds it unfinished
  * @returns What the lock records
  * @throws {@link OcflError} `UPDATE_IN_PROGRESS`, with `lockedAt` if the lock can be read, if the lock is already taken. A lock file that
  * exists refuses, even if it can't be read
  * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the lock can't be hard-linked into place; nothing is left behind
  */
-async function takeLock(workspace: string, storageRoot: string, id: string, objectRootExisted: boolean): Promise<Lock> {
-  const lock: Lock = { id, lockedAt: new Date(), objectRootExisted, removing: false };
+async function takeLock(workspace: string, storageRoot: string, id: string, objectRootExisted: boolean, operation: Operation): Promise<Lock> {
+  const lock: Lock = { id, operation, lockedAt: new Date(), objectRootExisted, removing: false };
   if (!(await createLockInWorkspace(workspace, storageRoot, formatLock(lock)))) {
     throw await updateInProgress(workspace);
   }

@@ -67,7 +67,7 @@ function recoveryNeeded(objectRoot: string, state: string, advice: string, cause
  */
 async function removeObject(storageRoot: string, objectRoot: string, id: string): Promise<void> {
   const workspace = objectWorkspace(storageRoot, objectRoot);
-  const lock = await takeLock(workspace, storageRoot, id, true);
+  const lock = await takeLock(workspace, storageRoot, id, true, 'remove');
   try {
     await assertHoldsObject(storageRoot, objectRoot, id);
     await markRemoving(workspace, lock);

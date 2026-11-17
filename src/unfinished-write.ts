@@ -16,8 +16,14 @@ interface UnfinishedWrite {
   readonly id: string;
   /** When its writer took the object's lock, by that writer's clock. */
   readonly lockedAt: Date;
-  /** Whether its writer had begun deleting the object. Recovering it then deletes the rest of the object. */
-  readonly removing: boolean;
+  /**
+   * What its writer is doing to the object: `root.create`, `object.update` or `root.remove`. {@link UnfinishedWrite.recover} says what
+   * recovering each does. More operations may be added; handle each by name.
+   *
+   * A lock left by a release before this field existed doesn't record its operation, and is given the likeliest: a create into an
+   * existing directory, and a remove that hadn't begun deleting, are given as `'update'`.
+   */
+  readonly operation: 'create' | 'update' | 'remove';
 
   /**
    * Clears what the write left behind and releases the object's lock. Does nothing if the lock has been released since.
@@ -28,10 +34,10 @@ interface UnfinishedWrite {
    * **Recover a write from one process at a time.** Two recoveries of the same write at once, on any hosts or in one process,
    * aren't kept apart: if a new writer takes the lock between them, the later one destroys that writer's update.
    *
-   * A remove that had begun deleting the object is finished. An update that wasn't committed is discarded: its unfinished version in the workspace, the directory of the version after the head
+   * A remove that had begun deleting the object is finished; one that hadn't is recovered as an update that wasn't committed, which for an object that can be opened only releases its lock. An update that wasn't committed is discarded: its unfinished version in the workspace, the directory of the version after the head
    * in the object, and staged inventory files are removed. A create that wasn't committed is discarded: the declaration and first version of an object that never
    * got an inventory, and its directory if the create made it. An update that was committed is completed by writing the root inventory's sidecar.
-   * A version is never made the head, and no other version directory is removed, except the first version of an object that has lost its root inventory, which is taken for a dead create. If the write's directory holds another id's object, or is inside
+   * A version is never made the head, and no other version directory is removed, except the first version of an object that has lost its root inventory, which is taken for a dead create whatever the operation. If the write's directory holds another id's object, or is inside
    * another object, its writer was refused before it wrote anything there: only the lock and what is left in the workspace are removed.
    *
    * After `RECOVERY_NEEDED`, recover the write and then open the object again before retrying: the head shows whether the update was committed.
@@ -60,7 +66,7 @@ function unfinishedWrite(storageRoot: string, flusher: Flusher, objectRoot: stri
   return deepFreeze({
     id: seen.id,
     lockedAt: new Date(seen.lockedAt),
-    removing: seen.removing,
+    operation: seen.operation,
     async recover() {
       const lock = await readLock(workspace);
       if (lock === undefined) {

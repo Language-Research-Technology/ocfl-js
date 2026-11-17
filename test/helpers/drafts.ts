@@ -79,9 +79,14 @@ export function lockOf(root: StorageRoot, id: string): string {
  * @returns The lock
  */
 export async function lockObject(root: StorageRoot, id: string, lockedAt: Date = new Date(), objectPath: string = id): Promise<string> {
+  return writeLock(root, objectPath, JSON.stringify({ id, operation: 'update', lockedAt: lockedAt.toISOString(), objectRootExisted: true }));
+}
+
+/** Writes `content` where the lock of the object at `objectPath` goes, and returns the lock's path */
+export async function writeLock(root: StorageRoot, objectPath: string, content: string): Promise<string> {
   const lock = lockOf(root, objectPath);
   await fs.promises.mkdir(path.dirname(lock), { recursive: true });
-  await fs.promises.writeFile(lock, JSON.stringify({ id, lockedAt: lockedAt.toISOString(), objectRootExisted: true }));
+  await fs.promises.writeFile(lock, content);
   return lock;
 }
 

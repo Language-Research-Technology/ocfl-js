@@ -8,6 +8,7 @@ import {
   type OcflObject,
   openStorageRoot,
   type StorageRoot,
+  type UnfinishedWrite,
 } from '../../src/index.ts';
 
 export async function layoutIsRequired(path: string): Promise<void> {
@@ -118,4 +119,17 @@ export async function listedObjectsMustBeNarrowed(root: StorageRoot): Promise<vo
       void object;
     }
   }
+}
+
+export function anUnfinishedWriteNamesItsOperation(write: UnfinishedWrite): string {
+  const operation: 'create' | 'update' | 'remove' = write.operation;
+  // @ts-expect-error read-only
+  write.operation = 'update';
+  // @ts-expect-error not one of its operations
+  if (write.operation === 'purge') {
+    return '';
+  }
+  // @ts-expect-error whether a remove had begun deleting is not public
+  void write.removing;
+  return operation;
 }

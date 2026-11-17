@@ -516,7 +516,7 @@ describe('concurrent writers', () => {
         },
       );
 
-      assert.match(seen, /^false \{"id":"[^"]+","lockedAt":"[^"]+","objectRootExisted":false\}$/);
+      assert.match(seen, /^false \{"id":"[^"]+","operation":"create","lockedAt":"[^"]+","objectRootExisted":false\}$/);
     });
 
     it('is reported as held, with no lockedAt, when it cannot be read', async () => {

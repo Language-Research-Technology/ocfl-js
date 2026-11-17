@@ -204,8 +204,8 @@ export interface StorageRoot {
 export interface UnfinishedWrite {
     readonly id: string;
     readonly lockedAt: Date;
+    readonly operation: 'create' | 'update' | 'remove';
     recover(): Promise<void>;
-    readonly removing: boolean;
 }
 
 // @public

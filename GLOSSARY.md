@@ -57,7 +57,7 @@ The rename that replaces an OCFL object's root inventory. Before it an update is
 _Avoid_: Publish, finalise
 
 **Recover**:
-To clear what a dead writer left of an OCFL object and release its lock, on the caller's word that no writer is alive: an update that wasn't committed is discarded, one that was is completed, and a remove that had begun deleting is finished.
+To clear what a dead writer left of an OCFL object and release its lock, on the caller's word that no writer is alive: an update that wasn't committed is discarded, one that was is completed, and a remove that had begun deleting is finished. A remove that hadn't begun deleting is recovered as an update that wasn't committed.
 _Avoid_: Repair, unlock, roll back
 
 **Durability**:
