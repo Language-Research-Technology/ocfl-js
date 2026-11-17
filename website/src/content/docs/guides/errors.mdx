@@ -48,6 +48,15 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 **What to do:** create the storage root in an empty or missing directory. To use a storage root that already exists, call `openStorageRoot`.
 
+`createStorageRoot` writes the `0=ocfl_1.1` declaration last, so one that was interrupted, by a crash or a killed process, leaves a directory with no declaration, or an empty one. `openStorageRoot` refuses it with `INVALID_STORAGE_ROOT`, and `createStorageRoot` with this code. Delete what is in the directory and call `createStorageRoot` again, but only if the directory holds nothing but some of these, any of which may be empty or cut short:
+
+- `ocfl_1.1.md`
+- `ocfl-js-workspace.md`
+- `ocfl_layout.json`
+- `000N-path-direct-storage-layout.md`, if the storage layout is `000N-path-direct-storage-layout`
+- `extensions/<storage layout>/config.json`, or the directories on its path
+- an empty `0=ocfl_1.1`
+
 ### `STORAGE_ROOT_NOT_FOUND`
 
 **Cause:** `openStorageRoot` was given a path that doesn't exist, or an empty directory. There is no storage root there.
@@ -60,7 +69,7 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 **Cause:** `openStorageRoot` found no storage root it can read: the path is a file, is below a file, or is a directory with something in it, and its `0=ocfl_1.x` declaration is missing or wrong (`ocflCode` `E069` or `E080`), its `ocfl_layout.json` doesn't name a storage layout (`E070`), or the storage layout's `config.json` isn't a JSON object, is for another storage layout, or has parameters the storage layout refuses.
 
-**What to do:** check the path is a storage root. If it is, fix the declaration, `ocfl_layout.json` or `config.json`; the message names the file.
+**What to do:** check the path is a storage root. If it is, fix the declaration, `ocfl_layout.json` or `config.json`; the message names the file. A directory with no declaration, or an empty one, may be what an interrupted `createStorageRoot` left: see [`DIRECTORY_NOT_EMPTY`](#directory_not_empty).
 
 ### `LAYOUT_NOT_DECLARED`
 
@@ -134,7 +143,7 @@ These are checks the library makes before it uses an inventory's values as file 
 
 **Cause:** `create`, `update`, `purge` or recovering an unfinished write found the object's lock taken: another writer is creating, updating or purging it, or died doing so. The library refuses straight away, never waits, and never removes a lock because of its age. `lockedAt` says when the lock was taken.
 
-**What to do:** wait and try again. If you know the writer is dead, recover the object's unfinished write, from `root.unfinishedWrite(id)`, and then try again. Only recover it when its writer is no longer alive: recovering destroys a live writer's update. Recovering a write also throws `OBJECT_LOCKED`, changing nothing, if another writer took the lock after you got the write. See [`OBJECT_LOCKED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_locked-another-writer-holds-the-lock).
+**What to do:** wait and try again. If you know the writer is dead, recover the object's unfinished write, from `root.unfinishedWrite(id)`, and then try again. Only recover it when its writer is no longer alive: recovering destroys a live writer's update. Recovering a write also throws `OBJECT_LOCKED`, changing nothing, if another writer took the lock after you got the write. See [`OBJECT_LOCKED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_locked-another-writer-holds-the-lock), and [A lock the library can't read](/ocfl-js/guides/concurrent-writers/#a-lock-the-library-cant-read) if `lockedAt` stays absent and `root.unfinishedWrite(id)` keeps giving `undefined`.
 
 ### `OBJECT_OUT_OF_DATE`
 
