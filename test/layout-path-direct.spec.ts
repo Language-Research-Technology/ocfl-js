@@ -211,4 +211,44 @@ describe('the 000N path direct layout', () => {
     assert.strictEqual(layout.map(`${'é'.repeat(127)}x`), `${'é'.repeat(127)}x/__object__`);
     assert.strictEqual(layout.map(`https://h/${'é'.repeat(42)}xxx`), `https_h/${'%C3%A9'.repeat(42)}xxx/__object__`);
   });
+
+  // Frozen mapping (ADR 0009).
+  it('maps ids as the URL parser normalises them', () => {
+    const layout = createLayout({ extensionName: NAME });
+    const cases: [string, string][] = [
+      ['https://EXAMPLE.org/A', 'https_example.org/A/__object__'],
+      ['HTTPS://example.org/a', 'https_example.org/a/__object__'],
+      ['https://example.org:8080/a', 'https_example.org/a/__object__'],
+      ['https://u:p@example.org/a', 'https_example.org/a/__object__'],
+      ['https://example.org/a b', 'https_example.org/a%20b/__object__'],
+      ['https://example.org/a%20b', 'https_example.org/a%20b/__object__'],
+      ['https://example.org/café', 'https_example.org/caf%C3%A9/__object__'],
+      ['arcp://NAME,X/a', 'arcp_NAME_X/a/__object__'],
+      ['https://example.org/a?q=1#f', 'https_example.org/a?q=1#f/__object__'],
+      ['https://h/a?b c#d e', 'https_h/a?b%20c#d%20e/__object__'],
+      ['https://h/a?b"<>#d"<>`', 'https_h/a?b%22%3C%3E#d%22%3C%3E%60/__object__'],
+      ['https://café.org/a', 'https_xn--caf-dma.org/a/__object__'],
+      ['https://0x7f.1/a', 'https_127.0.0.1/a/__object__'],
+      ['https://h/a\\b', 'https_h/a/b/__object__'],
+      [' https://h/a ', 'https_h/a/__object__'],
+      ['https://h/a\tb', 'https_h/ab/__object__'],
+      ['arcp://Name,Ä/a', 'arcp_Name_%C3%84/a/__object__'],
+      ['arcp://name,x/a b', 'arcp_name_x/a%20b/__object__'],
+      ['urn:x:y', 'urn/x:y/__object__'],
+    ];
+    for (const [id, objectRoot] of cases) {
+      assert.strictEqual(layout.map(id), objectRoot, JSON.stringify(id));
+    }
+    assert.strictEqual(configured({ omitScheme: true }).map('arcp://NAME,X/a'), 'NAME_X/a/__object__');
+  });
+
+  it('gives a $ in a replacement the meaning String.prototype.replace gives it', () => {
+    const layout = configured({
+      replace: [
+        ['X', '$&$&'],
+        ['Y', '$$'],
+      ],
+    });
+    assert.strictEqual(layout.map('aXbY'), 'aXXb$/__object__');
+  });
 });
