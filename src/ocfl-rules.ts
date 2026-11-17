@@ -4,6 +4,10 @@ import { type OcflError, ocflError } from './error.ts';
 export type ValidationCode =
   | 'E003'
   | 'E007'
+  | 'E009'
+  | 'E010'
+  | 'E011'
+  | 'E012'
   | 'E017'
   | 'E018'
   | 'E036'
@@ -17,9 +21,11 @@ export type ValidationCode =
   | 'E060'
   | 'E069'
   | 'E070'
+  | 'E076'
   | 'E080'
   | 'E081'
   | 'E082'
+  | 'E095'
   | 'E096'
   | 'E099'
   | 'E100'
@@ -34,6 +40,13 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
     'There MUST be exactly one version declaration file in the base directory of the OCFL Object Root giving the OCFL version in the filename.',
   ],
   E007: ['INVALID_OBJECT', 'The text contents of the [version declaration] file must be the same as dvalue, followed by a newline (\\n).'],
+  E009: ['INVALID_OBJECT', 'The version number sequence MUST start at 1.'],
+  E010: ['INVALID_OBJECT', 'The version number sequence MUST be continuous without missing integers.'],
+  E011: ['INVALID_OBJECT', 'If zero-padded version directory numbers are used then they MUST start with the prefix v and then a zero.'],
+  E012: [
+    'INVALID_OBJECT',
+    'All version directories of an object MUST use the same naming convention: either a non-padded version directory number, or a zero-padded version directory number of consistent length.',
+  ],
   E017: ['INVALID_OBJECT', 'The contentDirectory value MUST NOT contain the forward slash (/) path separator.'],
   E018: ['INVALID_OBJECT', 'The contentDirectory value MUST NOT be either one or two periods (. or ..).'],
   E036: ['INVALID_OBJECT', 'An OCFL Object Inventory MUST include the following keys: [id, type, digestAlgorithm, head].'],
@@ -56,11 +69,19 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
     'INVALID_STORAGE_ROOT',
     'If present, [the ocfl_layout.json document] MUST include the following two keys in the root JSON object: [extension, description].',
   ],
+  E076: [
+    'INVALID_STORAGE_ROOT',
+    'There MUST be exactly one version declaration file in the base directory of the OCFL Storage Root giving the OCFL version in the filename.',
+  ],
   E080: ['INVALID_STORAGE_ROOT', 'The text contents of [the OCFL version declaration file] MUST be the same as dvalue, followed by a newline (\\n).'],
   E081: ['INVALID_OBJECT', "An OCFL Object's version MUST be less than or equal to the version of the OCFL Storage Root it is in."],
   E082: [
     'INVALID_OBJECT',
     'OCFL Object Roots MUST be stored either as the terminal resource at the end of a directory storage hierarchy or as direct children of a containing OCFL Storage Root.',
+  ],
+  E095: [
+    'INVALID_OBJECT',
+    'Within a version, logical paths MUST be unique and non-conflicting, so the logical path for a file cannot appear as the initial part of another logical path.',
   ],
   E096: [
     'INVALID_OBJECT',

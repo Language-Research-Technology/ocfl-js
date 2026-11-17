@@ -225,8 +225,6 @@ describe('updating an object made by another tool', () => {
     // A padded name must start with a zero (E011), so n digits hold versions up to 10^(n-1) - 1
     for (const [width, head] of [
       [2, 9],
-      [2, 10],
-      [2, 99],
       [3, 99],
     ] as const) {
       const names = padded(width, head);

@@ -89,7 +89,7 @@ function isDigestBlock(block: unknown): boolean {
  * @param file - The inventory's path, for the error
  * @throws {@link OcflError} `INVALID_OBJECT` with `E036` or `E040` for a missing or empty head, `E104` for a version name,
  * `E017` or `E018` for the contentDirectory, `E099` or `E100` for a content path, `E052` or `E053` for a logical path in any
- * version, `E048` or `E050` for a version's state, or `E111` or `E057` for the fixity block
+ * version, `E095` for logical paths of one version that repeat or conflict, `E048` or `E050` for a version's state, or `E111` or `E057` for the fixity block
  */
 function validateStoredInventory(data: Inventory, file: string): void {
   if (data.head === undefined) {
@@ -134,10 +134,26 @@ function validateStoredInventory(data: Inventory, file: string): void {
     if (!isDigestBlock(version.state)) {
       throw createError('E050', file, `${name} has a state that does not map digests to logical paths`);
     }
+    const seen = new Set<string>();
     for (const logicalPaths of Object.values(version.state)) {
       for (const logicalPath of logicalPaths) {
         checkInventoryPath(logicalPath, { slash: 'E053', element: 'E052' }, file, `logical path "${logicalPath}" in ${name}`);
+        if (seen.has(logicalPath)) {
+          throw createError('E095', file, `logical path "${logicalPath}" appears twice in ${name}`);
+        }
+        seen.add(logicalPath);
       }
+    }
+    checkNoDirectoryIsAFile(seen, file, name);
+  }
+}
+
+/** @throws {@link OcflError} `INVALID_OBJECT` with `E095` if one of the logical paths of version `name` is the directory of another */
+function checkNoDirectoryIsAFile(logicalPaths: Set<string>, file: string, name: string): void {
+  for (const logicalPath of logicalPaths) {
+    const directory = parentDirectories(logicalPath).find((dir) => logicalPaths.has(dir));
+    if (directory !== undefined) {
+      throw createError('E095', file, `logical path "${directory}" is a directory of "${logicalPath}" in ${name}`);
     }
   }
 }

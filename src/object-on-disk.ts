@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
-import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
+import { type DeclarationsFound, findNamasteVersion, OcflConstants, type OcflVersion, SEVERAL_DECLARATIONS } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
 import { type OcflError, objectRootConflict, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { type Inventory, OcflObjectInventory, validateStoredInventory, versionNumbers } from './inventory.ts';
-import { isVersionName, sidecarDigest } from './inventory-files.ts';
+import { isVersionName, sidecarDigest, VersionNumber } from './inventory-files.ts';
 import { isLocked } from './lock.ts';
 import { createError } from './ocfl-rules.ts';
 import { isJsonObject, parseJsonObject } from './utils.ts';
@@ -26,12 +26,23 @@ function invalidObject(message: string, options: { ocflCode?: string | undefined
   return ocflError('INVALID_OBJECT', message, options);
 }
 
-/** @throws {@link OcflError} `INVALID_OBJECT` if the versions of `inventory`, read from `file`, can't be listed */
+/**
+ * @throws {@link OcflError} `INVALID_OBJECT` if the versions of `inventory`, read from `file`, can't be listed: with `E011` or `E012` for
+ * names that mix zero-padding conventions, `E009` or `E010` for numbers that don't run 1, 2, 3…, `E049` for a version with no valid created
+ * time, or `E040` for a head that isn't the latest version
+ */
 function checkVersions(inventory: OcflObjectInventory, file: string): void {
-  let previous: number | undefined;
+  const widths = new Map(Object.keys(inventory.versions).map((name) => [VersionNumber._fromString(name).zeroPaddingLength, name]));
+  if (widths.size > 1) {
+    const unpadded = widths.get(undefined);
+    throw unpadded === undefined
+      ? createError('E012', file, `zero-padded versions of different widths: ${[...widths.values()].sort().join(', ')}`)
+      : createError('E011', file, `${unpadded} among zero-padded versions`);
+  }
+  let previous = 0;
   for (const [number, name] of versionNumbers(inventory)) {
-    if (number === previous) {
-      throw invalidObject(`The inventory ${file} has more than one version ${number}.`);
+    if (number !== previous + 1) {
+      throw previous === 0 ? createError('E009', file, `the first version is ${name}`) : createError('E010', file, `no version ${previous + 1}`);
     }
     previous = number;
     const created = inventory.versions[name]?.created;
@@ -41,18 +52,6 @@ function checkVersions(inventory: OcflObjectInventory, file: string): void {
   }
   if (inventory.versionNumber.value !== previous) {
     throw invalidObject(`The inventory ${file} has the head ${inventory.head}, which is not its latest version.`, { ocflCode: 'E040' });
-  }
-}
-
-/** The file's text, or `undefined` if nothing can be at its path */
-async function readIfPresent(file: string): Promise<string | undefined> {
-  try {
-    return await fs.promises.readFile(file, 'utf8');
-  } catch (error) {
-    if (fileSystem.isNothingAtPath(error)) {
-      return undefined;
-    }
-    throw error;
   }
 }
 
@@ -66,7 +65,7 @@ async function isHeadVersionInventory(objectRoot: string, head: unknown, text: s
     return false;
   }
   const file = nodePath.join(objectRoot, head, INVENTORY_NAME);
-  const [inventory, sidecar] = await Promise.all([readIfPresent(file), readIfPresent(`${file}.${digestAlgorithm}`)]);
+  const [inventory, sidecar] = await Promise.all([fileSystem.readIfPresent(file), fileSystem.readIfPresent(`${file}.${digestAlgorithm}`)]);
   return inventory === text && sidecarDigest(sidecar) === digest;
 }
 
@@ -85,7 +84,8 @@ async function idInRootInventory(objectRoot: string): Promise<string | undefined
  * While another writer holds the object's lock, a commit may be replacing the sidecar, so the inventory of its head version is accepted instead.
  * @param options.callerHoldsLock - Whether the caller holds the lock, so no other writer can be committing
  * @returns `undefined` if there is no inventory
- * @throws {@link OcflError} `INVALID_OBJECT` if the inventory or its sidecar is missing, corrupt or inconsistent
+ * @throws {@link OcflError} `INVALID_OBJECT` if the inventory or its sidecar is missing, corrupt or inconsistent, its id is missing or
+ * empty (`E036`), or its versions break a rule {@link checkVersions} checks
  */
 function readInventory(storageRoot: string, objectRoot: string, options: { callerHoldsLock?: boolean } = {}): Promise<OcflObjectInventory | undefined> {
   return readInventoryAttempt(storageRoot, objectRoot, options.callerHoldsLock ? 'own lock' : 'first read');
@@ -127,7 +127,7 @@ async function readInventoryAttempt(
   if (digestAlgorithm !== 'sha256' && digestAlgorithm !== 'sha512') {
     throw invalidObject(`The inventory ${file} has a digestAlgorithm that is not sha256 or sha512.`, { ocflCode: 'E025' });
   }
-  const sidecar = await readIfPresent(`${file}.${digestAlgorithm}`);
+  const sidecar = await fileSystem.readIfPresent(`${file}.${digestAlgorithm}`);
   const recorded = sidecarDigest(sidecar);
   const actual = await Hashing.digest(digestAlgorithm, text);
   let inventory: OcflObjectInventory;
@@ -149,6 +149,9 @@ async function readInventoryAttempt(
     if (typeof data.id !== 'string') {
       throw createError('E036', file, 'missing id');
     }
+    if (data.id === '') {
+      throw createError('E036', file, 'empty id');
+    }
     inventory = new OcflObjectInventory(data);
   } catch (cause) {
     // The inventory isn't shaped as the checks assume
@@ -166,6 +169,29 @@ async function readInventoryAttempt(
 /** For an `objectRoot` that the storage layout gives to the object `id`, and that holds the object `found` */
 function holdsAnotherObject(objectRoot: string, found: string, id: string): OcflError {
   return objectRootConflict(objectRoot, id, `holds the object <${found}>`);
+}
+
+/**
+ * The OCFL version the declaration `declared`, found in `objectRoot`, gives
+ * @throws {@link OcflError} `INVALID_OBJECT` with `E003` for more than one declaration, or `E007` for one with the wrong contents
+ */
+function checkedDeclaration(objectRoot: string, declared: DeclarationsFound): OcflVersion {
+  if (declared === SEVERAL_DECLARATIONS) {
+    throw createError('E003', objectRoot, 'it has more than one object declaration');
+  }
+  if (declared === '') {
+    throw createError('E007', objectRoot);
+  }
+  return declared;
+}
+
+/**
+ * The OCFL version the object declaration in `objectRoot` gives, or `undefined` if it has none
+ * @throws {@link OcflError} `INVALID_OBJECT` as {@link checkedDeclaration} does
+ */
+async function objectDeclaration(objectRoot: string): Promise<OcflVersion | undefined> {
+  const declared = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, objectRoot);
+  return declared === undefined ? undefined : checkedDeclaration(objectRoot, declared);
 }
 
 /** The nearest directory between the storage root and `objectRoot` that is itself an object, if any */
@@ -200,13 +226,10 @@ async function objectState(storageRoot: string, objectRoot: string): Promise<'co
 
 /**
  * The OCFL version declared by the object at `objectRoot`, which has an inventory.
- * @throws {@link OcflError} `INVALID_OBJECT` if its declaration is missing or wrong, or it is inside another object
+ * @throws {@link OcflError} `INVALID_OBJECT` if its declaration is missing (`E003`) or wrong as {@link checkedDeclaration} finds it, or it is inside another object
  */
 async function declaredVersion(storageRoot: string, objectRoot: string): Promise<OcflVersion> {
-  const [ocflVersion, outer] = await Promise.all([findNamasteVersion(NAMASTE_PREFIX_OBJECT, objectRoot), enclosingObject(storageRoot, objectRoot)]);
-  if (ocflVersion === '') {
-    throw createError('E007', objectRoot);
-  }
+  const [ocflVersion, outer] = await Promise.all([objectDeclaration(objectRoot), enclosingObject(storageRoot, objectRoot)]);
   if (!ocflVersion) {
     throw createError('E003', objectRoot, 'it has an inventory but no object declaration');
   }
@@ -302,6 +325,7 @@ async function noCommittedObject(storageRoot: string, objectRoot: string, id: st
 
 export {
   assertNoMutableHead,
+  checkedDeclaration,
   committedInventory,
   confirmedVersion,
   declarationWithoutInventory,
@@ -310,6 +334,7 @@ export {
   hasObjectDeclaration,
   idInRootInventory,
   noCommittedObject,
+  objectDeclaration,
   objectNotFound,
   objectState,
   readInventory,

@@ -303,6 +303,12 @@ describe('opening a storage root', () => {
       await assert.rejects(openStorageRoot(path.join(file, 'root')), ocflError('INVALID_STORAGE_ROOT', 'E069'));
     });
 
+    it('reports E076 when it has two version declarations', async () => {
+      const rootPath = newPath();
+      await writeFiles(rootPath, { '0=ocfl_1.1': 'ocfl_1.1\n', '0=ocfl_1.0': 'ocfl_1.0\n', 'ocfl_layout.json': declaring(HASHED) });
+      await assert.rejects(openStorageRoot(rootPath), ocflError('INVALID_STORAGE_ROOT', 'E076'));
+    });
+
     it('reports E080 when the version declaration has the wrong contents', async () => {
       const rootPath = newPath();
       await writeFiles(rootPath, { '0=ocfl_1.1': 'wrong\n', 'ocfl_layout.json': declaring(HASHED) });

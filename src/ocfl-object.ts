@@ -1,5 +1,5 @@
 import nodePath from 'node:path';
-import { OcflConstants, type OcflVersion } from './constants.ts';
+import { type DeclarationsFound, OcflConstants, type OcflVersion } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
 import { checkedDetails, commitDraft, type Draft, type UpdateOptions, type User, type VersionDetails } from './draft.ts';
@@ -9,6 +9,7 @@ import { type Inventory, OcflObjectInventory, versionNumbers } from './inventory
 import { updateInProgress } from './lock.ts';
 import {
   assertNoMutableHead,
+  checkedDeclaration,
   committedInventory,
   confirmedVersion,
   declaredVersion,
@@ -19,7 +20,6 @@ import {
   withinRootVersion,
 } from './object-on-disk.ts';
 import { type FileHistory, type OcflFile, StoredFile } from './ocfl-file.ts';
-import { createError } from './ocfl-rules.ts';
 import type { StorageRoot } from './storage-root.ts';
 import { objectWorkspace } from './workspace.ts';
 
@@ -407,19 +407,17 @@ async function openObject(storageRoot: string, objectRoot: string, id: string, r
  * Opens the object at `objectRoot`, a directory found with the object declaration `declared` and inside no other object, in a storage root of OCFL version `rootVersion`.
  * @param declared - As `findNamasteVersion` returns it for a declaration that exists
  * @returns `undefined` if it has no inventory and its lock is held, a create that isn't committed; or if it has gone
- * @throws {@link OcflError} `INVALID_OBJECT` if its declaration is invalid or of a later OCFL version than the storage root, or its inventory is missing or can't be used
+ * @throws {@link OcflError} `INVALID_OBJECT` if it has more than one declaration (`E003`), or its declaration is invalid or of a later OCFL version than the storage root, or its inventory is missing or can't be used
  */
 async function openDeclaredObject(
   storageRoot: string,
   objectRoot: string,
-  declared: OcflVersion | '',
+  declared: DeclarationsFound,
   rootVersion: OcflVersion,
 ): Promise<OcflObject | undefined> {
-  if (declared === '') {
-    throw createError('E007', objectRoot);
-  }
+  const ocflVersion = checkedDeclaration(objectRoot, declared);
   const inventory = await committedInventory(storageRoot, objectRoot);
-  return inventory && new OpenedObject(storageRoot, rootVersion, objectRoot, withinRootVersion(objectRoot, declared, rootVersion), inventory);
+  return inventory && new OpenedObject(storageRoot, rootVersion, objectRoot, withinRootVersion(objectRoot, ocflVersion, rootVersion), inventory);
 }
 
 /**

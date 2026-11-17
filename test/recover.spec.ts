@@ -481,7 +481,8 @@ describe('root.recover', () => {
       await fs.promises.rename(path.join(objectRoot, 'v1'), path.join(objectRoot, 'v09'));
       await rewriteInventory(objectRoot, (inventory) => {
         inventory.head = 'v09';
-        inventory.versions = { v09: inventory.versions!.v1! };
+        const v1 = inventory.versions!.v1!;
+        inventory.versions = Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`v0${i + 1}`, v1]));
         inventory.manifest = Object.fromEntries(
           Object.entries(inventory.manifest!).map(([digest, paths]) => [digest, paths.map((file) => file.replace('v1/', 'v09/'))]),
         );

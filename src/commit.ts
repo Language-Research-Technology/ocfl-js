@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
+import { OcflConstants, type OcflVersion } from './constants.ts';
 import * as Hashing from './digest.ts';
 import type { VersionDetails } from './draft.ts';
 import { ocflError } from './error.ts';
@@ -8,7 +8,7 @@ import * as fileSystem from './file-system.ts';
 import type { OcflObjectInventory } from './inventory.ts';
 import { isStagedRootInventory, isVersionName, rootInventoryPaths, sidecarContent, sidecarDigest } from './inventory-files.ts';
 import { type Lock, lockKept, releaseLock, takeLock } from './lock.ts';
-import { declarationWithoutInventory, enclosingObject, readInventory } from './object-on-disk.ts';
+import { declarationWithoutInventory, enclosingObject, objectDeclaration, readInventory } from './object-on-disk.ts';
 import { createError } from './ocfl-rules.ts';
 import { parseJsonObject } from './utils.ts';
 import { clearWorkspace, namesIn, objectWorkspace, removeAll } from './workspace.ts';
@@ -29,14 +29,10 @@ interface ObjectPlace {
 /**
  * Writes the object declaration for a create into an empty object root; an update only checks that it is there
  * @returns The path of the declaration file, if this call wrote one
- * @throws {@link OcflError} `INVALID_OBJECT` with `E007` for an invalid declaration, or `E003` if an update finds none; `DIRECTORY_NOT_EMPTY` if a create finds none in a directory that isn't empty
+ * @throws {@link OcflError} `INVALID_OBJECT` with `E007` for an invalid declaration, or `E003` for more than one or if an update finds none; `DIRECTORY_NOT_EMPTY` if a create finds none in a directory that isn't empty
  */
 async function ensureObjectDeclaration(root: string, ocflVersion: OcflVersion, creating: boolean): Promise<string | undefined> {
-  const declared = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, root);
-  if (declared === '') {
-    throw createError('E007', root);
-  }
-  if (declared) {
+  if (await objectDeclaration(root)) {
     return;
   }
   if (!creating) {

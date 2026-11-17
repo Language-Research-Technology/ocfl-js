@@ -369,6 +369,13 @@ describe('opening an object', () => {
         },
       ],
       [
+        'an empty id',
+        'E036',
+        (inventory) => {
+          inventory.id = '';
+        },
+      ],
+      [
         'no id',
         'E036',
         (inventory) => {
@@ -497,6 +504,23 @@ describe('opening an object', () => {
           inventory.contentDirectory = contentDirectory;
         },
       ]),
+      ...(
+        [
+          ['E009', 'versions that start at v2', ['v2', 'v3']],
+          ['E010', 'a gap in its versions', ['v1', 'v2', 'v4']],
+          ['E011', 'zero-padded versions and one that is not', ['v1', 'v02']],
+          ['E011', 'zero-padded versions up to one that has outgrown the padding', ['v08', 'v09', 'v10']],
+          ['E012', 'zero-padded versions of different widths', ['v01', 'v002']],
+        ] as const
+      ).map(([ocflCode, problem, names]): (typeof corruptions)[number] => [
+        problem,
+        ocflCode,
+        (inventory) => {
+          const v1 = inventory.versions!.v1!;
+          inventory.versions = Object.fromEntries(names.map((name) => [name, v1]));
+          inventory.head = names.at(-1)!;
+        },
+      ]),
       ...['../v1', 'v0', 'v1a', '1'].map((name): (typeof corruptions)[number] => [
         `the version name ${name}`,
         'E104',
@@ -522,6 +546,46 @@ describe('opening an object', () => {
       await assert.rejects(root.open('earlier-version'), invalid('E052'));
     });
 
+    for (const [problem, logicalPaths] of [
+      ['a logical path that is the directory of another', ['a', 'a/b/c.txt']],
+      ['the same logical path twice', ['a.txt', 'a.txt']],
+    ] as const) {
+      it(`throws INVALID_OBJECT with E095 for a version with ${problem}`, async () => {
+        const id = `conflict-${problem.replaceAll(' ', '-')}`;
+        await damaged(id, (inventory) => {
+          inventory.versions!.v1!.state = { [DIGESTS_OF_ABC.sha512]: [...logicalPaths] };
+        });
+        await assert.rejects(root.open(id), invalid('E095'));
+      });
+    }
+
+    it('throws INVALID_OBJECT with E095 for the same logical path under two digests', async () => {
+      const objectRoot = await writeVersions(root.path, 'two-digests', [{ 'a.txt': 'abc', 'b.txt': 'xyz' }]);
+      await rewriteInventory(objectRoot, (inventory) => {
+        const state = inventory.versions!.v1!.state;
+        for (const paths of Object.values(state)) {
+          paths[0] = 'same.txt';
+        }
+      });
+      await assert.rejects(root.open('two-digests'), invalid('E095'));
+    });
+
+    it('throws INVALID_OBJECT with E095 for conflicting logical paths that only an earlier version has', async () => {
+      const objectRoot = await writeVersions(root.path, 'earlier-conflict', [{ 'a.txt': 'abc' }, { 'b.txt': 'abc' }]);
+      await rewriteInventory(objectRoot, (inventory) => {
+        inventory.versions!.v1!.state = { [DIGESTS_OF_ABC.sha512]: ['a', 'a/b'] };
+      });
+      await assert.rejects(root.open('earlier-conflict'), invalid('E095'));
+    });
+
+    it('opens an object with logical paths that share a prefix but not a directory', async () => {
+      await damaged('shared-prefix', (inventory) => {
+        inventory.versions!.v1!.state = { [DIGESTS_OF_ABC.sha512]: ['a', 'ab/c', 'a.txt'] };
+      });
+      const object = await root.open('shared-prefix');
+      assert.deepStrictEqual([...object.head.files.keys()].sort(), ['a', 'a.txt', 'ab/c']);
+    });
+
     it('opens an object whose logical paths have dots in their names', async () => {
       await damaged('dotted-names', (inventory) => {
         inventory.versions!.v1!.state = { [DIGESTS_OF_ABC.sha512]: ['.hidden', 'a..b', 'c/...'] };
@@ -544,11 +608,11 @@ describe('opening an object', () => {
       });
     });
 
-    it('throws INVALID_OBJECT for an inventory with two versions of the same number', async () => {
+    it('throws INVALID_OBJECT with E011 for an inventory with two versions of the same number', async () => {
       await damaged('same-number', (inventory) => {
         inventory.versions!.v01 = inventory.versions!.v1!;
       });
-      await assert.rejects(root.open('same-number'), invalid());
+      await assert.rejects(root.open('same-number'), invalid('E011'));
     });
 
     for (const [ocflCode, problem, state] of [
@@ -631,6 +695,18 @@ describe('opening an object', () => {
       await fs.promises.rm(path.join(objectRoot, '0=ocfl_object_1.1'));
       await assert.rejects(root.open('undeclared'), invalid('E003'));
     });
+
+    for (const [problem, contents] of [
+      ['valid contents', 'ocfl_object_1.0\n'],
+      ['the wrong contents', 'wrong\n'],
+    ] as const) {
+      it(`throws INVALID_OBJECT with E003 for an object with a second object declaration with ${problem}`, async () => {
+        const id = `two-declarations-${problem.replaceAll(' ', '-')}`;
+        const objectRoot = await writeVersions(root.path, id, [{ 'a.txt': 'abc' }]);
+        await writeFiles(objectRoot, { '0=ocfl_object_1.0': contents });
+        await assert.rejects(root.open(id), invalid('E003'));
+      });
+    }
 
     it('throws INVALID_OBJECT with E007 for an object declaration with the wrong contents', async () => {
       const objectRoot = await writeVersions(root.path, 'misdeclared', [{ 'a.txt': 'abc' }]);
