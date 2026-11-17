@@ -63,8 +63,10 @@ describe('testing whether an object exists', () => {
     await assert.rejects(root.has(undefined as unknown as string), TypeError);
   });
 
-  it("throws ID_INCOMPATIBLE_WITH_LAYOUT for an id the layout can't map", async () => {
+  it("is false for an id the layout can't place", async () => {
     const root = await temp.newRoot();
-    await assert.rejects(root.has('..'), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+    assert.strictEqual(await root.has('..'), false);
+    assert.strictEqual(await root.has('extensions/an-object'), false);
+    assert.strictEqual(await root.has('x'.repeat(300)), false);
   });
 });

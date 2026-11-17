@@ -268,8 +268,12 @@ function nestedObject(objectRoot: string, outer: string): OcflError {
   return createError('E082', objectRoot, `nested under the object at ${outer}`);
 }
 
-function objectNotFound(storageRoot: string, id: string): OcflError {
-  return ocflError('OBJECT_NOT_FOUND', `There is no object <${id}> in the storage root ${storageRoot}.`);
+/** @param unplaceable - The layout's refusal of `id`, if that is why there is no object */
+function objectNotFound(storageRoot: string, id: string, unplaceable?: OcflError): OcflError {
+  const message = `There is no object <${id}> in the storage root ${storageRoot}`;
+  return unplaceable === undefined
+    ? ocflError('OBJECT_NOT_FOUND', `${message}.`)
+    : ocflError('OBJECT_NOT_FOUND', `${message}: its storage layout can't place this id.`, { cause: unplaceable });
 }
 
 /** For an `objectRoot` with an object declaration and no inventory, which no writer is working on */

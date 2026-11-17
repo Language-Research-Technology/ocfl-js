@@ -321,14 +321,14 @@ describe('opening an object', () => {
       await assert.rejects(root.open('a-file/below'), ocflError('OBJECT_ROOT_CONFLICT'));
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id with a segment too long to be the name of a directory', async () => {
+    it('throws OBJECT_NOT_FOUND for an id with a segment too long to be the name of a directory', async () => {
       const root = await newRoot({ extensionName: PATH_DIRECT });
-      await assert.rejects(root.open('x'.repeat(300)), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      await assert.rejects(root.open('x'.repeat(300)), ocflError('OBJECT_NOT_FOUND'));
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id whose path is too long for the file system', async () => {
+    it('throws OBJECT_NOT_FOUND for an id whose path is too long for the file system', async () => {
       const root = await newRoot({ extensionName: PATH_DIRECT });
-      await assert.rejects(root.open(Array(20).fill('x'.repeat(250)).join('/')), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      await assert.rejects(root.open(Array(20).fill('x'.repeat(250)).join('/')), ocflError('OBJECT_NOT_FOUND'));
     });
   });
 
@@ -746,19 +746,34 @@ describe('opening an object', () => {
   });
 
   describe('an id that does not belong where it maps', () => {
-    const incompatible = ocflError('ID_INCOMPATIBLE_WITH_LAYOUT');
+    const notFound = ocflError('OBJECT_NOT_FOUND');
 
     for (const id of ['../x', 'a/../../x', 'a/./b', 'extensions/foo']) {
-      it(`throws ID_INCOMPATIBLE_WITH_LAYOUT for the path-direct id ${id}`, async () => {
+      it(`throws OBJECT_NOT_FOUND for the path-direct id ${id}`, async () => {
         const root = await newRoot({ extensionName: PATH_DIRECT });
-        await assert.rejects(root.open(id), incompatible);
+        await assert.rejects(root.open(id), notFound);
       });
     }
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id the layout maps into the extensions directory', async () => {
+    it("throws OBJECT_NOT_FOUND whose cause is the layout's ID_INCOMPATIBLE_WITH_LAYOUT", async () => {
       const root = await newRoot({ extensionName: PATH_DIRECT });
-      await assert.rejects(root.open('extensions/ocfl-js-workspace/an-object'), incompatible);
-      await assert.rejects(root.open('Extensions/an-object'), incompatible);
+      const error = await rejection(root.open('a/../b'), 'OBJECT_NOT_FOUND');
+      assert.match(error.message, /storage layout can't place this id/);
+      assert.ok(ocflError('ID_INCOMPATIBLE_WITH_LAYOUT')(error.cause));
+    });
+
+    it('throws OBJECT_NOT_FOUND for an id the layout maps into the extensions directory', async () => {
+      const root = await newRoot({ extensionName: PATH_DIRECT });
+      await assert.rejects(root.open('extensions/ocfl-js-workspace/an-object'), notFound);
+      await assert.rejects(root.open('Extensions/an-object'), notFound);
+    });
+
+    it('gives has() false and unfinishedWrite() undefined for an id the layout maps outside the storage root or into extensions', async () => {
+      const root = await newRoot({ extensionName: PATH_DIRECT });
+      for (const id of ['../x', 'a/../../x', 'extensions/foo', 'extensions/ocfl-js-workspace/an-object', 'Extensions/an-object']) {
+        assert.strictEqual(await root.has(id), false, id);
+        assert.strictEqual(await root.unfinishedWrite(id), undefined, id);
+      }
     });
 
     it('does not open an object outside the storage root', async () => {
@@ -766,7 +781,7 @@ describe('opening an object', () => {
       const root = await createStorageRoot(path.join(parent, 'storage'), { layout: FLAT });
       const outside = await createStorageRoot(path.join(parent, 'outside'), { layout: FLAT });
       await writeVersions(outside.path, 'x', [{ 'a.txt': 'abc' }]);
-      await assert.rejects(root.open('../outside/x'), incompatible);
+      await assert.rejects(root.open('../outside/x'), notFound);
     });
 
     it('throws OBJECT_ROOT_CONFLICT, with no ocflCode, when the directory of the id holds an object with another id', async () => {

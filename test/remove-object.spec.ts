@@ -225,16 +225,16 @@ describe('root.remove', () => {
       assertNoWorkspace(root);
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id whose path is too long for the file system', async () => {
+    it('throws OBJECT_NOT_FOUND for an id whose path is too long for the file system', async () => {
       const root = await newRoot(NESTED);
 
-      await assertRefused(root, Array(20).fill('x'.repeat(250)).join('/'), 'ID_INCOMPATIBLE_WITH_LAYOUT');
+      await assertRefused(root, Array(20).fill('x'.repeat(250)).join('/'), 'OBJECT_NOT_FOUND');
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id with a segment too long to be the name of a directory', async () => {
+    it('throws OBJECT_NOT_FOUND for an id with a segment too long to be the name of a directory', async () => {
       const root = await newRoot(NESTED);
 
-      await assertRefused(root, 'x'.repeat(300), 'ID_INCOMPATIBLE_WITH_LAYOUT');
+      await assertRefused(root, 'x'.repeat(300), 'OBJECT_NOT_FOUND');
     });
 
     it('throws OBJECT_NOT_FOUND for an empty directory where the object would be, and keeps it', async () => {
@@ -328,36 +328,44 @@ describe('root.remove', () => {
       await assertRefused(root, 'http://example.org/object', 'OBJECT_ROOT_CONFLICT');
     });
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id whose .. segment would reach the directory of another object', async () => {
+    it('throws OBJECT_NOT_FOUND for an id whose .. segment would reach the directory of another object', async () => {
       const root = await newRoot(NESTED);
       await createObject(root, 'other', { 'a.txt': 'a' });
 
-      await assertRefused(root, 'mistake/../other', 'ID_INCOMPATIBLE_WITH_LAYOUT');
+      await assertRefused(root, 'mistake/../other', 'OBJECT_NOT_FOUND');
     });
 
     for (const [where, id] of [
       ['the storage root itself', '.'],
       ['a directory above the storage root', '..'],
     ] as const) {
-      it(`throws ID_INCOMPATIBLE_WITH_LAYOUT for an id the layout maps to ${where}`, async () => {
+      it(`throws OBJECT_NOT_FOUND for an id the layout maps to ${where}`, async () => {
         const parent = path.join(temp.dir, `parent-of-${id.length}`);
         const root = await createStorageRoot(path.join(parent, 'storage'), { layout: { extensionName: '0002-flat-direct-storage-layout' } });
         await writeFiles(path.join(root.path, id), DECLARATION);
         const before = await snapshot(parent);
 
-        await assert.rejects(root.remove(id), ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+        await assert.rejects(root.remove(id), ocflError('OBJECT_NOT_FOUND'));
 
         assert.deepStrictEqual(await snapshot(parent), before);
       });
     }
 
-    it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an object in the extensions directory', async () => {
+    it('throws OBJECT_NOT_FOUND for an object in the extensions directory', async () => {
       const root = await newRoot(NESTED);
       const donor = await newRoot(NESTED);
       await createObject(donor, 'an-extension', { 'a.txt': 'a' });
       await fs.promises.cp(path.join(donor.path, 'an-extension'), path.join(root.path, 'extensions', 'an-extension'), { recursive: true });
 
-      await assertRefused(root, 'extensions/an-extension', 'ID_INCOMPATIBLE_WITH_LAYOUT');
+      await assertRefused(root, 'extensions/an-extension', 'OBJECT_NOT_FOUND');
+    });
+
+    it("throws OBJECT_NOT_FOUND whose cause is the layout's ID_INCOMPATIBLE_WITH_LAYOUT", async () => {
+      const root = await newRoot(NESTED);
+
+      const error = await rejection(root.remove('mistake/../other'), 'OBJECT_NOT_FOUND');
+
+      assert.ok(ocflError('ID_INCOMPATIBLE_WITH_LAYOUT')(error.cause));
     });
 
     for (const [what, id] of [
