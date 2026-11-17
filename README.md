@@ -1,7 +1,7 @@
 # @ocfl/ocfl-fs
 
 [![npm (beta)](https://img.shields.io/npm/v/@ocfl/ocfl-fs/beta)](https://www.npmjs.com/package/@ocfl/ocfl-fs)
-[![CI](https://github.com/Language-Research-Technology/ocfl-js/actions/workflows/publish.yml/badge.svg?branch=main&event=push)](https://github.com/Language-Research-Technology/ocfl-js/actions/workflows/publish.yml)
+[![CI](https://github.com/Language-Research-Technology/ocfl-js/actions/workflows/test.yml/badge.svg?branch=main&event=push)](https://github.com/Language-Research-Technology/ocfl-js/actions/workflows/test.yml?query=branch%3Amain+event%3Apush)
 [![Licence: GPL-3.0-or-later](https://img.shields.io/npm/l/@ocfl/ocfl-fs)](LICENSE)
 
 `@ocfl/ocfl-fs`, from the ocfl-js repository, is a TypeScript library for keeping versioned digital objects under the [Oxford Common File Layout (OCFL)](https://ocfl.io/) on a local file system. It reads and writes storage roots and the OCFL objects in them.
