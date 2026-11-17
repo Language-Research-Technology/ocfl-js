@@ -1,60 +1,47 @@
 name: Publish Packages
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
     inputs:
+      release:
+        description: "Stable (semantic-release, latest) or prerelease (X.Y.Z-beta.N, beta)"
+        required: true
+        default: stable
+        type: choice
+        options: [stable, prerelease]
       dry_run:
-        description: "Dry run (list package contents and release notes without publishing)"
+        description: "Dry run (show the version and package contents without publishing)"
         required: false
         default: true
         type: boolean
 
 jobs:
+  # workflow_dispatch can't hide its branch picker
+  check-ref:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Refuse a run from a branch other than main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run Publish Packages from main"
+          exit 1
+
   test:
-    # workflow_dispatch can't hide its branch picker; everything else (via needs) only runs from main or beta
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/beta'
+    needs: check-ref
     uses: ./.github/workflows/test.yml # zizmor: ignore[self-repository] actionlint rejects the $/ form
     permissions:
       contents: read
 
-  # Prereleases must run on beta itself: npm rejects provenance whose ref doesn't match the OIDC token
-  promote-beta:
-    if: github.event_name == 'push'
-    needs: test
-    runs-on: ubuntu-latest
-    concurrency:
-      group: promote-beta
-      cancel-in-progress: false
-    permissions:
-      contents: write # to push beta
-      actions: write # to dispatch the beta run
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0 # so git can see the push to beta is a fast-forward
-          persist-credentials: true # to push beta
-
-      - name: Fast-forward beta to main
-        run: git push origin HEAD:refs/heads/beta
-
-      - name: Publish prerelease from beta
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run publish.yml --ref beta -f dry_run=false
-
   publish:
-    if: github.event_name == 'workflow_dispatch'
     needs: test
     runs-on: ubuntu-latest
-    # npm's trusted publisher only accepts OIDC tokens from this environment, which only main and beta can deploy to
+    # npm's trusted publisher only accepts OIDC tokens from this environment
     environment: npm-publish
-    # Per branch, so a queued beta run can't displace a queued stable release
+    # Prereleases count from the tags, so two at once could pick the same number. Per kind, because a
+    # group holds one pending run, and a queued prerelease mustn't displace a queued stable release.
     concurrency:
-      group: publish-${{ github.ref }}
+      group: publish-${{ inputs.release }}
       cancel-in-progress: false
     permissions:
       contents: write # to be able to publish a GitHub release
@@ -74,11 +61,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          persist-credentials: true # semantic-release pushes the tag and the release commit
-
-      - name: Check beta only contains commits from main
-        if: github.ref == 'refs/heads/beta'
-        run: git merge-base --is-ancestor HEAD origin/main
+          persist-credentials: true # to push the tag, and a stable release's commit
 
       - name: Setup pnpm
         uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -96,39 +79,24 @@ jobs:
         run: npm audit signatures
 
       - name: Semantic Release (dry-run)
-        if: inputs.dry_run
+        if: inputs.release == 'stable' && inputs.dry_run
         run: |
-          echo "## Semantic Release Dry Run"
-          echo "This shows what would be released without making any changes:"
-          echo ""
           pnpm exec semantic-release --dry-run
-          echo ""
-          echo "## Package Contents Preview"
-          echo "The following files would be included in the npm package:"
-          echo ""
           pnpm pack --dry-run
 
       # release.config.mjs sets the tag output only when a release succeeds
       - name: Semantic Release
         id: semantic-release
-        if: ${{ !inputs.dry_run }}
+        if: inputs.release == 'stable' && !inputs.dry_run
         run: pnpm exec semantic-release
 
-      - name: Summary
-        env:
-          DRY_RUN: ${{ inputs.dry_run }}
-          RELEASES_URL: https://github.com/${{ github.repository }}/releases
-        run: |
-          {
-            if [ "$DRY_RUN" == "true" ]; then
-              echo "## Dry Run Complete"
-              echo "Semantic release dry run has been completed. Check the logs above for details on what would be released."
-            else
-              echo "## Release Complete"
-              echo "Semantic release has completed successfully! Check the logs above for details."
-            fi
-            echo "Visit the [releases page]($RELEASES_URL) to see the releases."
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Prerelease (dry-run)
+        if: inputs.release == 'prerelease' && inputs.dry_run
+        run: pnpm publish:prerelease --dry-run
+
+      - name: Prerelease
+        if: inputs.release == 'prerelease' && !inputs.dry_run
+        run: pnpm publish:prerelease
 
   site:
     needs: publish

@@ -74,7 +74,7 @@ Commits follow [Conventional Commits](https://www.conventionalcommits.org/), and
 - `!` after the type (`feat!:`) or a `BREAKING CHANGE:` footer releases a major version. Removing or changing anything already in the API report is a breaking change.
 - Other types, such as `docs:`, `test:`, `refactor:` and `chore:`, don't release anything.
 
-Until 1.0.0 is released, every release is a `1.0.0-beta` prerelease, and each one only bumps the beta number. Mark breaking changes anyway: they decide the stable versions after 1.0.0 and appear in the release notes.
+Until 1.0.0 is released, every prerelease is `1.0.0-beta.N`, and each one only bumps N; 1.0.0 itself is cut deliberately, as a stable release (see [RELEASING.md](RELEASING.md)). Mark breaking changes anyway: they decide the stable versions after 1.0.0 and appear in the release notes.
 
 commitlint checks each message when you commit, and again in CI for every commit in a pull request. [RELEASING.md](RELEASING.md) covers how releases are published.
 
