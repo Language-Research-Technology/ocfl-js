@@ -37,8 +37,8 @@ interface OcflFile {
   /**
    * Size in bytes.
    *
-   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file, such as a directory.
-   * @throws The file system error if the stored file is missing or can't be read.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file is missing or isn't a regular file, such as a directory.
+   * @throws The file system error, such as `EACCES` or `EIO`, if the stored file can't be read for any other reason.
    * @example
    * ```ts
    * reply.header('content-length', await file.size());
@@ -55,8 +55,8 @@ interface OcflFile {
    * @throws `TypeError` if `range` is given and isn't an object, or has a key other than `start` and `end`.
    * @throws `RangeError` if an end of the range isn't a whole number from 0, `start` is after `end`, or `start` is after the last
    * byte. An `end` after the last byte reads to the end.
-   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file, such as a directory.
-   * @throws The file system error if the stored file is missing or can't be read.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file is missing or isn't a regular file, such as a directory.
+   * @throws The file system error, such as `EACCES` or `EIO`, if the stored file can't be read for any other reason.
    * @example
    * ```ts
    * // `start` and `end` from the request's `Range` header, checked against the size
@@ -69,8 +69,8 @@ interface OcflFile {
   /**
    * Reads the content as UTF-8 text.
    *
-   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file, such as a directory.
-   * @throws The file system error if the stored file is missing or can't be read.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file is missing or isn't a regular file, such as a directory.
+   * @throws The file system error, such as `EACCES` or `EIO`, if the stored file can't be read for any other reason.
    * @example
    * ```ts
    * const metadata = JSON.parse(await file.text());
@@ -80,8 +80,8 @@ interface OcflFile {
   /**
    * Reads the content into memory.
    *
-   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file, such as a directory.
-   * @throws The file system error if the stored file is missing or can't be read.
+   * @throws {@link OcflError} `INVALID_OBJECT` if the stored file is missing or isn't a regular file, such as a directory.
+   * @throws The file system error, such as `EACCES` or `EIO`, if the stored file can't be read for any other reason.
    * @example
    * ```ts
    * const checksum = createHash('md5').update(await file.bytes()).digest('base64');
