@@ -27,4 +27,11 @@ cp "$root/scripts/package-smoke.js" "$consumer/smoke.js"
 
 npm --prefix "$consumer" install --no-audit --no-fund --silent || fail "installing the tarball failed"
 node "$consumer/smoke.js" "$root/resources" || fail "the smoke test failed on Node $(node --version)"
+
+# Run in order from their own folder, as a reader would. Node before 22.18 needs the flag for .ts files.
+cp -r "$root/website/src/examples/getting-started" "$root/website/src/examples/readme" "$consumer/"
+for example in getting-started/create-storage-root getting-started/create-object getting-started/read-a-file readme/quick-start; do
+  (cd "$consumer/${example%/*}" && node --experimental-strip-types --disable-warning=ExperimentalWarning "${example#*/}.ts" >/dev/null) ||
+    fail "the $example example failed on Node $(node --version)"
+done
 echo "smoke-package: the packed @ocfl/ocfl-fs installs and works on Node $(node --version)"
