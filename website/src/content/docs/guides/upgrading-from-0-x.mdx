@@ -29,6 +29,7 @@ A few storage roots and ids need attention. 1.0 never changes anything on disk b
 | A `config.json` with a `digestAlgorithm` in another case, such as `SHA256`, or one that's no longer supported: `crc32`, `size`, `blake2b-160`, `blake2b-256` or `blake2b-384` | `INVALID_STORAGE_ROOT` | Write a supported name in lower case; an algorithm that's gone means the objects would need moving to new paths |
 | A `config.json` with `tupleSize` or `numberOfTuples` above 32, or only one of them 0 | `INVALID_STORAGE_ROOT` | None in this library: the extension doesn't allow these values |
 | A path-direct `suffix` of `''` or `/` | `INVALID_STORAGE_ROOT` | Let every update finish, move each object into a `__object__` directory and drop `suffix` from `config.json` |
+| A storage root with no `ocfl_layout.json` | `LAYOUT_NOT_DECLARED` | Add an `ocfl_layout.json` naming the storage layout its objects are laid out by |
 | A storage root using `0006-flat-omit-prefix-storage-layout` or `0007-n-tuple-omit-prefix-storage-layout` | `UNSUPPORTED_LAYOUT` | None: 0.4 could never map an id under these layouts |
 | A path-direct id with a `.` or `..` segment (such as `a/../b`), the suffix part-way through (such as `a/__object__/b`), or a segment longer than 255 bytes in UTF-8 | `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id. 0.4 resolved the dots, so such an object sits where the resolved id maps to |
 | A flat-direct id longer than 255 bytes in UTF-8 | `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id |

@@ -65,7 +65,7 @@ If you read OCFL objects that another tool wrote, check them with an OCFL valida
 
 ## Storage layouts
 
-A storage layout maps an object id to the directory that holds its OCFL object. You choose one when you create a storage root, and the library reads it back from `ocfl_layout.json` when you open the root. A storage root that declares any other layout is refused with [`UNSUPPORTED_LAYOUT`](/ocfl-js/guides/errors/#unsupported_layout).
+A storage layout maps an object id to the directory that holds its OCFL object. You choose one when you create a storage root, and the library reads it back from `ocfl_layout.json` when you open the root. A storage root that declares any other layout is refused with [`UNSUPPORTED_LAYOUT`](/ocfl-js/guides/errors/#unsupported_layout), and one that declares none with [`LAYOUT_NOT_DECLARED`](/ocfl-js/guides/errors/#layout_not_declared).
 
 | Layout | Where an object goes |
 |---|---|

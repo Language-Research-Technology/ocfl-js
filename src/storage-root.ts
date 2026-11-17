@@ -58,8 +58,9 @@ function declaredLayoutName(file: string, content: string): string {
 /**
  * Read the OCFL version and layout a storage root declares.
  * @throws {@link OcflError} `STORAGE_ROOT_NOT_FOUND` if `root` is missing, with no file above it, or is an empty directory.
- * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if `root` is a file, is below one, or is a directory with something in it, and has no declaration (`E069`); or it has an invalid one (`E080`), has no `ocfl_layout.json` or one
+ * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if `root` is a file, is below one, or is a directory with something in it, and has no declaration (`E069`); or it has an invalid one (`E080`), has an `ocfl_layout.json`
  * with no string `extension` (`E070`), or its layout's `config.json` isn't a JSON object, is for another layout or has parameters the layout rejects.
+ * @throws {@link OcflError} `LAYOUT_NOT_DECLARED` if `root` has a valid declaration but no `ocfl_layout.json`.
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if `ocfl_layout.json` names a layout this library doesn't implement.
  * @throws The file system error if `root` has no declaration and can't be read, or the storage root declaration, `ocfl_layout.json` or the layout's `config.json` exists but can't be read.
  */
@@ -84,7 +85,7 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion
   }
   if (layoutRead.value === undefined) {
     throw ocflError(
-      'INVALID_STORAGE_ROOT',
+      'LAYOUT_NOT_DECLARED',
       `The storage root ${root} has no ${OCFL_LAYOUT}, so the layout of its objects is unknown. ` +
         `Add an ${OCFL_LAYOUT} naming its storage layout, such as {"extension": "0004-hashed-n-tuple-storage-layout"}; this library implements ${IMPLEMENTED_LAYOUTS}.`,
     );
@@ -391,7 +392,8 @@ async function createStorageRoot(path: string, options: { layout: LayoutConfig }
  * Opens an existing storage root. Its layout is read from its own `ocfl_layout.json`.
  *
  * @throws {@link OcflError} `STORAGE_ROOT_NOT_FOUND` if `path` is missing, with no file above it, or is an empty directory; {@link createStorageRoot} can make a storage root there.
- * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if anything else at `path` is not a storage root, or it has no `ocfl_layout.json`; the message says to add one naming the storage layout, and lists the layouts this library implements.
+ * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if anything else at `path` is not a storage root.
+ * @throws {@link OcflError} `LAYOUT_NOT_DECLARED` if it is a storage root with no `ocfl_layout.json`; the message says to add one naming the storage layout, and lists the layouts this library implements.
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if it declares a layout this library doesn't implement; the message names it, lists the layouts this library implements, and says to ask for it to be added.
  * @throws `TypeError` if `path` is missing or empty.
  * @throws The file system error if `path` has no declaration and can't be read, or the storage root declaration, `ocfl_layout.json` or the storage layout's `config.json` exists but can't be read.
