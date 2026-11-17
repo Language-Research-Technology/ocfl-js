@@ -3,27 +3,28 @@ import { recoverWrite } from './commit.ts';
 import { objectRootConflict } from './error.ts';
 import type { Flusher } from './file-system.ts';
 import { type Lock, objectLocked, readLock, sameWriter } from './lock.ts';
-import { recoverRemove } from './remove.ts';
+import { recoverPurge } from './purge.ts';
 import { deepFreeze } from './utils.ts';
 import { locksBelow, objectWorkspace, workspaceRoot } from './workspace.ts';
 
 /**
- * A create, update or remove of an object whose lock is still held: its writer is still working, or died. The library can't tell which.
+ * A create, update or purge of an object whose lock is still held: its writer is still working, or died. The library can't tell which.
  * Got from {@link StorageRoot.unfinishedWrites} or {@link StorageRoot.unfinishedWrite}, it is the write as its lock recorded it then.
  */
 interface UnfinishedWrite {
-  /** The id of the object being created, updated or removed. */
+  /** The id of the object being created, updated or purged. */
   readonly id: string;
   /** When its writer took the object's lock, by that writer's clock. */
   readonly lockedAt: Date;
   /**
-   * What its writer is doing to the object: `root.create`, `object.update` or `root.remove`. {@link UnfinishedWrite.recover} says what
+   * What its writer is doing to the object: `root.create`, `object.update` or `root.purge`. {@link UnfinishedWrite.recover} says what
    * recovering each does. More operations may be added; handle each by name.
    *
    * A lock left by a release before this field existed doesn't record its operation, and is given the likeliest: a create into an
-   * existing directory, and a remove that hadn't begun deleting, are given as `'update'`.
+   * existing directory, and a purge that hadn't begun deleting, are given as `'update'`. A lock that records `'remove'`, as releases
+   * before `root.purge` wrote, is given as `'purge'`.
    */
-  readonly operation: 'create' | 'update' | 'remove';
+  readonly operation: 'create' | 'update' | 'purge';
 
   /**
    * Clears what the write left behind and releases the object's lock. Does nothing if the lock has been released since.
@@ -34,7 +35,7 @@ interface UnfinishedWrite {
    * **Recover a write from one process at a time.** Two recoveries of the same write at once, on any hosts or in one process,
    * aren't kept apart: if a new writer takes the lock between them, the later one destroys that writer's update.
    *
-   * A remove that had begun deleting the object is finished; one that hadn't is recovered as an update that wasn't committed, which for an object that can be opened only releases its lock. An update that wasn't committed is discarded: its unfinished version in the workspace, the directory of the version after the head
+   * A purge that had begun deleting the object is finished; one that hadn't is recovered as an update that wasn't committed, which for an object that can be opened only releases its lock. An update that wasn't committed is discarded: its unfinished version in the workspace, the directory of the version after the head
    * in the object, and staged inventory files are removed. A create that wasn't committed is discarded: the declaration and first version of an object that never
    * got an inventory, and its directory if the create made it. An update that was committed is completed by writing the root inventory's sidecar.
    * A version is never made the head, and no other version directory is removed, except the first version of an object that has lost its root inventory, which is taken for a dead create whatever the operation. If the write's directory holds another id's object, or is inside
@@ -75,7 +76,7 @@ function unfinishedWrite(storageRoot: string, flusher: Flusher, objectRoot: stri
       if (!sameWriter(lock, seen)) {
         throw await objectLocked(workspace);
       }
-      await (lock.removing ? recoverRemove(storageRoot, objectRoot) : recoverWrite(storageRoot, objectRoot, lock, flusher));
+      await (lock.removing ? recoverPurge(storageRoot, objectRoot) : recoverWrite(storageRoot, objectRoot, lock, flusher));
     },
   });
 }

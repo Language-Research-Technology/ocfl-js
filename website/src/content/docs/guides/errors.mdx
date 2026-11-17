@@ -92,15 +92,15 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 **Cause:** a writer was given an id the storage root's storage layout can't place an object with. Either the storage layout can't map the id, or it maps it somewhere an object can't go: the storage root itself, outside it, the `extensions` directory, or a path too long for the file system (with the path-direct storage layout, an id of many long segments). Each storage layout has its own rules. For example, `0002-flat-direct-storage-layout` refuses an id with a `/` in it, `.`, `..`, `extensions`, or an id longer than 255 bytes, and the path-direct storage layout refuses an id with `.` or `..` segments, or one that ends with or contains its suffix.
 
-`create` and `remove` also throw it when the object's lock in the workspace would be too long for the file system, even if its directory isn't, so such an object can be opened but not changed.
+`create` and `purge` also throw it when the object's lock in the workspace would be too long for the file system, even if its directory isn't, so such an object can be opened but not changed.
 
-The id is at fault, not what is in the storage root. Only `create`, and `remove` for a lock path that is too long, throw it. Otherwise no object can have such an id, so `has` gives `false`, `unfinishedWrite` gives `undefined`, and `open` and `remove` throw [`OBJECT_NOT_FOUND`](#object_not_found).
+The id is at fault, not what is in the storage root. Only `create`, and `purge` for a lock path that is too long, throw it. Otherwise no object can have such an id, so `has` gives `false`, `unfinishedWrite` gives `undefined`, and `open` and `purge` throw [`OBJECT_NOT_FOUND`](#object_not_found).
 
 **What to do:** choose another id, or a storage layout that suits your ids.
 
 ### `OBJECT_ROOT_CONFLICT`
 
-**Cause:** the storage layout places the id, but the directory it maps to holds the wrong thing. `open` and `remove` throw it when that directory holds an object with a different id, or has no object declaration but holds other files, is a file, or is below one. `create` throws it when the directory isn't empty, is a file or is below one, or is inside another object, and also, rarely, when something appeared in the directory while the object's first version was being built. `unfinishedWrite` throws it when the object's lock in the workspace belongs to a writer of a different id.
+**Cause:** the storage layout places the id, but the directory it maps to holds the wrong thing. `open` and `purge` throw it when that directory holds an object with a different id, or has no object declaration but holds other files, is a file, or is below one. `create` throws it when the directory isn't empty, is a file or is below one, or is inside another object, and also, rarely, when something appeared in the directory while the object's first version was being built. `unfinishedWrite` throws it when the object's lock in the workspace belongs to a writer of a different id.
 
 The storage root is in a state a person needs to look at, often from an object moved or copied by hand, or written by a tool with another storage layout. A server should log it, not treat it as not found.
 
@@ -110,7 +110,7 @@ The storage root is in a state a person needs to look at, often from an object m
 
 **Cause:** what the library read where the object should be isn't an object it can safely use. The inventory is missing, isn't JSON, is inconsistent, or names paths that would lead outside the object; the sidecar digest is missing or doesn't match; the object declaration is missing or wrong, or declares a later OCFL version than the storage root's; or the object is inside another object. Reading a file throws it if its stored file is missing or isn't a regular file, such as a directory, with the file system error, if any, as its `cause`. `ocflCode` names the OCFL rule, for example `E003` (no object declaration), `E033` (inventory isn't JSON), `E060` (sidecar digest doesn't match) or `E081` (a 1.1 object in a 1.0 storage root).
 
-`open`, `update`, `remove`, recovering an unfinished write, `objects()`, and an `OcflFile`'s `size()`, `stream()`, `text()` and `bytes()` can all give it. `update` throws it if the declaration has been damaged since the object was opened, or removed while anything remains in the object root. Rarely, `create` throws it when an invalid declaration appeared in the new object's directory while its first version was being built.
+`open`, `update`, `purge`, recovering an unfinished write, `objects()`, and an `OcflFile`'s `size()`, `stream()`, `text()` and `bytes()` can all give it. `update` throws it if the declaration has been damaged since the object was opened, or removed while anything remains in the object root. Rarely, `create` throws it when an invalid declaration appeared in the new object's directory while its first version was being built.
 
 These are checks the library makes before it uses an inventory's values as file paths. They are not validation: an object that opens can still break OCFL rules the library never looks at. To check an object against the specification, use [an OCFL validator](/ocfl-js/#objects-written-by-other-tools). See [It doesn't validate](/ocfl-js/#it-doesnt-validate) for what the library checks and what it doesn't.
 
@@ -132,15 +132,15 @@ These are checks the library makes before it uses an inventory's values as file 
 
 ### `OBJECT_LOCKED`
 
-**Cause:** `create`, `update`, `remove` or recovering an unfinished write found the object's lock taken: another writer is creating, updating or removing it, or died doing so. The library refuses straight away, never waits, and never removes a lock because of its age. `lockedAt` says when the lock was taken.
+**Cause:** `create`, `update`, `purge` or recovering an unfinished write found the object's lock taken: another writer is creating, updating or purging it, or died doing so. The library refuses straight away, never waits, and never removes a lock because of its age. `lockedAt` says when the lock was taken.
 
 **What to do:** wait and try again. If you know the writer is dead, recover the object's unfinished write, from `root.unfinishedWrite(id)`, and then try again. Only recover it when its writer is no longer alive: recovering destroys a live writer's update. Recovering a write also throws `OBJECT_LOCKED`, changing nothing, if another writer took the lock after you got the write. See [`OBJECT_LOCKED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_locked-another-writer-holds-the-lock).
 
 ### `OBJECT_OUT_OF_DATE`
 
-**Cause:** `update` found that a later version was committed after you opened the object, or the object was removed, whether or not it was created again. It is checked before your change runs and again just before commit. Nothing is committed.
+**Cause:** `update` found that a later version was committed after you opened the object, or the object was purged, whether or not it was created again. It is checked before your change runs and again just before commit. Nothing is committed.
 
-**What to do:** open the object again and repeat the update against the new head. If the object was removed, opening it throws `OBJECT_NOT_FOUND`. See [`OBJECT_OUT_OF_DATE` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_out_of_date-the-object-changed-since-you-opened-it) for a retry loop.
+**What to do:** open the object again and repeat the update against the new head. If the object was purged, opening it throws `OBJECT_NOT_FOUND`. See [`OBJECT_OUT_OF_DATE` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_out_of_date-the-object-changed-since-you-opened-it) for a retry loop.
 
 ### `RECOVERY_NEEDED`
 
@@ -148,14 +148,14 @@ These are checks the library makes before it uses an inventory's values as file 
 
 - `create` or `update` failed after the commit point, or failed replacing the root inventory in a way that may have replaced it. The update may have been committed.
 - A failed update couldn't remove everything it had made.
-- `remove` failed part of the way through, so the object may be partly deleted.
-- `remove` deleted the object but couldn't release its lock.
-- `create`, `update` or `remove` was refused and couldn't release the lock it had taken. Apart from the lock, nothing is changed.
+- `purge` failed part of the way through, so the object may be partly deleted.
+- `purge` deleted the object but couldn't release its lock.
+- `create`, `update` or `purge` was refused and couldn't release the lock it had taken. Apart from the lock, nothing is changed.
 - An earlier writer left an unfinished version in the workspace. This is thrown before your change runs.
 
 `cause` is the underlying failure. The object stays locked, so later writes get `OBJECT_LOCKED` until it is recovered, and it is among the storage root's unfinished writes. It can still be read.
 
-**What to do:** don't simply repeat the write. Once no writer of the object is alive, recover its unfinished write: `(await root.unfinishedWrite(id))?.recover()`. After a `create` or `update`, open the object again and look at the head to see whether your version was committed; retry only if it wasn't. After a `remove` that had begun deleting, recovering finishes removing the object. After a refused write, recovering only releases the lock: nothing was changed, so repeat the write. See [`RECOVERY_NEEDED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#recovery_needed-the-update-may-or-may-not-be-committed).
+**What to do:** don't simply repeat the write. Once no writer of the object is alive, recover its unfinished write: `(await root.unfinishedWrite(id))?.recover()`. After a `create` or `update`, open the object again and look at the head to see whether your version was committed; retry only if it wasn't. After a `purge` that had begun deleting, recovering finishes purging the object. After a refused write, recovering only releases the lock: nothing was changed, so repeat the write. See [`RECOVERY_NEEDED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#recovery_needed-the-update-may-or-may-not-be-committed).
 
 ### `CROSS_FILESYSTEM_MOVE`
 
@@ -165,7 +165,7 @@ These are checks the library makes before it uses an inventory's values as file 
 
 ### `UNSUPPORTED_FILESYSTEM`
 
-**Cause:** `create`, `update` or `remove` couldn't take the object's lock, because the storage root's file system refused to hard-link it. Usually the file system has no hard links, as FAT, exFAT, most FUSE object-store mounts and SMB shares without POSIX extensions don't. `cause` is the underlying error; an `EPERM` can also come from an immutable or append-only directory. Nothing is changed and no lock is left.
+**Cause:** `create`, `update` or `purge` couldn't take the object's lock, because the storage root's file system refused to hard-link it. Usually the file system has no hard links, as FAT, exFAT, most FUSE object-store mounts and SMB shares without POSIX extensions don't. `cause` is the underlying error; an `EPERM` can also come from an immutable or append-only directory. Nothing is changed and no lock is left.
 
 **What to do:** move the storage root to a file system with hard links, such as a local Linux file system or NFS. Reading works where it is. If the file system has hard links, check the attributes of the workspace (`extensions/ocfl-js-workspace`) with `lsattr`.
 
@@ -228,7 +228,7 @@ An object with zero-padded version names that has reached `VERSION_LIMIT_REACHED
 
 ### Removing a damaged object
 
-`remove` refuses an object it can't read with `INVALID_OBJECT`, because it can't confirm the directory holds the object you named. Nothing is deleted.
+`purge` refuses an object it can't read with `INVALID_OBJECT`, because it can't confirm the directory holds the object you named. Nothing is deleted.
 
 If you are sure you want it gone:
 

@@ -11,4 +11,4 @@ await root.create('new-id', { message: 'Copy of original-id without secret.txt',
   }
 });
 
-await root.remove('original-id');
+await root.purge('original-id');

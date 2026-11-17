@@ -83,7 +83,7 @@ async function attempt(label: string, check: () => Promise<void>): Promise<void>
   });
 }
 
-/** Uses every draft operation across four versions of a new object, then creates and removes another */
+/** Uses every draft operation across four versions of a new object, then creates and purges another */
 async function writeEveryOperation(root: StorageRoot, label: string, rootStructure: boolean): Promise<void> {
   const source = await fs.promises.mkdtemp(path.join(temp, 'import-'));
   await fs.promises.mkdir(path.join(source, 'nested'));
@@ -116,7 +116,7 @@ async function writeEveryOperation(root: StorageRoot, label: string, rootStructu
 
   const removed = 'urn:example:ocfl-js:removed';
   await root.create(removed, DETAILS, (draft) => draft.write('gone.txt', 'gone\n'));
-  await root.remove(removed);
+  await root.purge(removed);
 }
 
 try {

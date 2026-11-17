@@ -137,14 +137,20 @@ export async function listedObjectsMustBeNarrowed(root: StorageRoot): Promise<vo
 }
 
 export function anUnfinishedWriteNamesItsOperation(write: UnfinishedWrite): string {
-  const operation: 'create' | 'update' | 'remove' = write.operation;
+  const operation: 'create' | 'update' | 'purge' = write.operation;
   // @ts-expect-error read-only
   write.operation = 'update';
-  // @ts-expect-error not one of its operations
-  if (write.operation === 'purge') {
+  // @ts-expect-error renamed purge
+  if (write.operation === 'remove') {
     return '';
   }
-  // @ts-expect-error whether a remove had begun deleting is not public
+  // @ts-expect-error whether a purge had begun deleting is not public
   void write.removing;
   return operation;
+}
+
+export async function anObjectIsPurgedNotRemoved(root: StorageRoot): Promise<void> {
+  await root.purge('id');
+  // @ts-expect-error renamed purge
+  await root.remove('id');
 }

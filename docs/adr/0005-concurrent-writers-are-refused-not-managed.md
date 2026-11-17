@@ -10,7 +10,7 @@ Committing an update takes several filesystem steps, any of which can fail, and 
 
 ## Decision
 
-- **A second writer is refused, and dead writers are never detected.** A create, update or remove takes the object's lock (ADR 0003) before writing anything, and throws `OBJECT_LOCKED` if it is held. The library never waits, queues or expires a lock. The lock records when it was taken, and no process id, host or heartbeat.
+- **A second writer is refused, and dead writers are never detected.** A create, update or purge takes the object's lock (ADR 0003) before writing anything, and throws `OBJECT_LOCKED` if it is held. The library never waits, queues or expires a lock. The lock records when it was taken, and no process id, host or heartbeat.
 - **An update has one commit point, and nothing is rolled back after it.** The commit point is the rename that replaces the root inventory. A failure before it discards the update and throws the original error. A failure after it, or one that may have replaced the root inventory, or one while discarding, throws `RECOVERY_NEEDED` and keeps the lock.
 - **An object is recovered only on the caller's word that its writer is dead.** Held locks are listed as unfinished writes, and each is recovered on its own. There is no recovery by id alone or of every lock at once, since writers on other hosts may still be alive. Recovery removes only what a dead writer can have left, and never makes a version the head.
 
@@ -21,4 +21,4 @@ Committing an update takes several filesystem steps, any of which can fail, and 
 - Recovering a write whose writer is alive destroys its update and lets a second writer in. Two recoveries of one write at once aren't kept apart either: a claim to recover would itself be left behind by a dead recovery, and NFS caching doesn't guarantee one host sees a file another just made. The caller recovers a write from one process at a time.
 - A lock must be written whole and taken by only one writer, which needs hard links. A storage root on a filesystem without them can be read but not written.
 - The lock keeps apart only writers that take it. Another tool writing the same object is caught only if it has moved the head by the time an update checks.
-- The rules a caller can see, for each call and each state recovery finds, are in the website's concurrent-writers and errors guides and the API's doc comments. How the lock is written and what recovery removes are in the doc comments of `src/lock.ts`, `src/commit.ts` and `src/remove.ts`.
+- The rules a caller can see, for each call and each state recovery finds, are in the website's concurrent-writers and errors guides and the API's doc comments. How the lock is written and what recovery removes are in the doc comments of `src/lock.ts`, `src/commit.ts` and `src/purge.ts`.

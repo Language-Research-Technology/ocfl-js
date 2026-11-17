@@ -16,15 +16,15 @@ const MAX_LOCK_ATTEMPTS = 3;
 /** Larger than the lock of any sane id, so a large file named `lock` is known not to be one without reading all of it */
 const MAX_LOCK_LENGTH = 64 * 1024;
 
-type Operation = 'create' | 'update' | 'remove';
-const OPERATIONS: Record<Operation, true> = { create: true, update: true, remove: true };
+type Operation = 'create' | 'update' | 'purge';
+const OPERATIONS: Record<Operation, true> = { create: true, update: true, purge: true };
 
 function isOperation(value: unknown): value is Operation {
   return typeof value === 'string' && Object.hasOwn(OPERATIONS, value);
 }
 
 interface Lock {
-  /** The id of the object its writer is creating, updating or removing */
+  /** The id of the object its writer is creating, updating or purging */
   id: string;
   /** What its writer is doing to the object */
   operation: Operation;
@@ -32,7 +32,7 @@ interface Lock {
   lockedAt: Date;
   /** False if its writer found no object root, so whatever is there afterwards it made */
   objectRootExisted: boolean;
-  /** Whether its writer had begun deleting the object root: only ever for a remove */
+  /** Whether its writer had begun deleting the object root: only ever for a purge */
   removing: boolean;
 }
 
@@ -53,24 +53,26 @@ function formatLock({ id, operation, lockedAt, objectRootExisted, removing }: Lo
 /** The operation of a lock written before locks recorded one */
 function inferredOperation(objectRootExisted: boolean, removing: boolean): Operation {
   if (removing) {
-    return 'remove';
+    return 'purge';
   }
   return objectRootExisted ? 'update' : 'create';
 }
 
 /**
  * What `content` records if it has the fields {@link formatLock} gives, or `undefined`. Other fields, which a later release may add, are ignored.
- * A lock with no `operation`, as earlier releases wrote, is given the likeliest one.
+ * A lock with no `operation`, as earlier releases wrote, is given the likeliest one, and one recording `'remove'`, as releases
+ * before `purge` wrote, is given `'purge'`.
  */
 function parseLock(content: string): Lock | undefined {
-  const { id, operation, lockedAt, objectRootExisted, removing } = parseJsonObject(content) ?? {};
+  const { id, operation: recorded, lockedAt, objectRootExisted, removing } = parseJsonObject(content) ?? {};
+  const operation = recorded === 'remove' ? 'purge' : recorded;
   if (typeof id !== 'string' || id === '' || typeof lockedAt !== 'string' || typeof objectRootExisted !== 'boolean') {
     return undefined;
   }
   if ((removing !== undefined && removing !== true) || (operation !== undefined && !isOperation(operation))) {
     return undefined;
   }
-  if (removing === true && operation !== undefined && operation !== 'remove') {
+  if (removing === true && operation !== undefined && operation !== 'purge') {
     return undefined;
   }
   const time = new Date(lockedAt);
@@ -87,8 +89,8 @@ function parseLock(content: string): Lock | undefined {
 }
 
 /**
- * Whether two locks were taken by the same writer, whether or not it has since begun removing the object.
- * `operation` isn't compared: an earlier release's remove has none, and is read as another operation until it begins deleting.
+ * Whether two locks were taken by the same writer, whether or not it has since begun deleting the object.
+ * `operation` isn't compared: a purge from a release before locks recorded one has none, and is read as another operation until it begins deleting.
  */
 function sameWriter(a: Lock, b: Lock): boolean {
   return a.id === b.id && a.lockedAt.getTime() === b.lockedAt.getTime() && a.objectRootExisted === b.objectRootExisted;

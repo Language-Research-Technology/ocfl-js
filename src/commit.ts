@@ -68,7 +68,7 @@ async function headOnDisk(objectRoot: string): Promise<string | null | undefined
  * Checks that the version before the head of `inventory` is still the head on disk, in the root inventory it was made from.
  * @param inventory - Already at its new version
  * @throws {@link OcflError} `OBJECT_EXISTS` if `inventory` is at its first version and the object now has a root inventory
- * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if the head on disk is any other version, or the root inventory has been replaced: the object removed and created again
+ * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if the head on disk is any other version, or the root inventory has been replaced: the object purged and created again
  */
 async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory): Promise<void> {
   const expected = inventory.versionNumber.previous()?.toString();

@@ -18,7 +18,7 @@ ocfl-java and rocfl open objects only through a storage root, and accept a bare 
 
 ## Consequences
 
-- Every create, update and remove goes through a storage root, so it uses that root's workspace and lock. There is no in-place update.
+- Every create, update and purge goes through a storage root, so it uses that root's workspace and lock. There is no in-place update.
 - A caller that has only an object's path opens the object through its storage root, by id. Under a hashed layout it must already know the id, or read it from the object's inventory.
 - A directory that isn't inside a storage root can't be opened or updated with this library.
 - A read-only way to open an object by path, for example for a validator, can be added without a breaking change.

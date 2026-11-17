@@ -185,7 +185,7 @@ A scheduled import or other job with no person behind it still needs a message a
 
 ## Removing a file from every version
 
-OCFL versions don't change once committed, and the OCFL implementation notes say purging isn't supported directly. To take a file out of an object's history, create a new object without it, then remove the original:
+OCFL versions don't change once committed, so a file can't be taken out of an object's earlier versions in place. The OCFL implementation notes call that purging a file, and don't support it directly. Instead, create a new object without the file, then purge the original object, which deletes it and all its versions:
 
 <Code code={removeFileFromHistory} lang="ts" />
 

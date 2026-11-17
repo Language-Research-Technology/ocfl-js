@@ -31,8 +31,8 @@ A few storage roots and ids need attention. 1.0 never changes anything on disk b
 | A path-direct `suffix` of `''` or `/` | `INVALID_STORAGE_ROOT` | Let every update finish, move each object into a `__object__` directory and drop `suffix` from `config.json` |
 | A storage root with no `ocfl_layout.json` | `LAYOUT_NOT_DECLARED` | Add an `ocfl_layout.json` naming the storage layout its objects are laid out by |
 | A storage root using `0006-flat-omit-prefix-storage-layout` or `0007-n-tuple-omit-prefix-storage-layout` | `UNSUPPORTED_LAYOUT` | None: 0.4 could never map an id under these layouts |
-| A path-direct id with a `.` or `..` segment (such as `a/../b`), the suffix part-way through (such as `a/__object__/b`), or a segment longer than 255 bytes in UTF-8 | Finds no object: `has` gives `false`, `open` and `remove` throw `OBJECT_NOT_FOUND`, and `create` throws `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id. 0.4 resolved the dots, so such an object sits where the resolved id maps to |
-| A flat-direct id longer than 255 bytes in UTF-8 | Finds no object: `has` gives `false`, `open` and `remove` throw `OBJECT_NOT_FOUND`, and `create` throws `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id |
+| A path-direct id with a `.` or `..` segment (such as `a/../b`), the suffix part-way through (such as `a/__object__/b`), or a segment longer than 255 bytes in UTF-8 | Finds no object: `has` gives `false`, `open` and `purge` throw `OBJECT_NOT_FOUND`, and `create` throws `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id. 0.4 resolved the dots, so such an object sits where the resolved id maps to |
+| A flat-direct id longer than 255 bytes in UTF-8 | Finds no object: `has` gives `false`, `open` and `purge` throw `OBJECT_NOT_FOUND`, and `create` throws `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id |
 
 ### Objects in a 0003 storage root
 
@@ -46,7 +46,7 @@ The digest directories haven't changed, only the last directory, named by the en
 
 **Readers can follow later.** 0.4 reads what 1.0 writes, so code that only reads, such as a library with a `^0.4` peer dependency, can upgrade after the writers. The exception is a 0003 object whose id gets [a new directory name](#objects-in-a-0003-storage-root), whether you moved it or 1.0 created it: 0.4 doesn't find it by id.
 
-**Linux, with hard links.** 1.0 runs on Linux only. It takes its lock with a hard link, so the storage root's file system must support them: otherwise `create()`, `update()` and `remove()` throw `UNSUPPORTED_FILESYSTEM`.
+**Linux, with hard links.** 1.0 runs on Linux only. It takes its lock with a hard link, so the storage root's file system must support them: otherwise `create()`, `update()` and `purge()` throw `UNSUPPORTED_FILESYSTEM`.
 
 **Clear the old workspace.** 1.0 assembles versions in `extensions/ocfl-js-workspace` inside the storage root, and that can't be changed. It ignores 0.4's `extensions/workspace`, or the `workspace` you passed: once no 0.4 writer is running, delete it.
 
@@ -95,7 +95,7 @@ The digest directories haven't changed, only the last directory, named by the en
 | `storage.object(id)` for a new object, then `update()` or `import()` | `root.create(id, details, build)` |
 | `storage.has(id)`, `object.exists()` | `root.has(id)`; to use the object, open it and catch `OBJECT_NOT_FOUND` |
 | `for await (const o of storage)`, `storage.objects()` | `root.objects()`, which yields `{ status: 'opened', object }`, or `{ status: 'damaged', error, objectRoot, id? }` for an object it can't open |
-| `storage.remove(id)`, `delete(id)`, `purge(id)` | `root.remove(id)` |
+| `storage.remove(id)`, `delete(id)`, `purge(id)` | `root.purge(id)` |
 | `object.getInventory()`, `object.inventory`, `object.headVersion` | `object.versions`, and `object.head` with its `number` |
 | `object.files(version)`, `object.count(version)` | `object.versions.get(n)?.files`, and its `size` |
 | `object.getFile(path, 'v1')`, `getFile({ logicalPath, version })`, `fileByLogicalPath()` | `object.versions.get(1)?.files.get(path)`, or `object.head.files.get(path)` |
@@ -129,3 +129,7 @@ Some 0.4 updates could leave an object damaged. [Checking fixity across a storag
 **Objects with no workspace.** An object opened with `ocfl.object({ root })` and no `workspace` could lose every version when an update failed, was rolled back or had no changes. With a shared `workspace`, an update could delete everything else in it. Objects from `storage.object()` had their own workspace and kept their versions. Versions already lost can't be got back.
 
 The library doesn't repair damaged objects. To repair one, create a new object from the files you know are right, then [delete the damaged one by hand](/ocfl-js/guides/errors/#removing-a-damaged-object).
+
+## From a 1.0 beta
+
+`root.remove(id)` in the 1.0 betas is `root.purge(id)` in 1.0, and an unfinished write's `operation` is `'purge'` instead of `'remove'`. A lock a beta left behind still lists and recovers as a purge. A beta can't list or recover a purge that 1.0 left unfinished, so don't write to one storage root from both at once.

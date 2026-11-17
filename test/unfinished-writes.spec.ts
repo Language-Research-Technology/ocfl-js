@@ -156,32 +156,33 @@ describe('root.unfinishedWrites', () => {
     await create.finish();
   });
 
-  it('lists a remove that died part of the way through as a remove, and recovering it finishes the remove', async () => {
+  it('lists a purge that died part of the way through as a purge, and recovering it finishes the purge', async () => {
     const root = await newRoot();
     await createObject(root, 'a', { 'a.txt': 'a' });
-    await withFsFailure('rm', path.join(placesOf(root, 'a').objectRoot, 'v1'), () => assert.rejects(root.remove('a'), ocflError('RECOVERY_NEEDED')));
+    await withFsFailure('rm', path.join(placesOf(root, 'a').objectRoot, 'v1'), () => assert.rejects(root.purge('a'), ocflError('RECOVERY_NEEDED')));
 
     const [write] = await listed(root);
-    assert.deepStrictEqual([write?.id, write?.operation], ['a', 'remove']);
+    assert.deepStrictEqual([write?.id, write?.operation], ['a', 'purge']);
     await write?.recover();
 
     await assert.rejects(root.open('a'), ocflError('OBJECT_NOT_FOUND'));
     assert.deepStrictEqual(await listed(root), []);
   });
 
-  it('lists a remove that died before it began deleting as a remove, and recovering it deletes nothing', async () => {
+  it('lists a purge that died before it began deleting as a purge, and recovering it deletes nothing', async () => {
     const root = await newRoot();
     await createObject(root, 'a', { 'a.txt': 'a' });
     const { objectRoot, lock } = placesOf(root, 'a');
-    await withFsFailure('rm', lock, () => withFsFailure('rename', lock, () => assert.rejects(root.remove('a'), ocflError('RECOVERY_NEEDED'))));
+    await withFsFailure('rm', lock, () => withFsFailure('rename', lock, () => assert.rejects(root.purge('a'), ocflError('RECOVERY_NEEDED'))));
     const before = await snapshot(objectRoot);
 
+    assert.strictEqual(JSON.parse(await fs.promises.readFile(lock, 'utf8')).operation, 'purge');
     assert.deepStrictEqual(
       (await listed(root)).map((write) => write.operation),
-      ['remove'],
+      ['purge'],
     );
     const write = await root.unfinishedWrite('a');
-    assert.strictEqual(write?.operation, 'remove');
+    assert.strictEqual(write?.operation, 'purge');
     await write?.recover();
 
     assert.deepStrictEqual(await snapshot(objectRoot), before);
@@ -233,11 +234,17 @@ describe('root.unfinishedWrites', () => {
   });
 
   for (const [what, content, operation] of [
-    ['an object root that existed', { id: 'a', lockedAt, objectRootExisted: true }, 'update'],
-    ['no object root', { id: 'a', lockedAt, objectRootExisted: false }, 'create'],
-    ['a remove that had begun deleting', { id: 'a', lockedAt, objectRootExisted: true, removing: true }, 'remove'],
+    ['with no operation, for an object root that existed', { id: 'a', lockedAt, objectRootExisted: true }, 'update'],
+    ['with no operation, for no object root', { id: 'a', lockedAt, objectRootExisted: false }, 'create'],
+    ['with no operation, for a purge that had begun deleting', { id: 'a', lockedAt, objectRootExisted: true, removing: true }, 'purge'],
+    ['whose operation is remove', { id: 'a', operation: 'remove', lockedAt, objectRootExisted: true }, 'purge'],
+    [
+      'whose operation is remove, for a purge that had begun deleting',
+      { id: 'a', operation: 'remove', lockedAt, objectRootExisted: true, removing: true },
+      'purge',
+    ],
   ] as const) {
-    it(`lists a lock with no operation, as earlier releases wrote, for ${what} as a ${operation}, and recovers it`, async () => {
+    it(`lists a lock ${what}, as earlier releases wrote, as a ${operation}, and recovers it`, async () => {
       const root = await newRoot();
       await writeLock(root, 'a', JSON.stringify(content));
 
@@ -253,7 +260,7 @@ describe('root.unfinishedWrites', () => {
   }
 
   for (const [what, content] of [
-    ['an unknown operation', { id: 'a', operation: 'purge', lockedAt, objectRootExisted: true }],
+    ['an unknown operation', { id: 'a', operation: 'delete', lockedAt, objectRootExisted: true }],
     ['removing for an update', { id: 'a', operation: 'update', lockedAt, objectRootExisted: true, removing: true }],
     ['removing false', { id: 'a', lockedAt, objectRootExisted: true, removing: false }],
     ['a time that is not ISO 8601', { id: 'a', lockedAt: 'Tue, 10 Nov 2026 22:01:44 GMT', objectRootExisted: true }],
@@ -380,10 +387,11 @@ describe('write.recover', () => {
   });
 
   for (const [what, recorded] of [
-    ['', { operation: 'remove' }],
+    ['', { operation: 'purge' }],
+    [', from a lock whose operation is remove, as releases before purge wrote', { operation: 'remove' }],
     [', from a lock with no operation, as earlier releases wrote', {}],
   ] as const) {
-    it(`finishes a remove listed before it began deleting, as the same writer${what}`, async () => {
+    it(`finishes a purge listed before it began deleting, as the same writer${what}`, async () => {
       const root = await newRoot();
       await createObject(root, 'a', { 'a.txt': 'a' });
       const taken = { id: 'a', ...recorded, lockedAt: '2026-11-10T22:01:44.000Z', objectRootExisted: true };
@@ -460,12 +468,12 @@ describe('a storage root on a file system without hard links', () => {
   const { newRoot } = useTempRoots('ocfl-unfinished-no-links-');
 
   for (const code of ['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS']) {
-    it(`refuses a create, update or remove with UNSUPPORTED_FILESYSTEM when linking fails with ${code}, and changes nothing`, async () => {
+    it(`refuses a create, update or purge with UNSUPPORTED_FILESYSTEM when linking fails with ${code}, and changes nothing`, async () => {
       const root = await newRoot();
       const object = await createObject(root, 'a', { 'a.txt': 'a' });
       const before = await snapshot(root.path);
 
-      const writes: (() => Promise<unknown>)[] = [() => root.create('b', DETAILS, writeB), () => object.update(DETAILS, writeB), () => root.remove('a')];
+      const writes: (() => Promise<unknown>)[] = [() => root.create('b', DETAILS, writeB), () => object.update(DETAILS, writeB), () => root.purge('a')];
       for (const write of writes) {
         await assert.rejects(
           withFsFailure('link', () => true, write, code),

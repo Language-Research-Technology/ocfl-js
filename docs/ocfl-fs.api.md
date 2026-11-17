@@ -197,7 +197,7 @@ export interface StorageRoot {
     readonly ocflVersion: OcflSpecVersion;
     open(id: string): Promise<OcflObject>;
     readonly path: string;
-    remove(id: string): Promise<void>;
+    purge(id: string): Promise<void>;
     unfinishedWrite(id: string): Promise<UnfinishedWrite | undefined>;
     unfinishedWrites(): AsyncIterable<UnfinishedWrite>;
 }
@@ -212,7 +212,7 @@ export interface StreamOptions {
 export interface UnfinishedWrite {
     readonly id: string;
     readonly lockedAt: Date;
-    readonly operation: 'create' | 'update' | 'remove';
+    readonly operation: 'create' | 'update' | 'purge';
     recover(): Promise<void>;
 }
 

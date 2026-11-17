@@ -230,7 +230,7 @@ describe('creating a storage root', () => {
     assert.match(text, /extensions\/ocfl-js-workspace\/<object path>\//);
     assert.match(
       text,
-      /^- `lock`: the object's lock, a JSON object\. `id` is the id of the object, `operation` what\n {2}its writer is doing \(`create`, `update` or `remove`\), `lockedAt` the time the lock was taken/m,
+      /^- `lock`: the object's lock, a JSON object\. `id` is the id of the object, `operation` what\n {2}its writer is doing \(`create`, `update` or `purge`\), `lockedAt` the time the lock was taken/m,
     );
     assert.match(text, /^- `<version>\/`/m);
   });

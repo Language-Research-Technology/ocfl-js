@@ -16,7 +16,7 @@ The OCFL spec lets a storage root have an `extensions` directory holding only ex
 - **The name is a local extension.** `ocfl-js-workspace` has no `NNNN-` prefix, so it can't collide with a registered extension. `createStorageRoot()` documents it in a plain-text file in the storage root (§4.5).
 - **No cross-filesystem moves.** If the rename into the object root fails with `EXDEV`, the update fails with `CROSS_FILESYSTEM_MOVE` and nothing is copied.
 - **No empty directories are left behind.** An object's workspace directory, the workspace, and `extensions/` when nothing else uses it, are removed once empty.
-- **Objects stay out of `extensions/`.** An id whose object root would be the storage root, under `extensions/`, or outside the storage root has no object: `create` refuses it with `ID_INCOMPATIBLE_WITH_LAYOUT`, and `has`, `open`, `remove` and `unfinishedWrite` find no object. Listing a storage root's objects skips `extensions/`.
+- **Objects stay out of `extensions/`.** An id whose object root would be the storage root, under `extensions/`, or outside the storage root has no object: `create` refuses it with `ID_INCOMPATIBLE_WITH_LAYOUT`, and `has`, `open`, `purge` and `unfinishedWrite` find no object. Listing a storage root's objects skips `extensions/`.
 
 ## Consequences
 

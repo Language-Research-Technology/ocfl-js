@@ -64,8 +64,8 @@ interface OcflObject {
    * @throws {@link OcflError} `INVALID_OBJECT` if the object's declaration has been damaged, or removed while anything remains in its object root, or now declares a later OCFL version than the storage root's (E081), or the object is now inside another object, since it was opened.
    * @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE` if the object has an active mutable head (extension 0005).
    * @throws {@link OcflError} `VERSION_LIMIT_REACHED` if the object's version names are zero-padded and the next one couldn't start with a zero, as OCFL requires (E011): `v01` to `v09` leaves none.
-   * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if a later version has been committed, or the object removed, since this object was opened; open it again and retry.
-   * @throws {@link OcflError} `OBJECT_LOCKED` if another writer is updating or removing this object, or died doing so, as an update that threw `RECOVERY_NEEDED` did; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile. The update never waits for it.
+   * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if a later version has been committed, or the object purged, since this object was opened; open it again and retry.
+   * @throws {@link OcflError} `OBJECT_LOCKED` if another writer is updating or purging this object, or died doing so, as an update that threw `RECOVERY_NEEDED` did; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile. The update never waits for it.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `OBJECT_LOCKED`. Also thrown, before `change` runs, if an earlier update left an unfinished version in the workspace, or the update was refused and its lock couldn't be released. Don't simply repeat the update: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object again to see whether it was committed.
@@ -205,7 +205,7 @@ class OpenedObject implements OcflObject {
       if (error instanceof OcflError && error.ocflCode === 'E003' && (await fileSystem.isDirEmpty(this.#root))) {
         throw ocflError(
           'OBJECT_OUT_OF_DATE',
-          `The object at ${this.#root} was opened at ${this.#inventory.head}, and has since been removed. Open it again and retry.`,
+          `The object at ${this.#root} was opened at ${this.#inventory.head}, and has since been purged. Open it again and retry.`,
         );
       }
       throw error;
