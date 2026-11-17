@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, it } from 'node:test';
 import { DETAILS, lockObject, objectRootOf, readInventory, sha512, textFiles, useTempRoots } from './helpers/drafts.ts';
-import { ocflError } from './helpers/ocfl-error.ts';
+import { ocflError, rejection } from './helpers/ocfl-error.ts';
 import { rewriteInventory, upperCased, writeForeignObject } from './helpers/storage-roots.ts';
 
 describe('digests written in uppercase by another tool', () => {
@@ -38,7 +38,7 @@ describe('digests written in uppercase by another tool', () => {
     assert.deepStrictEqual(await textFiles((await root.open('upper-head-sidecar')).head), { 'a.txt': 'a' });
   });
 
-  it('refuses an object whose manifest has one digest twice, in different cases', async () => {
+  it('refuses an object whose manifest has one digest twice, in different cases, at the path of its inventory', async () => {
     const root = await newRoot();
     const objectRoot = objectRootOf(root, 'duplicate-digest');
     await writeForeignObject(objectRoot, 'duplicate-digest', { 'a.txt': 'a' }, { digestAlgorithm: 'sha512' });
@@ -46,7 +46,9 @@ describe('digests written in uppercase by another tool', () => {
       inventory.manifest = { ...inventory.manifest, [sha512('a').toUpperCase()]: ['v1/content/a.txt'] };
     });
 
-    await assert.rejects(root.open('duplicate-digest'), ocflError('INVALID_OBJECT', 'E096'));
+    const error = await rejection(root.open('duplicate-digest'));
+    assert.ok(ocflError('INVALID_OBJECT', 'E096')(error), error.message);
+    assert.ok(error.message.includes(` At ${path.join(objectRoot, 'inventory.json')} (`), error.message);
   });
 
   it('opens an object whose manifest spells a digest in uppercase and its state in lowercase, and reads its files', async () => {

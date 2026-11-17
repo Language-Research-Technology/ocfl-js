@@ -10,7 +10,7 @@ import type { OcflObjectInventory } from './inventory.ts';
 import { type Lock, lockKept, releaseLock, takeLock } from './lock.ts';
 import type { ObjectPlace } from './object-place.ts';
 import { assertEmptyObjectRoot, declarationWithoutInventory, enclosingObject } from './object-root.ts';
-import { createError } from './ocfl-rules.ts';
+import { specViolation } from './ocfl-rules.ts';
 import { isStagedRootInventory, type RootInventory, readInventory, rootInventoryPaths, sidecarContent, sidecarDigest } from './root-inventory.ts';
 import { parseJsonObject } from './utils.ts';
 import { isVersionName } from './version-number.ts';
@@ -36,7 +36,7 @@ async function ensureObjectDeclaration(root: string, id: string, ocflVersion: Oc
     return;
   }
   if (!creating) {
-    throw createError('E003', root, 'it has an inventory but no object declaration');
+    throw specViolation('E003', root, 'it has an inventory but no object declaration');
   }
   await assertEmptyObjectRoot(root, id);
   const declaration = OBJECT_DECLARATION_PREFIX + ocflVersion;

@@ -3,12 +3,12 @@ import nodePath from 'node:path';
 import { OcflConstants } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
-import { type OcflError, ocflError } from './error.ts';
+import type { OcflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { type Inventory, OcflObjectInventory, validateStoredInventory, versionNumbers } from './inventory.ts';
 import { isLocked } from './lock.ts';
 import type { ObjectPlace } from './object-place.ts';
-import { createError } from './ocfl-rules.ts';
+import { specViolation } from './ocfl-rules.ts';
 import { isJsonObject, parseJsonObject } from './utils.ts';
 import { isVersionName, VersionNumber } from './version-number.ts';
 
@@ -46,11 +46,6 @@ function isStagedRootInventory(name: string): boolean {
   return /^inventory\.json(\.[^.]+)?\.tmp$/.test(name);
 }
 
-/** An `INVALID_OBJECT` error */
-function invalidObject(message: string, options: { ocflCode?: string | undefined; cause?: unknown } = {}): OcflError {
-  return ocflError('INVALID_OBJECT', message, options);
-}
-
 /**
  * @throws {@link OcflError} `INVALID_OBJECT` if the versions of `inventory`, read from `file`, can't be listed: with `E011` or `E012` for
  * names that mix zero-padding conventions, `E009` or `E010` for numbers that don't run 1, 2, 3…, `E049` for a version with no valid created
@@ -61,22 +56,22 @@ function checkVersions(inventory: OcflObjectInventory, file: string): void {
   if (widths.size > 1) {
     const unpadded = widths.get(undefined);
     throw unpadded === undefined
-      ? createError('E012', file, `zero-padded versions of different widths: ${[...widths.values()].sort().join(', ')}`)
-      : createError('E011', file, `${unpadded} among zero-padded versions`);
+      ? specViolation('E012', file, `zero-padded versions of different widths: ${[...widths.values()].sort().join(', ')}`)
+      : specViolation('E011', file, `${unpadded} among zero-padded versions`);
   }
   let previous = 0;
   for (const [number, name] of versionNumbers(inventory)) {
     if (number !== previous + 1) {
-      throw previous === 0 ? createError('E009', file, `the first version is ${name}`) : createError('E010', file, `no version ${previous + 1}`);
+      throw previous === 0 ? specViolation('E009', file, `the first version is ${name}`) : specViolation('E010', file, `no version ${previous + 1}`);
     }
     previous = number;
     const created = inventory.versions[name]?.created;
     if (typeof created !== 'string' || Number.isNaN(new Date(created).getTime())) {
-      throw invalidObject(`The inventory ${file} has no valid created time for version ${name}.`, { ocflCode: 'E049' });
+      throw specViolation('E049', file, `no valid created time for version ${name}`);
     }
   }
   if (inventory.versionNumber.value !== previous) {
-    throw invalidObject(`The inventory ${file} has the head ${inventory.head}, which is not its latest version.`, { ocflCode: 'E040' });
+    throw specViolation('E040', file, `head "${inventory.head}" is not the latest version`);
   }
 }
 
@@ -119,8 +114,8 @@ function readInventory(place: ObjectPlace, options: { callerHoldsLock?: boolean 
 /** `E058` or `E060` for the root inventory `file`, of digest `actual`, whose sidecar `sidecar` records `recorded` */
 function sidecarRefusal(file: string, digestAlgorithm: DigestAlgorithm, sidecar: string | undefined, recorded: string | undefined, actual: string): OcflError {
   return sidecar === undefined
-    ? createError('E058', file, `no ${digestAlgorithm} sidecar`)
-    : createError('E060', file, `recorded=${recorded} actual=${actual}`);
+    ? specViolation('E058', file, `no ${digestAlgorithm} sidecar`)
+    : specViolation('E060', file, `recorded=${recorded} actual=${actual}`);
 }
 
 /**
@@ -139,15 +134,15 @@ async function readInventoryAttempt(place: ObjectPlace, attempt: 'first read' | 
   try {
     parsed = JSON.parse(text);
   } catch (cause) {
-    throw invalidObject(`The inventory ${file} is not valid JSON.`, { ocflCode: 'E033', cause });
+    throw specViolation('E033', file, 'not valid JSON', { cause });
   }
   if (!isJsonObject(parsed)) {
-    throw invalidObject(`The inventory ${file} is not a JSON object.`, { ocflCode: 'E033' });
+    throw specViolation('E033', file, 'not a JSON object');
   }
   const data = parsed as unknown as Inventory;
   const digestAlgorithm: unknown = data.digestAlgorithm;
   if (digestAlgorithm !== 'sha256' && digestAlgorithm !== 'sha512') {
-    throw invalidObject(`The inventory ${file} has a digestAlgorithm that is not sha256 or sha512.`, { ocflCode: 'E025' });
+    throw specViolation('E025', file, 'digestAlgorithm is not sha256 or sha512');
   }
   const sidecar = await fileSystem.readIfPresent(`${file}.${digestAlgorithm}`);
   const recorded = sidecarDigest(sidecar);
@@ -166,19 +161,19 @@ async function readInventoryAttempt(place: ObjectPlace, attempt: 'first read' | 
     }
     validateStoredInventory(data, file);
     if (typeof data.head !== 'string') {
-      throw createError('E040', file, 'head is not a string');
+      throw specViolation('E040', file, 'head is not a string');
     }
     if (typeof data.id !== 'string') {
-      throw createError('E036', file, 'missing id');
+      throw specViolation('E036', file, 'missing id');
     }
     if (data.id === '') {
-      throw createError('E036', file, 'empty id');
+      throw specViolation('E036', file, 'empty id');
     }
-    inventory = new OcflObjectInventory(data);
+    inventory = new OcflObjectInventory(data, file);
   } catch (cause) {
     // The inventory isn't shaped as the checks assume
     if (cause instanceof TypeError) {
-      throw invalidObject(`The inventory ${file} is malformed.`, { ocflCode: 'E033', cause });
+      throw specViolation('E033', file, 'malformed', { cause });
     }
     throw cause;
   }
@@ -186,4 +181,4 @@ async function readInventoryAttempt(place: ObjectPlace, attempt: 'first read' | 
   return { inventory, digest: actual, identity };
 }
 
-export { idInRootInventory, invalidObject, isStagedRootInventory, type RootInventory, readInventory, rootInventoryPaths, sidecarContent, sidecarDigest };
+export { idInRootInventory, isStagedRootInventory, type RootInventory, readInventory, rootInventoryPaths, sidecarContent, sidecarDigest };

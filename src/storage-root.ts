@@ -13,7 +13,7 @@ import { LOCK_NAME } from './lock.ts';
 import { longestWriterPath, type ObjectPlace, objectPlace } from './object-place.ts';
 import { objectNotFound, objectState } from './object-root.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
-import { createError } from './ocfl-rules.ts';
+import { specViolation } from './ocfl-rules.ts';
 import { purgeObject } from './purge.ts';
 import { SPEC_TEXT } from './spec-text.ts';
 import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
@@ -52,7 +52,7 @@ const ISSUES_URL = 'https://github.com/Language-Research-Technology/ocfl-js/issu
 function declaredLayoutName(file: string, content: string): string {
   const extension = parseJsonObject(content)?.extension;
   if (typeof extension !== 'string') {
-    throw createError('E070', file, 'it has no string extension');
+    throw specViolation('E070', file, 'it has no string extension');
   }
   return extension;
 }
@@ -74,16 +74,16 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflSpecVer
   }
   const ocflVersion = declared.value;
   if (ocflVersion === SEVERAL_DECLARATIONS) {
-    throw createError('E076', root);
+    throw specViolation('E076', root);
   }
   if (ocflVersion === '') {
-    throw createError('E080', root);
+    throw specViolation('E080', root);
   }
   if (!ocflVersion) {
     if ((await fileSystem.dirContents(root)) === 'empty') {
       throw ocflError('STORAGE_ROOT_NOT_FOUND', `There is no storage root at ${root}. Create one with createStorageRoot.`);
     }
-    throw createError('E069', root);
+    throw specViolation('E069', root);
   }
   if (layoutRead.status === 'rejected') {
     throw layoutRead.reason;

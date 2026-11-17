@@ -2,7 +2,7 @@ import type { OcflSpecVersion } from './constants.ts';
 import { type DigestAlgorithm, normaliseDigest } from './digest.ts';
 import { ocflError } from './error.ts';
 import { normaliseLogicalPath, parentDirectories } from './logical-path.ts';
-import { createError, type ValidationCode } from './ocfl-rules.ts';
+import { type FaultAt, specViolation, type ValidationCode } from './ocfl-rules.ts';
 import { isJsonObject } from './utils.ts';
 import { isVersionName, VersionNumber } from './version-number.ts';
 
@@ -65,14 +65,14 @@ function isNonEmpty<T>(arr: readonly T[] | undefined): arr is readonly [T, ...T[
   return arr !== undefined && arr.length > 0;
 }
 
-function headNotInVersionsError(id: string, head: string) {
-  return createError('E040', id, `head "${head}" is not in versions`);
+function headNotInVersions(where: FaultAt, head: string) {
+  return specViolation('E040', where, `head "${head}" is not in versions`);
 }
 
 function headVersion(data: Inventory): InventoryVersion {
   const version = data.versions[data.head];
   if (!version) {
-    throw headNotInVersionsError(data.id, data.head);
+    throw headNotInVersions({ objectId: data.id }, data.head);
   }
   return version;
 }
@@ -84,7 +84,8 @@ function isDigestBlock(block: unknown): boolean {
 
 /**
  * Checks an inventory read from storage, before its values are used as paths in the object root.
- * The constructor checks that `head` is one of the versions.
+ * The constructor checks that `head` is one of the versions, that no digest is in the manifest twice (E096), and that the manifest
+ * has content paths for every state digest (E050).
  * @param file - The inventory's path, for the error
  * @throws {@link OcflError} `INVALID_OBJECT` with `E036` or `E040` for a missing or empty head, `E104` for a version name,
  * `E017` or `E018` for the contentDirectory, `E099` or `E100` for a content path, `E052` or `E053` for a logical path in any
@@ -92,33 +93,33 @@ function isDigestBlock(block: unknown): boolean {
  */
 function validateStoredInventory(data: Inventory, file: string): void {
   if (data.head === undefined) {
-    throw createError('E036', file, 'missing head');
+    throw specViolation('E036', file, 'missing head');
   }
   if (data.head === '') {
-    throw createError('E040', file, 'empty head');
+    throw specViolation('E040', file, 'empty head');
   }
   for (const name of Object.keys(data.versions ?? {})) {
     if (!isVersionName(name)) {
-      throw createError('E104', file, `version "${name}"`);
+      throw specViolation('E104', file, `version "${name}"`);
     }
   }
   const { contentDirectory } = data;
   if (typeof contentDirectory === 'string') {
     if (contentDirectory.includes('/')) {
-      throw createError('E017', file, `contentDirectory "${contentDirectory}"`);
+      throw specViolation('E017', file, `contentDirectory "${contentDirectory}"`);
     }
     if (contentDirectory === '.' || contentDirectory === '..') {
-      throw createError('E018', file, `contentDirectory "${contentDirectory}"`);
+      throw specViolation('E018', file, `contentDirectory "${contentDirectory}"`);
     }
   }
   const fixity: unknown = data.fixity;
   if (fixity !== undefined && fixity !== null) {
     if (!isJsonObject(fixity)) {
-      throw createError('E111', file, 'fixity is not an object');
+      throw specViolation('E111', file, 'fixity is not an object');
     }
     const malformed = Object.keys(fixity).find((algorithm) => !isDigestBlock(fixity[algorithm]));
     if (malformed !== undefined) {
-      throw createError('E057', file, `fixity "${malformed}"`);
+      throw specViolation('E057', file, `fixity "${malformed}"`);
     }
   }
   for (const contentPaths of Object.values(data.manifest)) {
@@ -128,17 +129,17 @@ function validateStoredInventory(data: Inventory, file: string): void {
   }
   for (const [name, version] of Object.entries(data.versions ?? {})) {
     if (version.state === undefined) {
-      throw createError('E048', file, `${name} has no state`);
+      throw specViolation('E048', file, `${name} has no state`);
     }
     if (!isDigestBlock(version.state)) {
-      throw createError('E050', file, `${name} has a state that does not map digests to logical paths`);
+      throw specViolation('E050', file, `${name} has a state that does not map digests to logical paths`);
     }
     const seen = new Set<string>();
     for (const logicalPaths of Object.values(version.state)) {
       for (const logicalPath of logicalPaths) {
         checkInventoryPath(logicalPath, { slash: 'E053', element: 'E052' }, file, `logical path "${logicalPath}" in ${name}`);
         if (seen.has(logicalPath)) {
-          throw createError('E095', file, `logical path "${logicalPath}" appears twice in ${name}`);
+          throw specViolation('E095', file, `logical path "${logicalPath}" appears twice in ${name}`);
         }
         seen.add(logicalPath);
       }
@@ -152,17 +153,17 @@ function checkNoDirectoryIsAFile(logicalPaths: Set<string>, file: string, name: 
   for (const logicalPath of logicalPaths) {
     const directory = parentDirectories(logicalPath).find((dir) => logicalPaths.has(dir));
     if (directory !== undefined) {
-      throw createError('E095', file, `logical path "${directory}" is a directory of "${logicalPath}" in ${name}`);
+      throw specViolation('E095', file, `logical path "${directory}" is a directory of "${logicalPath}" in ${name}`);
     }
   }
 }
 
 function checkInventoryPath(path: string, codes: { slash: ValidationCode; element: ValidationCode }, file: string, detail: string): void {
   if (path.startsWith('/') || path.endsWith('/')) {
-    throw createError(codes.slash, file, detail);
+    throw specViolation(codes.slash, file, detail);
   }
   if (path.split('/').some((element) => element === '' || element === '.' || element === '..')) {
-    throw createError(codes.element, file, detail);
+    throw specViolation(codes.element, file, detail);
   }
 }
 
@@ -238,10 +239,10 @@ class OcflObjectInventory {
   }
 
   /** @throws {@link OcflError} `INVALID_OBJECT` with `E050` if a version's state has a digest the manifest doesn't */
-  #checkStatesInManifest() {
+  #checkStatesInManifest(where: FaultAt) {
     for (const { state } of Object.values(this.versions)) {
       for (const digest of Object.keys(state)) {
-        this.#requireContentPaths(digest);
+        this.#requireContentPaths(digest, where);
       }
     }
   }
@@ -276,21 +277,22 @@ class OcflObjectInventory {
   /**
    * Create a new inventory model
    * @param data - Initial data of the inventory
+   * @param where - Where `data` was read from, for the error if it breaks an OCFL rule
    */
-  constructor(data: Inventory) {
+  constructor(data: Inventory, where: FaultAt = { objectId: data.id }) {
     // an empty head is an inventory with no versions yet
     if (data.head !== '' && !data.versions?.[data.head]) {
-      throw headNotInVersionsError(data.id, data.head);
+      throw headNotInVersions(where, data.head);
     }
     this.#data = data;
     for (const digest of Object.keys(data.manifest)) {
       const normalised = normaliseDigest(digest);
       if (this.#manifestKeys.has(normalised)) {
-        throw createError('E096', data.id, `digest "${digest}" is in the manifest more than once`);
+        throw specViolation('E096', where, `digest "${digest}" is in the manifest more than once`);
       }
       this.#manifestKeys.set(normalised, digest);
     }
-    this.#checkStatesInManifest();
+    this.#checkStatesInManifest(where);
     this.#indexBuild();
   }
 
@@ -356,10 +358,10 @@ class OcflObjectInventory {
   }
 
   /** @throws {@link OcflError} `INVALID_OBJECT` with `E050` if the manifest doesn't have `digest` */
-  #requireManifestKey(digest: string): string {
+  #requireManifestKey(digest: string, where: FaultAt = { objectId: this.id }): string {
     const key = this.#manifestKey(digest);
     if (key === undefined) {
-      throw createError('E050', this.id, `digest "${digest}" is not in the manifest`);
+      throw specViolation('E050', where, `digest "${digest}" is not in the manifest`);
     }
     return key;
   }
@@ -381,10 +383,10 @@ class OcflObjectInventory {
     return key === undefined ? undefined : this.manifest[key];
   }
 
-  #requireContentPaths(digest: string): readonly [string, ...string[]] {
-    const cps = this.manifest[this.#requireManifestKey(digest)];
+  #requireContentPaths(digest: string, where: FaultAt = { objectId: this.id }): readonly [string, ...string[]] {
+    const cps = this.manifest[this.#requireManifestKey(digest, where)];
     if (!isNonEmpty(cps)) {
-      throw createError('E050', this.id, `digest "${digest}" has no content paths in the manifest`);
+      throw specViolation('E050', where, `digest "${digest}" has no content paths in the manifest`);
     }
     return cps;
   }
@@ -420,7 +422,7 @@ class OcflObjectInventory {
     if (data.head) {
       const prev = data.versions[data.head];
       if (!prev) {
-        throw headNotInVersionsError(data.id, data.head);
+        throw headNotInVersions({ objectId: data.id }, data.head);
       }
       state = JSON.parse(JSON.stringify(prev.state));
       data.head = VersionNumber._among(data.head, Object.keys(data.versions)).next().toString();

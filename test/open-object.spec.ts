@@ -342,6 +342,7 @@ describe('opening an object', () => {
     const damaged = async (id: string, corrupt: Parameters<typeof rewriteInventory>[1]) => {
       const objectRoot = await writeVersions(root.path, id, [{ 'a.txt': 'abc' }]);
       await rewriteInventory(objectRoot, corrupt);
+      return objectRoot;
     };
     const invalid = (ocflCode?: string) => (error: OcflError) =>
       ocflError('INVALID_OBJECT', ocflCode)(error) && (ocflCode !== undefined || error.ocflCode === undefined);
@@ -532,9 +533,11 @@ describe('opening an object', () => {
     ];
 
     for (const [index, [problem, ocflCode, corrupt]] of corruptions.entries()) {
-      it(`throws INVALID_OBJECT with ${ocflCode} for an inventory with ${problem}`, async () => {
-        await damaged(`corrupt-${index}`, corrupt);
-        await assert.rejects(root.open(`corrupt-${index}`), invalid(ocflCode));
+      it(`throws INVALID_OBJECT with ${ocflCode}, at the inventory's path, for an inventory with ${problem}`, async () => {
+        const objectRoot = await damaged(`corrupt-${index}`, corrupt);
+        const error = await rejection(root.open(`corrupt-${index}`));
+        assert.ok(invalid(ocflCode)(error), `${error.code} ${error.ocflCode}: ${error.message}`);
+        assert.ok(error.message.includes(` At ${path.join(objectRoot, 'inventory.json')}`), error.message);
       });
     }
 
@@ -644,7 +647,10 @@ describe('opening an object', () => {
         const id = `shape-${name.replaceAll(' ', '-')}`;
         const objectRoot = await writeVersions(root.path, id, [{ 'a.txt': 'abc' }]);
         await writeInventory(objectRoot, content);
-        await assert.rejects(root.open(id), (error: OcflError) => invalid('E033')(error) && /is not a JSON object\.$/.test(error.message));
+        await assert.rejects(
+          root.open(id),
+          (error: OcflError) => invalid('E033')(error) && / At \S+inventory\.json \(not a JSON object\)$/.test(error.message),
+        );
       });
     }
 
