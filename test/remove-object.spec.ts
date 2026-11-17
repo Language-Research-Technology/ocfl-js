@@ -144,7 +144,7 @@ describe('root.remove', () => {
 
       const ids = [];
       for await (const entry of root.objects()) {
-        ids.push('object' in entry ? entry.object.id : entry);
+        ids.push(entry.status === 'opened' ? entry.object.id : entry);
       }
       assert.deepStrictEqual(ids, ['kept']);
     });

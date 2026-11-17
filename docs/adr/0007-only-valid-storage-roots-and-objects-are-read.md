@@ -16,6 +16,6 @@ Every workaround becomes behaviour that callers rely on and that the library mus
 
 - A storage root with no `ocfl_layout.json`, which OCFL allows, can't be opened until one is added. One that declares an official storage layout the library lacks can't be opened until the layout is added to the library (ADR 0001).
 - There is no way to open an object by a path the caller works out, and no hook for a mapping from id to object root. arocapi's `objectRoot` option has no equivalent.
-- Listing reports a damaged object root and carries on (`ListedObject`): it names the fault without working around it.
+- Listing reports a damaged object root and carries on (`ListedDamagedObjectRoot`): it names the fault without working around it.
 - "Valid" means the checks made on opening. Whether every stored file still matches its digest is a fixity check, made only when asked.
 - Accepting a fault, or adding a mode that accepts faults, contradicts this decision and needs a new ADR first.

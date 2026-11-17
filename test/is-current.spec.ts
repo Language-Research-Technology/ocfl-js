@@ -21,7 +21,7 @@ describe('telling whether an opened object is still current', () => {
     const root = await temp.newRoot();
     await createObject(root, 'listed', { 'a.txt': 'a' });
     for await (const entry of root.objects()) {
-      assert.ok('object' in entry);
+      assert.ok(entry.status === 'opened');
       assert.strictEqual(await entry.object.isCurrent(), true);
     }
   });

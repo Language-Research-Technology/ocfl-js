@@ -94,7 +94,7 @@ The digest directories haven't changed, only the last directory, named by the en
 | `storage.object(id)`, then `load()` | `root.open(id)` |
 | `storage.object(id)` for a new object, then `update()` or `import()` | `root.create(id, details, build)` |
 | `storage.has(id)`, `object.exists()` | `root.has(id)`; to use the object, open it and catch `OBJECT_NOT_FOUND` |
-| `for await (const o of storage)`, `storage.objects()` | `root.objects()`, which yields `{ object }`, or `{ error, objectRoot, id? }` for an object it can't open |
+| `for await (const o of storage)`, `storage.objects()` | `root.objects()`, which yields `{ status: 'opened', object }`, or `{ status: 'damaged', error, objectRoot, id? }` for an object it can't open |
 | `storage.remove(id)`, `delete(id)`, `purge(id)` | `root.remove(id)` |
 | `object.getInventory()`, `object.inventory`, `object.headVersion` | `object.versions`, and `object.head` with its `number` |
 | `object.files(version)`, `object.count(version)` | `object.versions.get(n)?.files`, and its `size` |

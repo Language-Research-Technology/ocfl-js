@@ -118,13 +118,21 @@ export type Layout = Readonly<Required<LayoutConfig>>;
 export type LayoutConfig = FlatDirectLayoutConfig | HashAndIdNTupleLayoutConfig | HashedNTupleLayoutConfig | PathDirectLayoutConfig;
 
 // @public
-export type ListedObject = {
-    readonly object: OcflObject;
-} | {
+export interface ListedDamagedObjectRoot {
     readonly error: OcflError;
-    readonly objectRoot: string;
     readonly id?: string;
-};
+    readonly objectRoot: string;
+    readonly status: 'damaged';
+}
+
+// @public
+export type ListedObject = ListedOpenedObject | ListedDamagedObjectRoot;
+
+// @public
+export interface ListedOpenedObject {
+    readonly object: OcflObject;
+    readonly status: 'opened';
+}
 
 // @public
 export interface MergeOptions {

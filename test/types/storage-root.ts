@@ -4,6 +4,8 @@ import {
   type FixityAlgorithm,
   type Layout,
   type LayoutConfig,
+  type ListedDamagedObjectRoot,
+  type ListedOpenedObject,
   type OcflErrorCode,
   type OcflObject,
   openStorageRoot,
@@ -104,18 +106,31 @@ export async function listedObjectsMustBeNarrowed(root: StorageRoot): Promise<vo
   for await (const entry of root.objects()) {
     // @ts-expect-error a damaged object root has no object
     entry.object.id;
-    if ('error' in entry) {
-      const code: OcflErrorCode = entry.error.code;
-      const objectRoot: string = entry.objectRoot;
-      const id: string | undefined = entry.id;
-      // @ts-expect-error read-only
-      entry.objectRoot = 'elsewhere';
-      void [code, objectRoot, id];
-    } else {
-      const object: OcflObject = entry.object;
-      // @ts-expect-error an object has no error
-      entry.error;
-      void object;
+    switch (entry.status) {
+      case 'opened': {
+        const opened: ListedOpenedObject = entry;
+        const object: OcflObject = entry.object;
+        // @ts-expect-error an object has no error
+        entry.error;
+        void [opened, object];
+        break;
+      }
+      case 'damaged': {
+        const damaged: ListedDamagedObjectRoot = entry;
+        const code: OcflErrorCode = entry.error.code;
+        const objectRoot: string = entry.objectRoot;
+        const id: string | undefined = entry.id;
+        // @ts-expect-error read-only
+        entry.objectRoot = 'elsewhere';
+        // @ts-expect-error read-only
+        entry.status = 'opened';
+        void [damaged, code, objectRoot, id];
+        break;
+      }
+      default: {
+        const unknown: never = entry;
+        void unknown;
+      }
     }
   }
 }

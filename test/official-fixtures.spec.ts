@@ -67,7 +67,7 @@ describe('the official OCFL fixtures', () => {
           listed.push(entry);
         }
         assert.strictEqual(listed.length, 1);
-        assert.ok('error' in listed[0]! && isRefusal(listed[0].error), `listed as ${JSON.stringify(listed[0])}`);
+        assert.ok(listed[0]?.status === 'damaged' && isRefusal(listed[0].error), `listed as ${JSON.stringify(listed[0])}`);
         if (typeof inventory.id === 'string') {
           await assert.rejects(root.open(inventory.id), isRefusal);
         }

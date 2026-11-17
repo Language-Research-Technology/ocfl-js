@@ -6,10 +6,16 @@ const signal = AbortSignal.timeout(6 * 60 * 60_000);
 let failures = 0;
 
 for await (const entry of root.objects()) {
-  if ('error' in entry) {
-    failures++;
-    console.error(`${entry.objectRoot}: can't open the object (${entry.error.ocflCode ?? entry.error.code})`);
-    continue;
+  switch (entry.status) {
+    case 'opened':
+      break;
+    case 'damaged':
+      failures++;
+      console.error(`${entry.objectRoot}: can't open the object (${entry.error.ocflCode ?? entry.error.code})`);
+      continue;
+    default:
+      console.warn('Unknown listed entry, skipped');
+      continue;
   }
   const { object } = entry;
 

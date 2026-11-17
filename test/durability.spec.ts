@@ -171,7 +171,7 @@ describe('durability', () => {
       const root = await undurable((await objectAtV1(await newRoot(), ID)).root.path);
       const listed: OcflObject[] = [];
       for await (const entry of root.objects()) {
-        assert.ok('object' in entry);
+        assert.ok(entry.status === 'opened');
         listed.push(entry.object);
       }
       assert.strictEqual(listed.length, 1);
