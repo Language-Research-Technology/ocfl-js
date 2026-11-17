@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { pipeline } from 'node:stream/promises';
-import { type ByteRange, OcflError, type OcflObject, openStorageRoot } from '@ocfl/ocfl-fs';
+import { OcflError, type OcflObject, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 const opened = new Map<string, OcflObject>();
@@ -16,7 +16,7 @@ async function current(id: string): Promise<OcflObject> {
 }
 
 /** Reads `bytes=start-end` or `bytes=start-`; a suffix range such as `bytes=-500` isn't handled here. */
-function parseRange(header: string | undefined, size: number): Required<ByteRange> | undefined {
+function parseRange(header: string | undefined, size: number): { start: number; end: number } | undefined {
   const match = /^bytes=(\d+)-(\d*)$/.exec(header ?? '');
   if (!match?.[1]) {
     return undefined;

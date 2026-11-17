@@ -1,6 +1,5 @@
 import type * as entryPoint from '../../src/index.ts';
 import type {
-  ByteRange,
   CreateOptions,
   DigestAlgorithm,
   Draft,
@@ -24,6 +23,7 @@ import type {
   OcflVersion,
   PathDirectLayoutConfig,
   StorageRoot,
+  StreamOptions,
   UnfinishedWrite,
   UpdateOptions,
   User,
@@ -33,7 +33,6 @@ import type {
 } from '../../src/index.ts';
 
 export type EveryExportedType = [
-  ByteRange,
   CreateOptions,
   DigestAlgorithm,
   Draft,
@@ -57,6 +56,7 @@ export type EveryExportedType = [
   OcflVersion,
   PathDirectLayoutConfig,
   StorageRoot,
+  StreamOptions,
   UnfinishedWrite,
   UpdateOptions,
   User,

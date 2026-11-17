@@ -45,7 +45,7 @@ export type {
   PathDirectLayoutConfig,
 } from './layouts/index.ts';
 export type { ListedDamagedObjectRoot, ListedObject, ListedOpenedObject } from './list.ts';
-export type { ByteRange, OcflFile } from './ocfl-file.ts';
+export type { OcflFile, StreamOptions } from './ocfl-file.ts';
 export type { FixityOptions, FixityProblem, FixityProgress, FixityReport, OcflObject, Version } from './ocfl-object.ts';
 export type { CreateStorageRootOptions, Durability, OpenStorageRootOptions, StorageRoot } from './storage-root.ts';
 export { createStorageRoot, openStorageRoot } from './storage-root.ts';
