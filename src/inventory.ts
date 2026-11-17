@@ -1,4 +1,4 @@
-import type { OcflVersion } from './constants.ts';
+import type { OcflSpecVersion } from './constants.ts';
 import { type DigestAlgorithm, normaliseDigest } from './digest.ts';
 import { ocflError } from './error.ts';
 import type { FileIdentity } from './file-system.ts';
@@ -29,7 +29,7 @@ interface Inventory {
   /** A unique identifier for the OCFL Object. */
   id: string;
   /** The URI of the inventory section of the specification version matching the object conformance declaration. */
-  type: `https://ocfl.io/${OcflVersion}/spec/#inventory`;
+  type: `https://ocfl.io/${OcflSpecVersion}/spec/#inventory`;
   /**
    * The algorithm used for calculating digests for content-addressing
    * within the OCFL Object and for the Inventory Digest.

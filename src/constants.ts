@@ -1,11 +1,11 @@
 import { readIfPresent } from './file-system.ts';
 
 /** An OCFL specification version this library reads and writes. */
-type OcflVersion = '1.0' | '1.1';
+type OcflSpecVersion = '1.0' | '1.1';
 
 const OcflConstants = {
   OCFL_VERSION: '1.1',
-  OCFL_VERSIONS: Object.freeze<OcflVersion[]>(['1.1', '1.0']) as readonly OcflVersion[],
+  OCFL_VERSIONS: Object.freeze<OcflSpecVersion[]>(['1.1', '1.0']) as readonly OcflSpecVersion[],
   OCFL_LAYOUT: 'ocfl_layout.json',
   NAMASTE_T: '0=',
   NAMASTE_PREFIX_OBJECT: 'ocfl_object_',
@@ -20,7 +20,7 @@ const OcflConstants = {
 const SEVERAL_DECLARATIONS = 'several';
 
 /** What {@link findNamasteVersion} finds in a directory that has a declaration */
-type DeclarationsFound = OcflVersion | '' | typeof SEVERAL_DECLARATIONS;
+type DeclarationsFound = OcflSpecVersion | '' | typeof SEVERAL_DECLARATIONS;
 
 /**
  * The OCFL version declared in `rootPath` by a namaste file named for `prefix`.
@@ -30,7 +30,7 @@ type DeclarationsFound = OcflVersion | '' | typeof SEVERAL_DECLARATIONS;
 async function findNamasteVersion(prefix: string, rootPath: string): Promise<DeclarationsFound | undefined> {
   const namastePath = `${rootPath}/${OcflConstants.NAMASTE_T}${prefix}`;
   const reads = await Promise.all(OcflConstants.OCFL_VERSIONS.map(async (version) => ({ version, text: await readIfPresent(namastePath + version) })));
-  const declared = reads.filter((read): read is { version: OcflVersion; text: string } => read.text !== undefined);
+  const declared = reads.filter((read): read is { version: OcflSpecVersion; text: string } => read.text !== undefined);
   if (declared.length > 1) {
     return SEVERAL_DECLARATIONS;
   }
@@ -41,4 +41,4 @@ async function findNamasteVersion(prefix: string, rootPath: string): Promise<Dec
   return only.text === `${prefix}${only.version}\n` ? only.version : '';
 }
 
-export { type DeclarationsFound, findNamasteVersion, OcflConstants, type OcflVersion, SEVERAL_DECLARATIONS };
+export { type DeclarationsFound, findNamasteVersion, OcflConstants, type OcflSpecVersion, SEVERAL_DECLARATIONS };

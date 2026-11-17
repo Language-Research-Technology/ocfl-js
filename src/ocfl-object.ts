@@ -1,5 +1,5 @@
 import nodePath from 'node:path';
-import { type DeclarationsFound, OcflConstants, type OcflVersion } from './constants.ts';
+import { type DeclarationsFound, OcflConstants, type OcflSpecVersion } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
 import { commitDraft, type Draft, type UpdateOptions, type User, type VersionDetails, writeOptions } from './draft.ts';
@@ -47,7 +47,7 @@ interface OcflObject {
   /** The object's identifier. */
   readonly id: string;
   /** OCFL version the object conforms to. */
-  readonly ocflVersion: OcflVersion;
+  readonly ocflVersion: OcflSpecVersion;
   /** Algorithm of every {@link OcflFile.digest} in this object. */
   readonly digestAlgorithm: DigestAlgorithm;
   /** Every version, keyed by version number, oldest first. */
@@ -172,7 +172,7 @@ interface FixityProblem {
 
 class OpenedObject implements OcflObject {
   readonly id: string;
-  readonly ocflVersion: OcflVersion;
+  readonly ocflVersion: OcflSpecVersion;
   readonly digestAlgorithm: DigestAlgorithm;
   readonly versions: ReadonlyMap<number, Version>;
   readonly head: Version;
@@ -185,7 +185,7 @@ class OpenedObject implements OcflObject {
    * @param rootSettings - Of the storage root the object was opened or created through
    * @param inventory - As {@link readInventory} returns it, or as a commit returns it
    */
-  constructor(storageRoot: string, rootSettings: RootSettings, root: string, ocflVersion: OcflVersion, inventory: OcflObjectInventory) {
+  constructor(storageRoot: string, rootSettings: RootSettings, root: string, ocflVersion: OcflSpecVersion, inventory: OcflObjectInventory) {
     this.#storageRoot = storageRoot;
     this.#rootSettings = rootSettings;
     this.#root = root;

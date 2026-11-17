@@ -164,13 +164,13 @@ export interface OcflObject {
     readonly head: Version;
     readonly id: string;
     isCurrent(): Promise<boolean>;
-    readonly ocflVersion: OcflVersion;
+    readonly ocflVersion: OcflSpecVersion;
     update(options: UpdateOptions, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
     readonly versions: ReadonlyMap<number, Version>;
 }
 
 // @public
-export type OcflVersion = '1.0' | '1.1';
+export type OcflSpecVersion = '1.0' | '1.1';
 
 // @public
 export function openStorageRoot(path: string, options?: OpenStorageRootOptions): Promise<StorageRoot>;
@@ -194,7 +194,7 @@ export interface StorageRoot {
     has(id: string): Promise<boolean>;
     readonly layout: Layout;
     objects(): AsyncIterable<ListedObject>;
-    readonly ocflVersion: OcflVersion;
+    readonly ocflVersion: OcflSpecVersion;
     open(id: string): Promise<OcflObject>;
     readonly path: string;
     remove(id: string): Promise<void>;

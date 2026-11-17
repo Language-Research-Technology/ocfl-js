@@ -20,7 +20,7 @@ import type {
   OcflErrorCode,
   OcflFile,
   OcflObject,
-  OcflVersion,
+  OcflSpecVersion,
   PathDirectLayoutConfig,
   StorageRoot,
   StreamOptions,
@@ -53,7 +53,7 @@ export type EveryExportedType = [
   OcflErrorCode,
   OcflFile,
   OcflObject,
-  OcflVersion,
+  OcflSpecVersion,
   PathDirectLayoutConfig,
   StorageRoot,
   StreamOptions,
@@ -82,6 +82,8 @@ export type NoInternalIsExported = [
   entryPoint.ObjectNotFoundError,
   // @ts-expect-error not reachable: layouts are chosen by config
   entryPoint.OcflStorageLayout,
+  // @ts-expect-error renamed OcflSpecVersion
+  entryPoint.OcflVersion,
   // @ts-expect-error there is no default export
   entryPoint.default,
 ];
