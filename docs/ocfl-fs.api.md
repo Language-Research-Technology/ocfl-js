@@ -14,6 +14,11 @@ export interface ByteRange {
 }
 
 // @public
+export interface CreateOptions extends VersionDetails {
+    readonly signal?: AbortSignal | undefined;
+}
+
+// @public
 export function createStorageRoot(path: string, options: CreateStorageRootOptions): Promise<StorageRoot>;
 
 // @public
@@ -146,7 +151,7 @@ export interface OcflObject {
     readonly id: string;
     isCurrent(): Promise<boolean>;
     readonly ocflVersion: OcflVersion;
-    update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObject>;
+    update(options: UpdateOptions, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
     readonly versions: ReadonlyMap<number, Version>;
 }
 
@@ -171,7 +176,7 @@ export interface PathDirectLayoutConfig {
 
 // @public
 export interface StorageRoot {
-    create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObject>;
+    create(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
     has(id: string): Promise<boolean>;
     readonly layout: Layout;
     objects(): AsyncIterable<ListedObject>;
@@ -192,7 +197,7 @@ export interface UnfinishedWrite {
 }
 
 // @public
-export interface UpdateOptions {
+export interface UpdateOptions extends VersionDetails {
     readonly signal?: AbortSignal | undefined;
 }
 

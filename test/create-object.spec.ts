@@ -324,35 +324,32 @@ describe('creating an object', () => {
       });
     }
 
-    for (const [name, details, options, message] of [
-      ['no details', undefined, undefined, /^The message of the version is required\.$/],
-      ['a missing message', { user: { name: 'Alice' } }, undefined, /^The message of the version is required\.$/],
-      ['an empty message', { message: '', user: { name: 'Alice' } }, undefined, /^The message of the version is required\.$/],
-      ['a message that is not a string', { message: 42, user: { name: 'Alice' } }, undefined, /^The message of the version is required\.$/],
-      ['a missing user', { message: 'Initial deposit' }, undefined, /^The name of the user making the version is required\.$/],
+    for (const [name, options, message] of [
+      ['no options', undefined, /^The message of the version is required\.$/],
+      ['a missing message', { user: { name: 'Alice' } }, /^The message of the version is required\.$/],
+      ['an empty message', { message: '', user: { name: 'Alice' } }, /^The message of the version is required\.$/],
+      ['a message that is not a string', { message: 42, user: { name: 'Alice' } }, /^The message of the version is required\.$/],
+      ['a missing user', { message: 'Initial deposit' }, /^The name of the user making the version is required\.$/],
       [
         'a user with no name',
         { message: 'Initial deposit', user: { address: 'mailto:alice@example.org' } },
-        undefined,
         /^The name of the user making the version is required\.$/,
       ],
-      ['a user with an empty name', { message: 'Initial deposit', user: { name: '' } }, undefined, /^The name of the user making the version is required\.$/],
+      ['a user with an empty name', { message: 'Initial deposit', user: { name: '' } }, /^The name of the user making the version is required\.$/],
       [
         'a user whose address is not a string',
         { message: 'Initial deposit', user: { name: 'Alice', address: 42 } },
-        undefined,
         /^The address of the user making the version must be a string\.$/,
       ],
-      ['an unknown option', DETAILS, { sigal: 1 }, /^root\.create has no option 'sigal'\.$/],
-      ['two unknown options', DETAILS, { signal: undefined, sigal: 1, layout: FLAT }, /^root\.create has no option 'sigal' or 'layout'\.$/],
-      ['options that are a string', DETAILS, 'x', /^Options must be an object, such as \{ signal: AbortSignal\.timeout\(60_000\) \}, not 'x'$/],
-      ['options that are null', DETAILS, null, /^Options must be an object, such as \{ signal: AbortSignal\.timeout\(60_000\) \}, not null$/],
-      ['a signal that is not an AbortSignal', DETAILS, { signal: 'abort' }, /^The signal option must be an AbortSignal, not 'abort'$/],
-      ['an unknown field in the details', { ...DETAILS, createdat: new Date(0) }, undefined, /^The details of the version have no field 'createdat'\.$/],
+      ['an unknown option', { ...DETAILS, sigal: 1 }, /^root\.create has no option 'sigal'\.$/],
+      ['two unknown options', { ...DETAILS, signal: undefined, sigal: 1, layout: FLAT }, /^root\.create has no option 'sigal' or 'layout'\.$/],
+      ['a misspelt version detail', { ...DETAILS, createdat: new Date(0) }, /^root\.create has no option 'createdat'\.$/],
+      ['options that are a string', 'x', /^Options must be an object, such as \{ message: 'Add a file', user: \{ name: 'Alice' \} \}, not 'x'$/],
+      ['options that are null', null, /^Options must be an object, such as \{ message: 'Add a file', user: \{ name: 'Alice' \} \}, not null$/],
+      ['a signal that is not an AbortSignal', { ...DETAILS, signal: 'abort' }, /^The signal option must be an AbortSignal, not 'abort'$/],
       [
         'an unknown field in the user',
         { message: 'Initial deposit', user: { name: 'Alice', adress: 'x' } },
-        undefined,
         /^The user making the version has no field 'adress'\.$/,
       ],
     ] as const) {
@@ -363,7 +360,7 @@ describe('creating an object', () => {
         const build = async () => {
           called = true;
         };
-        await assert.rejects(root.create('refused', details as never, build, options as never), (e) => e instanceof TypeError && message.test(e.message));
+        await assert.rejects(root.create('refused', options as never, build), (e) => e instanceof TypeError && message.test(e.message));
         assert.ok(!called, 'the callback ran');
         assert.deepStrictEqual(await snapshot(root.path), before);
         assertNoWorkspace(root);

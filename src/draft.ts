@@ -37,15 +37,29 @@ interface VersionDetails {
   readonly createdAt?: Date;
 }
 
-/** Options for `StorageRoot.create` and `OcflObject.update`. */
-interface UpdateOptions {
+/** Options for `OcflObject.update`: what the new version records, and how the update behaves. */
+interface UpdateOptions extends VersionDetails {
   /**
-   * Cancels the create or update when aborted: draft operations started after that reject with its reason, and the draft is discarded once the callback settles.
-   * It is checked one last time just before the commit begins, and ignored after that.
+   * Cancels the update when aborted: draft operations started after that reject with its reason, and the draft is discarded once the callback settles.
+   * It is checked one last time just before the commit begins, and ignored after that. It isn't recorded in the version.
    *
    * @example
    * ```ts
-   * await object.update(details, (draft) => draft.import(dir), { signal: request.signal });
+   * await object.update({ message, user, signal: request.signal }, (draft) => draft.import(dir));
+   * ```
+   */
+  readonly signal?: AbortSignal | undefined;
+}
+
+/** Options for `StorageRoot.create`: what the first version records, and how the create behaves. */
+interface CreateOptions extends VersionDetails {
+  /**
+   * Cancels the create when aborted: draft operations started after that reject with its reason, and the draft is discarded once the callback settles.
+   * It is checked one last time just before the commit begins, and ignored after that. It isn't recorded in the version.
+   *
+   * @example
+   * ```ts
+   * await root.create(id, { message, user, signal: request.signal }, (draft) => draft.import(dir));
    * ```
    */
   readonly signal?: AbortSignal | undefined;
@@ -229,15 +243,18 @@ interface Draft {
 }
 
 /**
+ * The options of `object.update` and `root.create`, split into what the version records and the signal.
+ * @param call - The call as a caller writes it, e.g. `object.update`
  * @param head - The head version's date, which `createdAt` can't be earlier than, if there is a head
- * @returns A copy of `details` holding only what a version records
- * @throws `TypeError` if `details` has a field other than `message`, `user` and `createdAt`, its user has one other than `name` and `address`, the message or the user's name is missing or empty, the user's address isn't a string, or `createdAt` isn't a valid `Date` or is earlier than `head`
+ * @throws `TypeError` if `options` isn't an object, has a key other than `message`, `user`, `createdAt` and `signal`, its user has one other than `name` and `address`, the message or the user's name is missing or empty, the user's address isn't a string, `createdAt` isn't a valid `Date` or is earlier than `head`, or `signal` isn't an `AbortSignal`
  */
-function checkedDetails(details: VersionDetails, head?: Date): VersionDetails {
-  if (isJsonObject(details)) {
-    rejectUnknownKeys(details, ['message', 'user', 'createdAt'], 'The details of the version have no field');
-  }
-  const { message, user, createdAt } = details ?? {};
+function writeOptions(options: unknown, call: string, head?: Date): { details: VersionDetails; signal: AbortSignal | undefined } {
+  const { signal, ...details } = optionsObject(options, call, ['message', 'user', 'createdAt', 'signal'], "{ message: 'Add a file', user: { name: 'Alice' } }");
+  return { details: checkedDetails(details as Partial<VersionDetails>, head), signal: signalOption(signal) };
+}
+
+/** @returns A copy of `details` holding only what a version records */
+function checkedDetails({ message, user, createdAt }: Partial<VersionDetails>, head: Date | undefined): VersionDetails {
   if (!isNonEmptyString(message)) {
     throw new TypeError('The message of the version is required.');
   }
@@ -263,11 +280,6 @@ function checkedDetails(details: VersionDetails, head?: Date): VersionDetails {
     user: { name: user.name, ...(user.address !== undefined && { address: user.address }) },
     ...(createdAt !== undefined && { createdAt: new Date(createdAt) }),
   };
-}
-
-function updateOptions(options: unknown, call: string): UpdateOptions {
-  const { signal } = optionsObject(options, call, ['signal'], '{ signal: AbortSignal.timeout(60_000) }');
-  return { signal: signalOption(signal) };
 }
 
 function unsupportedContent(content: unknown): TypeError {
@@ -852,14 +864,14 @@ async function commitDraft(
 }
 
 export {
-  checkedDetails,
+  type CreateOptions,
   commitDraft,
   type Draft,
   type ImportOptions,
   type MergeOptions,
   type UpdateOptions,
   type User,
-  updateOptions,
   type VersionDetails,
   type WriteContent,
+  writeOptions,
 };

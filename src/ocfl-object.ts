@@ -2,7 +2,7 @@ import nodePath from 'node:path';
 import { type DeclarationsFound, OcflConstants, type OcflVersion } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
-import { checkedDetails, commitDraft, type Draft, type UpdateOptions, type User, updateOptions, type VersionDetails } from './draft.ts';
+import { commitDraft, type Draft, type UpdateOptions, type User, type VersionDetails, writeOptions } from './draft.ts';
 import { OcflError, objectRootConflict, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { type Inventory, OcflObjectInventory, versionNumbers } from './inventory.ts';
@@ -70,8 +70,8 @@ interface OcflObject {
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `UPDATE_IN_PROGRESS`. Also thrown, before `change` runs, if an earlier update left an unfinished version in the workspace, or the update was refused and its lock couldn't be released. Don't simply repeat the update: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object again to see whether it was committed.
    * @throws `TypeError` if the message or the user's name is missing or empty, the user's address isn't a string, `createdAt` isn't a valid `Date` or is earlier than the head version's date,
-   * `details` has a field other than `message`, `user` and `createdAt`, its user has one other than `name` and `address`,
-   * or `options` isn't an object, has a key other than `signal`, or its `signal` isn't an `AbortSignal`. Nothing is changed.
+   * `options` has a key other than `message`, `user`, `createdAt` and `signal`, its user has one other than `name` and `address`,
+   * `options` isn't an object, or its `signal` isn't an `AbortSignal`. Nothing is changed.
    * @throws `Error` if `change` returned while draft operations it started were still running. Await every operation.
    * @throws `options.signal.reason` if the signal is aborted before the commit begins, even if `change` caught the error a draft operation rejected with; the update is discarded, and the object is as it was and isn't locked. A signal already aborted is refused before the lock is taken.
    * @throws Whatever `change` or a draft operation throws; the update is discarded, and the object is as it was and isn't locked.
@@ -83,7 +83,7 @@ interface OcflObject {
    * });
    * ```
    */
-  update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObject>;
+  update(options: UpdateOptions, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
 
   /**
    * Reads every stored file again and compares its digest with the inventory. An empty list means the object is intact.
@@ -189,9 +189,8 @@ class OpenedObject implements OcflObject {
     Object.freeze(this);
   }
 
-  async update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObject> {
-    const checked = checkedDetails(details, this.head.createdAt);
-    const { signal } = updateOptions(options, 'object.update');
+  async update(options: UpdateOptions, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject> {
+    const { details, signal } = writeOptions(options, 'object.update', this.head.createdAt);
     signal?.throwIfAborted();
     const declared = await declaredVersion(this.#storageRoot, this.#root).catch(async (error: unknown) => {
       if (error instanceof OcflError && error.ocflCode === 'E003' && (await fileSystem.isDirEmpty(this.#root))) {
@@ -209,7 +208,7 @@ class OpenedObject implements OcflObject {
     );
     const inventory = OcflObjectInventory._newVersion(this.#inventory);
     const place = { storageRoot: this.#storageRoot, objectRoot: this.#root, ocflVersion: this.ocflVersion, flusher: this.#rootSettings.flusher };
-    const committed = await commitDraft(place, inventory, checked, change, signal);
+    const committed = await commitDraft(place, inventory, details, change, signal);
     return committed ? new OpenedObject(this.#storageRoot, this.#rootSettings, this.#root, this.ocflVersion, committed) : this;
   }
 
@@ -435,7 +434,7 @@ async function openDeclaredObject(
 
 /**
  * Creates the object `id` at `objectRoot`, where the storage root's layout places it, with the draft `build` leaves as its first version.
- * @param details - As {@link checkedDetails} returns them
+ * @param details - As {@link writeOptions} returns them
  * @throws {@link OcflError} `OBJECT_EXISTS` if `objectRoot` has an object declaration or an inventory
  * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if it has a declaration, no inventory and a lock held: a create that isn't committed
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it holds anything else, is below a file, or is inside another object

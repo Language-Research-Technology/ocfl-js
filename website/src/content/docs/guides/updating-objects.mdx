@@ -24,7 +24,7 @@ Every change to an OCFL object is one update, and every update adds at most one 
 
 ## How an update works
 
-`object.update(details, change)` gives your `change` function a [draft](/ocfl-js/api/interfaces/draft/): the changes being assembled for the next version. The draft starts with the files of the head version. Your function changes it, and when the function returns, the draft is committed as one new version.
+`object.update(options, change)` gives your `change` function a [draft](/ocfl-js/api/interfaces/draft/): the changes being assembled for the next version. The draft starts with the files of the head version. Your function changes it, and when the function returns, the draft is committed as one new version.
 
 <Code code={draftOperations} lang="ts" />
 
@@ -33,7 +33,7 @@ Every change to an OCFL object is one update, and every update adds at most one 
 - **Only one writer at a time.** An update takes the object's lock before `change` runs. If another writer holds it, the update throws [`UPDATE_IN_PROGRESS`](/ocfl-js/guides/errors/#update_in_progress) straight away. See [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/) for what to do then, and for what happens when two updates race.
 - **Content is shared.** Content the object already holds, in any version, isn't stored again. Copying, renaming and reinstating store nothing new.
 
-`root.create(id, details, build)` works the same way, except that the draft starts empty and becomes version 1.
+`root.create(id, options, build)` works the same way, except that the draft starts empty and becomes version 1.
 
 ## Draft operations
 
@@ -148,7 +148,7 @@ A create always writes version 1, even with no files.
 
 ## Cancelling an update
 
-`update` and `create` take an optional third argument, `{ signal }`, an [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal) such as a request's or `AbortSignal.timeout()`'s.
+The options of `update` and `create` take an optional `signal`, an [`AbortSignal`](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal) such as a request's or `AbortSignal.timeout()`'s, next to the [version details](#version-details). The signal isn't recorded in the version.
 
 <Code code={cancelUpdate} lang="ts" />
 
@@ -159,7 +159,7 @@ A create always writes version 1, even with no files.
 
 ## Version details
 
-The first argument of `update` and `create` is the [version details](/ocfl-js/api/interfaces/versiondetails/) the new version records:
+The options of `update` and `create`, before the callback, hold the [version details](/ocfl-js/api/interfaces/versiondetails/) the new version records:
 
 - `message`: why the version was made. Required, and can't be empty.
 - `user`: who made it. `user.name` is required and can't be empty. `user.address` is optional: a URI for the user, such as a `mailto:` address, an ORCID, or the software's URL when [no person makes the version](#when-no-person-makes-the-version).
