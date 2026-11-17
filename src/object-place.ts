@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { LOCK_NAME, stagedLockPath } from './lock.ts';
+import { OcflConstants } from './constants.ts';
+import { stagedLockPath } from './lock.ts';
 import { workspaceRoot } from './workspace.ts';
 
 /** Where an object is, or would be */
@@ -25,7 +26,7 @@ function objectPlace(storageRoot: string, objectRoot: string): ObjectPlace {
  * Only paths in the object's content can be longer.
  */
 function longestWriterPath(place: ObjectPlace): string {
-  return stagedLockPath(path.join(place.workspace, LOCK_NAME));
+  return stagedLockPath(path.join(place.workspace, OcflConstants.LOCK_NAME));
 }
 
 export { longestWriterPath, type ObjectPlace, objectPlace };

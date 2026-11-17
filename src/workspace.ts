@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { isNothingAtPath } from './file-system.ts';
-import { isStagedLock, LOCK_NAME, type Lock, readLockFile } from './lock.ts';
+import { isStagedLock, type Lock, readLockFile } from './lock.ts';
 import { isVersionName } from './version-number.ts';
 
-const { EXTENSIONS_DIR, WORKSPACE_EXTENSION } = OcflConstants;
+const { EXTENSIONS_DIR, WORKSPACE_EXTENSION, LOCK_NAME } = OcflConstants;
 
 /** The workspace of the storage root at the absolute path `root` */
 function workspaceRoot(root: string): string {

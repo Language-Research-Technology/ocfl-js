@@ -12,6 +12,7 @@ const OcflConstants = {
   EXTENSIONS_DIR: 'extensions',
   EXTENSION_CONFIG: 'config.json',
   WORKSPACE_EXTENSION: 'ocfl-js-workspace',
+  LOCK_NAME: 'lock',
 } as const;
 
 export { OcflConstants, type OcflSpecVersion };
