@@ -4,7 +4,7 @@ import { ocflError } from './error.ts';
 import type { FileIdentity } from './file-system.ts';
 import { isVersionName, VersionNumber } from './inventory-files.ts';
 import { normaliseLogicalPath, parentDirectories } from './logical-path.ts';
-import { createError } from './ocfl-rules.ts';
+import { createError, type ValidationCode } from './ocfl-rules.ts';
 import { isJsonObject } from './utils.ts';
 
 /** `T` and everything nested in it, read-only at compile time. The data isn't frozen. */
@@ -78,7 +78,7 @@ function headVersion(data: Inventory): InventoryVersion {
   return version;
 }
 
-/** Whether `block` maps each digest to an array of content paths, as a manifest does */
+/** Whether `block` maps each digest to an array of paths, as a manifest or a version's state does */
 function isDigestBlock(block: unknown): boolean {
   return isJsonObject(block) && Object.values(block).every((paths) => Array.isArray(paths) && paths.every((path) => typeof path === 'string'));
 }
@@ -88,7 +88,8 @@ function isDigestBlock(block: unknown): boolean {
  * The constructor checks that `head` is one of the versions.
  * @param file - The inventory's path, for the error
  * @throws {@link OcflError} `INVALID_OBJECT` with `E036` or `E040` for a missing or empty head, `E104` for a version name,
- * `E017` or `E018` for the contentDirectory, `E099` or `E100` for a content path, or `E111` or `E057` for the fixity block
+ * `E017` or `E018` for the contentDirectory, `E099` or `E100` for a content path, `E052` or `E053` for a logical path in any
+ * version, `E048` or `E050` for a version's state, or `E111` or `E057` for the fixity block
  */
 function validateStoredInventory(data: Inventory, file: string): void {
   if (data.head === undefined) {
@@ -123,13 +124,30 @@ function validateStoredInventory(data: Inventory, file: string): void {
   }
   for (const contentPaths of Object.values(data.manifest)) {
     for (const contentPath of contentPaths) {
-      if (contentPath.startsWith('/') || contentPath.endsWith('/')) {
-        throw createError('E100', file, `content path "${contentPath}"`);
-      }
-      if (contentPath.split('/').some((element) => element === '' || element === '.' || element === '..')) {
-        throw createError('E099', file, `content path "${contentPath}"`);
+      checkInventoryPath(contentPath, { slash: 'E100', element: 'E099' }, file, `content path "${contentPath}"`);
+    }
+  }
+  for (const [name, version] of Object.entries(data.versions ?? {})) {
+    if (version.state === undefined) {
+      throw createError('E048', file, `${name} has no state`);
+    }
+    if (!isDigestBlock(version.state)) {
+      throw createError('E050', file, `${name} has a state that does not map digests to logical paths`);
+    }
+    for (const logicalPaths of Object.values(version.state)) {
+      for (const logicalPath of logicalPaths) {
+        checkInventoryPath(logicalPath, { slash: 'E053', element: 'E052' }, file, `logical path "${logicalPath}" in ${name}`);
       }
     }
+  }
+}
+
+function checkInventoryPath(path: string, codes: { slash: ValidationCode; element: ValidationCode }, file: string, detail: string): void {
+  if (path.startsWith('/') || path.endsWith('/')) {
+    throw createError(codes.slash, file, detail);
+  }
+  if (path.split('/').some((element) => element === '' || element === '.' || element === '..')) {
+    throw createError(codes.element, file, detail);
   }
 }
 

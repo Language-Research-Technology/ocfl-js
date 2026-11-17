@@ -1,14 +1,17 @@
 import { type OcflError, ocflError } from './error.ts';
 
 // The OCFL 1.1 validation codes this library raises: https://ocfl.io/1.1/spec/validation-codes.html
-type ValidationCode =
+export type ValidationCode =
   | 'E003'
   | 'E007'
   | 'E017'
   | 'E018'
   | 'E036'
   | 'E040'
+  | 'E048'
   | 'E050'
+  | 'E052'
+  | 'E053'
   | 'E057'
   | 'E058'
   | 'E060'
@@ -35,10 +38,13 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
   E018: ['INVALID_OBJECT', 'The contentDirectory value MUST NOT be either one or two periods (. or ..).'],
   E036: ['INVALID_OBJECT', 'An OCFL Object Inventory MUST include the following keys: [id, type, digestAlgorithm, head].'],
   E040: ['INVALID_OBJECT', '[head] MUST be the version directory name with the highest version number.'],
+  E048: ['INVALID_OBJECT', 'A JSON object to describe one OCFL Version, which MUST include the following keys: [created, state].'],
   E050: [
     'INVALID_OBJECT',
     'The keys of [the state JSON object] are digest values, each of which MUST correspond to an entry in the manifest of the inventory.',
   ],
+  E052: ['INVALID_OBJECT', 'Path elements [of a logical path] MUST NOT be ., .., or empty (//).'],
+  E053: ['INVALID_OBJECT', 'A logical path MUST NOT begin or end with a forward slash (/).'],
   E057: [
     'INVALID_OBJECT',
     'The value of the fixity block for a particular digest algorithm MUST follow the structure of the manifest block; that is, a key corresponding to the digest value, and an array of content paths that match that digest.',
