@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
-import { findNamasteVersion, OcflConstants, type OcflSpecVersion, SEVERAL_DECLARATIONS } from './constants.ts';
+import { OcflConstants, type OcflSpecVersion } from './constants.ts';
+import { findNamasteVersion, SEVERAL_DECLARATIONS } from './declaration.ts';
 import { type CreateOptions, type Draft, writeOptions } from './draft.ts';
 import { OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
@@ -9,14 +10,14 @@ import type { BuiltInLayout } from './layouts/built-in-layout.ts';
 import { builtInLayoutClass, createLayout, IMPLEMENTED_LAYOUTS, type Layout, type LayoutConfig } from './layouts/index.ts';
 import { type ListedObject, listObjects } from './list.ts';
 import { LOCK_NAME } from './lock.ts';
-import { objectNotFound, objectState } from './object-on-disk.ts';
+import { longestWriterPath, type ObjectPlace, objectPlace } from './object-place.ts';
+import { objectNotFound, objectState } from './object-root.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import { createError } from './ocfl-rules.ts';
 import { purgeObject } from './purge.ts';
 import { SPEC_TEXT } from './spec-text.ts';
 import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
 import { deepFreeze, isNonEmptyString, optionsObject, parseJsonObject } from './utils.ts';
-import { longestWriterPath } from './workspace.ts';
 
 const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, NAMASTE_PREFIX_STORAGE, NAMASTE_T } = OcflConstants;
 
@@ -361,34 +362,33 @@ function checkedId(id: string): string {
 }
 
 /**
- * @param longest - The longest path the operation uses, given the object root
- * @returns The absolute object root of `id`
+ * @param longest - The longest path the operation uses, given the object's place
+ * @returns The place of `id`, in the storage root at the absolute path `root`
  * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` as {@link mappedObjectPath} does, or if `longest` is too long for the file system
  */
-async function placedObjectRoot(root: string, layout: BuiltInLayout, id: string, longest: (objectRoot: string) => string): Promise<string> {
-  return fittingObjectRoot(id, nodePath.join(root, mappedObjectPath(root, layout, id)), longest);
+async function placedObject(root: string, layout: BuiltInLayout, id: string, longest: (place: ObjectPlace) => string): Promise<ObjectPlace> {
+  return fittingPlace(id, objectPlace(root, nodePath.join(root, mappedObjectPath(root, layout, id))), longest);
 }
 
 /**
- * @returns `objectRoot`
+ * @returns `place`
  * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if `longest` is too long for the file system
  */
-async function fittingObjectRoot(id: string, objectRoot: string, longest: (objectRoot: string) => string): Promise<string> {
-  if (!(await fileSystem.pathFits(longest(objectRoot)))) {
+async function fittingPlace(id: string, place: ObjectPlace, longest: (place: ObjectPlace) => string): Promise<ObjectPlace> {
+  if (!(await fileSystem.pathFits(longest(place)))) {
     throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> maps to a path too long for this file system.`);
   }
-  return objectRoot;
+  return place;
 }
 
 const isUnplaceable = (error: unknown): error is OcflError => error instanceof OcflError && error.code === 'ID_INCOMPATIBLE_WITH_LAYOUT';
 
 function storageRoot(root: string, ocflVersion: OcflSpecVersion, layout: BuiltInLayout, flusher: fileSystem.Flusher): StorageRoot {
   const settings: RootSettings = { ocflVersion, flusher };
-  const longestWriterPathOf = (objectRoot: string) => longestWriterPath(root, objectRoot);
-  /** The object root of `id`, or the layout's refusal if no object can have the id */
-  const objectRootToRead = async (id: string): Promise<string | OcflError> => {
+  /** The place of `id`, or the layout's refusal if no object can have the id */
+  const placeToRead = async (id: string): Promise<ObjectPlace | OcflError> => {
     try {
-      return await placedObjectRoot(root, layout, id, (objectRoot) => objectRoot);
+      return await placedObject(root, layout, id, (place) => place.objectRoot);
     } catch (error) {
       if (isUnplaceable(error)) {
         return error;
@@ -397,8 +397,8 @@ function storageRoot(root: string, ocflVersion: OcflSpecVersion, layout: BuiltIn
     }
   };
   /** @throws {@link OcflError} `OBJECT_NOT_FOUND` if no object can have the id, with the layout's refusal as `cause` */
-  const existingObjectRoot = async (id: string) => {
-    const placed = await objectRootToRead(id);
+  const existingPlace = async (id: string) => {
+    const placed = await placeToRead(id);
     if (placed instanceof OcflError) {
       throw objectNotFound(root, id, placed);
     }
@@ -409,32 +409,31 @@ function storageRoot(root: string, ocflVersion: OcflSpecVersion, layout: BuiltIn
     ocflVersion,
     layout: { extensionName: layout.name, ...layout.parameters } as Layout,
     async open(id: string) {
-      return openObject(root, await existingObjectRoot(checkedId(id)), id, settings);
+      return openObject(await existingPlace(checkedId(id)), id, settings);
     },
     async has(id: string) {
-      const placed = await objectRootToRead(checkedId(id));
-      return !(placed instanceof OcflError) && (await objectState(root, placed)) === 'committed';
+      const placed = await placeToRead(checkedId(id));
+      return !(placed instanceof OcflError) && (await objectState(placed)) === 'committed';
     },
     async create(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>) {
       const objectId = checkedId(id);
       const { details, signal } = writeOptions(options, 'root.create');
       signal?.throwIfAborted();
-      return createObject(root, await placedObjectRoot(root, layout, objectId, longestWriterPathOf), objectId, settings, details, build, signal);
+      return createObject(await placedObject(root, layout, objectId, longestWriterPath), objectId, settings, details, build, signal);
     },
     objects() {
       return listObjects(root, settings);
     },
     async purge(id: string) {
       const objectId = checkedId(id);
-      const objectRoot = await existingObjectRoot(objectId);
-      await purgeObject(root, await fittingObjectRoot(objectId, objectRoot, longestWriterPathOf), objectId);
+      await purgeObject(await fittingPlace(objectId, await existingPlace(objectId), longestWriterPath), objectId);
     },
     unfinishedWrites() {
       return listUnfinishedWrites(root, flusher, (id) => mappedObjectPath(root, layout, id));
     },
     async unfinishedWrite(id: string) {
-      const placed = await objectRootToRead(checkedId(id));
-      return placed instanceof OcflError ? undefined : findUnfinishedWrite(root, flusher, placed, id);
+      const placed = await placeToRead(checkedId(id));
+      return placed instanceof OcflError ? undefined : findUnfinishedWrite(placed, flusher, id);
     },
   });
 }

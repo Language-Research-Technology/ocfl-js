@@ -1,14 +1,8 @@
-import nodePath from 'node:path';
-import { OcflConstants } from './constants.ts';
-import { normaliseDigest } from './digest.ts';
 import { ocflError } from './error.ts';
-import type { OcflObjectInventory } from './inventory.ts';
-
-const { INVENTORY_NAME } = OcflConstants;
 
 class VersionNumber {
-  value: number;
-  zeroPaddingLength: number | undefined;
+  readonly value: number;
+  readonly zeroPaddingLength: number | undefined;
   private constructor(num: number, zeroPaddingLength?: number) {
     this.value = num;
     this.zeroPaddingLength = zeroPaddingLength;
@@ -58,27 +52,4 @@ function isVersionName(name: string): boolean {
   return /^v(?:[1-9]\d*|0\d*[1-9]\d*)$/.test(name);
 }
 
-/** The digest an inventory sidecar records, normalised, if it records one */
-function sidecarDigest(sidecar: string | undefined): string | undefined {
-  const recorded = sidecar?.match(/\S+/)?.[0];
-  return recorded === undefined ? undefined : normaliseDigest(recorded);
-}
-
-/** What the sidecar of `inventory` holds, once its digest is known */
-function sidecarContent(inventory: OcflObjectInventory): string {
-  return `${inventory._digest} ${INVENTORY_NAME}`;
-}
-
-/** The root inventory and its sidecar, and where a commit stages each before renaming it into place */
-function rootInventoryPaths(objectRoot: string, digestAlgorithm: string): Record<'inventory' | 'sidecar' | 'stagedInventory' | 'stagedSidecar', string> {
-  const inventory = nodePath.join(objectRoot, INVENTORY_NAME);
-  const sidecar = `${inventory}.${digestAlgorithm}`;
-  return { inventory, sidecar, stagedInventory: `${inventory}.tmp`, stagedSidecar: `${sidecar}.tmp` };
-}
-
-/** Whether `name` is a staged file of {@link rootInventoryPaths}, for any digest algorithm */
-function isStagedRootInventory(name: string): boolean {
-  return /^inventory\.json(\.[^.]+)?\.tmp$/.test(name);
-}
-
-export { isStagedRootInventory, isVersionName, rootInventoryPaths, sidecarContent, sidecarDigest, VersionNumber };
+export { isVersionName, VersionNumber };
