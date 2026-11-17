@@ -131,7 +131,7 @@ Delete this lock by hand. A single `OBJECT_LOCKED` with no `lockedAt` isn't enou
 Before you delete it, check that:
 
 - its writer is dead, as you would [before recovering](#recovering);
-- no writer on a later release of ocfl-js writes to the storage root: [upgrade every writer together](#upgrade-every-writer-together);
+- no writer on a later major release of ocfl-js writes to the storage root: [upgrade every writer together](#upgrade-every-writer-together);
 - only one process deletes it.
 
 What its writer left is then as for any lock [deleted by hand](#recovering).

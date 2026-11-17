@@ -19,7 +19,7 @@ interface UnfinishedWrite {
   readonly lockedAt: Date;
   /**
    * What its writer is doing to the object: `root.create`, `object.update` or `root.purge`. {@link UnfinishedWrite.recover} says what
-   * recovering each does. More operations may be added; handle each by name.
+   * recovering each does. A major release may add more operations; handle each by name.
    *
    * A lock left by a release before this field existed doesn't record its operation, and is given the likeliest: a create into an
    * existing directory, and a purge that hadn't begun deleting, are given as `'update'`. A lock that records `'remove'`, as releases
