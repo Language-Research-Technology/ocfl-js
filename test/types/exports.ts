@@ -1,6 +1,7 @@
 import type * as entryPoint from '../../src/index.ts';
 import type {
   ByteRange,
+  CreateOptions,
   DigestAlgorithm,
   Draft,
   FixityAlgorithm,
@@ -31,6 +32,7 @@ import type {
 
 export type EveryExportedType = [
   ByteRange,
+  CreateOptions,
   DigestAlgorithm,
   Draft,
   FixityAlgorithm,

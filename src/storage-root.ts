@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
 import { findNamasteVersion, OcflConstants, type OcflVersion, SEVERAL_DECLARATIONS } from './constants.ts';
-import { checkedDetails, type Draft, type UpdateOptions, updateOptions, type VersionDetails } from './draft.ts';
+import { type CreateOptions, type Draft, writeOptions } from './draft.ts';
 import { OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import type { BuiltInLayout } from './layouts/built-in-layout.ts';
@@ -245,8 +245,8 @@ interface StorageRoot {
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs, if an earlier create left an unfinished version in the workspace, or the create was refused and its lock couldn't be released. Don't simply repeat the create: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object to see whether it was created.
    * @throws `TypeError` if the id, the message or the user's name is missing or empty, the user's address isn't a string, `createdAt` isn't a valid `Date`,
-   * `details` has a field other than `message`, `user` and `createdAt`, its user has one other than `name` and `address`,
-   * or `options` isn't an object, has a key other than `signal`, or its `signal` isn't an `AbortSignal`. Nothing is created.
+   * `options` has a key other than `message`, `user`, `createdAt` and `signal`, its user has one other than `name` and `address`,
+   * `options` isn't an object, or its `signal` isn't an `AbortSignal`. Nothing is created.
    * @throws `Error` if `build` returned while draft operations it started were still running. Await every operation.
    * @throws `options.signal.reason` if the signal is aborted before the commit begins, even if `build` caught the error a draft operation rejected with; nothing of the object is left, and it isn't locked. A signal already aborted is refused before the lock is taken.
    * @throws Whatever `build` or a draft operation throws; nothing of the object is left, and it isn't locked.
@@ -258,7 +258,7 @@ interface StorageRoot {
    * });
    * ```
    */
-  create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObject>;
+  create(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
 
   /**
    * Lists every object in the storage root, in no particular order. Each object is read when the listing reaches it, and yielded as `{ object }`.
@@ -410,12 +410,11 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
       const placed = await objectRootToRead(checkedId(id));
       return !(placed instanceof OcflError) && (await objectState(root, placed)) === 'committed';
     },
-    async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>, options?: UpdateOptions) {
+    async create(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>) {
       const objectId = checkedId(id);
-      const checked = checkedDetails(details);
-      const { signal } = updateOptions(options, 'root.create');
+      const { details, signal } = writeOptions(options, 'root.create');
       signal?.throwIfAborted();
-      return createObject(root, await placedObjectRoot(root, layout, objectId, longestWriterPathOf), objectId, settings, checked, build, signal);
+      return createObject(root, await placedObjectRoot(root, layout, objectId, longestWriterPathOf), objectId, settings, details, build, signal);
     },
     objects() {
       return listObjects(root, settings);

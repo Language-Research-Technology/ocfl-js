@@ -1,4 +1,14 @@
-import type { Draft, FixityOptions, FixityProblem, FixityProgress, OcflObject, StorageRoot, UpdateOptions, VersionDetails } from '../../src/index.ts';
+import type {
+  CreateOptions,
+  Draft,
+  FixityOptions,
+  FixityProblem,
+  FixityProgress,
+  OcflObject,
+  StorageRoot,
+  UpdateOptions,
+  VersionDetails,
+} from '../../src/index.ts';
 
 declare const details: VersionDetails;
 declare const build: (draft: Draft) => Promise<void>;
@@ -21,12 +31,23 @@ export function progressIsReadOnly(progress: FixityProgress): void {
 }
 
 export async function createAndUpdateTakeASignal(root: StorageRoot, object: OcflObject, signal: AbortSignal): Promise<OcflObject[]> {
-  const options: UpdateOptions = { signal };
+  const updateOptions: UpdateOptions = { ...details, signal };
+  const createOptions: CreateOptions = { ...details, signal };
+  // @ts-expect-error read-only
+  updateOptions.signal = undefined;
+  // @ts-expect-error read-only
+  createOptions.message = 'changed';
+  // @ts-expect-error read-only
+  createOptions.signal = undefined;
   // @ts-expect-error a create or update reports no progress
-  await object.update(details, build, { onProgress: () => {} });
-  // @ts-expect-error the options come after the callback
-  await root.create('an-id', details, { signal }, build);
-  return [await root.create('an-id', details, build, options), await object.update(details, build, { signal }), await object.update(details, build)];
+  await object.update({ ...details, onProgress: () => {} }, build);
+  // @ts-expect-error the callback comes last
+  await object.update(details, build, { signal });
+  // @ts-expect-error the callback comes last
+  await root.create('an-id', details, build, { signal });
+  // @ts-expect-error the options hold the version details
+  await object.update({ signal }, build);
+  return [await root.create('an-id', createOptions, build), await object.update(updateOptions, build), await object.update(details, build)];
 }
 
 export async function hasResolvesToABoolean(root: StorageRoot): Promise<boolean> {
