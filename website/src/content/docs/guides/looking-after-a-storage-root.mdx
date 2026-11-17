@@ -1,0 +1,97 @@
+---
+title: Looking after a storage root
+description: Adopting a storage root another OCFL tool wrote, backing up and restoring one, scheduling fixity checks, and purging an OCFL object.
+sidebar:
+  order: 6
+---
+import { Code } from '@astrojs/starlight/components';
+import adoptStorageRoot from '../../../examples/looking-after-a-storage-root/adopt-storage-root.ts?raw';
+import afterRestore from '../../../examples/looking-after-a-storage-root/after-restore.ts?raw';
+import scheduledFixity from '../../../examples/looking-after-a-storage-root/scheduled-fixity.ts?raw';
+import purgeObject from '../../../examples/looking-after-a-storage-root/purge-object.ts?raw';
+
+The other guides are about the code that reads and writes OCFL objects. This one is for whoever runs the storage root: taking over one that another tool wrote, keeping a backup, checking it for damage on a schedule, and purging an OCFL object.
+
+## Adopting a storage root from another tool
+
+The library can read and write a storage root that another OCFL tool made, such as [ocfl-java](https://github.com/OCFL/ocfl-java), [Fedora 6](https://github.com/fcrepo/fcrepo) or [ocfl-py](https://github.com/zimeon/ocfl-py), if the storage root declares a storage layout the library implements. Check it before you write to it.
+
+**1. Check what the storage root declares.** `ocfl_layout.json` names the storage layout in its `extension`, and `extensions/<name>/config.json` holds its parameters, if any are not the defaults. The library opens only the [storage layouts it implements](/ocfl-js/#storage-layouts). What each tool writes:
+
+| Tool | Storage layout | Opens? |
+|---|---|---|
+| Fedora 6 | `0004-hashed-n-tuple-storage-layout` with sha256, three tuples of three: the same as this library's defaults | Yes |
+| ocfl-java | None by default: whatever the application configured. It always writes `ocfl_layout.json` | With 0002, 0003 or 0004. Not with `0006-flat-omit-prefix-storage-layout` or `0007-n-tuple-omit-prefix-storage-layout` |
+| ocfl-py | None by default: whatever `--layout` named. Without one it writes no `ocfl_layout.json` | With 0002 or 0003. Not with its own `nnnn-` layouts, such as `nnnn-tuple-tree` |
+
+Sources, checked in November 2026: Fedora's [`OcflPersistentStorageUtils`](https://github.com/fcrepo/fcrepo/blob/main/fcrepo-persistence-ocfl/src/main/java/org/fcrepo/persistence/ocfl/impl/OcflPersistentStorageUtils.java) and ocfl-java's [`HashedNTupleLayoutConfig`](https://github.com/OCFL/ocfl-java/blob/main/ocfl-java-core/src/main/java/io/ocfl/core/extension/storage/layout/config/HashedNTupleLayoutConfig.java); ocfl-java's [usage guide](https://github.com/OCFL/ocfl-java/blob/main/docs/USAGE.md) and [`DefaultOcflStorageInitializer`](https://github.com/OCFL/ocfl-java/blob/main/ocfl-java-core/src/main/java/io/ocfl/core/storage/DefaultOcflStorageInitializer.java); ocfl-py's [`ocfl-root.py`](https://github.com/zimeon/ocfl-py/blob/main/ocfl-root.py), [`storage_root.py`](https://github.com/zimeon/ocfl-py/blob/main/ocfl/storage_root.py) and [`layout_registry.py`](https://github.com/zimeon/ocfl-py/blob/main/ocfl/layout_registry.py).
+
+**2. Validate it.** The library's checks when it opens an object [aren't validation](/ocfl-js/#it-doesnt-validate). Run an OCFL validator, such as `ocfl-validate` from ocfl-py, over the storage root.
+
+**3. Open it, and list its objects.** This only reads, but run it while the other tool isn't writing: an object it is part of the way through committing can show as damaged.
+
+<Code code={adoptStorageRoot} lang="ts" />
+
+- [`LAYOUT_NOT_DECLARED`](/ocfl-js/guides/errors/#layout_not_declared) is what an ocfl-py storage root made without `--layout` gives. Before you add an `ocfl_layout.json`, look at where a few objects really are and pick the storage layout that maps their ids there: a wrong one makes every id map to the wrong directory.
+- [`UNSUPPORTED_LAYOUT`](/ocfl-js/guides/errors/#unsupported_layout) leaves the storage root to the tool that made it.
+- Repair each damaged object root with the tool that made it.
+
+Then run a [fixity check](#scheduling-fixity-checks) over its objects.
+
+**4. Don't write from both tools at once.** Other tools don't take this library's [lock](/ocfl-js/glossary/#lock), so the library can't keep their writers apart from its own. An update catches another tool's version only if it was committed by the time the update checks; otherwise the two can interleave and damage the object. Stop the other tool's writers before this library writes, or only read.
+
+Two more things to know when the other tool is Fedora 6:
+
+- **Fedora's mutable head.** With `fcrepo.autoversioning.enabled` set to `false`, Fedora writes changes to the `0005-mutable-head` extension instead of new versions. The library reads such an object as of its last version, and refuses to update it with [`MUTABLE_HEAD_ACTIVE`](/ocfl-js/guides/errors/#mutable_head_active).
+- **Fedora's own files.** A Fedora object holds Fedora's metadata, such as `.fcrepo/*.json` files, beside its content. Fedora also keeps its own index of the objects. An update through this library is invisible to Fedora until that index is rebuilt, so treat a storage root Fedora still uses as read-only.
+
+An OCFL 1.0 storage root stays at 1.0: the library [doesn't upgrade it](/ocfl-js/#what-it-doesnt-check-or-do).
+
+## Backing up and restoring a storage root
+
+A backup is a copy of the whole storage root: its declaration (`0=ocfl_1.x`), `ocfl_layout.json`, the whole `extensions` directory and every object root. Two things make that copy harder than copying files.
+
+**Stop every writer, or copy from a snapshot.** A copy made file by file while a writer is committing can catch half a version: the version's files without the root inventory that names them, or the reverse. Either stop every process that creates, updates or purges objects until the copy is done, or take a file-system snapshot (LVM, ZFS, Btrfs, or your NAS's) and copy from that. Readers, such as a file server or a fixity check, can keep running.
+
+**Copy the workspace too.** The storage root's workspace, `extensions/ocfl-js-workspace`, holds the [lock](/ocfl-js/glossary/#lock) of every [unfinished write](/ocfl-js/glossary/#unfinished-write). A snapshot taken as a writer commits holds a root inventory whose sidecar is not yet replaced, which the library accepts only while the lock is held. Without the workspace, that object throws [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object); with it, it is an unfinished write you can recover.
+
+**After a restore, recover what the backup caught.** Restore into place while no writer is running. A snapshot taken while writers ran may hold unfinished writes; their writers aren't running against the restored copy, so recover each one before you start writing to it:
+
+<Code code={afterRestore} lang="ts" />
+
+Recovering finishes or discards each write, as [Recovering](/ocfl-js/guides/concurrent-writers/#recovering) describes. Don't delete the locks by hand instead: a lock deleted by hand can't be recovered.
+
+**Check the copy.** Run a [fixity check](#scheduling-fixity-checks) over a restored storage root before you rely on it. To repair one stored file from a backup instead, see [Checking fixity across a storage root](/ocfl-js/guides/use-cases/#checking-fixity-across-a-storage-root).
+
+## Scheduling fixity checks
+
+A [fixity check](/ocfl-js/glossary/#fixity-check) reads every stored file again, so on a large storage root one run can't check everything in a quiet night. This job checks one slice of the objects each night, so each object is checked once a week, and keeps a report of each run. It builds on [Checking fixity across a storage root](/ocfl-js/guides/use-cases/#checking-fixity-across-a-storage-root), which explains the report.
+
+<Code code={scheduledFixity} lang="ts" />
+
+- **Slices by id.** Each object's slice comes from a digest of its id, so it doesn't change as objects are added or purged, and each night's slice is the day's number modulo seven. A damaged object root goes in a slice by its `objectRoot`, so it is reported once a week too, not every night.
+- **Listing still opens every object.** `root.objects()` reads each inventory before the job can see the id, so a slice saves reading the stored files of the other objects, not their inventories.
+- **A time limit.** The job stops when the signal aborts, and records that the rest of the slice wasn't checked. If runs often stop early, use more slices.
+
+Run it from cron, with `flock` so that a slow run and the next one don't overlap:
+
+```sh
+# m h dom mon dow
+30 1 * * *  flock -n /run/ocfl-fixity.lock node /opt/ocfl/scheduled-fixity.ts
+```
+
+Or from a systemd timer, with `OnCalendar=*-*-* 01:30` in the `.timer` and `OnFailure=` in the `.service` pointing at a unit that alerts you.
+
+## Purging an OCFL object
+
+`root.purge(id)` purges an OCFL object: the object and every version of it leave the storage root for good. It can't be undone: keep a [backup](#backing-up-and-restoring-a-storage-root) if you might want it back.
+
+<Code code={purgeObject} lang="ts" />
+
+- **It takes the object's lock,** so another writer of the object makes it throw [`OBJECT_LOCKED`](/ocfl-js/guides/errors/#object_locked).
+- **It can stop part of the way through,** with [`RECOVERY_NEEDED`](/ocfl-js/guides/errors/#recovery_needed). Recovering its unfinished write finishes the purge.
+- **It refuses an object it can't read,** with [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object): see [Removing a damaged object root](/ocfl-js/guides/errors/#removing-a-damaged-object-root).
+- **An object you opened before the purge** throws [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date) if you update it.
+- **It isn't flushed:** see [What survives a power failure](/ocfl-js/guides/concurrent-writers/#what-survives-a-power-failure).
+
+A purge takes away the whole object. To leave a file out of the next version only, `draft.remove(path)` it in an update; earlier versions keep it. To take one file out of every version, see [Removing a file from every version](/ocfl-js/guides/updating-objects/#removing-a-file-from-every-version).
