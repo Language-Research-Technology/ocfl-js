@@ -104,8 +104,8 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
   E111: ['INVALID_OBJECT', 'If present, [the fixity block] MUST be a JSON object, which MAY be empty.'],
 };
 
-/** Where a broken rule was found: the path it was found at, or the id of an object whose inventory, already read, has it */
-export type FaultAt = string | { objectId: string };
+/** Where a broken rule was found: the path it was found at, the id of the object whose inventory has it, or both */
+export type FaultAt = string | { objectId: string; file?: string };
 
 /**
  * The `INVALID_OBJECT` or `INVALID_STORAGE_ROOT` error, whichever the rule is about, for a broken OCFL rule
@@ -114,6 +114,6 @@ export type FaultAt = string | { objectId: string };
  */
 export function specViolation(code: ValidationCode, where: FaultAt, detail?: string, options: { cause?: unknown } = {}): OcflError {
   const [violated, description] = RULES[code];
-  const at = typeof where === 'string' ? `At ${where}` : `In object <${where.objectId}>`;
+  const at = typeof where === 'string' ? `At ${where}` : `${where.file === undefined ? 'In' : `At ${where.file}, in`} the object <${where.objectId}>`;
   return ocflError(violated, `${code}: ${description} ${at}${detail ? ` (${detail})` : ''}`, { ...options, ocflCode: code });
 }

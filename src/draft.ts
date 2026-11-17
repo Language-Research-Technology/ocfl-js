@@ -295,7 +295,11 @@ function checkedDetails({ message, user, createdAt }: Partial<VersionDetails>, h
 }
 
 function unsupportedContent(content: unknown): TypeError {
-  return new TypeError(`Unsupported data type: ${Object.prototype.toString.call(content)}`);
+  return new TypeError(`The content must be a string, a Uint8Array or an async iterable of them, not ${Object.prototype.toString.call(content)}.`);
+}
+
+function unsupportedChunk(chunk: unknown): TypeError {
+  return new TypeError(`Each chunk of the content must be a string or a Uint8Array, not ${Object.prototype.toString.call(chunk)}.`);
 }
 
 function isTextOrBytes(content: unknown): content is string | Uint8Array {
@@ -342,7 +346,7 @@ function isAsyncIterable(data: unknown): data is AsyncIterable<unknown> {
 async function* hashedBytes(source: AsyncIterable<unknown>, hash: ReturnType<typeof Hashing.createHasher>) {
   for await (const chunk of source) {
     if (!isTextOrBytes(chunk)) {
-      throw unsupportedContent(chunk);
+      throw unsupportedChunk(chunk);
     }
     const bytes = Hashing.toBytes(chunk);
     hash.update(bytes);
@@ -412,7 +416,7 @@ function importTarget(target: string) {
 }
 
 function unsupportedFileType(filePath: string) {
-  return ocflError('UNSUPPORTED_FILE_TYPE', `"${filePath}" is not a regular file or directory`);
+  return ocflError('UNSUPPORTED_FILE_TYPE', `"${filePath}" isn't a regular file or directory.`);
 }
 
 interface TrackedPromise<T> extends Promise<T> {
@@ -677,7 +681,7 @@ class ObjectDraft implements Draft {
   async #stageImportedFile(source: string, staging: string, digest: string) {
     await fileSystem.copyFile(source, staging);
     if ((await Hashing.digest(this.#inventory.digestAlgorithm, fileSystem.createReadable(staging))) !== digest) {
-      throw ocflError('SOURCE_CHANGED', `"${source}" changed while it was being imported`);
+      throw ocflError('SOURCE_CHANGED', `"${source}" changed while it was being imported.`);
     }
   }
 
@@ -790,7 +794,7 @@ class ObjectDraft implements Draft {
       const inventory = this.#inventory;
       const plan = inventory._planDelete(fileLogicalPath(logicalPath));
       if (plan.paths.length === 0) {
-        throw ocflError('FILE_NOT_FOUND', `Logical path "${logicalPath}" does not exist in object [${inventory.id}]`);
+        throw ocflError('FILE_NOT_FOUND', `Logical path "${logicalPath}" doesn't exist in the object <${inventory.id}>.`);
       }
       await this.#applyDelete(plan);
     });

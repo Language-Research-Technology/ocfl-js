@@ -75,7 +75,7 @@ function unfinishedWrite(place: ObjectPlace, flusher: Flusher, seen: Lock): Unfi
         return;
       }
       if (!sameWriter(lock, seen)) {
-        throw await objectLocked(workspace);
+        throw await objectLocked(workspace, seen.id);
       }
       await (lock.removing ? recoverPurge(place) : recoverWrite(place, lock, flusher));
     },

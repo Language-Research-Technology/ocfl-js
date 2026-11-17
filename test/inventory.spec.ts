@@ -249,14 +249,14 @@ describe('OcflObjectInventory class', () => {
   describe('built from data that breaks an OCFL rule', () => {
     const v1 = (state: Record<string, string[]>) => ({ v1: { created: '2026-01-01T00:00:00Z', state } });
     for (const [problem, ocflCode, detail, broken] of [
-      ['a head that is not one of its versions', 'E040', 'head "v1" is not in versions', { head: 'v1' }],
+      ['a head that is not one of its versions', 'E040', 'head "v1" isn\'t in versions', { head: 'v1' }],
       [
         'a digest twice in the manifest',
         'E096',
         'digest "ABC" is in the manifest more than once',
         { manifest: { abc: ['v1/content/a'], ABC: ['v1/content/b'] } },
       ],
-      ['a state digest that is not in the manifest', 'E050', 'digest "abc" is not in the manifest', { head: 'v1', versions: v1({ abc: ['a'] }) }],
+      ['a state digest that is not in the manifest', 'E050', 'digest "abc" isn\'t in the manifest', { head: 'v1', versions: v1({ abc: ['a'] }) }],
       [
         'a state digest with no content paths',
         'E050',
@@ -268,7 +268,7 @@ describe('OcflObjectInventory class', () => {
         assert.throws(
           () => new OcflObjectInventory({ ...data, ...broken } as Inventory),
           (error: Error & { code?: string; ocflCode?: string }) =>
-            error.code === 'INVALID_OBJECT' && error.ocflCode === ocflCode && error.message.endsWith(` In object <id1> (${detail})`),
+            error.code === 'INVALID_OBJECT' && error.ocflCode === ocflCode && error.message.endsWith(` In the object <id1> (${detail})`),
         );
       });
     }

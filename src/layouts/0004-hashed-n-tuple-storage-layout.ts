@@ -37,7 +37,7 @@ class HashedNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     const digestLength = checkNTupleParameters(this.parameters);
     const c = this.parameters;
     if (c.tupleSize * c.numberOfTuples === digestLength && c.shortObjectRoot) {
-      throw new TypeError('shortObjectRoot cannot be set to true when the tuples use the whole digest.');
+      throw new TypeError("shortObjectRoot can't be true when the tuples use the whole digest.");
     }
   }
 

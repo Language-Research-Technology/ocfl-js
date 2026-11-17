@@ -101,6 +101,7 @@ interface VersionFileOptions {
   readonly digest: string;
   /** The number of the version the file is in */
   readonly version: number;
+  readonly objectId: string;
   readonly objectRoot: string;
   /** Where the content is stored, relative to `objectRoot` */
   readonly contentPath: string;
@@ -110,15 +111,17 @@ interface VersionFileOptions {
 class VersionFile implements OcflFile {
   readonly path: string;
   readonly digest: string;
+  readonly #objectId: string;
   readonly #objectRoot: string;
   readonly #contentPath: string;
   readonly #version: number;
   readonly #history: FileHistory;
 
-  constructor({ path, digest, version, objectRoot, contentPath, history }: VersionFileOptions) {
+  constructor({ path, digest, version, objectId, objectRoot, contentPath, history }: VersionFileOptions) {
     this.path = path;
     this.digest = digest;
     this.#version = version;
+    this.#objectId = objectId;
     this.#objectRoot = objectRoot;
     this.#contentPath = contentPath;
     this.#history = history;
@@ -181,9 +184,13 @@ class VersionFile implements OcflFile {
   async #open(): Promise<{ handle: fs.promises.FileHandle; size: number }> {
     const opened = await openRegularFile(this.#storedPath);
     if ('absent' in opened) {
-      throw ocflError('INVALID_OBJECT', `The content of ${this.path}, ${this.#contentPath} in ${this.#objectRoot}, is ${opened.absent}.`, {
-        cause: opened.cause,
-      });
+      throw ocflError(
+        'INVALID_OBJECT',
+        `The content of ${this.path}, ${this.#contentPath} in the object <${this.#objectId}> at ${this.#objectRoot}, is ${opened.absent}.`,
+        {
+          cause: opened.cause,
+        },
+      );
     }
     return opened;
   }

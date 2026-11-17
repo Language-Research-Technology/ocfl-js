@@ -8,7 +8,7 @@ import * as fileSystem from './file-system.ts';
 import { type Inventory, OcflObjectInventory, validateStoredInventory, versionNumbers } from './inventory.ts';
 import { isLocked } from './lock.ts';
 import type { ObjectPlace } from './object-place.ts';
-import { specViolation } from './ocfl-rules.ts';
+import { type FaultAt, specViolation } from './ocfl-rules.ts';
 import { isJsonObject, parseJsonObject } from './utils.ts';
 import { isVersionName, VersionNumber } from './version-number.ts';
 
@@ -47,31 +47,31 @@ function isStagedRootInventory(name: string): boolean {
 }
 
 /**
- * @throws {@link OcflError} `INVALID_OBJECT` if the versions of `inventory`, read from `file`, can't be listed: with `E011` or `E012` for
+ * @throws {@link OcflError} `INVALID_OBJECT` if the versions of `inventory`, read from `where`, can't be listed: with `E011` or `E012` for
  * names that mix zero-padding conventions, `E009` or `E010` for numbers that don't run 1, 2, 3…, `E049` for a version with no valid created
  * time, or `E040` for a head that isn't the latest version
  */
-function checkVersions(inventory: OcflObjectInventory, file: string): void {
+function checkVersions(inventory: OcflObjectInventory, where: FaultAt): void {
   const widths = new Map(Object.keys(inventory.versions).map((name) => [VersionNumber._fromString(name).zeroPaddingLength, name]));
   if (widths.size > 1) {
     const unpadded = widths.get(undefined);
     throw unpadded === undefined
-      ? specViolation('E012', file, `zero-padded versions of different widths: ${[...widths.values()].sort().join(', ')}`)
-      : specViolation('E011', file, `${unpadded} among zero-padded versions`);
+      ? specViolation('E012', where, `zero-padded versions of different widths: ${[...widths.values()].sort().join(', ')}`)
+      : specViolation('E011', where, `${unpadded} among zero-padded versions`);
   }
   let previous = 0;
   for (const [number, name] of versionNumbers(inventory)) {
     if (number !== previous + 1) {
-      throw previous === 0 ? specViolation('E009', file, `the first version is ${name}`) : specViolation('E010', file, `no version ${previous + 1}`);
+      throw previous === 0 ? specViolation('E009', where, `the first version is ${name}`) : specViolation('E010', where, `no version ${previous + 1}`);
     }
     previous = number;
     const created = inventory.versions[name]?.created;
     if (typeof created !== 'string' || Number.isNaN(new Date(created).getTime())) {
-      throw specViolation('E049', file, `no valid created time for version ${name}`);
+      throw specViolation('E049', where, `no valid created time for version ${name}`);
     }
   }
   if (inventory.versionNumber.value !== previous) {
-    throw specViolation('E040', file, `head "${inventory.head}" is not the latest version`);
+    throw specViolation('E040', where, `head "${inventory.head}" isn't the latest version`);
   }
 }
 
@@ -142,7 +142,7 @@ async function readInventoryAttempt(place: ObjectPlace, attempt: 'first read' | 
   const data = parsed as unknown as Inventory;
   const digestAlgorithm: unknown = data.digestAlgorithm;
   if (digestAlgorithm !== 'sha256' && digestAlgorithm !== 'sha512') {
-    throw specViolation('E025', file, 'digestAlgorithm is not sha256 or sha512');
+    throw specViolation('E025', file, "digestAlgorithm isn't sha256 or sha512");
   }
   const sidecar = await fileSystem.readIfPresent(`${file}.${digestAlgorithm}`);
   const recorded = sidecarDigest(sidecar);
@@ -159,9 +159,11 @@ async function readInventoryAttempt(place: ObjectPlace, attempt: 'first read' | 
         return readInventoryAttempt(place, 'second read');
       }
     }
-    validateStoredInventory(data, file);
+    // Only now does the sidecar vouch for the id it names
+    const where: FaultAt = typeof data.id === 'string' && data.id !== '' ? { objectId: data.id, file } : file;
+    validateStoredInventory(data, where);
     if (typeof data.head !== 'string') {
-      throw specViolation('E040', file, 'head is not a string');
+      throw specViolation('E040', where, "head isn't a string");
     }
     if (typeof data.id !== 'string') {
       throw specViolation('E036', file, 'missing id');
@@ -169,7 +171,7 @@ async function readInventoryAttempt(place: ObjectPlace, attempt: 'first read' | 
     if (data.id === '') {
       throw specViolation('E036', file, 'empty id');
     }
-    inventory = new OcflObjectInventory(data, file);
+    inventory = new OcflObjectInventory(data, where);
   } catch (cause) {
     // The inventory isn't shaped as the checks assume
     if (cause instanceof TypeError) {
@@ -177,7 +179,7 @@ async function readInventoryAttempt(place: ObjectPlace, attempt: 'first read' | 
     }
     throw cause;
   }
-  checkVersions(inventory, file);
+  checkVersions(inventory, { objectId: inventory.id, file });
   return { inventory, digest: actual, identity };
 }
 

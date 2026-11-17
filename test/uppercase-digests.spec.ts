@@ -48,7 +48,7 @@ describe('digests written in uppercase by another tool', () => {
 
     const error = await rejection(root.open('duplicate-digest'));
     assert.ok(ocflError('INVALID_OBJECT', 'E096')(error), error.message);
-    assert.ok(error.message.includes(` At ${path.join(objectRoot, 'inventory.json')} (`), error.message);
+    assert.ok(error.message.includes(` At ${path.join(objectRoot, 'inventory.json')}, in the object <duplicate-digest> (`), error.message);
   });
 
   it('opens an object whose manifest spells a digest in uppercase and its state in lowercase, and reads its files', async () => {
