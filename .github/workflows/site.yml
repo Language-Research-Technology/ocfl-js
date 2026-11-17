@@ -1,0 +1,73 @@
+name: Deploy Docs
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to build the site from"
+        required: true
+        type: string
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  build-site:
+    # !cancelled() (also below): called jobs inherit the caller's earlier failures
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # A caller passes ref; a manual run must come from main
+      - name: Refuse a manual run from a branch other than main
+        if: ${{ !inputs.ref && github.ref != 'refs/heads/main' }}
+        run: |
+          echo "::error::Run Deploy Docs from main"
+          exit 1
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build site
+        run: pnpm --dir website build
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: website/dist
+
+  deploy-site:
+    needs: build-site
+    if: ${{ !cancelled() && needs.build-site.result == 'success' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write # deploy-pages proves the run's identity to Pages
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
