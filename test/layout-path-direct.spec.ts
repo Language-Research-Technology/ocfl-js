@@ -36,11 +36,13 @@ describe('the 000N path direct layout', () => {
       ['arcp://uuid,1234567/corpus/root/a', 'arcp_uuid_1234567/corpus/root/a/__object__'],
       ['arcp://ni,sha-256;f4OxZX_x_FO5LcGBSKHWXfwtSx-j1ncoSt3SABJtkGk/', 'arcp_ni_sha-256/f4OxZX_x_FO5LcGBSKHWXfwtSx-j1ncoSt3SABJtkGk/__object__'],
       ['arcp://doi,12345/abc/', 'arcp_doi_12345/abc/__object__'],
+      ['arcp://name,corpus/item/1', 'arcp_name_corpus/item/1/__object__'],
     ];
     for (const c of cases) {
       assert.strictEqual(layout.map(c[0]), c[1]);
     }
   });
+
   it('can catch invalid urls', () => {
     const layout = createLayout({ extensionName: NAME });
     const cases = [
