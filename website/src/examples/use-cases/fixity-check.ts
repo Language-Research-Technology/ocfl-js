@@ -39,9 +39,19 @@ for await (const entry of root.objects()) {
   }
 
   console.log(`${object.id}: ${report.checkedFiles} stored files checked, ${report.problems.length} failed`);
-  for (const { problem, storedFile, affects, expected, actual } of report.problems) {
+  for (const { kind, storedFile, affects, expected, actual } of report.problems) {
     failures++;
-    const state = problem === 'missing' ? 'is missing' : `has changed: expected ${expected}, found ${actual}`;
+    let state: string;
+    switch (kind) {
+      case 'missing':
+        state = 'is missing';
+        break;
+      case 'changed':
+        state = `has changed: expected ${expected}, found ${actual}`;
+        break;
+      default:
+        state = `failed the check (${kind})`;
+    }
     const files = affects.map(({ version, path }) => `v${version}:${path}`).join(', ') || 'no file';
     console.error(`${object.id}: ${storedFile} ${state}; restore it from a backup (affects ${files})`);
   }

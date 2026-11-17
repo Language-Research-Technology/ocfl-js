@@ -159,7 +159,7 @@ interface FixityReport {
 /** One stored file that failed {@link OcflObject.checkFixity}. */
 interface FixityProblem {
   /** `changed` if the content no longer matches its digest, `missing` if there is no regular file at the stored file's path. */
-  readonly problem: 'changed' | 'missing';
+  readonly kind: 'changed' | 'missing';
   /** The stored file's path from the storage root, with `/` between directories, such as `a1b/c2d/item-1/v1/content/audio/1.wav`. Never absolute. */
   readonly storedFile: string;
   /** Every version, by number, and logical path that reads the stored file, by version then path. Empty if none does, as for a second stored file of one digest. */
@@ -273,7 +273,7 @@ class OpenedObject implements OcflObject {
     const problems = failed.map(({ contentPath, expected, actual }): FixityProblem => {
       const storedFile = fileSystem.pathFromStorageRoot(this.#storageRoot, nodePath.join(this.#root, contentPath));
       const common = { storedFile, affects: affected.get(contentPath) ?? [], expected };
-      return actual === undefined ? { problem: 'missing', ...common } : { problem: 'changed', ...common, actual };
+      return actual === undefined ? { kind: 'missing', ...common } : { kind: 'changed', ...common, actual };
     });
     problems.sort((a, b) => Number(a.storedFile > b.storedFile) - Number(a.storedFile < b.storedFile));
     return { problems, checkedFiles: totalFiles };

@@ -75,10 +75,12 @@ This job runs a fixity check on every object in a storage root and reports what 
 
 `checkFixity()` reads every stored file listed in the object's manifest again and compares its digest with the one the inventory records. It returns a [`FixityReport`](/ocfl-js/api/interfaces/fixityreport/): `problems` holds one [`FixityProblem`](/ocfl-js/api/interfaces/fixityproblem/) for each stored file that fails, so an empty list means every stored file matches, and `checkedFiles` says how many stored files it read.
 
-It finds:
+Each problem's `kind` says what it found:
 
 - **a missing file:** the manifest lists a stored file, and there is no regular file at its path (`missing`);
 - **changed content:** a stored file whose digest no longer matches the one recorded for it (`changed`).
+
+More kinds may be added, so handle each by name.
 
 It doesn't find:
 

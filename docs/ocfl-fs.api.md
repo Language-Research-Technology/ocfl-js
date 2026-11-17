@@ -67,7 +67,7 @@ export interface FixityProblem {
         readonly path: string;
     }[];
     readonly expected: string;
-    readonly problem: 'changed' | 'missing';
+    readonly kind: 'changed' | 'missing';
     readonly storedFile: string;
 }
 
