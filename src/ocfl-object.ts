@@ -86,7 +86,7 @@ interface OcflObject {
   update(options: UpdateOptions, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
 
   /**
-   * Reads every stored file again and compares its digest with the inventory. An empty list means the object is intact.
+   * Reads every stored file again and compares its digest with the inventory. No problems in the report means the object is intact.
    * Covers the versions this object knows about. Does not look for extra files or check the `fixity` block.
    * Each problem names its stored file by its path from the storage root, and lists the versions and logical paths that read it.
    * Problems are sorted by stored file.
@@ -101,13 +101,14 @@ interface OcflObject {
    * @throws The file system error, such as `EACCES` or `EIO`, if a stored file can't be read for any reason but being missing.
    * @example
    * ```ts
-   * const problems = await object.checkFixity({
+   * const { problems, checkedFiles } = await object.checkFixity({
    *   signal: AbortSignal.timeout(10 * 60_000),
    *   onProgress: ({ checkedFiles, totalFiles }) => bar.update(checkedFiles / totalFiles),
    * });
+   * console.log(`${checkedFiles} stored files checked, ${problems.length} failed`);
    * ```
    */
-  checkFixity(options?: FixityOptions): Promise<readonly FixityProblem[]>;
+  checkFixity(options?: FixityOptions): Promise<FixityReport>;
 
   /**
    * Whether the object's root inventory is still the file this object was read from: `false` once it has been replaced, changed or removed.
@@ -145,6 +146,14 @@ interface FixityOptions {
   readonly signal?: AbortSignal | undefined;
   /** Called after each stored file is checked. If it throws, the check stops and rejects with that error. */
   readonly onProgress?: ((progress: FixityProgress) => void) | undefined;
+}
+
+/** What {@link OcflObject.checkFixity} found. */
+interface FixityReport {
+  /** One for each stored file that changed or is missing, sorted by stored file. Empty if the object is intact. */
+  readonly problems: readonly FixityProblem[];
+  /** Stored files the check read: every content path in the manifest, as {@link FixityProgress.totalFiles} counts them. */
+  readonly checkedFiles: number;
 }
 
 /** One stored file that failed {@link OcflObject.checkFixity}. */
@@ -225,7 +234,7 @@ class OpenedObject implements OcflObject {
     return fileSystem.sameIdentity(identity, this.#inventory._identity as fileSystem.FileIdentity);
   }
 
-  async checkFixity(options?: FixityOptions): Promise<readonly FixityProblem[]> {
+  async checkFixity(options?: FixityOptions): Promise<FixityReport> {
     const { signal, onProgress } = fixityOptions(options);
     signal?.throwIfAborted();
     const totalFiles = Object.values(this.#inventory.manifest).reduce((count, contentPaths) => count + contentPaths.length, 0);
@@ -258,7 +267,7 @@ class OpenedObject implements OcflObject {
       throw failure.reason;
     }
     if (failed.length === 0) {
-      return [];
+      return { problems: [], checkedFiles: totalFiles };
     }
     const affected = affectedFiles(this.#inventory, new Set(failed.map(({ contentPath }) => contentPath)));
     const problems = failed.map(({ contentPath, expected, actual }): FixityProblem => {
@@ -266,7 +275,8 @@ class OpenedObject implements OcflObject {
       const common = { storedFile, affects: affected.get(contentPath) ?? [], expected };
       return actual === undefined ? { problem: 'missing', ...common } : { problem: 'changed', ...common, actual };
     });
-    return problems.sort((a, b) => Number(a.storedFile > b.storedFile) - Number(a.storedFile < b.storedFile));
+    problems.sort((a, b) => Number(a.storedFile > b.storedFile) - Number(a.storedFile < b.storedFile));
+    return { problems, checkedFiles: totalFiles };
   }
 }
 
@@ -480,4 +490,14 @@ async function createObject(
   return new OpenedObject(storageRoot, rootSettings, objectRoot, ocflVersion, committed);
 }
 
-export { createObject, type FixityOptions, type FixityProblem, type FixityProgress, type OcflObject, openDeclaredObject, openObject, type Version };
+export {
+  createObject,
+  type FixityOptions,
+  type FixityProblem,
+  type FixityProgress,
+  type FixityReport,
+  type OcflObject,
+  openDeclaredObject,
+  openObject,
+  type Version,
+};

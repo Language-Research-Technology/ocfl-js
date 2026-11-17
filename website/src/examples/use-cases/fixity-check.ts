@@ -1,4 +1,4 @@
-import { type FixityProblem, openStorageRoot } from '@ocfl/ocfl-fs';
+import { type FixityReport, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 // Stop the whole run after six hours, between or part way through an object
@@ -13,9 +13,9 @@ for await (const entry of root.objects()) {
   }
   const { object } = entry;
 
-  let problems: readonly FixityProblem[];
+  let report: FixityReport;
   try {
-    problems = await object.checkFixity({
+    report = await object.checkFixity({
       signal,
       onProgress: ({ checkedFiles, totalFiles }) => process.stderr.write(`\r${object.id}: ${checkedFiles}/${totalFiles}`),
     });
@@ -32,7 +32,8 @@ for await (const entry of root.objects()) {
     continue;
   }
 
-  for (const { problem, storedFile, affects, expected, actual } of problems) {
+  console.log(`${object.id}: ${report.checkedFiles} stored files checked, ${report.problems.length} failed`);
+  for (const { problem, storedFile, affects, expected, actual } of report.problems) {
     failures++;
     const state = problem === 'missing' ? 'is missing' : `has changed: expected ${expected}, found ${actual}`;
     const files = affects.map(({ version, path }) => `v${version}:${path}`).join(', ') || 'no file';

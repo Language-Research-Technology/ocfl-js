@@ -20,9 +20,21 @@ describe('checking the fixity of an object', () => {
     return openStorageRoot(rootPath);
   }
 
-  it('gives an empty list for an intact object', async () => {
-    const object = await (await fixtureRoot()).open(SPEC_EX_FULL_ID);
-    assert.deepStrictEqual(await object.checkFixity(), []);
+  it('reports no problems for an intact object, and how many stored files it checked', async () => {
+    const root = await temp.newRoot();
+    const object = await createObject(root, 'intact', { 'a.txt': 'abc', 'b.txt': 'b', 'c.txt': 'c' });
+    assert.deepStrictEqual(await object.checkFixity(), { problems: [], checkedFiles: 3 });
+  });
+
+  it('counts each stored file of a digest the manifest stores at more than one content path', async () => {
+    const root = await fixtureRoot();
+    const objectRoot = path.join(root.path, 'spec-ex-full', '__object__');
+    await rewriteInventory(objectRoot, (inventory) => {
+      inventory.manifest![sha512('')]!.push('v1/content/empty-copy.txt');
+    });
+    await writeFiles(objectRoot, { 'v1/content/empty-copy.txt': '' });
+    const object = await root.open(SPEC_EX_FULL_ID);
+    assert.deepStrictEqual(await object.checkFixity(), { problems: [], checkedFiles: 5 });
   });
 
   it('names a stored file by its path from the storage root, with / between directories', async () => {
@@ -30,7 +42,7 @@ describe('checking the fixity of an object', () => {
     await fs.promises.rm(path.join(root.path, 'spec-ex-full', '__object__', 'v1', 'content', 'image.tiff'));
     const object = await root.open(SPEC_EX_FULL_ID);
     assert.deepStrictEqual(
-      (await object.checkFixity()).map(({ storedFile }) => storedFile),
+      (await object.checkFixity()).problems.map(({ storedFile }) => storedFile),
       ['spec-ex-full/__object__/v1/content/image.tiff'],
     );
   });
@@ -40,7 +52,7 @@ describe('checking the fixity of an object', () => {
     await fs.promises.rm(path.join(root.path, 'spec-ex-full', '__object__', 'v1', 'content', 'empty.txt'));
     const object = await root.open(SPEC_EX_FULL_ID);
     assert.deepStrictEqual(
-      (await object.checkFixity()).map(({ affects }) => affects),
+      (await object.checkFixity()).problems.map(({ affects }) => affects),
       [
         [
           { version: 1, path: 'empty.txt' },
@@ -52,7 +64,7 @@ describe('checking the fixity of an object', () => {
     );
   });
 
-  it('lists only the logical paths that read a stored file, when the manifest stores its digest at more than one', async () => {
+  it('checks and lists only the logical paths that read each stored file, when the manifest stores its digest at more than one', async () => {
     const root = await fixtureRoot();
     const objectRoot = path.join(root.path, 'spec-ex-full', '__object__');
     await rewriteInventory(objectRoot, (inventory) => {
@@ -60,20 +72,23 @@ describe('checking the fixity of an object', () => {
     });
     await fs.promises.rm(path.join(objectRoot, 'v1', 'content', 'empty.txt'));
     const object = await root.open(SPEC_EX_FULL_ID);
-    assert.deepStrictEqual(await object.checkFixity(), [
-      { problem: 'missing', storedFile: 'spec-ex-full/__object__/v1/content/empty-copy.txt', affects: [], expected: sha512('') },
-      {
-        problem: 'missing',
-        storedFile: 'spec-ex-full/__object__/v1/content/empty.txt',
-        affects: [
-          { version: 1, path: 'empty.txt' },
-          { version: 2, path: 'empty.txt' },
-          { version: 2, path: 'empty2.txt' },
-          { version: 3, path: 'empty2.txt' },
-        ],
-        expected: sha512(''),
-      },
-    ]);
+    assert.deepStrictEqual(await object.checkFixity(), {
+      problems: [
+        { problem: 'missing', storedFile: 'spec-ex-full/__object__/v1/content/empty-copy.txt', affects: [], expected: sha512('') },
+        {
+          problem: 'missing',
+          storedFile: 'spec-ex-full/__object__/v1/content/empty.txt',
+          affects: [
+            { version: 1, path: 'empty.txt' },
+            { version: 2, path: 'empty.txt' },
+            { version: 2, path: 'empty2.txt' },
+            { version: 3, path: 'empty2.txt' },
+          ],
+          expected: sha512(''),
+        },
+      ],
+      checkedFiles: 5,
+    });
   });
 
   it('names a stored file from the storage root under a layout that nests object roots in hashed directories', async () => {
@@ -82,7 +97,7 @@ describe('checking the fixity of an object', () => {
     const objectPath = '3c0/ff4/240/3c0ff4240c1e116dba14c7627f2319b58aa3d77606d0d90dfc6161608ac987d4';
     await fs.promises.writeFile(path.join(root.path, objectPath, 'v1/content/a.txt'), 'abd');
     await fs.promises.rm(path.join(root.path, objectPath, 'v1/content/b.txt'));
-    assert.deepStrictEqual(await object.checkFixity(), [
+    assert.deepStrictEqual((await object.checkFixity()).problems, [
       {
         problem: 'changed',
         storedFile: `${objectPath}/v1/content/a.txt`,
@@ -98,7 +113,7 @@ describe('checking the fixity of an object', () => {
     const root = await temp.newRoot();
     const object = await createObject(root, 'changed', { 'a.txt': 'abc', 'b.txt': 'intact' });
     await fs.promises.writeFile(path.join(objectRootOf(root, 'changed'), 'v1/content/a.txt'), 'abd');
-    assert.deepStrictEqual(await object.checkFixity(), [
+    assert.deepStrictEqual((await object.checkFixity()).problems, [
       {
         problem: 'changed',
         storedFile: 'changed/v1/content/a.txt',
@@ -113,7 +128,7 @@ describe('checking the fixity of an object', () => {
     const root = await temp.newRoot();
     const object = await createObject(root, 'missing', { 'a.txt': 'abc', 'b.txt': 'intact' });
     await fs.promises.rm(path.join(objectRootOf(root, 'missing'), 'v1/content/a.txt'));
-    assert.deepStrictEqual(await object.checkFixity(), [
+    assert.deepStrictEqual((await object.checkFixity()).problems, [
       { problem: 'missing', storedFile: 'missing/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
     ]);
   });
@@ -125,7 +140,7 @@ describe('checking the fixity of an object', () => {
     await fs.promises.rm(path.join(objectRoot, 'v1/content/a.txt'));
     await fs.promises.mkdir(path.join(objectRoot, 'v1/content/a.txt'));
     await fs.promises.writeFile(path.join(objectRoot, 'v1/content/b.txt'), 'c');
-    assert.deepStrictEqual(await object.checkFixity(), [
+    assert.deepStrictEqual((await object.checkFixity()).problems, [
       { problem: 'missing', storedFile: 'directory/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
       { problem: 'changed', storedFile: 'directory/v1/content/b.txt', affects: [{ version: 1, path: 'b.txt' }], expected: sha512('b'), actual: sha512('c') },
     ]);
@@ -137,7 +152,7 @@ describe('checking the fixity of an object', () => {
     const stored = path.join(objectRootOf(root, 'fifo'), 'v1/content/a.txt');
     await fs.promises.rm(stored);
     execFileSync('mkfifo', [stored]);
-    assert.deepStrictEqual(await object.checkFixity(), [
+    assert.deepStrictEqual((await object.checkFixity()).problems, [
       { problem: 'missing', storedFile: 'fifo/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
     ]);
   });
@@ -150,7 +165,7 @@ describe('checking the fixity of an object', () => {
     await fs.promises.writeFile(path.join(objectRoot, 'v1/content/a.txt'), 'abd');
     await fs.promises.rm(path.join(objectRoot, 'v1/content/b.txt'));
     await fs.promises.writeFile(path.join(objectRoot, 'v2/content/d.txt'), 'e');
-    assert.deepStrictEqual(await object.checkFixity(), [
+    assert.deepStrictEqual((await object.checkFixity()).problems, [
       {
         problem: 'changed',
         storedFile: 'several/v1/content/a.txt',
@@ -180,7 +195,7 @@ describe('checking the fixity of an object', () => {
     object = await object.update(DETAILS, (draft) => draft.write('later.txt', 'abc'));
     assert.strictEqual(object.versions.size, 2);
     await fs.promises.writeFile(path.join(objectRootOf(root, 'shared'), 'v1/content/a.txt'), 'abd');
-    assert.deepStrictEqual(await object.checkFixity(), [
+    assert.deepStrictEqual((await object.checkFixity()).problems, [
       {
         problem: 'changed',
         storedFile: 'shared/v1/content/a.txt',
@@ -201,7 +216,7 @@ describe('checking the fixity of an object', () => {
     const root = await fixtureRoot();
     await writeFiles(path.join(root.path, 'spec-ex-full', '__object__'), { 'v1/content/extra.txt': 'extra', 'extra.txt': 'extra' });
     const object = await root.open(SPEC_EX_FULL_ID);
-    assert.deepStrictEqual(await object.checkFixity(), []);
+    assert.deepStrictEqual((await object.checkFixity()).problems, []);
   });
 
   it('ignores the fixity block, even when a value in it is wrong', async () => {
@@ -210,7 +225,7 @@ describe('checking the fixity of an object', () => {
       inventory.fixity = { md5: { [DIGESTS_OF_ABC.md5]: ['v1/content/foo/bar.xml'] } };
     });
     const object = await root.open(SPEC_EX_FULL_ID);
-    assert.deepStrictEqual(await object.checkFixity(), []);
+    assert.deepStrictEqual((await object.checkFixity()).problems, []);
   });
 
   it('checks a sha256 object with sha256', async () => {
@@ -218,9 +233,9 @@ describe('checking the fixity of an object', () => {
     const objectRoot = objectRootOf(root, 'sha256-object');
     await writeForeignObject(objectRoot, 'sha256-object', { 'a.txt': 'abc' }, { digestAlgorithm: 'sha256' });
     const object = await root.open('sha256-object');
-    assert.deepStrictEqual(await object.checkFixity(), []);
+    assert.deepStrictEqual((await object.checkFixity()).problems, []);
     await fs.promises.writeFile(path.join(objectRoot, 'v1/content/a.txt'), 'abd');
-    assert.deepStrictEqual(await object.checkFixity(), [
+    assert.deepStrictEqual((await object.checkFixity()).problems, [
       {
         problem: 'changed',
         storedFile: 'sha256-object/v1/content/a.txt',
@@ -247,11 +262,11 @@ describe('checking the fixity of an object', () => {
       expected: DIGESTS_OF_ABC.sha512,
       actual: sha512('abd'),
     };
-    assert.deepStrictEqual(await object.checkFixity(), []);
+    assert.deepStrictEqual((await object.checkFixity()).problems, []);
     await fs.promises.writeFile(path.join(objectRoot, 'v1/content/a.txt'), 'abd');
-    assert.deepStrictEqual(await object.checkFixity(), [changedA]);
+    assert.deepStrictEqual((await object.checkFixity()).problems, [changedA]);
     await fs.promises.rm(path.join(objectRoot, 'v1/content/b.txt'));
-    assert.deepStrictEqual(await object.checkFixity(), [
+    assert.deepStrictEqual((await object.checkFixity()).problems, [
       changedA,
       { problem: 'missing', storedFile: 'upper-case/v1/content/b.txt', affects: [{ version: 1, path: 'b.txt' }], expected: sha512('b') },
     ]);
@@ -263,12 +278,12 @@ describe('checking the fixity of an object', () => {
     const updated = await opened.update(DETAILS, (draft) => draft.write('later.txt', 'later'));
     const objectRoot = objectRootOf(root, 'earlier');
     await fs.promises.rm(path.join(objectRoot, 'v2/content/later.txt'));
-    assert.deepStrictEqual(await opened.checkFixity(), []);
-    assert.deepStrictEqual(await updated.checkFixity(), [
+    assert.deepStrictEqual((await opened.checkFixity()).problems, []);
+    assert.deepStrictEqual((await updated.checkFixity()).problems, [
       { problem: 'missing', storedFile: 'earlier/v2/content/later.txt', affects: [{ version: 2, path: 'later.txt' }], expected: sha512('later') },
     ]);
     await fs.promises.writeFile(path.join(objectRoot, 'v1/content/a.txt'), 'abd');
-    assert.deepStrictEqual(await opened.checkFixity(), [
+    assert.deepStrictEqual((await opened.checkFixity()).problems, [
       {
         problem: 'changed',
         storedFile: 'earlier/v1/content/a.txt',
@@ -309,7 +324,7 @@ describe('checking the fixity of an object', () => {
     const objectRoot = objectRootOf(root, 'many');
     await fs.promises.rm(path.join(objectRoot, 'v1/content/file-07.txt'));
     await fs.promises.rm(path.join(objectRoot, 'v1/content/file-33.txt'));
-    const problems = await object.checkFixity();
+    const { problems } = await object.checkFixity();
     assert.deepStrictEqual(
       problems.map(({ problem, storedFile }) => [problem, storedFile]),
       [

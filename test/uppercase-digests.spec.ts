@@ -131,7 +131,7 @@ describe('digests written in uppercase by another tool', () => {
       const expected = { 'a.txt': 'a', 'copy-of-a.txt': 'a', 'c.txt': 'c' };
       assert.deepStrictEqual(await textFiles(updated.head), expected);
       assert.deepStrictEqual(await textFiles((await root.open('reads-updated')).head), expected);
-      assert.deepStrictEqual(await updated.checkFixity(), []);
+      assert.deepStrictEqual((await updated.checkFixity()).problems, []);
     });
   });
 });

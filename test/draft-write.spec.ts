@@ -152,7 +152,7 @@ describe('writing a file to a draft', () => {
         await written;
       });
       await assertHolds(root, object, { 'a.txt': 'aaaa' });
-      assert.deepStrictEqual(await object.checkFixity(), []);
+      assert.deepStrictEqual((await object.checkFixity()).problems, []);
     });
 
     it('stores the bytes as they were when write was called, in an update', async () => {
@@ -166,7 +166,7 @@ describe('writing a file to a draft', () => {
         await Promise.all([first, second]);
       });
       await assertHolds(root, updated, { a: 'a', 'b.txt': 'aaaa', 'c.txt': 'bbbb' });
-      assert.deepStrictEqual(await updated.checkFixity(), []);
+      assert.deepStrictEqual((await updated.checkFixity()).problems, []);
     });
   });
 

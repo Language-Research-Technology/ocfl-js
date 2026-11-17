@@ -78,6 +78,12 @@ export interface FixityProgress {
 }
 
 // @public
+export interface FixityReport {
+    readonly checkedFiles: number;
+    readonly problems: readonly FixityProblem[];
+}
+
+// @public
 export interface FlatDirectLayoutConfig {
     extensionName: '0002-flat-direct-storage-layout';
 }
@@ -151,7 +157,7 @@ export interface OcflFile {
 
 // @public
 export interface OcflObject {
-    checkFixity(options?: FixityOptions): Promise<readonly FixityProblem[]>;
+    checkFixity(options?: FixityOptions): Promise<FixityReport>;
     readonly digestAlgorithm: DigestAlgorithm;
     readonly head: Version;
     readonly id: string;

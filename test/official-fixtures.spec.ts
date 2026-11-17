@@ -49,7 +49,7 @@ describe('the official OCFL fixtures', () => {
             }
           }
         }
-        assert.deepStrictEqual(await object.checkFixity(), []);
+        assert.deepStrictEqual((await object.checkFixity()).problems, []);
       });
     }
   });

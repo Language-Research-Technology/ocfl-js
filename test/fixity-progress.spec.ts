@@ -34,7 +34,7 @@ describe('progress and cancelling of a fixity check', () => {
     const root = await temp.newRoot();
     const object = await createObject(root, 'progress', manyFiles(25));
     const seen: FixityProgress[] = [];
-    assert.deepStrictEqual(await object.checkFixity({ onProgress: (progress) => seen.push({ ...progress }) }), []);
+    assert.deepStrictEqual((await object.checkFixity({ onProgress: (progress) => seen.push({ ...progress }) })).problems, []);
     assert.strictEqual(seen.length, 25);
     assert.deepStrictEqual(
       seen.map(({ checkedFiles }) => checkedFiles),
@@ -50,9 +50,10 @@ describe('progress and cancelling of a fixity check', () => {
     await fs.promises.rm(path.join(objectRoot, 'v1/content/a.txt'));
     await fs.promises.writeFile(path.join(objectRoot, 'v1/content/b.txt'), 'changed');
     let last: FixityProgress | undefined;
-    const problems = await object.checkFixity({ onProgress: (progress) => (last = progress) });
+    const { problems, checkedFiles } = await object.checkFixity({ onProgress: (progress) => (last = progress) });
     assert.strictEqual(problems.length, 2);
     assert.deepStrictEqual(last, { checkedFiles: 3, totalFiles: 3 });
+    assert.strictEqual(checkedFiles, 3);
   });
 
   it('rejects with the reason of a signal already aborted, reading no stored file', async () => {
@@ -132,7 +133,7 @@ describe('progress and cancelling of a fixity check', () => {
     const objectRoot = objectRootOf(root, 'unaborted');
     await fs.promises.rm(path.join(objectRoot, 'v1/content/a.txt'));
     await fs.promises.rm(path.join(objectRoot, 'v1/content/b.txt'));
-    const problems = await object.checkFixity({ signal: new AbortController().signal });
+    const { problems } = await object.checkFixity({ signal: new AbortController().signal });
     assert.deepStrictEqual(
       problems.map(({ storedFile }) => path.basename(storedFile)),
       ['a.txt', 'b.txt'],

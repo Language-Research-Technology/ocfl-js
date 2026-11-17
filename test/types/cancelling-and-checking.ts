@@ -5,6 +5,7 @@ import type {
   FixityOptions,
   FixityProblem,
   FixityProgress,
+  FixityReport,
   OcflObject,
   StorageRoot,
   UpdateOptions,
@@ -15,7 +16,7 @@ declare const details: VersionDetails;
 declare const build: (draft: Draft) => Promise<void>;
 declare const draftFile: DraftFile;
 
-export async function fixityTakesASignalAndAProgressCallback(object: OcflObject): Promise<(readonly FixityProblem[])[]> {
+export async function fixityTakesASignalAndAProgressCallback(object: OcflObject): Promise<FixityReport[]> {
   const onProgress = ({ checkedFiles, totalFiles }: FixityProgress): void => void (checkedFiles / totalFiles);
   const options: FixityOptions = { signal: AbortSignal.timeout(1000), onProgress };
   // @ts-expect-error read-only
@@ -25,6 +26,20 @@ export async function fixityTakesASignalAndAProgressCallback(object: OcflObject)
   // @ts-expect-error the signal is an AbortSignal, not its controller
   await object.checkFixity({ signal: new AbortController() });
   return [await object.checkFixity(), await object.checkFixity({}), await object.checkFixity(options)];
+}
+
+export async function fixityResolvesToAReadOnlyReport(object: OcflObject): Promise<readonly FixityProblem[]> {
+  // @ts-expect-error a report, not a bare list of problems
+  const bare: readonly FixityProblem[] = await object.checkFixity();
+  void bare;
+  const report = await object.checkFixity();
+  // @ts-expect-error read-only
+  report.checkedFiles = 0;
+  // @ts-expect-error read-only
+  report.problems = [];
+  // @ts-expect-error read-only
+  report.problems.push(...report.problems);
+  return report.problems;
 }
 
 export function progressIsReadOnly(progress: FixityProgress): void {
