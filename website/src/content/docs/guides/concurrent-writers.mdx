@@ -40,7 +40,7 @@ Nothing was written, so you can wait and try again. If the lock stays, its write
 `lockedAt` helps you judge that, but the judgement is yours:
 
 - It is the writing host's clock, so it compares with yours only as far as the two clocks agree.
-- It is absent when the lock couldn't be read, or was released between the refusal and the read. The lock still counted as held.
+- It is absent when [the lock couldn't be read](#a-lock-the-library-cant-read), or was released between the refusal and the read. The lock still counted as held.
 
 ## `OBJECT_OUT_OF_DATE`: the object changed since you opened it
 
@@ -95,7 +95,7 @@ Two recoveries of the same unfinished write at once aren't kept apart, whether t
 
 You know a writer is dead when, for example, it is your own process and it has stopped, or the host that ran it has been restarted. A `lockedAt` from long ago is a hint, not proof: a writer can stall for minutes on a slow mount and then carry on.
 
-Don't delete a lock by hand. Recovery uses what the lock records to decide what to clear, and a write whose lock was removed by hand is no longer an unfinished write, so it can't be recovered. A version its dead writer left in the workspace makes the next create or update of the object throw `RECOVERY_NEEDED` and keep its lock, so that write can then be recovered; the next purge deletes it. A dead create's object root has to be removed by hand.
+Don't delete a lock by hand, unless it is [a lock the library can't read](#a-lock-the-library-cant-read). Recovery uses what the lock records to decide what to clear, and a write whose lock was removed by hand is no longer an unfinished write, so it can't be recovered. A version its dead writer left in the workspace makes the next create or update of the object throw `RECOVERY_NEEDED` and keep its lock, so that write can then be recovered; the next purge deletes it. A dead create's object root has to be removed by hand.
 
 ### When a writer dies
 
@@ -107,7 +107,7 @@ A host that crashed may have been writing objects you can't name. List the unfin
 
 <Code code={recoverAfterCrash} lang="ts" />
 
-This finds every write, whatever the layout, including a create that died before it was committed and so has no inventory naming its id.
+This finds every write, whatever the layout, including a create that died before it was committed and so has no inventory naming its id. It doesn't find [a lock the library can't read](#a-lock-the-library-cant-read).
 
 ### A create whose writer died
 
@@ -118,6 +118,23 @@ A create writes the object declaration before the root inventory. If its writer 
 - `root.objects()` leaves it out without an error.
 
 So a dead create doesn't show up when you list the storage root's objects, but it is among its unfinished writes. Listing also leaves out an object that has lost its declaration: see [what the library doesn't check or do](/ocfl-js/#what-it-doesnt-check-or-do).
+
+### A lock the library can't read
+
+A lock this release can't read, such as one that is corrupt, larger than 64 KiB, a directory or written by a later release, still counts as held, but it isn't an unfinished write. So nothing in the library can release it:
+
+- every create, update or purge of the object throws `OBJECT_LOCKED` with no `lockedAt`;
+- `root.unfinishedWrite(id)` gives `undefined`, and `root.unfinishedWrites()` leaves the object out.
+
+Delete this lock by hand. A single `OBJECT_LOCKED` with no `lockedAt` isn't enough to tell, since a lock released between the refusal and the read gives the same. Try again, and check `root.unfinishedWrite(id)` each time. If it throws a file system error instead, such as `EIO`, the lock may be fine and the file system at fault: fix that first. The error's message names the lock's path.
+
+Before you delete it, check that:
+
+- its writer is dead, as you would [before recovering](#recovering);
+- no writer on a later release of ocfl-js writes to the storage root: [upgrade every writer together](#upgrade-every-writer-together);
+- only one process deletes it.
+
+What its writer left is then as for any lock [deleted by hand](#recovering).
 
 ## What survives a power failure
 
