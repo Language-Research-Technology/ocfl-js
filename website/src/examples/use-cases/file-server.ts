@@ -57,7 +57,7 @@ const server = createServer(async (request, response) => {
       response.destroy();
     } else if (error instanceof RangeError) {
       response.writeHead(416).end();
-    } else if (error instanceof OcflError && ['OBJECT_NOT_FOUND', 'ID_INCOMPATIBLE_WITH_LAYOUT'].includes(error.code)) {
+    } else if (error instanceof OcflError && error.code === 'OBJECT_NOT_FOUND') {
       response.writeHead(404).end();
     } else {
       console.error(error);

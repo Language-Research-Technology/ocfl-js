@@ -7,6 +7,7 @@ import { PATH_DIRECT } from './helpers/layouts.ts';
 import { ocflError } from './helpers/ocfl-error.ts';
 
 const incompatible = ocflError('ID_INCOMPATIBLE_WITH_LAYOUT');
+const notFound = ocflError('OBJECT_NOT_FOUND');
 
 describe('a path-direct id whose path has the suffix part-way through', () => {
   const temp = useTempRoots('ocfl-path-direct-nesting-');
@@ -19,19 +20,21 @@ describe('a path-direct id whose path has the suffix part-way through', () => {
 
   for (const [how, layout, ids] of configs) {
     describe(`reached through ${how}`, () => {
-      const operations: [string, (root: StorageRoot, id: string) => Promise<unknown>][] = [
-        ['create', (root, id) => createObject(root, id, { 'b.txt': 'b' })],
-        ['open', (root, id) => root.open(id)],
-        ['remove', (root, id) => root.remove(id)],
+      const outcomes: [string, string, (root: StorageRoot, id: string) => Promise<unknown>][] = [
+        ['create', 'throws ID_INCOMPATIBLE_WITH_LAYOUT', (root, id) => assert.rejects(createObject(root, id, { 'b.txt': 'b' }), incompatible)],
+        ['open', 'throws OBJECT_NOT_FOUND', (root, id) => assert.rejects(root.open(id), notFound)],
+        ['remove', 'throws OBJECT_NOT_FOUND', (root, id) => assert.rejects(root.remove(id), notFound)],
+        ['has', 'is false', async (root, id) => assert.strictEqual(await root.has(id), false)],
+        ['unfinishedWrite', 'is undefined', async (root, id) => assert.strictEqual(await root.unfinishedWrite(id), undefined)],
       ];
-      for (const [name, operation] of operations) {
+      for (const [name, outcome, check] of outcomes) {
         for (const id of ids) {
-          it(`${name} throws ID_INCOMPATIBLE_WITH_LAYOUT for <${id}>, touching nothing`, async () => {
+          it(`${name} ${outcome} for <${id}>, touching nothing`, async () => {
             const root = await temp.newRoot(layout);
             await createObject(root, 'outer', { 'a.txt': 'a' });
             const before = await everything(path.dirname(root.path));
 
-            await assert.rejects(operation(root, id), incompatible);
+            await check(root, id);
 
             assert.deepStrictEqual(await everything(path.dirname(root.path)), before);
           });

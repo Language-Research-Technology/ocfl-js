@@ -40,24 +40,37 @@ describe('an id whose paths are too long for the file system', () => {
 
   const tooLong = (root: StorageRoot) => idWithObjectRootOf(root, PATH_MAX + 100);
   const lockTooLong = (root: StorageRoot) => idWithObjectRootOf(root, LONGEST_PATH - stagedLockExtra(root) + 1);
-  const operations: Record<string, (root: StorageRoot, id: string) => Promise<unknown>> = {
-    create: (root, id) => createObject(root, id, { 'a.txt': 'a' }),
-    open: (root, id) => root.open(id),
-    remove: (root, id) => root.remove(id),
-    unfinishedWrite: (root, id) => root.unfinishedWrite(id),
-  };
-  const refusals: [string, (root: StorageRoot) => string, string[]][] = [
-    ['whose object root is too long', tooLong, ['create', 'open', 'remove', 'unfinishedWrite']],
-    ['whose object root fits, but whose lock in the workspace does not', lockTooLong, ['create', 'remove']],
+  type Check = (root: StorageRoot, id: string) => Promise<unknown>;
+  const createRefused: Check = (root, id) => assert.rejects(createObject(root, id, { 'a.txt': 'a' }), incompatible);
+  const outcomesByIdKind: [string, (root: StorageRoot) => string, [string, string, Check][]][] = [
+    [
+      'whose object root is too long',
+      tooLong,
+      [
+        ['create', 'throws ID_INCOMPATIBLE_WITH_LAYOUT', createRefused],
+        ['open', 'throws OBJECT_NOT_FOUND', (root, id) => assert.rejects(root.open(id), ocflError('OBJECT_NOT_FOUND'))],
+        ['remove', 'throws OBJECT_NOT_FOUND', (root, id) => assert.rejects(root.remove(id), ocflError('OBJECT_NOT_FOUND'))],
+        ['has', 'is false', async (root, id) => assert.strictEqual(await root.has(id), false)],
+        ['unfinishedWrite', 'is undefined', async (root, id) => assert.strictEqual(await root.unfinishedWrite(id), undefined)],
+      ],
+    ],
+    [
+      'whose object root fits, but whose lock in the workspace does not',
+      lockTooLong,
+      [
+        ['create', 'throws ID_INCOMPATIBLE_WITH_LAYOUT', createRefused],
+        ['remove', 'throws ID_INCOMPATIBLE_WITH_LAYOUT', (root, id) => assert.rejects(root.remove(id), incompatible)],
+      ],
+    ],
   ];
 
-  for (const [which, idOf, names] of refusals) {
-    for (const name of names) {
-      it(`${name} throws ID_INCOMPATIBLE_WITH_LAYOUT for an id ${which}, touching nothing`, async () => {
+  for (const [which, idOf, outcomes] of outcomesByIdKind) {
+    for (const [name, outcome, check] of outcomes) {
+      it(`${name} ${outcome} for an id ${which}, touching nothing`, async () => {
         const root = await temp.newRoot({ extensionName: PATH_DIRECT });
         const before = await everything(path.dirname(root.path));
 
-        await assert.rejects(operations[name]!(root, idOf(root)), incompatible);
+        await check(root, idOf(root));
 
         assert.deepStrictEqual(await everything(path.dirname(root.path)), before);
       });

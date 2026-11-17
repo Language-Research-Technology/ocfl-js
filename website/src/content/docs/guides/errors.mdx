@@ -78,9 +78,9 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 ### `OBJECT_NOT_FOUND`
 
-**Cause:** there is no object with this id: nothing is in the directory the storage layout maps it to. `open` also throws it for an object another writer is creating and hasn't committed.
+**Cause:** there is no object with this id: nothing is in the directory the storage layout maps it to, or the storage layout can't place an object with this id at all, so none can exist (`cause` is then the storage layout's [`ID_INCOMPATIBLE_WITH_LAYOUT`](#id_incompatible_with_layout)). `open` also throws it for an object another writer is creating and hasn't committed.
 
-**What to do:** catch it instead of checking whether the object exists first; a check can be out of date by the time you act on it. To make the object, call `create`.
+**What to do:** catch it instead of checking whether the object exists first; a check can be out of date by the time you act on it. To make the object, call `create`, unless `cause` is `ID_INCOMPATIBLE_WITH_LAYOUT`: then no object can have the id, and `create` refuses it too.
 
 ### `OBJECT_EXISTS`
 
@@ -90,11 +90,11 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 ### `ID_INCOMPATIBLE_WITH_LAYOUT`
 
-**Cause:** the storage root's storage layout can't place an object with this id. Either the storage layout can't map the id, or it maps it somewhere an object can't go: the storage root itself, outside it, the `extensions` directory, or a path too long for the file system (with the path-direct storage layout, an id of many long segments). Each storage layout has its own rules. For example, `0002-flat-direct-storage-layout` refuses an id with a `/` in it, `.`, `..`, `extensions`, or an id longer than 255 bytes, and the path-direct storage layout refuses an id with `.` or `..` segments, or one that ends with or contains its suffix.
+**Cause:** a writer was given an id the storage root's storage layout can't place an object with. Either the storage layout can't map the id, or it maps it somewhere an object can't go: the storage root itself, outside it, the `extensions` directory, or a path too long for the file system (with the path-direct storage layout, an id of many long segments). Each storage layout has its own rules. For example, `0002-flat-direct-storage-layout` refuses an id with a `/` in it, `.`, `..`, `extensions`, or an id longer than 255 bytes, and the path-direct storage layout refuses an id with `.` or `..` segments, or one that ends with or contains its suffix.
 
 `create` and `remove` also throw it when the object's lock in the workspace would be too long for the file system, even if its directory isn't, so such an object can be opened but not changed.
 
-The id is at fault, not what is in the storage root. Apart from a lock path that is too long, no object can have this id in this storage root, so a reader can treat it as not found.
+The id is at fault, not what is in the storage root. Only `create`, and `remove` for a lock path that is too long, throw it. Otherwise no object can have such an id, so `has` gives `false`, `unfinishedWrite` gives `undefined`, and `open` and `remove` throw [`OBJECT_NOT_FOUND`](#object_not_found).
 
 **What to do:** choose another id, or a storage layout that suits your ids.
 

@@ -31,8 +31,8 @@ A few storage roots and ids need attention. 1.0 never changes anything on disk b
 | A path-direct `suffix` of `''` or `/` | `INVALID_STORAGE_ROOT` | Let every update finish, move each object into a `__object__` directory and drop `suffix` from `config.json` |
 | A storage root with no `ocfl_layout.json` | `LAYOUT_NOT_DECLARED` | Add an `ocfl_layout.json` naming the storage layout its objects are laid out by |
 | A storage root using `0006-flat-omit-prefix-storage-layout` or `0007-n-tuple-omit-prefix-storage-layout` | `UNSUPPORTED_LAYOUT` | None: 0.4 could never map an id under these layouts |
-| A path-direct id with a `.` or `..` segment (such as `a/../b`), the suffix part-way through (such as `a/__object__/b`), or a segment longer than 255 bytes in UTF-8 | `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id. 0.4 resolved the dots, so such an object sits where the resolved id maps to |
-| A flat-direct id longer than 255 bytes in UTF-8 | `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id |
+| A path-direct id with a `.` or `..` segment (such as `a/../b`), the suffix part-way through (such as `a/__object__/b`), or a segment longer than 255 bytes in UTF-8 | Finds no object: `has` gives `false`, `open` and `remove` throw `OBJECT_NOT_FOUND`, and `create` throws `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id. 0.4 resolved the dots, so such an object sits where the resolved id maps to |
+| A flat-direct id longer than 255 bytes in UTF-8 | Finds no object: `has` gives `false`, `open` and `remove` throw `OBJECT_NOT_FOUND`, and `create` throws `ID_INCOMPATIBLE_WITH_LAYOUT` | Use another id |
 
 ### Objects in a 0003 storage root
 
