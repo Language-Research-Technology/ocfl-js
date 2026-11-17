@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
 import { findNamasteVersion, OcflConstants, type OcflVersion, SEVERAL_DECLARATIONS } from './constants.ts';
-import { checkedDetails, type Draft, type UpdateOptions, type VersionDetails } from './draft.ts';
+import { checkedDetails, type Draft, type UpdateOptions, updateOptions, type VersionDetails } from './draft.ts';
 import { type OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import type { BuiltInLayout } from './layouts/built-in-layout.ts';
@@ -15,7 +15,7 @@ import { createError } from './ocfl-rules.ts';
 import { removeObject } from './remove.ts';
 import { SPEC_TEXT } from './spec-text.ts';
 import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
-import { deepFreeze, isNonEmptyString, parseJsonObject, rejectUnknownKeys } from './utils.ts';
+import { deepFreeze, isNonEmptyString, optionsObject, parseJsonObject } from './utils.ts';
 import { longestWriterPath } from './workspace.ts';
 
 const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, NAMASTE_PREFIX_STORAGE, NAMASTE_T } = OcflConstants;
@@ -202,7 +202,9 @@ interface StorageRoot {
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs, if an earlier create left an unfinished version in the workspace, or the create was refused and its lock couldn't be released. Don't simply repeat the create: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object to see whether it was created.
-   * @throws `TypeError` if the id, the message or the user's name is missing or empty, the user's address isn't a string, or `createdAt` isn't a valid `Date`. Nothing is created.
+   * @throws `TypeError` if the id, the message or the user's name is missing or empty, the user's address isn't a string, `createdAt` isn't a valid `Date`,
+   * `details` has a field other than `message`, `user` and `createdAt`, its user has one other than `name` and `address`,
+   * or `options` isn't an object, has a key other than `signal`, or its `signal` isn't an `AbortSignal`. Nothing is created.
    * @throws `Error` if `build` returned while draft operations it started were still running. Await every operation.
    * @throws `options.signal.reason` if the signal is aborted before the commit begins, even if `build` caught the error a draft operation rejected with; nothing of the object is left, and it isn't locked. A signal already aborted is refused before the lock is taken.
    * @throws Whatever `build` or a draft operation throws; nothing of the object is left, and it isn't locked.
@@ -338,11 +340,12 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
     async has(id: string) {
       return (await objectState(root, await objectRootToRead(checkedId(id)))) === 'committed';
     },
-    async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>, options: UpdateOptions = {}) {
+    async create(id: string, details: VersionDetails, build: (draft: Draft) => Promise<unknown>, options?: UpdateOptions) {
       const objectId = checkedId(id);
       const checked = checkedDetails(details);
-      options.signal?.throwIfAborted();
-      return createObject(root, await objectRootToWrite(objectId), objectId, ocflVersion, checked, build, options.signal);
+      const { signal } = updateOptions(options, 'root.create');
+      signal?.throwIfAborted();
+      return createObject(root, await objectRootToWrite(objectId), objectId, ocflVersion, checked, build, signal);
     },
     objects() {
       return listObjects(root, ocflVersion);
@@ -370,7 +373,7 @@ function absolutePath(rootPath: string): string {
  * Creates a new OCFL 1.1 storage root in an empty or missing directory.
  *
  * @throws {@link OcflError} `DIRECTORY_NOT_EMPTY` if `path` holds anything.
- * @throws `TypeError` if `path` is missing or empty, the layout or one of its parameters is invalid, or `options` has a key other than `layout`.
+ * @throws `TypeError` if `path` is missing or empty, `options` isn't an object or has a key other than `layout`, or the layout or one of its parameters is invalid.
  * @throws The file system error if the directory can't be made or written to.
  * @example
  * ```ts
@@ -381,8 +384,8 @@ function absolutePath(rootPath: string): string {
  */
 async function createStorageRoot(path: string, options: { layout: LayoutConfig }): Promise<StorageRoot> {
   const root = absolutePath(path);
-  const layout = createLayout(options?.layout);
-  rejectUnknownKeys(options, (option) => option === 'layout', 'createStorageRoot has no option');
+  const checked = optionsObject(options, 'createStorageRoot', ['layout'], "{ layout: { extensionName: '0004-hashed-n-tuple-storage-layout' } }");
+  const layout = createLayout(checked.layout as LayoutConfig);
   await fs.promises.mkdir(root, { recursive: true });
   if (!(await fileSystem.isDirEmpty(root))) {
     throw ocflError('DIRECTORY_NOT_EMPTY', `Cannot create a storage root in ${root}, which is not empty.`);

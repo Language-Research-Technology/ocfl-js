@@ -54,13 +54,52 @@ function deepFreeze<T>(value: T): T {
 
 /**
  * @param refusal - Starts the message, e.g. `createStorageRoot has no option`
- * @throws `TypeError` naming each key of `object` that `isKnown` refuses
+ * @throws `TypeError` naming each key of `object` not in `known`
  */
-function rejectUnknownKeys(object: object, isKnown: (key: string) => boolean, refusal: string): void {
-  const unknown = Object.keys(object).filter((key) => !isKnown(key));
+function rejectUnknownKeys(object: object, known: readonly string[], refusal: string): void {
+  const unknown = Object.keys(object).filter((key) => !known.includes(key));
   if (unknown.length > 0) {
     throw new TypeError(`${refusal} ${unknown.map((key) => inspect(key)).join(' or ')}.`);
   }
 }
 
-export { createLimiter, deepFreeze, isJsonObject, isNonEmptyString, parseJsonObject, rejectUnknownKeys };
+/**
+ * @param call - The call as a caller writes it, e.g. `draft.copy`
+ * @param example - Options `call` takes, shown if `options` isn't an object
+ * @returns A copy of the own properties of `options`, so each is read once and none is inherited
+ * @throws `TypeError` if `options` is given and isn't an object, or has a key not in `known`
+ */
+function optionsObject(options: unknown, call: string, known: readonly string[], example: string): Record<string, unknown> {
+  if (options === undefined) {
+    return {};
+  }
+  if (!isJsonObject(options)) {
+    throw new TypeError(`Options must be an object, such as ${example}, not ${inspect(options)}`);
+  }
+  rejectUnknownKeys(options, known, `${call} has no option`);
+  return { ...options };
+}
+
+/**
+ * Checked by shape, not `instanceof`, so a signal from another realm or a polyfill is accepted, as Node's own APIs accept it
+ * @throws `TypeError` if `signal` is given and isn't an `AbortSignal`
+ */
+function signalOption(signal: unknown): AbortSignal | undefined {
+  const candidate = signal as Partial<AbortSignal> | null;
+  if (
+    signal !== undefined &&
+    !(typeof candidate?.aborted === 'boolean' && typeof candidate.throwIfAborted === 'function' && typeof candidate.addEventListener === 'function')
+  ) {
+    throw new TypeError(`The signal option must be an AbortSignal, not ${inspect(signal)}`);
+  }
+  return signal as AbortSignal | undefined;
+}
+
+/** @throws `TypeError` if the option `name` is given and isn't a function */
+function functionOption(name: string, value: unknown): void {
+  if (value !== undefined && typeof value !== 'function') {
+    throw new TypeError(`The ${name} option must be a function, not ${inspect(value)}`);
+  }
+}
+
+export { createLimiter, deepFreeze, functionOption, isJsonObject, isNonEmptyString, optionsObject, parseJsonObject, rejectUnknownKeys, signalOption };

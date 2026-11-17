@@ -4,6 +4,7 @@ import type { Readable } from 'node:stream';
 import { ocflError } from './error.ts';
 import { openRegularFile } from './file-system.ts';
 import type { Version } from './ocfl-object.ts';
+import { optionsObject } from './utils.ts';
 
 /** Part of a file's content. Both ends are byte offsets from 0, and `end` is included, as in an HTTP `Range` header. */
 interface ByteRange {
@@ -51,6 +52,7 @@ interface OcflFile {
    * Its chunks are `Buffer`s. With DOM typings, copy one into a `new Uint8Array` before giving it to a `Blob` or `Response`. For a
    * web stream, use `Readable.toWeb(await file.stream())`, and with DOM typings cast that to the global `ReadableStream`.
    *
+   * @throws `TypeError` if `range` is given and isn't an object, or has a key other than `start` and `end`.
    * @throws `RangeError` if an end of the range isn't a whole number from 0, `start` is after `end`, or `start` is after the last
    * byte. An `end` after the last byte reads to the end.
    * @throws {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file, such as a directory.
@@ -150,13 +152,13 @@ class StoredFile implements OcflFile {
   }
 
   async stream(range?: ByteRange): Promise<Readable> {
-    checkRange(range);
+    const { start, end } = checkedRange(range);
     const { handle, size } = await this.#open();
-    if (range?.start !== undefined && range.start >= size) {
+    if (start !== undefined && start >= size) {
       await handle.close();
-      throw new RangeError(`A range can't start at byte ${range.start} of ${this.path}, which has ${size} bytes.`);
+      throw new RangeError(`A range can't start at byte ${start} of ${this.path}, which has ${size} bytes.`);
     }
-    return handle.createReadStream({ start: range?.start, end: range?.end });
+    return handle.createReadStream({ start, end });
   }
 
   async text(): Promise<string> {
@@ -187,16 +189,18 @@ class StoredFile implements OcflFile {
   }
 }
 
-function checkRange(range: ByteRange | undefined): void {
+function checkedRange(range: unknown): ByteRange {
+  const checked: ByteRange = optionsObject(range, 'file.stream', ['start', 'end'], '{ start: 0, end: 1023 }');
   for (const side of ['start', 'end'] as const) {
-    const offset = range?.[side];
+    const offset = checked[side];
     if (offset !== undefined && !(Number.isSafeInteger(offset) && offset >= 0)) {
       throw new RangeError(`A range's ${side} must be a whole number from 0, not ${offset}.`);
     }
   }
-  if (range?.start !== undefined && range.end !== undefined && range.start > range.end) {
-    throw new RangeError(`A range can't start (${range.start}) after it ends (${range.end}).`);
+  if (checked.start !== undefined && checked.end !== undefined && checked.start > checked.end) {
+    throw new RangeError(`A range can't start (${checked.start}) after it ends (${checked.end}).`);
   }
+  return checked;
 }
 
 export { type ByteRange, type FileHistory, type OcflFile, StoredFile };

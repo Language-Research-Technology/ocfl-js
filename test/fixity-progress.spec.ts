@@ -108,6 +108,24 @@ describe('progress and cancelling of a fixity check', () => {
     assert.ok(streams.every((stream) => stream.closed));
   });
 
+  it('stops for an aborted signal that is not an instance of this realm’s AbortSignal, such as a polyfill', async () => {
+    const root = await temp.newRoot();
+    const object = await createObject(root, 'polyfilled', manyFiles(3));
+    const reason = new Error('polyfill aborted');
+    const signal = {
+      aborted: true,
+      reason,
+      throwIfAborted() {
+        throw reason;
+      },
+      addEventListener() {},
+      removeEventListener() {},
+    };
+    const { streams, outcome } = await trackReadStreams(() => object.checkFixity({ signal: signal as never }));
+    assert.deepStrictEqual(outcome, { status: 'rejected', reason });
+    assert.strictEqual(streams.length, 0);
+  });
+
   it('resolves to the sorted problems with a signal that is never aborted', async () => {
     const root = await temp.newRoot();
     const object = await createObject(root, 'unaborted', { 'b.txt': 'b', 'a.txt': 'a' });
@@ -119,5 +137,26 @@ describe('progress and cancelling of a fixity check', () => {
       problems.map(({ storedFile }) => path.basename(storedFile)),
       ['a.txt', 'b.txt'],
     );
+  });
+
+  describe('options it refuses', () => {
+    for (const [name, options, message] of [
+      ['an unknown option', { onProgess: () => {} }, /^object\.checkFixity has no option 'onProgess'\.$/],
+      ['two unknown options', { signal: undefined, onProgess: () => {}, sigal: 1 }, /^object\.checkFixity has no option 'onProgess' or 'sigal'\.$/],
+      ['a string', 'x', /^Options must be an object, such as \{ signal: AbortSignal\.timeout\(60_000\) \}, not 'x'$/],
+      ['null', null, /^Options must be an object, such as \{ signal: AbortSignal\.timeout\(60_000\) \}, not null$/],
+      ['a signal that is not an AbortSignal', { signal: { aborted: false } }, /^The signal option must be an AbortSignal, not \{ aborted: false \}$/],
+      ['an onProgress that is not a function', { onProgress: 'log' }, /^The onProgress option must be a function, not 'log'$/],
+    ] as const) {
+      it(`throws a TypeError for ${name}, reading no stored file`, async () => {
+        const root = await temp.newRoot();
+        const object = await createObject(root, 'refused', manyFiles(3));
+        const { streams, outcome } = await trackReadStreams(() => object.checkFixity(options as never));
+        assert.strictEqual(outcome.status, 'rejected');
+        const { reason } = outcome as PromiseRejectedResult;
+        assert.ok(reason instanceof TypeError && message.test(reason.message), String(reason));
+        assert.strictEqual(streams.length, 0);
+      });
+    }
   });
 });

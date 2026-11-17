@@ -79,10 +79,9 @@ describe('creating an object', () => {
     assert.deepStrictEqual(versions.v1?.user, { name: 'Alice', address: 'https://orcid.org/0000-0001' });
   });
 
-  it('records a user who has no address, and nothing else the caller put on the user', async () => {
+  it('records a user who has no address with no address field', async () => {
     const root = await newRoot();
-    const user = { name: 'Alice', role: 'admin' };
-    const object = await root.create('no-address', { message: 'Initial deposit', user }, async () => {});
+    const object = await root.create('no-address', { message: 'Initial deposit', user: { name: 'Alice' } }, async () => {});
     assert.deepStrictEqual(object.head.user, { name: 'Alice' });
     assert.deepStrictEqual((await readInventory(objectRootOf(root, 'no-address'))).versions.v1?.user, { name: 'Alice' });
   });
@@ -325,28 +324,51 @@ describe('creating an object', () => {
       });
     }
 
-    for (const [name, details] of [
-      ['no details', undefined],
-      ['a missing message', { user: { name: 'Alice' } }],
-      ['an empty message', { message: '', user: { name: 'Alice' } }],
-      ['a message that is not a string', { message: 42, user: { name: 'Alice' } }],
-      ['a missing user', { message: 'Initial deposit' }],
-      ['a user with no name', { message: 'Initial deposit', user: { address: 'mailto:alice@example.org' } }],
-      ['a user with an empty name', { message: 'Initial deposit', user: { name: '' } }],
-      ['a user whose address is not a string', { message: 'Initial deposit', user: { name: 'Alice', address: 42 } }],
+    for (const [name, details, options, message] of [
+      ['no details', undefined, undefined, /^The message of the version is required\.$/],
+      ['a missing message', { user: { name: 'Alice' } }, undefined, /^The message of the version is required\.$/],
+      ['an empty message', { message: '', user: { name: 'Alice' } }, undefined, /^The message of the version is required\.$/],
+      ['a message that is not a string', { message: 42, user: { name: 'Alice' } }, undefined, /^The message of the version is required\.$/],
+      ['a missing user', { message: 'Initial deposit' }, undefined, /^The name of the user making the version is required\.$/],
+      [
+        'a user with no name',
+        { message: 'Initial deposit', user: { address: 'mailto:alice@example.org' } },
+        undefined,
+        /^The name of the user making the version is required\.$/,
+      ],
+      ['a user with an empty name', { message: 'Initial deposit', user: { name: '' } }, undefined, /^The name of the user making the version is required\.$/],
+      [
+        'a user whose address is not a string',
+        { message: 'Initial deposit', user: { name: 'Alice', address: 42 } },
+        undefined,
+        /^The address of the user making the version must be a string\.$/,
+      ],
+      ['an unknown option', DETAILS, { sigal: 1 }, /^root\.create has no option 'sigal'\.$/],
+      ['two unknown options', DETAILS, { signal: undefined, sigal: 1, layout: FLAT }, /^root\.create has no option 'sigal' or 'layout'\.$/],
+      ['options that are a string', DETAILS, 'x', /^Options must be an object, such as \{ signal: AbortSignal\.timeout\(60_000\) \}, not 'x'$/],
+      ['options that are null', DETAILS, null, /^Options must be an object, such as \{ signal: AbortSignal\.timeout\(60_000\) \}, not null$/],
+      ['a signal that is not an AbortSignal', DETAILS, { signal: 'abort' }, /^The signal option must be an AbortSignal, not 'abort'$/],
+      ['an unknown field in the details', { ...DETAILS, createdat: new Date(0) }, undefined, /^The details of the version have no field 'createdat'\.$/],
+      [
+        'an unknown field in the user',
+        { message: 'Initial deposit', user: { name: 'Alice', adress: 'x' } },
+        undefined,
+        /^The user making the version has no field 'adress'\.$/,
+      ],
     ] as const) {
-      it(`throws a TypeError for ${name}, writing nothing`, async () => {
+      it(`throws a TypeError for ${name}, before calling back, taking no lock and writing nothing`, async () => {
         const root = await newRoot();
         const before = await snapshot(root.path);
         let called = false;
         const build = async () => {
           called = true;
         };
-        await assert.rejects(root.create('undescribed', details as never, build), TypeError);
+        await assert.rejects(root.create('refused', details as never, build, options as never), (e) => e instanceof TypeError && message.test(e.message));
         assert.ok(!called, 'the callback ran');
         assert.deepStrictEqual(await snapshot(root.path), before);
-        assert.ok(!fs.existsSync(objectRootOf(root, 'undescribed')));
-        await assert.rejects(root.open('undescribed'), ocflError('OBJECT_NOT_FOUND'));
+        assertNoWorkspace(root);
+        assert.strictEqual(await root.unfinishedWrite('refused'), undefined);
+        await assert.rejects(root.open('refused'), ocflError('OBJECT_NOT_FOUND'));
       });
     }
   });
