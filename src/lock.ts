@@ -209,7 +209,7 @@ async function objectLocked(workspace: string): Promise<OcflError> {
  * @param objectRootExisted - Recorded in the lock, for recovery
  * @param operation - Recorded in the lock, for whoever finds it unfinished
  * @returns What the lock records
- * @throws {@link OcflError} `OBJECT_LOCKED`, with `lockedAt` if the lock can be read, if the lock is already taken. A lock file that
+ * @throws {@link OcflError} `OBJECT_LOCKED`, with `lockedAt` if the lock can be read, if the lock is already taken. A lock that
  * exists refuses, even if it can't be read
  * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the lock can't be hard-linked into place; nothing is left behind
  */

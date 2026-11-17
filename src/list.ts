@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
-import { type DeclarationsFound, findNamasteVersion } from './declaration.ts';
+import { type DeclarationsFound, findDeclaredVersion } from './declaration.ts';
 import { OcflError } from './error.ts';
 import { isNothingAtPath, pathFromStorageRoot } from './file-system.ts';
 import { type ObjectPlace, objectPlace } from './object-place.ts';
@@ -9,7 +9,7 @@ import { type OcflObject, openDeclaredObject } from './ocfl-object.ts';
 import { idInRootInventory } from './root-inventory.ts';
 import type { RootSettings } from './storage-root.ts';
 
-const { EXTENSIONS_DIR, NAMASTE_PREFIX_OBJECT } = OcflConstants;
+const { EXTENSIONS_DIR, OBJECT_DECLARATION_PREFIX } = OcflConstants;
 
 /** An object root that {@link StorageRoot.objects} opened. */
 interface ListedOpenedObject {
@@ -79,7 +79,7 @@ async function* objectsUnder(storageRoot: string, rootSettings: RootSettings, di
       continue;
     }
     const entryPath = path.join(dir.path, entry.name);
-    const declared = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, entryPath);
+    const declared = await findDeclaredVersion(OBJECT_DECLARATION_PREFIX, entryPath);
     if (declared === undefined) {
       const subdirectory = await openListedDirectory(entryPath);
       if (subdirectory) {

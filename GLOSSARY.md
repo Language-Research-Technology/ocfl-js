@@ -20,6 +20,10 @@ _Avoid_: Record, item, snapshot
 The directory of an OCFL object, where the storage layout places it in the storage root.
 _Avoid_: Object directory, object folder
 
+**Declaration**:
+The file whose name declares that a directory is a storage root or an object root, and of which OCFL version: `0=ocfl_1.x` or `0=ocfl_object_1.x`. The OCFL spec calls it a conformance declaration, written in the NAMASTE format.
+_Avoid_: Namaste file
+
 **Damaged object root**:
 An object root with an object declaration whose OCFL object the library can't open: its root inventory or sidecar is missing, corrupt or inconsistent, its declaration is invalid, or its OCFL version is later than the storage root's. Listing names it by its path from the storage root.
 _Avoid_: Invalid object, broken object, corrupt object
@@ -46,7 +50,7 @@ _Avoid_: Transaction
 
 **Reinstate**:
 To put a file, or every file below a directory, back in a draft as it was in an earlier version, at the same logical path.
-_Avoid_: Restore, revert, copy from a version
+_Avoid_: Restore (fine for fixing a stored file by hand, outside the library), revert, copy from a version
 
 **Workspace**:
 The library's directory inside a storage root where a new version is assembled before it is moved into its object root.
@@ -62,7 +66,7 @@ _Avoid_: Publish, finalise
 
 **Recover**:
 To clear what a dead writer left of an OCFL object and release its lock, on the caller's word that no writer is alive: an update that wasn't committed is discarded, one that was is completed, and a purge that had begun deleting is finished. A purge that hadn't begun deleting is recovered as an update that wasn't committed.
-_Avoid_: Repair, unlock, roll back
+_Avoid_: Repair (fine for fixing an object by hand, outside the library), unlock, roll back
 
 **Durability**:
 Whether a create or update through a storage root flushes what it writes to disk before it returns, set when the storage root is opened or created. `'full'`, the default, flushes every file and directory of the new version, so a version that returned survives a crash or power failure; `'none'` flushes only the lock, for bulk loading, and leaves the caller to run `sync`.

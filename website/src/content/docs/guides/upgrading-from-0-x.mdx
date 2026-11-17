@@ -128,7 +128,7 @@ Some 0.4 updates could leave an object damaged. [Checking fixity across a storag
 
 **Objects with no workspace.** An object opened with `ocfl.object({ root })` and no `workspace` could lose every version when an update failed, was rolled back or had no changes. With a shared `workspace`, an update could delete everything else in it. Objects from `storage.object()` had their own workspace and kept their versions. Versions already lost can't be got back.
 
-The library doesn't repair damaged objects. To repair one, create a new object from the files you know are right, then [delete the damaged one by hand](/ocfl-js/guides/errors/#removing-a-damaged-object).
+The library doesn't repair damaged objects. To repair one, create a new object from the files you know are right, then delete the damaged one with `purge`, or [by hand](/ocfl-js/guides/errors/#removing-a-damaged-object-root) if it can't be opened.
 
 ## From a 1.0 beta
 

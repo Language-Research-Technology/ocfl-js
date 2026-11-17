@@ -96,7 +96,7 @@ interface FileHistory {
   modifiedIn(path: string, digest: string, version: number): Version;
 }
 
-interface StoredFileOptions {
+interface VersionFileOptions {
   readonly path: string;
   readonly digest: string;
   /** The number of the version the file is in */
@@ -107,7 +107,7 @@ interface StoredFileOptions {
   readonly history: FileHistory;
 }
 
-class StoredFile implements OcflFile {
+class VersionFile implements OcflFile {
   readonly path: string;
   readonly digest: string;
   readonly #objectRoot: string;
@@ -115,7 +115,7 @@ class StoredFile implements OcflFile {
   readonly #version: number;
   readonly #history: FileHistory;
 
-  constructor({ path, digest, version, objectRoot, contentPath, history }: StoredFileOptions) {
+  constructor({ path, digest, version, objectRoot, contentPath, history }: VersionFileOptions) {
     this.path = path;
     this.digest = digest;
     this.#version = version;
@@ -203,4 +203,4 @@ function streamOptions(options: unknown): StreamOptions {
   return checked;
 }
 
-export { type FileHistory, type OcflFile, StoredFile, type StreamOptions };
+export { type FileHistory, type OcflFile, type StreamOptions, VersionFile };

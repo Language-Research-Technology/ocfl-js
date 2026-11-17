@@ -4,7 +4,7 @@ import * as Hashing from '../digest.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from './built-in-layout.ts';
 import { checkNTupleParameters } from './n-tuple.ts';
 
-/** Object directories named by their id's digest, nested under pieces of it. */
+/** Object roots named by their id's digest, nested under pieces of it. */
 interface HashedNTupleLayoutConfig {
   /** Name of the layout's OCFL extension. */
   extensionName: '0004-hashed-n-tuple-storage-layout';
@@ -14,7 +14,7 @@ interface HashedNTupleLayoutConfig {
   tupleSize?: number;
   /** Number of directory levels. Defaults to 3. */
   numberOfTuples?: number;
-  /** Name the object directory with only the rest of the digest. Defaults to `false`. */
+  /** Name the object root with only the rest of the digest. Defaults to `false`. */
   shortObjectRoot?: boolean;
 }
 

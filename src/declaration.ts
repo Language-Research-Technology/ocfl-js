@@ -2,22 +2,22 @@ import { OcflConstants, type OcflSpecVersion } from './constants.ts';
 import { readIfPresent } from './file-system.ts';
 import { createError } from './ocfl-rules.ts';
 
-const { NAMASTE_PREFIX_OBJECT } = OcflConstants;
+const { OBJECT_DECLARATION_PREFIX } = OcflConstants;
 
-/** {@link findNamasteVersion} for a directory holding more than one declaration */
+/** {@link findDeclaredVersion} for a directory holding more than one declaration */
 const SEVERAL_DECLARATIONS = 'several';
 
-/** What {@link findNamasteVersion} finds in a directory that has a declaration */
+/** What {@link findDeclaredVersion} finds in a directory that has a declaration */
 type DeclarationsFound = OcflSpecVersion | '' | typeof SEVERAL_DECLARATIONS;
 
 /**
- * The OCFL version declared in `rootPath` by a namaste file named for `prefix`.
+ * The OCFL version declared in `rootPath` by a declaration named for `prefix`.
  * @returns The version, `''` if its declaration has the wrong contents, {@link SEVERAL_DECLARATIONS} if there is more than one,
  * or `undefined` if there is none
  */
-async function findNamasteVersion(prefix: string, rootPath: string): Promise<DeclarationsFound | undefined> {
-  const namastePath = `${rootPath}/${OcflConstants.NAMASTE_T}${prefix}`;
-  const reads = await Promise.all(OcflConstants.OCFL_VERSIONS.map(async (version) => ({ version, text: await readIfPresent(namastePath + version) })));
+async function findDeclaredVersion(prefix: string, rootPath: string): Promise<DeclarationsFound | undefined> {
+  const declarationPath = `${rootPath}/${OcflConstants.DECLARATION_TAG}${prefix}`;
+  const reads = await Promise.all(OcflConstants.OCFL_VERSIONS.map(async (version) => ({ version, text: await readIfPresent(declarationPath + version) })));
   const declared = reads.filter((read): read is { version: OcflSpecVersion; text: string } => read.text !== undefined);
   if (declared.length > 1) {
     return SEVERAL_DECLARATIONS;
@@ -48,13 +48,13 @@ function checkedDeclaration(objectRoot: string, declared: DeclarationsFound): Oc
  * @throws {@link OcflError} `INVALID_OBJECT` as {@link checkedDeclaration} does
  */
 async function objectDeclaration(objectRoot: string): Promise<OcflSpecVersion | undefined> {
-  const declared = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, objectRoot);
+  const declared = await findDeclaredVersion(OBJECT_DECLARATION_PREFIX, objectRoot);
   return declared === undefined ? undefined : checkedDeclaration(objectRoot, declared);
 }
 
 /** Whether `dir` has an object declaration file, whatever it holds */
 async function hasObjectDeclaration(dir: string): Promise<boolean> {
-  return (await findNamasteVersion(NAMASTE_PREFIX_OBJECT, dir)) !== undefined;
+  return (await findDeclaredVersion(OBJECT_DECLARATION_PREFIX, dir)) !== undefined;
 }
 
-export { checkedDeclaration, type DeclarationsFound, findNamasteVersion, hasObjectDeclaration, objectDeclaration, SEVERAL_DECLARATIONS };
+export { checkedDeclaration, type DeclarationsFound, findDeclaredVersion, hasObjectDeclaration, objectDeclaration, SEVERAL_DECLARATIONS };
