@@ -24,7 +24,7 @@ With npm or Yarn, use `npm install @ocfl/ocfl-fs@beta` or `yarn add @ocfl/ocfl-f
 
 With TypeScript, you need `@types/node` in your project.
 
-Each example below is a module of its own. None of them use TypeScript syntax, so you can save one as `step.mjs` and run it with `node step.mjs`. Run them in order, from the same directory.
+Each example below is a module of its own. None of them use TypeScript syntax, so you can save one as `step.mjs` and run it with `node step.mjs`. Run them in order, from the same directory. [Concepts](/ocfl-js/concepts/) shows what they leave on disk.
 
 ## Create a storage root
 
@@ -46,7 +46,7 @@ You only create a storage root once. From then on, open it with [`openStorageRoo
 
 <Code code={createObject} lang="ts" />
 
-[`draft.write`](/ocfl-js/api/interfaces/draft/#write) puts text, bytes or a stream at a logical path: the file's path inside the object, such as `notes/field-notes.txt`. To bring in files or a whole directory from disk, use [`draft.import`](/ocfl-js/api/interfaces/draft/#import) instead.
+[`draft.write`](/ocfl-js/api/interfaces/draft/#write) puts text, bytes or a stream at a logical path: the file's path inside the object, such as `notes/field-notes.txt`. It isn't where the file is stored on disk; [Logical paths and content paths](/ocfl-js/concepts/#logical-paths-and-content-paths) shows the difference. To bring in files or a whole directory from disk, use [`draft.import`](/ocfl-js/api/interfaces/draft/#import) instead.
 
 Nothing is written to the object until your function returns. The library then commits the draft as version 1. If your function throws, the draft is discarded, no object is created, and `create` throws the same error. Await every draft operation inside the function.
 

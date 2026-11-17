@@ -1,0 +1,94 @@
+---
+title: Concepts
+description: What a storage root and an OCFL object look like on disk, named with the terms the rest of these docs use.
+---
+
+OCFL keeps each digital object as a directory of plain files, and keeps every version of it. You don't need to read the OCFL specification to use this library, but the docs name the parts of what it writes. This page shows those parts on disk. The [Glossary](/ocfl-js/glossary/) defines every term.
+
+## After one create
+
+[Getting started](/ocfl-js/guides/getting-started/) creates a storage root with `0004-hashed-n-tuple-storage-layout`, then creates an OCFL object with the id `item-1` and two files, `hello.txt` and `notes/field-notes.txt`. The storage root then holds:
+
+```
+ocfl-root/
+  0=ocfl_1.1                          ← declaration: an OCFL 1.1 storage root
+  ocfl_1.1.md                         ← a copy of the OCFL specification
+  ocfl_layout.json                    ← names the storage layout
+  ocfl-js-workspace.md                ← describes the library's workspace
+  599/08d/f50/59908df5…5b773/         ← object root of item-1
+    0=ocfl_object_1.1                 ← declaration: an OCFL 1.1 object
+    inventory.json                    ← root inventory
+    inventory.json.sha512             ← its sidecar
+    v1/                               ← version directory of version 1
+      inventory.json                  ← the inventory as version 1 left it
+      inventory.json.sha512
+      content/hello.txt               ← stored file
+      content/notes/field-notes.txt   ← stored file
+```
+
+### The storage root
+
+The [storage root](/ocfl-js/glossary/#storage-root) is the directory you create once and open from then on. Its [declaration](/ocfl-js/glossary/#declaration), `0=ocfl_1.1`, says which OCFL version it follows.
+
+Its [storage layout](/ocfl-js/glossary/#storage-layout), named in `ocfl_layout.json`, decides where each OCFL object goes. By default, `0004-hashed-n-tuple-storage-layout` takes the sha256 digest of the id and uses its first three groups of three characters as directories, then the whole digest; its parameters can change the digest algorithm and the groups. So the object root of `item-1` is named by a digest, not by `item-1`. [Storage layouts](/ocfl-js/#storage-layouts) lists the others, including one that spells out the id.
+
+While an object is being written, the library uses its [workspace](/ocfl-js/glossary/#workspace), `extensions/ocfl-js-workspace/` in the storage root, which is gone again once the write ends cleanly. `ocfl-js-workspace.md` describes it, so another tool knows what it is.
+
+### The OCFL object
+
+An [OCFL object](/ocfl-js/glossary/#ocfl-object) lives in its [object root](/ocfl-js/glossary/#object-root). Its [declaration](/ocfl-js/glossary/#declaration), `0=ocfl_object_1.1`, marks the directory as an object.
+
+The [root inventory](/ocfl-js/glossary/#root-inventory), `inventory.json`, describes the whole object. Its [sidecar](/ocfl-js/glossary/#root-inventory), `inventory.json.sha512`, holds the inventory's own digest, so a damaged inventory is found before it's used.
+
+An object holds one or more [versions](/ocfl-js/glossary/#version), and the latest is its [head](/ocfl-js/glossary/#head). Each version has a version directory, `v1/`, `v2/` and so on. It holds a copy of the [inventory](/ocfl-js/glossary/#inventory) as that version left it, and in `content/`, the [stored files](/ocfl-js/glossary/#stored-file) whose content the object didn't already have.
+
+## What the inventory records
+
+The inventory has the object's id, its [digest algorithm](/ocfl-js/glossary/#digest-algorithm), its head, and two maps, both keyed by digest:
+
+- the **manifest** gives the [content paths](/ocfl-js/glossary/#content-path) of the stored files with that content, from the object root
+- each version's **state** gives the [logical paths](/ocfl-js/glossary/#logical-path) that have that content in that version
+
+Here is the inventory after one more update, which wrote `Recorded on site, checked` to `notes/field-notes.txt`. It shows only those parts: the real file also has the inventory's `type` and `contentDirectory`, and each version's `created`, `message` and `user`. Digests are shortened.
+
+```json
+{
+  "id": "item-1",
+  "digestAlgorithm": "sha512",
+  "head": "v2",
+  "manifest": {
+    "f98631…3f52": ["v1/content/hello.txt"],
+    "564c37…ad03": ["v1/content/notes/field-notes.txt"],
+    "4f3877…3d1e": ["v2/content/notes/field-notes.txt"]
+  },
+  "versions": {
+    "v1": {
+      "state": {
+        "f98631…3f52": ["hello.txt"],
+        "564c37…ad03": ["notes/field-notes.txt"]
+      }
+    },
+    "v2": {
+      "state": {
+        "f98631…3f52": ["hello.txt"],
+        "4f3877…3d1e": ["notes/field-notes.txt"]
+      }
+    }
+  }
+}
+```
+
+The only stored file the update added is `v2/content/notes/field-notes.txt`; it also wrote `v2/inventory.json` and replaced the root inventory. Version 2's `hello.txt` has the same digest as version 1's, so it reads the stored file already in `v1/`.
+
+## Logical paths and content paths
+
+They often differ:
+
+| Version | Logical path            | Content path of the stored file it reads |
+| ------- | ----------------------- | ---------------------------------------- |
+| 1       | `hello.txt`             | `v1/content/hello.txt`                   |
+| 1       | `notes/field-notes.txt` | `v1/content/notes/field-notes.txt`       |
+| 2       | `hello.txt`             | `v1/content/hello.txt`                   |
+| 2       | `notes/field-notes.txt` | `v2/content/notes/field-notes.txt`       |
+
+An opened object works in logical paths and version numbers, and gives out no paths on disk: [`object.head.files`](/ocfl-js/api/interfaces/version/#files) maps each logical path of the head to its file, and an update's [draft](/ocfl-js/glossary/#draft) takes logical paths. You meet content paths when you look inside the storage root yourself, and in some error messages. A [fixity report](/ocfl-js/glossary/#fixity-report) names a stored file by its path from the storage root instead: its object root, then its content path.
