@@ -3,9 +3,10 @@ import { recoverWrite } from './commit.ts';
 import { objectRootConflict } from './error.ts';
 import type { Flusher } from './file-system.ts';
 import { type Lock, objectLocked, readLock, sameWriter } from './lock.ts';
+import { type ObjectPlace, objectPlace } from './object-place.ts';
 import { recoverPurge } from './purge.ts';
 import { deepFreeze } from './utils.ts';
-import { locksBelow, objectWorkspace, workspaceRoot } from './workspace.ts';
+import { locksBelow, workspaceRoot } from './workspace.ts';
 
 /**
  * A create, update or purge of an object whose lock is still held: its writer is still working, or died. The library can't tell which.
@@ -62,8 +63,8 @@ interface UnfinishedWrite {
 }
 
 /** @param seen - The lock as it was when the write was found */
-function unfinishedWrite(storageRoot: string, flusher: Flusher, objectRoot: string, seen: Lock): UnfinishedWrite {
-  const workspace = objectWorkspace(storageRoot, objectRoot);
+function unfinishedWrite(place: ObjectPlace, flusher: Flusher, seen: Lock): UnfinishedWrite {
+  const { workspace } = place;
   return deepFreeze({
     id: seen.id,
     lockedAt: new Date(seen.lockedAt),
@@ -76,24 +77,24 @@ function unfinishedWrite(storageRoot: string, flusher: Flusher, objectRoot: stri
       if (!sameWriter(lock, seen)) {
         throw await objectLocked(workspace);
       }
-      await (lock.removing ? recoverPurge(storageRoot, objectRoot) : recoverWrite(storageRoot, objectRoot, lock, flusher));
+      await (lock.removing ? recoverPurge(place) : recoverWrite(place, lock, flusher));
     },
   });
 }
 
 /**
- * The unfinished write of `id`, whose object the storage root's layout places at `objectRoot`, or `undefined` if it isn't locked.
+ * The unfinished write of `id`, whose object the storage root's layout places at `place`, or `undefined` if it isn't locked.
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if the lock there is a writer's of another id
  */
-async function findUnfinishedWrite(storageRoot: string, flusher: Flusher, objectRoot: string, id: string): Promise<UnfinishedWrite | undefined> {
-  const lock = await readLock(objectWorkspace(storageRoot, objectRoot));
+async function findUnfinishedWrite(place: ObjectPlace, flusher: Flusher, id: string): Promise<UnfinishedWrite | undefined> {
+  const lock = await readLock(place.workspace);
   if (lock === undefined) {
     return undefined;
   }
   if (lock.id !== id) {
-    throw objectRootConflict(objectRoot, id, `is locked by a writer of <${lock.id}>`);
+    throw objectRootConflict(place.objectRoot, id, `is locked by a writer of <${lock.id}>`);
   }
-  return unfinishedWrite(storageRoot, flusher, objectRoot, lock);
+  return unfinishedWrite(place, flusher, lock);
 }
 
 /**
@@ -106,7 +107,7 @@ async function* listUnfinishedWrites(storageRoot: string, flusher: Flusher, obje
   for await (const { dir, lock } of locksBelow(workspace)) {
     const objectPath = path.relative(workspace, dir);
     if (placedAt(objectPathOf, lock.id) === objectPath) {
-      yield unfinishedWrite(storageRoot, flusher, path.join(storageRoot, objectPath), lock);
+      yield unfinishedWrite(objectPlace(storageRoot, path.join(storageRoot, objectPath)), flusher, lock);
     }
   }
 }

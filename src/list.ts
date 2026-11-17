@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { type DeclarationsFound, findNamasteVersion, OcflConstants } from './constants.ts';
+import { OcflConstants } from './constants.ts';
+import { type DeclarationsFound, findNamasteVersion } from './declaration.ts';
 import { OcflError } from './error.ts';
 import { isNothingAtPath, pathFromStorageRoot } from './file-system.ts';
-import { idInRootInventory } from './object-on-disk.ts';
+import { type ObjectPlace, objectPlace } from './object-place.ts';
 import { type OcflObject, openDeclaredObject } from './ocfl-object.ts';
+import { idInRootInventory } from './root-inventory.ts';
 import type { RootSettings } from './storage-root.ts';
 
 const { EXTENSIONS_DIR, NAMASTE_PREFIX_OBJECT } = OcflConstants;
@@ -48,17 +50,13 @@ async function openListedDirectory(dirPath: string): Promise<fs.Dir | undefined>
 }
 
 /**
- * The object at `objectRoot`, or the reason it can't be opened.
+ * The object at `place`, or the reason it can't be opened.
  * @returns `undefined` for an object that is being created and isn't committed
  */
-async function listedObjectAt(
-  storageRoot: string,
-  objectRoot: string,
-  declared: DeclarationsFound,
-  rootSettings: RootSettings,
-): Promise<ListedObject | undefined> {
+async function listedObjectAt(place: ObjectPlace, declared: DeclarationsFound, rootSettings: RootSettings): Promise<ListedObject | undefined> {
+  const { storageRoot, objectRoot } = place;
   try {
-    const object = await openDeclaredObject(storageRoot, objectRoot, declared, rootSettings);
+    const object = await openDeclaredObject(place, declared, rootSettings);
     return object && { status: 'opened', object };
   } catch (error) {
     if (!(error instanceof OcflError && error.code === 'INVALID_OBJECT')) {
@@ -89,7 +87,7 @@ async function* objectsUnder(storageRoot: string, rootSettings: RootSettings, di
       }
       continue;
     }
-    const found = await listedObjectAt(storageRoot, entryPath, declared, rootSettings);
+    const found = await listedObjectAt(objectPlace(storageRoot, entryPath), declared, rootSettings);
     if (found) {
       yield found;
     }

@@ -1,11 +1,10 @@
 import type { OcflSpecVersion } from './constants.ts';
 import { type DigestAlgorithm, normaliseDigest } from './digest.ts';
 import { ocflError } from './error.ts';
-import type { FileIdentity } from './file-system.ts';
-import { isVersionName, VersionNumber } from './inventory-files.ts';
 import { normaliseLogicalPath, parentDirectories } from './logical-path.ts';
 import { createError, type ValidationCode } from './ocfl-rules.ts';
 import { isJsonObject } from './utils.ts';
+import { isVersionName, VersionNumber } from './version-number.ts';
 
 /** `T` and everything nested in it, read-only at compile time. The data isn't frozen. */
 type DeepReadonly<T> = { readonly [K in keyof T]: DeepReadonly<T[K]> };
@@ -201,24 +200,6 @@ class OcflObjectInventory {
   #fileIndex = new Map<string, Map<string, string>>();
   /** How many files each directory of the head state contains, at any depth */
   #headDirectories = new Map<string, number>();
-
-  /**
-   * Digest of this inventory's bytes in storage, as recorded in its sidecar
-   * @internal
-   */
-  _digest: string | undefined;
-
-  /**
-   * The {@link _digest} of the inventory this one is the next version of
-   * @internal
-   */
-  _madeFrom: string | undefined;
-
-  /**
-   * The identity of the root inventory file this was read from, or committed as
-   * @internal
-   */
-  _identity: FileIdentity | undefined;
 
   /** The index of a version, made if it has none yet */
   #versionIndex(version: string): Map<string, string> {
@@ -427,7 +408,6 @@ class OcflObjectInventory {
    * @internal
    */
   static _newVersion(data: Partial<Inventory> | OcflObjectInventory): OcflObjectInventory {
-    const madeFrom = data instanceof OcflObjectInventory ? data._digest : undefined;
     if (data instanceof OcflObjectInventory) {
       data = JSON.parse(JSON.stringify(data.#data)) as Inventory;
     }
@@ -453,7 +433,6 @@ class OcflObjectInventory {
     };
     const next = new OcflObjectInventory(data as Inventory);
     next.#rekeyHeadStateToManifest();
-    next._madeFrom = madeFrom;
     return next;
   }
 

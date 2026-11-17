@@ -1,12 +1,13 @@
 import fs, { type Dirent } from 'node:fs';
 import path from 'node:path';
 import { inspect } from 'node:util';
-import { type ObjectPlace, startWrite } from './commit.ts';
+import type { ObjectWrite } from './commit.ts';
 import * as Hashing from './digest.ts';
 import { ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import type { ContentRelease, DeletePlan, OcflObjectInventory, RelistPlan } from './inventory.ts';
 import { checkLogicalPath, fileLogicalPath, invalidLogicalPath, normaliseLogicalPath } from './logical-path.ts';
+import type { RootInventory } from './root-inventory.ts';
 import { createLimiter, functionOption, isJsonObject, isNonEmptyString, optionsObject, rejectUnknownKeys, signalOption } from './utils.ts';
 
 /** The person or system responsible for a version. */
@@ -831,20 +832,20 @@ class ObjectDraft implements Draft {
 }
 
 /**
- * Runs `change` on a draft of the version `inventory` is at, then commits it, or discards it if `change` throws.
+ * Runs `change` on a draft of the version the write `start` begins, then commits it, or discards it if `change` throws.
  * A failure before the commit point discards everything the draft made and releases the object's lock, as `ObjectWrite`'s commit and discard describe.
- * @param inventory - Already at its new version
- * @returns The committed inventory, or `undefined` if the draft ended the same as the previous version
+ * @param start - Begins the write, unless `signal` is already aborted
+ * @returns The committed root inventory, or `undefined` if the draft ended the same as the previous version
  */
 async function commitDraft(
-  place: ObjectPlace,
-  inventory: OcflObjectInventory,
+  start: () => Promise<ObjectWrite>,
   details: VersionDetails,
   change: (draft: Draft) => Promise<unknown>,
   signal: AbortSignal | undefined,
-): Promise<OcflObjectInventory | undefined> {
+): Promise<RootInventory | undefined> {
   signal?.throwIfAborted();
-  const write = await startWrite(place, inventory);
+  const write = await start();
+  const inventory = write.inventory;
   const turns = new Turns(signal);
   const discard = async (failure?: { error: unknown }) => {
     await turns.settle();

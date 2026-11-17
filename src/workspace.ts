@@ -2,30 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants } from './constants.ts';
 import { isNothingAtPath } from './file-system.ts';
-import { isVersionName } from './inventory-files.ts';
-import { isStagedLock, LOCK_NAME, type Lock, readLockFile, stagedLockPath } from './lock.ts';
+import { isStagedLock, LOCK_NAME, type Lock, readLockFile } from './lock.ts';
+import { isVersionName } from './version-number.ts';
 
 const { EXTENSIONS_DIR, WORKSPACE_EXTENSION } = OcflConstants;
 
 /** The workspace of the storage root at the absolute path `root` */
 function workspaceRoot(root: string): string {
   return path.join(root, EXTENSIONS_DIR, WORKSPACE_EXTENSION);
-}
-
-/**
- * The directory, in the workspace of the storage root at the absolute path `root`, of the object at `objectRoot`
- * @param objectRoot - Absolute, and inside the storage root
- */
-function objectWorkspace(root: string, objectRoot: string): string {
-  return path.join(workspaceRoot(root), path.relative(root, objectRoot));
-}
-
-/**
- * The longest path a writer of the object at `objectRoot` uses, whatever the object holds: the content staged beside its lock.
- * Only paths in the object's content can be longer.
- */
-function longestWriterPath(root: string, objectRoot: string): string {
-  return stagedLockPath(path.join(objectWorkspace(root, objectRoot), LOCK_NAME));
 }
 
 /** What `list` gives for a directory, or nothing if nothing can be at its path */
@@ -93,4 +77,4 @@ async function clearWorkspace(workspace: string): Promise<void> {
   await removeAll(workspace, [...(await unfinishedVersions(workspace, names)), ...names.filter(isStagedLock)]);
 }
 
-export { clearWorkspace, locksBelow, longestWriterPath, namesIn, objectWorkspace, removeAll, workspaceRoot };
+export { clearWorkspace, locksBelow, namesIn, removeAll, workspaceRoot };

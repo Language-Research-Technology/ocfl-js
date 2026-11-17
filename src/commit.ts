@@ -1,27 +1,26 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { OcflConstants, type OcflSpecVersion } from './constants.ts';
+import { objectDeclaration } from './declaration.ts';
 import * as Hashing from './digest.ts';
 import type { VersionDetails } from './draft.ts';
 import { ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import type { OcflObjectInventory } from './inventory.ts';
-import { isStagedRootInventory, isVersionName, rootInventoryPaths, sidecarContent, sidecarDigest } from './inventory-files.ts';
 import { type Lock, lockKept, releaseLock, takeLock } from './lock.ts';
-import { assertEmptyObjectRoot, declarationWithoutInventory, enclosingObject, objectDeclaration, readInventory } from './object-on-disk.ts';
+import type { ObjectPlace } from './object-place.ts';
+import { assertEmptyObjectRoot, declarationWithoutInventory, enclosingObject } from './object-root.ts';
 import { createError } from './ocfl-rules.ts';
+import { isStagedRootInventory, type RootInventory, readInventory, rootInventoryPaths, sidecarContent, sidecarDigest } from './root-inventory.ts';
 import { parseJsonObject } from './utils.ts';
-import { clearWorkspace, namesIn, objectWorkspace, removeAll } from './workspace.ts';
+import { isVersionName } from './version-number.ts';
+import { clearWorkspace, namesIn, removeAll } from './workspace.ts';
 
 const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
 const FIRST_VERSION = 'v1';
 
-/** Where the object a write creates or updates is */
-interface ObjectPlace {
-  /** Absolute path of the storage root, where removing empty directories stops */
-  readonly storageRoot: string;
-  /** Absolute path of the object root, inside the storage root */
-  readonly objectRoot: string;
+/** How a write creates or updates its object */
+interface WriteSettings {
   /** Declared when the first commit creates the object */
   readonly ocflVersion: OcflSpecVersion;
   readonly flusher: fileSystem.Flusher;
@@ -67,15 +66,15 @@ async function headOnDisk(objectRoot: string): Promise<string | null | undefined
 /**
  * Checks that the version before the head of `inventory` is still the head on disk, in the root inventory it was made from.
  * @param inventory - Already at its new version
+ * @param madeFrom - The digest of the root inventory `inventory` was made from, if it was made from one
  * @throws {@link OcflError} `OBJECT_EXISTS` if `inventory` is at its first version and the object now has a root inventory
  * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if the head on disk is any other version, or the root inventory has been replaced: the object purged and created again
  */
-async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory): Promise<void> {
+async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory, madeFrom: string | undefined): Promise<void> {
   const expected = inventory.versionNumber.previous()?.toString();
   const content = await readRootInventory(objectRoot);
   const actual = headOf(content);
   if (actual === expected) {
-    const madeFrom = inventory._madeFrom;
     if (content === undefined || madeFrom === undefined || (await Hashing.digest(inventory.digestAlgorithm, content)) === madeFrom) {
       return;
     }
@@ -106,7 +105,7 @@ async function placeSidecar(objectRoot: string, digestAlgorithm: string): Promis
 }
 
 /** Flushes the removal of what a write left in the object root, before its lock goes */
-async function flushRemovals(flusher: fileSystem.Flusher, objectRoot: string, storageRoot: string): Promise<void> {
+async function flushRemovals(flusher: fileSystem.Flusher, { objectRoot, storageRoot }: ObjectPlace): Promise<void> {
   await flusher.flush(await fileSystem.nearestExisting(objectRoot, storageRoot));
 }
 
@@ -119,21 +118,35 @@ async function flushRemovals(flusher: fileSystem.Flusher, objectRoot: string, st
  */
 class ObjectWrite {
   #place: ObjectPlace;
-  #workspace: string;
+  #settings: WriteSettings;
   #inventory: OcflObjectInventory;
+  #madeFrom: RootInventory | undefined;
   #versionPath: string;
   #lock: Lock;
   #createdNamaste: string | undefined;
   #rootInventoryPaths: ReturnType<typeof rootInventoryPaths>;
   #rootInventoryStaged = false;
 
-  constructor(place: ObjectPlace, workspace: string, inventory: OcflObjectInventory, versionPath: string, lock: Lock) {
+  constructor(
+    place: ObjectPlace,
+    settings: WriteSettings,
+    inventory: OcflObjectInventory,
+    madeFrom: RootInventory | undefined,
+    versionPath: string,
+    lock: Lock,
+  ) {
     this.#place = place;
+    this.#settings = settings;
     this.#rootInventoryPaths = rootInventoryPaths(place.objectRoot, inventory.digestAlgorithm);
-    this.#workspace = workspace;
     this.#inventory = inventory;
+    this.#madeFrom = madeFrom;
     this.#versionPath = versionPath;
     this.#lock = lock;
+  }
+
+  /** The inventory of the new version, which the draft changes */
+  get inventory(): OcflObjectInventory {
+    return this.#inventory;
   }
 
   /**
@@ -147,30 +160,30 @@ class ObjectWrite {
   /**
    * Saves the version as the object's new head.
    * @param details - Recorded in the version entry of the inventory
-   * @returns The committed inventory
+   * @returns The committed root inventory
    * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if the commit failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made can't be removed; `cause` is the failure
    */
-  async commit(details: VersionDetails): Promise<OcflObjectInventory> {
-    let unconfirmed: { error: unknown } | undefined;
+  async commit(details: VersionDetails): Promise<RootInventory> {
+    let replaced: { committed: RootInventory } | { unconfirmed: unknown };
     try {
-      unconfirmed = await this.#replaceRootInventory(details);
+      replaced = await this.#replaceRootInventory(details);
     } catch (error) {
       await this.discard({ error });
       throw error;
     }
-    const objectRoot = this.#place.objectRoot;
-    if (unconfirmed) {
-      throw recoveryNeeded(objectRoot, 'may have been committed: replacing its root inventory failed, but may have taken effect', unconfirmed.error);
+    const { objectRoot, workspace, storageRoot } = this.#place;
+    if ('unconfirmed' in replaced) {
+      throw recoveryNeeded(objectRoot, 'may have been committed: replacing its root inventory failed, but may have taken effect', replaced.unconfirmed);
     }
     try {
       await placeSidecar(objectRoot, this.#inventory.digestAlgorithm);
       // Keeps both renames: until the lock goes, recovery puts right a sidecar that outlived the root inventory
-      await this.#place.flusher.flush(objectRoot);
-      await releaseLock(this.#workspace, this.#place.storageRoot);
+      await this.#settings.flusher.flush(objectRoot);
+      await releaseLock(workspace, storageRoot);
     } catch (error) {
       throw recoveryNeeded(objectRoot, 'was committed, but could not be finished', error);
     }
-    return this.#inventory;
+    return replaced.committed;
   }
 
   /**
@@ -180,7 +193,7 @@ class ObjectWrite {
    * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if something the write made can't be removed; `cause` is the failure, or else what stopped the removal
    */
   async discard(failure?: { error: unknown }): Promise<void> {
-    const { storageRoot, objectRoot } = this.#place;
+    const { storageRoot, objectRoot, workspace } = this.#place;
     try {
       if (this.#rootInventoryStaged) {
         await fs.promises.rm(this.#rootInventoryPaths.stagedInventory, { recursive: true, force: true });
@@ -194,9 +207,9 @@ class ObjectWrite {
         await fileSystem.removeEmptyAncestorsQuietly(objectRoot, storageRoot);
       }
       if (this.#createdNamaste || this.#versionPath.startsWith(objectRoot + path.sep)) {
-        await flushRemovals(this.#place.flusher, objectRoot, storageRoot);
+        await flushRemovals(this.#settings.flusher, this.#place);
       }
-      await releaseLock(this.#workspace, storageRoot);
+      await releaseLock(workspace, storageRoot);
     } catch (undoFailure) {
       throw recoveryNeeded(objectRoot, 'was not committed, and what it made could not all be removed', failure ? failure.error : undoFailure);
     }
@@ -204,11 +217,12 @@ class ObjectWrite {
 
   /**
    * Every step of the commit up to its commit point, the replacement of the root inventory, which is the last thing this does.
-   * @returns The failure of a replacement that may have happened all the same, which mustn't be undone
+   * @returns The root inventory committed, or the failure of a replacement that may have happened all the same, which mustn't be undone
    */
-  async #replaceRootInventory(details: VersionDetails): Promise<{ error: unknown } | undefined> {
+  async #replaceRootInventory(details: VersionDetails): Promise<{ committed: RootInventory } | { unconfirmed: unknown }> {
     const inventory = this.#inventory;
-    const { storageRoot, objectRoot, ocflVersion, flusher } = this.#place;
+    const { storageRoot, objectRoot } = this.#place;
+    const { ocflVersion, flusher } = this.#settings;
     const digestAlgorithm = inventory.digestAlgorithm;
     inventory._stamp((details.createdAt ?? new Date()).toISOString(), details.message, details.user);
 
@@ -216,12 +230,12 @@ class ObjectWrite {
     const workspaceInvPath = path.join(this.#versionPath, INVENTORY_NAME);
 
     const inventoryContent = inventory.toString();
-    inventory._digest = await Hashing.digest(digestAlgorithm, inventoryContent);
+    const digest = await Hashing.digest(digestAlgorithm, inventoryContent);
 
     await fileSystem.writeFile(workspaceInvPath, inventoryContent);
-    await fileSystem.writeFile(`${workspaceInvPath}.${digestAlgorithm}`, sidecarContent(inventory));
+    await fileSystem.writeFile(`${workspaceInvPath}.${digestAlgorithm}`, sidecarContent(digest));
     // Before anything in the object root changes, so a moved head never surfaces as a failed rename
-    await assertUpToDate(objectRoot, inventory);
+    await assertUpToDate(objectRoot, inventory, this.#madeFrom?.digest);
     await flusher.flushTree(this.#versionPath);
     this.#createdNamaste = await ensureObjectDeclaration(objectRoot, inventory.id, ocflVersion, this.#lock.operation === 'create');
     try {
@@ -241,7 +255,7 @@ class ObjectWrite {
     const holdingNames = this.#createdNamaste ? [this.#createdNamaste, ...fileSystem.directoriesUpTo(objectRoot, storageRoot)] : [objectRoot];
     await flusher.flush(rootInv.stagedInventory, rootInv.stagedSidecar, ...holdingNames);
     // A rename keeps it, and no other writer can replace the root inventory while this one holds the lock
-    inventory._identity = await fileSystem.identityOf(rootInv.stagedInventory);
+    const identity = await fileSystem.identityOf(rootInv.stagedInventory);
     try {
       await fileSystem.move(rootInv.stagedInventory, rootInv.inventory);
     } catch (error) {
@@ -254,20 +268,21 @@ class ObjectWrite {
       if (notReplaced) {
         throw error;
       }
-      return { error };
+      return { unconfirmed: error };
     }
+    return { committed: { inventory, digest, identity } };
   }
 }
 
 /**
  * Takes the object's lock and makes, in the workspace, the directory for the version `inventory` is at.
  * @param inventory - Already at its new version
+ * @param madeFrom - The root inventory `inventory` was made from, unless it is a first version
  * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the lock, if an earlier write left that directory behind, or the write was refused and its lock can't be released
  * @throws {@link OcflError} `OBJECT_EXISTS` or `OBJECT_OUT_OF_DATE`, as {@link assertUpToDate} does, releasing the lock
  */
-async function startWrite(place: ObjectPlace, inventory: OcflObjectInventory): Promise<ObjectWrite> {
-  const { storageRoot, objectRoot } = place;
-  const workspace = objectWorkspace(storageRoot, objectRoot);
+async function startWrite(place: ObjectPlace, settings: WriteSettings, inventory: OcflObjectInventory, madeFrom?: RootInventory): Promise<ObjectWrite> {
+  const { storageRoot, objectRoot, workspace } = place;
   const rootExisted = await fs.promises.stat(objectRoot).then(
     () => true,
     () => false,
@@ -284,8 +299,8 @@ async function startWrite(place: ObjectPlace, inventory: OcflObjectInventory): P
     throw error;
   };
   // The lock's name, so that what the write leaves in the object root is never found without it
-  await place.flusher.flush(...fileSystem.directoriesUpTo(workspace, storageRoot)).catch(refuse);
-  await assertUpToDate(objectRoot, inventory).catch(refuse);
+  await settings.flusher.flush(...fileSystem.directoriesUpTo(workspace, storageRoot)).catch(refuse);
+  await assertUpToDate(objectRoot, inventory, madeFrom?.digest).catch(refuse);
   try {
     await fs.promises.mkdir(versionPath);
   } catch (error) {
@@ -299,7 +314,7 @@ async function startWrite(place: ObjectPlace, inventory: OcflObjectInventory): P
     }
     return refuse(error);
   }
-  return new ObjectWrite(place, workspace, inventory, versionPath, lock);
+  return new ObjectWrite(place, settings, inventory, madeFrom, versionPath, lock);
 }
 
 /** The name an update of `inventory` gives its version, or `undefined` if there can be no further version */
@@ -312,18 +327,18 @@ function nextVersionName(inventory: OcflObjectInventory): string | undefined {
 }
 
 /** Replaces the sidecar of the root inventory if it doesn't record that inventory's digest */
-async function completeSidecar(objectRoot: string, inventory: OcflObjectInventory, flusher: fileSystem.Flusher): Promise<void> {
+async function completeSidecar(objectRoot: string, { inventory, digest }: RootInventory, flusher: fileSystem.Flusher): Promise<void> {
   const { sidecar, stagedSidecar } = rootInventoryPaths(objectRoot, inventory.digestAlgorithm);
-  if (sidecarDigest(await fileSystem.readIfExists(sidecar)) === inventory._digest) {
+  if (sidecarDigest(await fileSystem.readIfExists(sidecar)) === digest) {
     return;
   }
-  await fileSystem.writeFile(stagedSidecar, sidecarContent(inventory));
+  await fileSystem.writeFile(stagedSidecar, sidecarContent(digest));
   await flusher.flush(stagedSidecar);
   await placeSidecar(objectRoot, inventory.digestAlgorithm);
 }
 
 /**
- * Clears what the dead create or update holding `lock` left of the object that the storage root's layout places at `objectRoot`, and releases the lock.
+ * Clears what the dead create or update holding `lock` left of the object that the storage root's layout places at `place`, and releases the lock.
  * What was left before the commit point is discarded, and a committed update is completed. The lock goes last, so a failure keeps the object locked.
  *
  * Only what a dead writer can have left is removed from the object root: staged root inventory files, and the version after the head or,
@@ -333,33 +348,29 @@ async function completeSidecar(objectRoot: string, inventory: OcflObjectInventor
  * object, or is inside one, was refused before it wrote anything there, so the object root is left alone.
  * @throws {@link OcflError} `INVALID_OBJECT` if the root inventory can't be used, or the object has a declaration and no root inventory but isn't what a dead create leaves; changing nothing
  */
-async function recoverWrite(storageRoot: string, objectRoot: string, lock: Lock, flusher: fileSystem.Flusher): Promise<void> {
-  const workspace = objectWorkspace(storageRoot, objectRoot);
-  const [inventory, rootNames, outer] = await Promise.all([
-    readInventory(storageRoot, objectRoot),
-    namesIn(objectRoot),
-    enclosingObject(storageRoot, objectRoot),
-  ]);
-  if (outer !== undefined || (inventory && inventory.id !== lock.id)) {
+async function recoverWrite(place: ObjectPlace, lock: Lock, flusher: fileSystem.Flusher): Promise<void> {
+  const { storageRoot, objectRoot, workspace } = place;
+  const [root, rootNames, outer] = await Promise.all([readInventory(place), namesIn(objectRoot), enclosingObject(place)]);
+  if (outer !== undefined || (root && root.inventory.id !== lock.id)) {
     await clearWorkspace(workspace);
     await releaseLock(workspace, storageRoot);
     return;
   }
   const declarations = rootNames.filter((name) => name.startsWith(NAMASTE_T + NAMASTE_PREFIX_OBJECT));
   // A create writes the declaration before anything else in the object root, so without one nothing there is its
-  const createLeft = !inventory && declarations.length > 0;
+  const createLeft = !root && declarations.length > 0;
   if (createLeft && rootNames.some((name) => isVersionName(name) && name !== FIRST_VERSION)) {
     throw declarationWithoutInventory(objectRoot);
   }
 
   await clearWorkspace(workspace);
-  if (inventory) {
-    const next = nextVersionName(inventory);
+  if (root) {
+    const next = nextVersionName(root.inventory);
     await removeAll(
       objectRoot,
       rootNames.filter((name) => isStagedRootInventory(name) || name === next),
     );
-    await completeSidecar(objectRoot, inventory, flusher);
+    await completeSidecar(objectRoot, root, flusher);
   } else {
     if (createLeft) {
       await removeAll(objectRoot, [...rootNames.filter((name) => isStagedRootInventory(name) || name === FIRST_VERSION), ...declarations]);
@@ -368,8 +379,8 @@ async function recoverWrite(storageRoot: string, objectRoot: string, lock: Lock,
       await fileSystem.removeEmptyAncestors(objectRoot, storageRoot);
     }
   }
-  await flushRemovals(flusher, objectRoot, storageRoot);
+  await flushRemovals(flusher, place);
   await releaseLock(workspace, storageRoot);
 }
 
-export { type ObjectPlace, recoverWrite, startWrite };
+export { type ObjectWrite, recoverWrite, startWrite };

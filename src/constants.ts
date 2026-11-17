@@ -1,5 +1,3 @@
-import { readIfPresent } from './file-system.ts';
-
 /** An OCFL specification version this library reads and writes. */
 type OcflSpecVersion = '1.0' | '1.1';
 
@@ -16,29 +14,4 @@ const OcflConstants = {
   WORKSPACE_EXTENSION: 'ocfl-js-workspace',
 } as const;
 
-/** {@link findNamasteVersion} for a directory holding more than one declaration */
-const SEVERAL_DECLARATIONS = 'several';
-
-/** What {@link findNamasteVersion} finds in a directory that has a declaration */
-type DeclarationsFound = OcflSpecVersion | '' | typeof SEVERAL_DECLARATIONS;
-
-/**
- * The OCFL version declared in `rootPath` by a namaste file named for `prefix`.
- * @returns The version, `''` if its declaration has the wrong contents, {@link SEVERAL_DECLARATIONS} if there is more than one,
- * or `undefined` if there is none
- */
-async function findNamasteVersion(prefix: string, rootPath: string): Promise<DeclarationsFound | undefined> {
-  const namastePath = `${rootPath}/${OcflConstants.NAMASTE_T}${prefix}`;
-  const reads = await Promise.all(OcflConstants.OCFL_VERSIONS.map(async (version) => ({ version, text: await readIfPresent(namastePath + version) })));
-  const declared = reads.filter((read): read is { version: OcflSpecVersion; text: string } => read.text !== undefined);
-  if (declared.length > 1) {
-    return SEVERAL_DECLARATIONS;
-  }
-  const [only] = declared;
-  if (only === undefined) {
-    return undefined;
-  }
-  return only.text === `${prefix}${only.version}\n` ? only.version : '';
-}
-
-export { type DeclarationsFound, findNamasteVersion, OcflConstants, type OcflSpecVersion, SEVERAL_DECLARATIONS };
+export { OcflConstants, type OcflSpecVersion };
