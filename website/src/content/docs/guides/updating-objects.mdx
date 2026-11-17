@@ -92,7 +92,7 @@ Reinstating from the head version undoes what the draft has done to that path so
 
 ### files
 
-`files` lists what the draft holds: a map from each logical path to its digest, in lowercase and in the object's digest algorithm, as `OcflFile.digest` gives it. Directories aren't listed, and a new object's draft starts empty. It takes its turn like any other operation, so it shows every operation called before it, awaited or not, and none called after. The map is a snapshot: later operations don't change it. It gives no content.
+`files` lists what the draft holds: a map from each logical path to a [`DraftFile`](/ocfl-js/api/interfaces/draftfile/), whose `digest` is in lowercase and in the object's digest algorithm, as `OcflFile.digest` gives it. Directories aren't listed, and a new object's draft starts empty. It takes its turn like any other operation, so it shows every operation called before it, awaited or not, and none called after. The map and its files are a snapshot: later operations don't change them. It gives no content.
 
 <Code code={draftFiles} lang="ts" />
 

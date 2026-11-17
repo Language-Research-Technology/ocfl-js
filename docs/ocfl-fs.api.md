@@ -33,12 +33,18 @@ export type DigestAlgorithm = 'sha256' | 'sha512';
 export interface Draft {
     clear(): Promise<void>;
     copy(source: string, target: string, options?: MergeOptions): Promise<void>;
-    files(): Promise<ReadonlyMap<string, string>>;
+    files(): Promise<ReadonlyMap<string, DraftFile>>;
     import(source: string, options?: ImportOptions): Promise<void>;
     reinstate(path: string, version: number): Promise<void>;
     remove(path: string): Promise<void>;
     rename(source: string, target: string, options?: MergeOptions): Promise<void>;
     write(path: string, content: WriteContent): Promise<void>;
+}
+
+// @public
+export interface DraftFile {
+    readonly digest: string;
+    readonly path: string;
 }
 
 // @public
