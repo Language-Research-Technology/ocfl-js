@@ -63,7 +63,7 @@ If you read OCFL objects that another tool wrote, check them with an OCFL valida
 - **One file system.** The whole storage root, including the library's workspace inside it, must be on one file system, local or NFS ([4.1 or later recommended](/ocfl-js/guides/concurrent-writers/#sharing-a-storage-root-over-nfs)), that supports hard links. FAT, exFAT, most FUSE object-store mounts and SMB shares without POSIX extensions don't, and writing to a storage root on one fails with [`UNSUPPORTED_FILESYSTEM`](/ocfl-js/guides/errors/#unsupported_filesystem). There's no way to plug in another storage backend.
 - **No upgrade from OCFL 1.0.** The library reads and updates OCFL 1.0 objects and storage roots, but it doesn't upgrade them to OCFL 1.1.
 - **No mutable head.** It refuses to update an object with an active `0005-mutable-head` extension.
-- **Symbolic links.** Paths are checked as text, so a symbolic link inside a storage root is followed. Give write access to a storage root only to processes you trust.
+- **No symbolic links inside a storage root.** They aren't supported, and the library doesn't look for them. What happens if one is there isn't defined and may change: today most operations follow it, so reads, fixity checks, updates and purges can reach, change or delete files outside the storage root, but listing and `unfinishedWrites()` skip it, so an object reached through one opens by its id but isn't listed. Give write access to a storage root only to processes you trust.
 
 ## Storage layouts
 

@@ -21,4 +21,4 @@ To upgrade from 0.x, see [Upgrading from 0.x](https://language-research-technolo
 
 ## Scope
 
-The library trusts the filesystem it runs on. It follows symbolic links in a storage root, so a process that can write to the storage root can make the library read or write outside it. That's documented behaviour rather than a vulnerability: keep write access to the storage root limited to trusted processes.
+The library trusts the filesystem it runs on. Symbolic links inside a storage root aren't supported, and the library doesn't look for them: what happens if one is there isn't defined, and today a process that can write to the storage root can use one to make the library read, write or delete outside it. That isn't a vulnerability: keep write access to the storage root limited to trusted processes.
