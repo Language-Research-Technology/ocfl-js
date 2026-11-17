@@ -4,6 +4,18 @@ Bug reports, fixes and new features are welcome. To report a security vulnerabil
 
 Before proposing a feature, check [`.out-of-scope/`](.out-of-scope/): it lists requests that were considered and rejected, with the reasons.
 
+## Issues
+
+A new issue starts with the `needs-triage` label. A maintainer then marks it `ready-for-agent`, `ready-for-human`, `needs-info` or `wontfix`.
+
+A feature request, labelled `enhancement`, also gets one priority label when it is triaged:
+
+- `must-have`: the next release can't ship without it.
+- `should-have`: important, but a release can ship without it.
+- `nice-to-have`: worth doing when there's time, or when someone asks.
+
+You don't need to set a priority when you open an issue. Say how much the feature matters to you, and why, and the maintainer picks the label.
+
 ## Set up
 
 Clone the Git repo:
