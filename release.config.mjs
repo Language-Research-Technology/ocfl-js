@@ -1,5 +1,7 @@
 /**
  * Stable releases only; scripts/publish-prerelease.ts publishes prereleases.
+ * Nothing is committed back to main: the release notes live on the GitHub release, and the npm plugin
+ * sets package.json's version only in the published package.
  *
  * @type {import('semantic-release').GlobalConfig}
  */
@@ -9,7 +11,6 @@ export default {
   plugins: [
     '@semantic-release/commit-analyzer',
     '@semantic-release/release-notes-generator',
-    '@semantic-release/changelog',
     // Checks npm access (trusted publishing) before the tag is pushed, unlike a shell publish
     '@semantic-release/npm',
     // Before github, whose success step (issue comments) can fail the run
@@ -21,11 +22,5 @@ export default {
       },
     ],
     '@semantic-release/github',
-    [
-      '@semantic-release/git',
-      {
-        assets: ['CHANGELOG.md', 'package.json'],
-      },
-    ],
   ],
 };

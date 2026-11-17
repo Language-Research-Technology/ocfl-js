@@ -7,10 +7,14 @@ The version is derived from the [Conventional Commits](https://www.conventionalc
 the last stable release, so commit messages matter: `fix:` is a patch, `feat:` a minor, and `!` or a
 `BREAKING CHANGE:` footer a major.
 
-| Release    | npm dist-tag | Version        | Git tag         | GitHub release | `CHANGELOG.md` | Docs site |
-| ---------- | ------------ | -------------- | --------------- | -------------- | -------------- | --------- |
-| Stable     | `latest`     | `1.2.5`        | `v1.2.5`        | Yes            | Yes            | Deployed  |
-| Prerelease | `beta`       | `1.2.5-beta.1` | `v1.2.5-beta.1` | No             | No             | Unchanged |
+| Release    | npm dist-tag | Version        | Git tag         | GitHub release | Docs site |
+| ---------- | ------------ | -------------- | --------------- | -------------- | --------- |
+| Stable     | `latest`     | `1.2.5`        | `v1.2.5`        | Yes            | Deployed  |
+| Prerelease | `beta`       | `1.2.5-beta.1` | `v1.2.5-beta.1` | No             | Unchanged |
+
+Neither kind commits to `main`. The release notes are on the GitHub release; there is no
+`CHANGELOG.md`. The `version` in `package.json` on `main` is a placeholder, `0.0.0-semantic-release`;
+the release sets the real one in the published package only. The git tags record what was released.
 
 Every run executes the full test suite first. If anything fails, nothing is published. npm only
 accepts publishes from this workflow's `npm-publish` environment, through trusted publishing with
@@ -28,9 +32,9 @@ Before the first stable release, remove `@beta` and the note about it from the i
    trusted publishing.
 3. Run it again with **Dry run** unticked.
 
-semantic-release checks npm access, commits the updated `CHANGELOG.md` and `package.json` back to
-`main`, tags the release, publishes `@ocfl/ocfl-fs` under `latest`, creates a GitHub release and
-comments on the issues and pull requests it contains.
+semantic-release checks npm access, tags the release, publishes `@ocfl/ocfl-fs` under `latest`,
+creates a GitHub release with the release notes and comments on the issues and pull requests it
+contains.
 
 ## Prereleases
 
