@@ -1,7 +1,8 @@
 import path from 'node:path';
+import { recoverWrite } from './commit.ts';
 import { objectRootConflict } from './error.ts';
 import { type Lock, readLock, sameWriter, updateInProgress } from './lock.ts';
-import { recoverObject } from './recover.ts';
+import { recoverRemove } from './remove.ts';
 import { deepFreeze } from './utils.ts';
 import { locksBelow, objectWorkspace, workspaceRoot } from './workspace.ts';
 
@@ -67,7 +68,7 @@ function unfinishedWrite(storageRoot: string, objectRoot: string, seen: Lock): U
       if (!sameWriter(lock, seen)) {
         throw await updateInProgress(workspace);
       }
-      await recoverObject(storageRoot, objectRoot, lock);
+      await (lock.removing ? recoverRemove(storageRoot, objectRoot) : recoverWrite(storageRoot, objectRoot, lock));
     },
   });
 }

@@ -1,19 +1,13 @@
 import fs, { type Dirent } from 'node:fs';
 import path from 'node:path';
 import { inspect } from 'node:util';
-import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
+import { type ObjectPlace, startWrite } from './commit.ts';
 import * as Hashing from './digest.ts';
 import { ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import type { ContentRelease, DeletePlan, OcflObjectInventory, RelistPlan } from './inventory.ts';
-import { rootInventoryPaths, sidecarContent } from './inventory-files.ts';
-import { lockKept, releaseLock, takeLock } from './lock.ts';
 import { checkLogicalPath, fileLogicalPath, invalidLogicalPath, normaliseLogicalPath } from './logical-path.ts';
-import { createError } from './ocfl-rules.ts';
-import { createLimiter, isNonEmptyString, parseJsonObject } from './utils.ts';
-import { objectWorkspace } from './workspace.ts';
-
-const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
+import { createLimiter, isNonEmptyString } from './utils.ts';
 
 /** The person or system responsible for a version. */
 interface User {
@@ -284,96 +278,8 @@ function checkedContent(content: unknown): string | Uint8Array | AsyncIterable<u
   throw unsupportedContent(content);
 }
 
-/** Where the object a draft updates is */
-interface ObjectPlace {
-  /** Absolute path of the storage root, where removing empty directories stops */
-  readonly storageRoot: string;
-  /** Absolute path of the object root, inside the storage root */
-  readonly objectRoot: string;
-  /** Declared when the first commit creates the object */
-  readonly ocflVersion: OcflVersion;
-}
-
-/** Only {@link ObjectDraft}'s own factory has it, so a draft's class can't make another draft */
+/** Only {@link commitDraft} has it, so a draft's class can't make another draft */
 const STARTING = Symbol('starting a draft');
-
-/**
- * Writes the object declaration for a create into an empty object root; an update only checks that it is there
- * @returns The path of the declaration file, if this call wrote one
- * @throws {@link OcflError} `INVALID_OBJECT` with `E007` for an invalid declaration, or `E003` if an update finds none; `DIRECTORY_NOT_EMPTY` if a create finds none in a directory that isn't empty
- */
-async function ensureObjectDeclaration(root: string, ocflVersion: OcflVersion, creating: boolean): Promise<string | undefined> {
-  const declared = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, root);
-  if (declared === '') {
-    throw createError('E007', root);
-  }
-  if (declared) {
-    return;
-  }
-  if (!creating) {
-    throw createError('E003', root, 'it has an inventory but no object declaration');
-  }
-  if (!(await fileSystem.isDirEmpty(root))) {
-    throw ocflError('DIRECTORY_NOT_EMPTY', 'Cannot create an OCFL Object in a non-empty directory');
-  }
-  const declaration = NAMASTE_PREFIX_OBJECT + ocflVersion;
-  const filePath = path.join(root, NAMASTE_T + declaration);
-  await fileSystem.writeFile(filePath, `${declaration}\n`);
-  return filePath;
-}
-
-/** The head the root inventory `content` names: `undefined` if there is no root inventory, `null` if it names none */
-function headOf(content: string | undefined): string | null | undefined {
-  if (content === undefined) {
-    return undefined;
-  }
-  const head = parseJsonObject(content)?.head;
-  return typeof head === 'string' ? head : null;
-}
-
-function readRootInventory(objectRoot: string): Promise<string | undefined> {
-  return fileSystem.readIfExists(path.join(objectRoot, INVENTORY_NAME));
-}
-
-/** The head the root inventory on disk names, as {@link headOf} gives it */
-async function headOnDisk(objectRoot: string): Promise<string | null | undefined> {
-  return headOf(await readRootInventory(objectRoot));
-}
-
-/**
- * Checks that the version before the head of `inventory` is still the head on disk, in the root inventory it was made from.
- * @param inventory - Already at its new version
- * @throws {@link OcflError} `OBJECT_EXISTS` if `inventory` is at its first version and the object now has a root inventory
- * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if the head on disk is any other version, or the root inventory has been replaced: the object removed and created again
- */
-async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory): Promise<void> {
-  const expected = inventory.versionNumber.previous()?.toString();
-  const content = await readRootInventory(objectRoot);
-  const actual = headOf(content);
-  if (actual === expected) {
-    const madeFrom = inventory._madeFrom;
-    if (content === undefined || madeFrom === undefined || (await Hashing.digest(inventory.digestAlgorithm, content)) === madeFrom) {
-      return;
-    }
-    throw ocflError(
-      'OBJECT_OUT_OF_DATE',
-      `The object at ${objectRoot} was opened at ${expected}, and its root inventory has been replaced since. Open it again and retry.`,
-    );
-  }
-  if (expected === undefined) {
-    throw ocflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}.`);
-  }
-  const found = actual === undefined ? 'no root inventory' : actual === null ? 'a root inventory with no head' : `the head ${actual}`;
-  throw ocflError('OBJECT_OUT_OF_DATE', `The object at ${objectRoot} was opened at ${expected}, and now has ${found}. Open it again and retry.`);
-}
-
-/**
- * For an update that ended holding its lock: it may be committed, or may have left files behind.
- * @param cause - What the update failed with
- */
-function recoveryNeeded(objectRoot: string, state: string, cause: unknown) {
-  return lockKept(`The update of the object at ${objectRoot} ${state}`, 'then open the object again before retrying', cause);
-}
 
 function optionsObject(options: unknown, example: string): Record<string, unknown> {
   if (options === undefined) {
@@ -494,116 +400,112 @@ interface TrackedPromise<T> extends Promise<T> {
 }
 
 /**
- * Runs `change` on a draft of the version `inventory` is at, then commits it, or discards it if `change` throws.
- * @param inventory - Already at its new version
- * @returns The committed inventory, or `undefined` if the draft ended the same as the previous version
- */
-let commitDraft: (
-  place: ObjectPlace,
-  inventory: OcflObjectInventory,
-  details: VersionDetails,
-  change: (draft: Draft) => Promise<unknown>,
-  signal: AbortSignal | undefined,
-) => Promise<OcflObjectInventory | undefined>;
-
-/**
+ * Runs a draft's operations in turn, and says whether the draft may be committed.
  * Operations called concurrently, such as with `Promise.all`, give the same result as awaiting
  * them one after another in the order they were called. A failed operation
  * rejects its own promise and leaves nothing behind; later operations carry on. An operation
  * waits for all the earlier ones, so one whose input never ends holds up those called after it.
  * If a failed operation's changes to the stored files can't be undone, the commit discards the draft and throws that operation's error.
- *
- * The draft is committed when the root inventory is replaced. A failure before that discards everything
- * the draft made and releases the object's lock. A failure after it, a failed replacement that may have
- * happened all the same, or a failure to discard, throws `RECOVERY_NEEDED` and keeps the lock.
  */
+class Turns {
+  #queue: TrackedPromise<unknown>[] = [];
+  #lastTurn: Promise<unknown> = Promise.resolve();
+  #finished = false;
+  #commitBlocker: { error: unknown } | undefined;
+  #signal: AbortSignal | undefined;
+
+  constructor(signal: AbortSignal | undefined) {
+    this.#signal = signal;
+  }
+
+  /**
+   * Runs an operation in its turn, once the draft is checked to be open, and tracks it until it settles.
+   * `prepare` starts straight away and may overlap other operations, so it mustn't touch the
+   * inventory or content directory. The step it resolves to runs once every operation called
+   * earlier has finished.
+   */
+  run<T>(prepare: () => Promise<() => Promise<T>>): Promise<T> {
+    this.assertOpen();
+    this.#signal?.throwIfAborted();
+    const prepared = prepare();
+    // A rejection surfaces at this operation's turn, which may come much later
+    prepared.catch(() => {});
+    // Prepared first, so nothing an operation started is still writing once the update is discarded
+    const turn = this.#lastTurn.then(async () => {
+      const step = await prepared;
+      this.#signal?.throwIfAborted();
+      return step();
+    });
+    this.#lastTurn = turn.catch(() => {});
+    return this.#track(turn);
+  }
+
+  throwIfAborted() {
+    this.#signal?.throwIfAborted();
+  }
+
+  assertOpen() {
+    if (this.#finished) {
+      throw new Error('The update this draft belongs to has finished.');
+    }
+  }
+
+  /** @param error - What the operation that left the files and inventory out of step rejects with, which the commit then throws */
+  blockCommit(error: unknown) {
+    this.#commitBlocker ??= { error };
+  }
+
+  /** Refuses any further operation */
+  close() {
+    this.#finished = true;
+  }
+
+  /** Refuses any further operation, and waits for every one started to settle */
+  async settle(): Promise<void> {
+    // Before waiting, so no operation started meanwhile is accepted and then overlaps the discard
+    this.close();
+    await Promise.allSettled(this.#queue);
+  }
+
+  /** @throws What stops the draft being committed: an operation still running, or one whose changes to the stored files couldn't be undone */
+  assertCommittable() {
+    const count = this.#queue.filter((p) => !p.done).length;
+    if (count > 0) {
+      throw new Error(`Unfinished operations detected (${count}). Make sure the callback is an async function that awaits every operation it starts.`);
+    }
+    if (this.#commitBlocker) {
+      throw this.#commitBlocker.error;
+    }
+  }
+
+  #track<T>(p: TrackedPromise<T>): Promise<T> {
+    const markDone = () => {
+      p.done = true;
+    };
+    // then(f, f), not finally(f): finally's derived promise would reject unhandled.
+    p.then(markDone, markDone);
+    this.#queue.push(p);
+    return p;
+  }
+}
+
+/** The draft a create or update gives its callback, of the version its inventory is at */
 class ObjectDraft implements Draft {
   #versionPath: string;
   #contentRoot: string;
-  #place: ObjectPlace;
-  #workspace: string;
   #inventory: OcflObjectInventory;
-  #rootExisted: boolean;
-  #createdNamaste: string | undefined;
-  #rootInventoryStaged = false;
-  #queue: TrackedPromise<unknown>[] = [];
-  #lastTurn: Promise<unknown> = Promise.resolve();
+  #turns: Turns;
   #stagedCount = 0;
-  #finished = false;
-  #commitBlocker: { error: unknown } | undefined;
   #limit = createLimiter(IMPORT_CONCURRENCY);
-  #signal: AbortSignal | undefined;
 
-  // Inside the class so it reaches the private commit and discard, which neither a draft nor its class exposes
-  static {
-    commitDraft = async (place, inventory, details, change, signal) => {
-      signal?.throwIfAborted();
-      const draft = await ObjectDraft.#start(place, inventory, signal);
-      try {
-        await change(draft);
-      } catch (error) {
-        // Decided as the callback settles, not after the discard, which a late abort mustn't turn into a cancellation
-        const cancelled = signal?.aborted ? { reason: signal.reason } : undefined;
-        await draft.#discard({ error });
-        throw cancelled ? cancelled.reason : error;
-      }
-      return draft.#commit(details);
-    };
-  }
-
-  private constructor(
-    starting: symbol,
-    place: ObjectPlace,
-    workspace: string,
-    inventory: OcflObjectInventory,
-    versionPath: string,
-    rootExisted: boolean,
-    signal: AbortSignal | undefined,
-  ) {
+  constructor(starting: symbol, versionPath: string, inventory: OcflObjectInventory, turns: Turns) {
     if (starting !== STARTING) {
       throw new TypeError('A draft is made only by an update.');
     }
     this.#versionPath = versionPath;
     this.#contentRoot = path.join(versionPath, inventory.contentDirectory);
-    this.#place = place;
-    this.#workspace = workspace;
     this.#inventory = inventory;
-    this.#rootExisted = rootExisted;
-    this.#signal = signal;
-  }
-
-  static async #start(place: ObjectPlace, inventory: OcflObjectInventory, signal: AbortSignal | undefined) {
-    const { storageRoot, objectRoot } = place;
-    const workspace = objectWorkspace(storageRoot, objectRoot);
-    const rootExisted = await fs.promises.stat(objectRoot).then(
-      () => true,
-      () => false,
-    );
-    await takeLock(workspace, storageRoot, inventory.id, rootExisted);
-    const versionPath = path.join(workspace, inventory.head);
-    const refuse = async (error: unknown): Promise<never> => {
-      try {
-        await releaseLock(workspace, storageRoot);
-      } catch {
-        throw recoveryNeeded(objectRoot, 'was refused, and its lock could not be released', error);
-      }
-      throw error;
-    };
-    await assertUpToDate(objectRoot, inventory).catch(refuse);
-    try {
-      await fs.promises.mkdir(versionPath);
-    } catch (error) {
-      // Kept locked, so that what an earlier writer left there never becomes part of a version
-      if (fileSystem.isAlreadyExists(error)) {
-        throw lockKept(
-          `The object at ${objectRoot} can't be updated: an earlier update left ${versionPath} behind`,
-          'then open the object again before retrying',
-          error,
-        );
-      }
-      return refuse(error);
-    }
-    return new ObjectDraft(STARTING, place, workspace, inventory, versionPath, rootExisted, signal);
+    this.#turns = turns;
   }
 
   #getRealPath(logicalPath: string) {
@@ -615,161 +517,6 @@ class ObjectDraft implements Draft {
     }
     /* node:coverage enable */
     return path.join(this.#contentRoot, path.normalize(logicalPath));
-  }
-
-  /**
-   * Discards everything this draft made.
-   * @param failure - What the update failed with, if it did, which the caller then throws
-   * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if something the draft made can't be removed; `cause` is the failure, or else what stopped the removal
-   */
-  async #discard(failure?: { error: unknown }): Promise<void> {
-    // Before waiting, so no operation started meanwhile is accepted and then overlaps the undo
-    this.#finished = true;
-    await Promise.allSettled(this.#queue);
-    try {
-      await this.#undo();
-    } catch (undoFailure) {
-      throw recoveryNeeded(this.#place.objectRoot, 'was not committed, and what it made could not all be removed', failure ? failure.error : undoFailure);
-    }
-  }
-
-  /**
-   * Saves the draft as the object's new version, or discards it if it is the same as the previous version.
-   * @param details - Recorded in the version entry of the inventory
-   * @returns The committed inventory, or `undefined` if there were no changes
-   * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the object's lock, if the commit failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made can't be removed; `cause` is the failure
-   */
-  async #commit(details: VersionDetails): Promise<OcflObjectInventory | undefined> {
-    this.#finished = true;
-    const changed = this.#inventory._isChanged;
-    let unconfirmed: { error: unknown } | undefined;
-    try {
-      this.#signal?.throwIfAborted();
-      const count = this.#queue.filter((p) => !p.done).length;
-      if (count > 0) {
-        throw new Error(`Unfinished operations detected (${count}). Make sure the callback is an async function that awaits every operation it starts.`);
-      }
-      if (this.#commitBlocker) {
-        throw this.#commitBlocker.error;
-      }
-      if (changed) {
-        unconfirmed = await this.#replaceRootInventory(details);
-      }
-    } catch (error) {
-      await this.#discard({ error });
-      throw error;
-    }
-    if (!changed) {
-      await this.#discard();
-      return;
-    }
-    if (unconfirmed) {
-      throw recoveryNeeded(
-        this.#place.objectRoot,
-        'may have been committed: replacing its root inventory failed, but may have taken effect',
-        unconfirmed.error,
-      );
-    }
-    try {
-      const rootInv = this.#rootInventoryPaths;
-      await fileSystem.move(rootInv.stagedSidecar, rootInv.sidecar);
-      await this.#releaseLock();
-    } catch (error) {
-      throw recoveryNeeded(this.#place.objectRoot, 'was committed, but could not be finished', error);
-    }
-    return this.#inventory;
-  }
-
-  /**
-   * Remove everything this draft created, including an object root it made and the layout directories above it that that leaves empty,
-   * then release the lock. Only before the root inventory is replaced: nothing puts a replaced root inventory back.
-   */
-  async #undo() {
-    const root = this.#place.objectRoot;
-    const rootInv = this.#rootInventoryPaths;
-    if (this.#rootInventoryStaged) {
-      await fs.promises.rm(rootInv.stagedInventory, { recursive: true, force: true });
-      await fs.promises.rm(rootInv.stagedSidecar, { recursive: true, force: true });
-    }
-    await fs.promises.rm(this.#versionPath, { recursive: true, force: true });
-    if (this.#createdNamaste) {
-      await fs.promises.rm(this.#createdNamaste, { recursive: true, force: true });
-    }
-    if (!this.#rootExisted) {
-      await fileSystem.removeEmptyAncestorsQuietly(root, this.#place.storageRoot);
-    }
-    await this.#releaseLock();
-  }
-
-  async #releaseLock() {
-    await releaseLock(this.#workspace, this.#place.storageRoot);
-  }
-
-  get #rootInventoryPaths() {
-    return rootInventoryPaths(this.#place.objectRoot, this.#inventory.digestAlgorithm);
-  }
-
-  /**
-   * Every step of the commit up to its commit point, the replacement of the root inventory, which is the last thing this does.
-   * @returns The failure of a replacement that may have happened all the same, which mustn't be undone
-   */
-  async #replaceRootInventory(details: VersionDetails): Promise<{ error: unknown } | undefined> {
-    const inventory = this.#inventory;
-    const digestAlgorithm = inventory.digestAlgorithm;
-    inventory._stamp((details.createdAt ?? new Date()).toISOString(), details.message, details.user);
-
-    const objectVersionPath = path.join(this.#place.objectRoot, inventory.head);
-    /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json */
-    let invPath = path.join(this.#versionPath, INVENTORY_NAME);
-    /* eg: /workspace/aa/bb/cc/object-1/v1/inventory.json.sha512 */
-    let invDigestPath = `${invPath}.${digestAlgorithm}`;
-
-    const inventoryContent = inventory.toString();
-    inventory._digest = await Hashing.digest(digestAlgorithm, inventoryContent);
-    const digest = sidecarContent(inventory);
-
-    // write inventory.json to workspace
-    await fileSystem.writeFile(invPath, inventoryContent);
-    await fileSystem.writeFile(invDigestPath, digest);
-    // Before anything in the object root changes, so a moved head never surfaces as a failed rename
-    await assertUpToDate(this.#place.objectRoot, inventory);
-    const creating = inventory.versionNumber.previous() === undefined;
-    this.#createdNamaste = await ensureObjectDeclaration(this.#place.objectRoot, this.#place.ocflVersion, creating);
-    try {
-      await fileSystem.move(this.#versionPath, objectVersionPath);
-    } catch (error) {
-      throw fileSystem.hasErrorCode(error, 'EXDEV')
-        ? ocflError(
-            'CROSS_FILESYSTEM_MOVE',
-            `Cannot move the new version into "${this.#place.objectRoot}": it is on a different filesystem from the workspace.`,
-          )
-        : error;
-    }
-    this.#versionPath = objectVersionPath;
-    // replace root inventory
-    const rootInv = this.#rootInventoryPaths;
-    /* eg: /data/aa/bb/cc/object-1/v1/inventory.json */
-    invPath = path.join(objectVersionPath, INVENTORY_NAME);
-    invDigestPath = `${invPath}.${digestAlgorithm}`;
-    this.#rootInventoryStaged = true;
-    await fileSystem.copyFile(invPath, rootInv.stagedInventory);
-    await fileSystem.copyFile(invDigestPath, rootInv.stagedSidecar);
-    // A rename keeps it, and no other writer can replace the root inventory while this one holds the lock
-    inventory._identity = await fileSystem.identityOf(rootInv.stagedInventory);
-    try {
-      await fileSystem.move(rootInv.stagedInventory, rootInv.inventory);
-    } catch (error) {
-      // On NFS a rename can be applied though its reply is lost, so only the old head on disk, or for a create no root inventory, shows it
-      // wasn't. A root inventory that can't be read or names no head counts as replaced
-      const notReplaced = await headOnDisk(this.#place.objectRoot).then(
-        (head) => head === inventory.versionNumber.previous()?.toString(),
-        () => false,
-      );
-      if (notReplaced) {
-        throw error;
-      }
-      return { error };
-    }
   }
 
   /** Content waits here, outside the content directory, until its digest decides whether it's kept */
@@ -849,7 +596,7 @@ class ObjectDraft implements Draft {
           await this.#pruneEmptyDirectories(path.dirname(to));
         }
       } catch {
-        this.#blockCommit(error);
+        this.#turns.blockCommit(error);
       }
       throw error;
     }
@@ -871,14 +618,9 @@ class ObjectDraft implements Draft {
     try {
       await change();
     } catch (error) {
-      this.#blockCommit(error);
+      this.#turns.blockCommit(error);
       throw error;
     }
-  }
-
-  /** @param error - What the operation that left the files and inventory out of step rejects with, which the commit then throws */
-  #blockCommit(error: unknown) {
-    this.#commitBlocker ??= { error };
   }
 
   #contentFilePath(contentPath: string) {
@@ -892,11 +634,11 @@ class ObjectDraft implements Draft {
 
   async write(logicalPath: string, data: WriteContent): Promise<void> {
     // Before the content check, so a finished draft refuses any content with the same Error
-    this.#assertOpen();
+    this.#turns.assertOpen();
     const checked = checkedContent(data);
     // Copied now: the caller may change their buffer before this write's turn
     const content = checked instanceof Uint8Array ? new Uint8Array(checked) : checked;
-    return this.#inTurn(async () => {
+    return this.#turns.run(async () => {
       const target = fileLogicalPath(logicalPath);
       const digestAlgo = this.#inventory.digestAlgorithm;
       const staging = this.#stagingPath();
@@ -993,7 +735,7 @@ class ObjectDraft implements Draft {
 
   // A failed import adds nothing, unless a copied file can't be put in place, which fails the commit
   async import(source: string, options?: ImportOptions): Promise<void> {
-    return this.#inTurn(() => this.#prepareImport(source, options));
+    return this.#turns.run(() => this.#prepareImport(source, options));
   }
 
   async copy(source: string, target: string, options?: MergeOptions): Promise<void> {
@@ -1055,56 +797,62 @@ class ObjectDraft implements Draft {
     this.#inventory._applyDelete(plan);
   }
 
-  /** `#inTurn` for an operation with nothing to prepare */
+  /** `Turns.run` for an operation with nothing to prepare */
   async #operate<T>(op: () => Promise<T>): Promise<T> {
-    return this.#inTurn(async () => op);
-  }
-
-  /**
-   * Runs an operation in its turn, once the draft is checked to be open, and tracks it until it settles.
-   * `prepare` starts straight away and may overlap other operations, so it mustn't touch the
-   * inventory or content directory. The step it resolves to runs once every operation called
-   * earlier has finished.
-   */
-  async #inTurn<T>(prepare: () => Promise<() => Promise<T>>): Promise<T> {
-    this.#assertOpen();
-    this.#signal?.throwIfAborted();
-    const prepared = prepare();
-    // A rejection surfaces at this operation's turn, which may come much later
-    prepared.catch(() => {});
-    // Prepared first, so nothing an operation started is still writing once the update is discarded
-    const turn = this.#lastTurn.then(async () => {
-      const step = await prepared;
-      this.#signal?.throwIfAborted();
-      return step();
-    });
-    this.#lastTurn = turn.catch(() => {});
-    return this.#track(turn);
+    return this.#turns.run(async () => op);
   }
 
   /** Runs `task` within the draft's limit on files read at once, unless the update's signal is aborted by its turn */
   #limited<T>(task: () => Promise<T>): Promise<T> {
     return this.#limit(async () => {
-      this.#signal?.throwIfAborted();
+      this.#turns.throwIfAborted();
       return task();
     });
   }
+}
 
-  #assertOpen() {
-    if (this.#finished) {
-      throw new Error('The update this draft belongs to has finished.');
-    }
+/**
+ * Runs `change` on a draft of the version `inventory` is at, then commits it, or discards it if `change` throws.
+ * A failure before the commit point discards everything the draft made and releases the object's lock, as `ObjectWrite`'s commit and discard describe.
+ * @param inventory - Already at its new version
+ * @returns The committed inventory, or `undefined` if the draft ended the same as the previous version
+ */
+async function commitDraft(
+  place: ObjectPlace,
+  inventory: OcflObjectInventory,
+  details: VersionDetails,
+  change: (draft: Draft) => Promise<unknown>,
+  signal: AbortSignal | undefined,
+): Promise<OcflObjectInventory | undefined> {
+  signal?.throwIfAborted();
+  const write = await startWrite(place, inventory);
+  const turns = new Turns(signal);
+  const discard = async (failure?: { error: unknown }) => {
+    await turns.settle();
+    await write.discard(failure);
+  };
+  try {
+    await change(new ObjectDraft(STARTING, write.versionPath, inventory, turns));
+  } catch (error) {
+    // Decided as the callback settles, not after the discard, which a late abort mustn't turn into a cancellation
+    const cancelled = signal?.aborted ? { reason: signal.reason } : undefined;
+    await discard({ error });
+    throw cancelled ? cancelled.reason : error;
   }
-
-  #track<T>(p: TrackedPromise<T>): Promise<T> {
-    const markDone = () => {
-      p.done = true;
-    };
-    // then(f, f), not finally(f): finally's derived promise would reject unhandled.
-    p.then(markDone, markDone);
-    this.#queue.push(p);
-    return p;
+  turns.close();
+  try {
+    signal?.throwIfAborted();
+    turns.assertCommittable();
+  } catch (error) {
+    await discard({ error });
+    throw error;
   }
+  if (!inventory._isChanged) {
+    await discard();
+    return;
+  }
+  // assertCommittable proved every operation settled, so the commit's own discard on failure overlaps none
+  return write.commit(details);
 }
 
 export {
