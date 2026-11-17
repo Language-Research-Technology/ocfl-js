@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
 import type { Draft, OcflObject, StorageRoot, UnfinishedWrite } from '../src/index.ts';
 import { openStorageRoot } from '../src/index.ts';
-import { createObject, DETAILS, lockObject, placesOf, recover, snapshot, useTempRoots, workspaceOf, writeB } from './helpers/drafts.ts';
+import { createObject, DETAILS, lockObject, placesOf, recover, snapshot, useTempRoots, workspaceOf, writeB, writeLock } from './helpers/drafts.ts';
 import { withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
 import { ocflError, rejection } from './helpers/ocfl-error.ts';
@@ -75,7 +75,7 @@ describe('root.unfinishedWrites', () => {
     return openStorageRoot(copy);
   }
 
-  it('lists a create in progress on a hashed root with its id and when its lock was taken', async () => {
+  it('lists a create in progress on a hashed root with its id, its operation and when its lock was taken', async () => {
     const root = await newRoot({ extensionName: HASHED });
     const before = new Date();
     const create = heldCreate(root, ID);
@@ -87,7 +87,7 @@ describe('root.unfinishedWrites', () => {
     assert.strictEqual(writes.length, 1);
     const [write] = writes;
     assert.strictEqual(write?.id, ID);
-    assert.strictEqual(write?.removing, false);
+    assert.strictEqual(write?.operation, 'create');
     assert.ok(write.lockedAt >= before && write.lockedAt <= after, `${write.lockedAt.toISOString()} is not while the create ran`);
     await create.finish();
     assert.deepStrictEqual(await listed(root), []);
@@ -133,7 +133,7 @@ describe('root.unfinishedWrites', () => {
     await update.finish();
 
     const [write] = await listed(root);
-    assert.deepStrictEqual([write?.id, write?.removing], ['a', false]);
+    assert.deepStrictEqual([write?.id, write?.operation], ['a', 'update']);
     await write?.recover();
 
     assert.deepStrictEqual(await listed(root), []);
@@ -142,17 +142,50 @@ describe('root.unfinishedWrites', () => {
     assert.strictEqual((await reopened.update(DETAILS, writeB)).head.number, 2);
   });
 
-  it('lists a remove that died part of the way through as removing, and recovering it finishes the remove', async () => {
+  it('lists a create into an empty directory that already existed as a create', async () => {
+    const root = await newRoot();
+    await fs.promises.mkdir(placesOf(root, 'a').objectRoot, { recursive: true });
+    const create = heldCreate(root, 'a');
+    await create.inside;
+
+    assert.deepStrictEqual(
+      (await listed(root)).map((write) => write.operation),
+      ['create'],
+    );
+    assert.strictEqual((await root.unfinishedWrite('a'))?.operation, 'create');
+    await create.finish();
+  });
+
+  it('lists a remove that died part of the way through as a remove, and recovering it finishes the remove', async () => {
     const root = await newRoot();
     await createObject(root, 'a', { 'a.txt': 'a' });
     await withFsFailure('rm', path.join(placesOf(root, 'a').objectRoot, 'v1'), () => assert.rejects(root.remove('a'), ocflError('RECOVERY_NEEDED')));
 
     const [write] = await listed(root);
-    assert.deepStrictEqual([write?.id, write?.removing], ['a', true]);
+    assert.deepStrictEqual([write?.id, write?.operation], ['a', 'remove']);
     await write?.recover();
 
     await assert.rejects(root.open('a'), ocflError('OBJECT_NOT_FOUND'));
     assert.deepStrictEqual(await listed(root), []);
+  });
+
+  it('lists a remove that died before it began deleting as a remove, and recovering it deletes nothing', async () => {
+    const root = await newRoot();
+    await createObject(root, 'a', { 'a.txt': 'a' });
+    const { objectRoot, lock } = placesOf(root, 'a');
+    await withFsFailure('rm', lock, () => withFsFailure('rename', lock, () => assert.rejects(root.remove('a'), ocflError('RECOVERY_NEEDED'))));
+    const before = await snapshot(objectRoot);
+
+    assert.deepStrictEqual(
+      (await listed(root)).map((write) => write.operation),
+      ['remove'],
+    );
+    const write = await root.unfinishedWrite('a');
+    assert.strictEqual(write?.operation, 'remove');
+    await write?.recover();
+
+    assert.deepStrictEqual(await snapshot(objectRoot), before);
+    assert.ok(!fs.existsSync(workspaceOf(root)));
   });
 
   it('records an id with a newline, quotes and non-ASCII characters exactly', async () => {
@@ -186,9 +219,7 @@ describe('root.unfinishedWrites', () => {
   const lockedAt = '2026-11-10T22:01:44.000Z';
   it("lists a lock with a field it doesn't know, as a later release may write, and recovers it", async () => {
     const root = await newRoot();
-    const { lock } = placesOf(root, 'a');
-    await fs.promises.mkdir(path.dirname(lock), { recursive: true });
-    await fs.promises.writeFile(lock, JSON.stringify({ id: 'a', lockedAt, objectRootExisted: false, owner: 'x' }));
+    await writeLock(root, 'a', JSON.stringify({ id: 'a', lockedAt, objectRootExisted: false, owner: 'x' }));
 
     const writes = await listed(root);
     assert.deepStrictEqual(
@@ -201,7 +232,29 @@ describe('root.unfinishedWrites', () => {
     assert.strictEqual(await root.unfinishedWrite('a'), undefined);
   });
 
+  for (const [what, content, operation] of [
+    ['an object root that existed', { id: 'a', lockedAt, objectRootExisted: true }, 'update'],
+    ['no object root', { id: 'a', lockedAt, objectRootExisted: false }, 'create'],
+    ['a remove that had begun deleting', { id: 'a', lockedAt, objectRootExisted: true, removing: true }, 'remove'],
+  ] as const) {
+    it(`lists a lock with no operation, as earlier releases wrote, for ${what} as a ${operation}, and recovers it`, async () => {
+      const root = await newRoot();
+      await writeLock(root, 'a', JSON.stringify(content));
+
+      assert.deepStrictEqual(
+        (await listed(root)).map((write) => [write.id, write.operation]),
+        [['a', operation]],
+      );
+      assert.strictEqual((await root.unfinishedWrite('a'))?.operation, operation);
+      await recover(root, 'a');
+
+      assert.ok(!fs.existsSync(workspaceOf(root)));
+    });
+  }
+
   for (const [what, content] of [
+    ['an unknown operation', { id: 'a', operation: 'purge', lockedAt, objectRootExisted: true }],
+    ['removing for an update', { id: 'a', operation: 'update', lockedAt, objectRootExisted: true, removing: true }],
     ['removing false', { id: 'a', lockedAt, objectRootExisted: true, removing: false }],
     ['a time that is not ISO 8601', { id: 'a', lockedAt: 'Tue, 10 Nov 2026 22:01:44 GMT', objectRootExisted: true }],
     ['an invalid time', { id: 'a', lockedAt: 'never', objectRootExisted: true }],
@@ -209,9 +262,7 @@ describe('root.unfinishedWrites', () => {
   ] as const) {
     it(`doesn't list a file at a lock with ${what}, which this library didn't write`, async () => {
       const root = await newRoot();
-      const { lock } = placesOf(root, 'a');
-      await fs.promises.mkdir(path.dirname(lock), { recursive: true });
-      await fs.promises.writeFile(lock, JSON.stringify(content));
+      await writeLock(root, 'a', JSON.stringify(content));
 
       assert.deepStrictEqual(await listed(root), []);
       assert.strictEqual(await root.unfinishedWrite('a'), undefined);
@@ -283,7 +334,7 @@ describe('root.unfinishedWrite', () => {
 
     const write = await root.unfinishedWrite('a');
 
-    assert.deepStrictEqual([write?.id, write?.lockedAt, write?.removing], ['a', lockedAt, false]);
+    assert.deepStrictEqual([write?.id, write?.lockedAt, write?.operation], ['a', lockedAt, 'update']);
     assert.strictEqual(await root.unfinishedWrite('b'), undefined);
     assert.strictEqual(await root.unfinishedWrite('never-created'), undefined);
   });
@@ -328,18 +379,24 @@ describe('write.recover', () => {
     assert.deepStrictEqual(await snapshot(root.path), before);
   });
 
-  it('finishes a remove listed before it began deleting, as the same writer', async () => {
-    const root = await newRoot();
-    await createObject(root, 'a', { 'a.txt': 'a' });
-    const lock = await lockObject(root, 'a', new Date('2026-11-10T22:01:44.000Z'));
-    const [write] = await listed(root);
-    await fs.promises.writeFile(lock, JSON.stringify({ ...JSON.parse(await fs.promises.readFile(lock, 'utf8')), removing: true }));
+  for (const [what, recorded] of [
+    ['', { operation: 'remove' }],
+    [', from a lock with no operation, as earlier releases wrote', {}],
+  ] as const) {
+    it(`finishes a remove listed before it began deleting, as the same writer${what}`, async () => {
+      const root = await newRoot();
+      await createObject(root, 'a', { 'a.txt': 'a' });
+      const taken = { id: 'a', ...recorded, lockedAt: '2026-11-10T22:01:44.000Z', objectRootExisted: true };
+      const lock = await writeLock(root, 'a', JSON.stringify(taken));
+      const [write] = await listed(root);
+      await fs.promises.writeFile(lock, JSON.stringify({ ...taken, removing: true }));
 
-    await write?.recover();
+      await write?.recover();
 
-    await assert.rejects(root.open('a'), ocflError('OBJECT_NOT_FOUND'));
-    assert.ok(!fs.existsSync(workspaceOf(root)));
-  });
+      await assert.rejects(root.open('a'), ocflError('OBJECT_NOT_FOUND'));
+      assert.ok(!fs.existsSync(workspaceOf(root)));
+    });
+  }
 
   it('is unaffected by the caller changing the lockedAt it was given', async () => {
     const root = await newRoot();
@@ -376,9 +433,7 @@ describe('reading and writing a lock', () => {
 
   it("doesn't list a file named lock too large to be one", async () => {
     const root = await newRoot();
-    const { lock } = placesOf(root, 'a');
-    await fs.promises.mkdir(path.dirname(lock), { recursive: true });
-    await fs.promises.writeFile(lock, ' '.repeat(64 * 1024 + 1));
+    await writeLock(root, 'a', ' '.repeat(64 * 1024 + 1));
 
     assert.deepStrictEqual(await listed(root), []);
   });

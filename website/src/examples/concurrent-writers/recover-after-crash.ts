@@ -5,7 +5,7 @@ const root = await openStorageRoot('/srv/ocfl');
 const restartedAt = new Date('2026-11-12T03:20:00Z');
 
 for await (const write of root.unfinishedWrites()) {
-  console.log(`${write.id}: locked at ${write.lockedAt.toISOString()}${write.removing ? ', being removed' : ''}`);
+  console.log(`${write.id}: ${write.operation}, locked at ${write.lockedAt.toISOString()}`);
   if (write.lockedAt < restartedAt) {
     await write.recover();
   }

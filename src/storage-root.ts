@@ -29,9 +29,10 @@ Each object has one directory here, \`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<
 \`<object path>\` is the object root relative to the storage root. While the object is being created,
 updated or removed, that directory holds:
 
-- \`${LOCK_NAME}\`: the object's lock, a JSON object. \`id\` is the id of the object, \`lockedAt\` the time
-  the lock was taken (ISO 8601, UTC), and \`objectRootExisted\` whether the object root existed then.
-  \`removing\`, if \`true\`, means the object is being removed. Only the writer that created the lock
+- \`${LOCK_NAME}\`: the object's lock, a JSON object. \`id\` is the id of the object, \`operation\` what
+  its writer is doing (\`create\`, \`update\` or \`remove\`), \`lockedAt\` the time the lock was taken
+  (ISO 8601, UTC), and \`objectRootExisted\` whether the object root existed then. \`removing\`, if
+  \`true\`, means a remove has begun deleting the object root. Only the writer that created the lock
   may change the object. The library never waits for a lock, and never removes one because of its
   age. A lock is written whole to a file beside it whose name starts \`.lock-\`, then put in place.
 - \`<version>/\`: the new version being assembled, which is then moved into the object root.
