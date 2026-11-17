@@ -5,13 +5,20 @@ const index = new Map<string, { version: number; files: string[] }>();
 const damaged: string[] = [];
 
 for await (const entry of root.objects()) {
-  if ('error' in entry) {
-    const { objectRoot, id, error } = entry;
-    damaged.push(`${error.ocflCode ?? error.code}: ${objectRoot}${id ? ` (${id})` : ''}`);
-    continue;
+  switch (entry.status) {
+    case 'opened': {
+      const { object } = entry;
+      index.set(object.id, { version: object.head.number, files: [...object.head.files.keys()] });
+      break;
+    }
+    case 'damaged': {
+      const { objectRoot, id, error } = entry;
+      damaged.push(`${error.ocflCode ?? error.code}: ${objectRoot}${id ? ` (${id})` : ''}`);
+      break;
+    }
+    default:
+      console.warn('Unknown listed entry, skipped');
   }
-  const { object } = entry;
-  index.set(object.id, { version: object.head.number, files: [...object.head.files.keys()] });
 }
 
 console.log(`Indexed ${index.size} objects`);

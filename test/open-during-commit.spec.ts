@@ -118,7 +118,7 @@ describe('opening an object while another writer is committing', () => {
       }
       assert.strictEqual(listed.length, 1);
       const [entry] = listed;
-      assert.ok(entry && 'error' in entry);
+      assert.ok(entry?.status === 'damaged');
       assert.strictEqual(entry.objectRoot, 'listed');
       assert.ok(ocflError('INVALID_OBJECT', 'E060')(entry.error));
     });

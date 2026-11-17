@@ -26,7 +26,7 @@ Two fields are set only some of the time:
 
 <Code code={branchOnCode} lang="ts" />
 
-`objects()` doesn't throw for an object it can't open. It yields `{ error, objectRoot, id? }` in that object's place and carries on listing. `error` has the code `INVALID_OBJECT`. `objectRoot` is the damaged object root's path from the storage root, and `id` is the id its root inventory names, absent when the inventory can't be read, isn't JSON or names none:
+`objects()` doesn't throw for an object it can't open. It yields `{ status: 'damaged', error, objectRoot, id? }` in that object's place and carries on listing. `error` has the code `INVALID_OBJECT`. `objectRoot` is the damaged object root's path from the storage root, and `id` is the id its root inventory names, absent when the inventory can't be read, isn't JSON or names none:
 
 <Code code={listWithErrors} lang="ts" />
 

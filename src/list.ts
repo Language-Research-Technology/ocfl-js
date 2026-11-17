@@ -9,23 +9,31 @@ import type { RootSettings } from './storage-root.ts';
 
 const { EXTENSIONS_DIR, NAMASTE_PREFIX_OBJECT } = OcflConstants;
 
+/** An object root that {@link StorageRoot.objects} opened. */
+interface ListedOpenedObject {
+  /** Always `'opened'`. */
+  readonly status: 'opened';
+  /** The object, opened. */
+  readonly object: OcflObject;
+}
+
+/** A damaged object root that {@link StorageRoot.objects} found and couldn't open. */
+interface ListedDamagedObjectRoot {
+  /** Always `'damaged'`. */
+  readonly status: 'damaged';
+  /** Why it can't be opened: always `INVALID_OBJECT`, with `ocflCode` when the fault has one. */
+  readonly error: OcflError;
+  /** Where it is: its path from the storage root, with `/` between directories, such as `a1b/c2d/item-1`. */
+  readonly objectRoot: string;
+  /** The id its root inventory names, absent if the inventory can't be read, isn't JSON or names none. It isn't checked against the storage layout. */
+  readonly id?: string;
+}
+
 /**
  * What {@link StorageRoot.objects} yields for each object root: the object, or why a damaged object root can't be opened.
- * Test `'object' in entry` or `'error' in entry`.
+ * Tell them apart by `status`, and keep a fallback: a later release may add a status. {@link StorageRoot.objects} shows how.
  */
-type ListedObject =
-  | {
-      /** The object, opened. */
-      readonly object: OcflObject;
-    }
-  | {
-      /** Why it can't be opened: always `INVALID_OBJECT`, with `ocflCode` when the fault has one. */
-      readonly error: OcflError;
-      /** Where it is: its path from the storage root, with `/` between directories, such as `a1b/c2d/item-1`. */
-      readonly objectRoot: string;
-      /** The id its root inventory names, absent if the inventory can't be read, isn't JSON or names none. It isn't checked against the storage layout. */
-      readonly id?: string;
-    };
+type ListedObject = ListedOpenedObject | ListedDamagedObjectRoot;
 
 /** The directory at `dirPath`, or `undefined` if it has gone since it was listed */
 async function openListedDirectory(dirPath: string): Promise<fs.Dir | undefined> {
@@ -51,12 +59,16 @@ async function listedObjectAt(
 ): Promise<ListedObject | undefined> {
   try {
     const object = await openDeclaredObject(storageRoot, objectRoot, declared, rootSettings);
-    return object && { object };
+    return object && { status: 'opened', object };
   } catch (error) {
     if (!(error instanceof OcflError && error.code === 'INVALID_OBJECT')) {
       throw error;
     }
-    const damaged = { error, objectRoot: pathFromStorageRoot(storageRoot, objectRoot) };
+    const damaged: ListedDamagedObjectRoot = {
+      status: 'damaged',
+      error,
+      objectRoot: pathFromStorageRoot(storageRoot, objectRoot),
+    };
     const id = await idInRootInventory(objectRoot);
     return id === undefined ? damaged : { ...damaged, id };
   }
@@ -92,4 +104,4 @@ async function* listObjects(storageRoot: string, rootSettings: RootSettings): As
   yield* objectsUnder(storageRoot, rootSettings, await fs.promises.opendir(storageRoot));
 }
 
-export { type ListedObject, listObjects };
+export { type ListedDamagedObjectRoot, type ListedObject, type ListedOpenedObject, listObjects };

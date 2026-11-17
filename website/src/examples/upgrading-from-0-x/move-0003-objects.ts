@@ -31,14 +31,21 @@ function tuples(id: string) {
 }
 
 for await (const entry of root.objects()) {
-  if ('error' in entry) {
-    continue;
-  }
-  const { id } = entry.object;
-  const parent = path.join(root.path, ...tuples(id));
-  const from = path.join(parent, oldName(id));
-  const to = path.join(parent, newName(id));
-  if (from !== to && existsSync(from) && !existsSync(to)) {
-    await rename(from, to);
+  switch (entry.status) {
+    case 'opened': {
+      const { id } = entry.object;
+      const parent = path.join(root.path, ...tuples(id));
+      const from = path.join(parent, oldName(id));
+      const to = path.join(parent, newName(id));
+      if (from !== to && existsSync(from) && !existsSync(to)) {
+        await rename(from, to);
+      }
+      break;
+    }
+    case 'damaged':
+      console.warn(`${entry.objectRoot}: damaged, not moved (${entry.error.ocflCode ?? entry.error.code})`);
+      break;
+    default:
+      console.warn('Unknown listed entry, skipped');
   }
 }

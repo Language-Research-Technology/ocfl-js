@@ -2,32 +2,35 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
-import type { ListedObject, OcflError, OcflObject, StorageRoot } from '../src/index.ts';
+import type { ListedDamagedObjectRoot, OcflObject, StorageRoot } from '../src/index.ts';
 import { openStorageRoot } from '../src/index.ts';
 import { createObject, DETAILS, objectRootOf, placesOf, textFiles, useTempRoots, writeB } from './helpers/drafts.ts';
 import { stillOpen, trackOpendir, withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
 import { rewriteInventory, STORAGE_FIXTURE, writeFiles } from './helpers/storage-roots.ts';
 
-type Damaged = Extract<ListedObject, { error: OcflError }>;
-
 /** Everything `root.objects()` yields, objects and damaged object roots apart */
 async function listed(root: StorageRoot) {
   const objects: OcflObject[] = [];
-  const damaged: Damaged[] = [];
+  const damaged: ListedDamagedObjectRoot[] = [];
   for await (const entry of root.objects()) {
-    if ('error' in entry) {
-      damaged.push(entry);
-    } else {
-      objects.push(entry.object);
+    switch (entry.status) {
+      case 'opened':
+        objects.push(entry.object);
+        break;
+      case 'damaged':
+        damaged.push(entry);
+        break;
+      default:
+        assert.fail(`unknown listed entry ${JSON.stringify(entry)}`);
     }
   }
   return { objects, damaged: damaged.map(brief), ids: objects.map((o) => o.id).sort() };
 }
 
 /** A damaged object root's fields, comparable as a whole; `id` is left out when the entry has none */
-function brief({ error, objectRoot, ...rest }: Damaged) {
-  return { code: error.code, ocflCode: error.ocflCode, objectRoot, ...rest };
+function brief({ error, ...rest }: ListedDamagedObjectRoot) {
+  return { code: error.code, ocflCode: error.ocflCode, ...rest };
 }
 
 describe('root.objects', () => {
@@ -92,7 +95,7 @@ describe('root.objects', () => {
     const { value } = await listing.next();
     await listing.return?.();
 
-    assert.ok(value && 'object' in value);
+    assert.ok(value?.status === 'opened');
     assert.strictEqual(value.object.head.number, 2);
   });
 
@@ -107,7 +110,7 @@ describe('root.objects', () => {
       const { ids, damaged } = await listed(root);
 
       assert.deepStrictEqual(ids, ['a', 'z']);
-      assert.deepStrictEqual(damaged, [{ code: 'INVALID_OBJECT', ocflCode: 'E033', objectRoot: 'corrupt' }]);
+      assert.deepStrictEqual(damaged, [{ status: 'damaged', code: 'INVALID_OBJECT', ocflCode: 'E033', objectRoot: 'corrupt' }]);
     });
 
     it('is named from the storage root with / between directories, however deep it is', async () => {
@@ -148,7 +151,7 @@ describe('root.objects', () => {
       const { objects, damaged } = await listed(root);
 
       assert.deepStrictEqual(objects, []);
-      assert.deepStrictEqual(damaged, [{ code: 'INVALID_OBJECT', ocflCode: 'E040', objectRoot: 'a', id: 'a' }]);
+      assert.deepStrictEqual(damaged, [{ status: 'damaged', code: 'INVALID_OBJECT', ocflCode: 'E040', objectRoot: 'a', id: 'a' }]);
     });
 
     it('is yielded with the id its inventory names when the inventory does not match its sidecar', async () => {
@@ -159,7 +162,7 @@ describe('root.objects', () => {
 
       const { damaged } = await listed(root);
 
-      assert.deepStrictEqual(damaged, [{ code: 'INVALID_OBJECT', ocflCode: 'E060', objectRoot: 'a', id: 'a' }]);
+      assert.deepStrictEqual(damaged, [{ status: 'damaged', code: 'INVALID_OBJECT', ocflCode: 'E060', objectRoot: 'a', id: 'a' }]);
     });
 
     it('is yielded with no id when its inventory names none', async () => {
@@ -171,7 +174,7 @@ describe('root.objects', () => {
 
       const { damaged } = await listed(root);
 
-      assert.deepStrictEqual(damaged, [{ code: 'INVALID_OBJECT', ocflCode: 'E036', objectRoot: 'a' }]);
+      assert.deepStrictEqual(damaged, [{ status: 'damaged', code: 'INVALID_OBJECT', ocflCode: 'E036', objectRoot: 'a' }]);
     });
 
     it('is reported, not searched for objects, when its object declaration is invalid', async () => {
@@ -184,7 +187,7 @@ describe('root.objects', () => {
       const { ids, damaged } = await listed(root);
 
       assert.deepStrictEqual(ids, ['good']);
-      assert.deepStrictEqual(damaged, [{ code: 'INVALID_OBJECT', ocflCode: 'E007', objectRoot: 'damaged' }]);
+      assert.deepStrictEqual(damaged, [{ status: 'damaged', code: 'INVALID_OBJECT', ocflCode: 'E007', objectRoot: 'damaged' }]);
     });
 
     it('is reported with E003, and the id its inventory names, when it has two object declarations', async () => {
@@ -196,7 +199,7 @@ describe('root.objects', () => {
       const { ids, damaged } = await listed(root);
 
       assert.deepStrictEqual(ids, ['good']);
-      assert.deepStrictEqual(damaged, [{ code: 'INVALID_OBJECT', ocflCode: 'E003', objectRoot: 'twice', id: 'twice' }]);
+      assert.deepStrictEqual(damaged, [{ status: 'damaged', code: 'INVALID_OBJECT', ocflCode: 'E003', objectRoot: 'twice', id: 'twice' }]);
     });
 
     it('is reported with E081, and the id its inventory names, when its OCFL version is later than the storage root', async () => {
@@ -208,7 +211,7 @@ describe('root.objects', () => {
       const { objects, damaged } = await listed(await openStorageRoot(root.path));
 
       assert.deepStrictEqual(objects, []);
-      assert.deepStrictEqual(damaged, [{ code: 'INVALID_OBJECT', ocflCode: 'E081', objectRoot: 'a', id: 'a' }]);
+      assert.deepStrictEqual(damaged, [{ status: 'damaged', code: 'INVALID_OBJECT', ocflCode: 'E081', objectRoot: 'a', id: 'a' }]);
     });
 
     it('is reported with no id when it has an object declaration and no inventory', async () => {
@@ -218,7 +221,7 @@ describe('root.objects', () => {
       const { objects, damaged } = await listed(root);
 
       assert.deepStrictEqual(objects, []);
-      assert.deepStrictEqual(damaged, [{ code: 'INVALID_OBJECT', ocflCode: 'E063', objectRoot: 'no-inventory' }]);
+      assert.deepStrictEqual(damaged, [{ status: 'damaged', code: 'INVALID_OBJECT', ocflCode: 'E063', objectRoot: 'no-inventory' }]);
     });
 
     it('is yielded with no id, and the listing carries on, when its inventory cannot be read for the id', async () => {
@@ -230,7 +233,7 @@ describe('root.objects', () => {
       const { ids, damaged } = await listed(root);
 
       assert.deepStrictEqual(ids, ['good']);
-      assert.deepStrictEqual(damaged, [{ code: 'INVALID_OBJECT', ocflCode: 'E007', objectRoot: 'damaged' }]);
+      assert.deepStrictEqual(damaged, [{ status: 'damaged', code: 'INVALID_OBJECT', ocflCode: 'E007', objectRoot: 'damaged' }]);
     });
   });
 

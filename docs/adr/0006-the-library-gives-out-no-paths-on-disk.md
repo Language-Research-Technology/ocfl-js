@@ -12,7 +12,7 @@ Some things the library finds can only be fixed by hand. A damaged object root c
 
 - **An opened object gives out no path on disk.** No object, version or file exposes its object root or a content path. The type tests assert that `object.root` and `file.contentPath` don't exist.
 - **The library names a place on disk only for something it found broken, as a path from the storage root.** The path uses `/` between directories on every platform and is never absolute. There are two:
-  - `ListedObject.objectRoot`, for a damaged object root. It has no opened object, so there is no snapshot to bypass.
+  - `ListedDamagedObjectRoot.objectRoot`, for a damaged object root. It has no opened object, so there is no snapshot to bypass.
   - `FixityProblem.storedFile`, for a stored file that is missing or whose content has changed. It comes with `affects`, every version and logical path that reads that stored file.
 
 ## Consequences

@@ -262,8 +262,8 @@ interface StorageRoot {
   create(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
 
   /**
-   * Lists every object in the storage root, in no particular order. Each object is read when the listing reaches it, and yielded as `{ object }`.
-   * A damaged object root, one whose object can't be opened, is yielded as `{ error, objectRoot, id? }`, and the listing carries on.
+   * Lists every object in the storage root, in no particular order. Each object is read when the listing reaches it, and yielded as `{ status: 'opened', object }`.
+   * A damaged object root, one whose object can't be opened, is yielded as `{ status: 'damaged', error, objectRoot, id? }`, and the listing carries on.
    * A directory with an invalid object declaration is a damaged object root: it isn't searched for objects. So is an object whose OCFL version is later than the storage root's (E081).
    *
    * An object that another writer is creating and hasn't committed is left out, and so is the `extensions` directory.
@@ -273,11 +273,16 @@ interface StorageRoot {
    * @example
    * ```ts
    * for await (const entry of root.objects()) {
-   *   if ('error' in entry) {
-   *     console.warn(`${entry.objectRoot}: ${entry.error.code} ${entry.error.ocflCode ?? ''}`);
-   *     continue;
+   *   switch (entry.status) {
+   *     case 'opened':
+   *       await index(entry.object.id, entry.object.head.files);
+   *       break;
+   *     case 'damaged':
+   *       console.warn(`${entry.objectRoot}: ${entry.error.code} ${entry.error.ocflCode ?? ''}`);
+   *       break;
+   *     default:
+   *       console.warn('Unknown listed entry, skipped');
    *   }
-   *   await index(entry.object.id, entry.object.head.files);
    * }
    * ```
    */
