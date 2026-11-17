@@ -46,7 +46,7 @@ export type {
 } from './layouts/index.ts';
 export type { ListedObject } from './list.ts';
 export type { ByteRange, OcflFile } from './ocfl-file.ts';
-export type { FixityOptions, FixityProblem, FixityProgress, OcflObject, Version } from './ocfl-object.ts';
+export type { FixityOptions, FixityProblem, FixityProgress, FixityReport, OcflObject, Version } from './ocfl-object.ts';
 export type { CreateStorageRootOptions, Durability, OpenStorageRootOptions, StorageRoot } from './storage-root.ts';
 export { createStorageRoot, openStorageRoot } from './storage-root.ts';
 export type { UnfinishedWrite } from './unfinished-write.ts';

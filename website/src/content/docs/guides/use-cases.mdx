@@ -73,7 +73,7 @@ This job runs a fixity check on every object in a storage root and reports what 
 
 <Code code={fixityCheck} lang="ts" />
 
-`checkFixity()` reads every stored file listed in the object's manifest again and compares its digest with the one the inventory records. It returns one [`FixityProblem`](/ocfl-js/api/interfaces/fixityproblem/) for each stored file that fails, so an empty list means every stored file matches.
+`checkFixity()` reads every stored file listed in the object's manifest again and compares its digest with the one the inventory records. It returns a [`FixityReport`](/ocfl-js/api/interfaces/fixityreport/): `problems` holds one [`FixityProblem`](/ocfl-js/api/interfaces/fixityproblem/) for each stored file that fails, so an empty list means every stored file matches, and `checkedFiles` says how many stored files it read.
 
 It finds:
 
