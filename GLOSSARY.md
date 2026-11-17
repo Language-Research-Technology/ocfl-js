@@ -32,8 +32,20 @@ _Avoid_: Invalid object, broken object, corrupt object
 An object root that the storage layout gives to an id but that holds the wrong thing: an OCFL object with another id, files that aren't an object, a file, a place below a file or inside another OCFL object, or a lock of a writer of another id. The id is fine; the storage root needs a person to look at it.
 _Avoid_: Id collision, wrong object
 
+**Version**:
+One state of an OCFL object's files, numbered from 1: `v1`, `v2` and so on in the inventory. Each create or update through this library makes one. A committed version never changes; its version directory, such as `v1/`, holds the content first stored in it and a copy of the inventory as it left it.
+_Avoid_: Revision, snapshot
+
+**Head**:
+The latest version of an OCFL object, named by its root inventory's `head`: `v2` after a create and one update. An update starts its draft from the head's files.
+_Avoid_: Current version, tip
+
+**Inventory**:
+The `inventory.json` file that describes an OCFL object: its id, digest algorithm and head, a manifest giving the content paths of each digest, and for each version the digest at each logical path.
+_Avoid_: Manifest (only one part of it), metadata
+
 **Root inventory**:
-The inventory in an object root, which names the object's head: its latest version. Its sidecar is the file beside it that records its digest.
+The inventory in an object root, which names the object's head. Its sidecar is the file beside it that records its digest.
 _Avoid_: Main inventory, top-level inventory
 
 **Writer**:
@@ -91,6 +103,14 @@ _Avoid_: Validation, verify, audit
 **Fixity report**:
 What a fixity check gives: a problem for each stored file that has changed or is missing, and how many stored files it read.
 _Avoid_: Result, problems list
+
+**Logical path**:
+The path of a file in a version, the one you write and read, such as `notes/field-notes.txt`. It need not look like the content path of the stored file it reads.
+_Avoid_: Filename, key, virtual path
+
+**Content path**:
+The path of a stored file from its object root, as the manifest lists it, such as `v1/content/notes/field-notes.txt`. It starts with the version directory its content was first stored in.
+_Avoid_: Physical path, storage path
 
 **Stored file**:
 A file in an object root that holds the content of one digest. The manifest lists it by its content path, and a logical path reads the first stored file the manifest lists for its digest. A fixity check names it by its path from the storage root.
