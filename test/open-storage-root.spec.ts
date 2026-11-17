@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { createStorageRoot, type OcflError, openStorageRoot } from '../src/index.ts';
+import { createStorageRoot, type OcflError, type OcflErrorCode, openStorageRoot } from '../src/index.ts';
 import { DIGESTS_OF_ABC, eachDigest } from './helpers/digests-of-abc.ts';
 import { withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, HASHED_DEFAULTS } from './helpers/layouts.ts';
@@ -42,9 +42,10 @@ describe('opening a storage root', () => {
     return rootPath;
   };
   const configFileOf = (rootPath: string) => path.join(rootPath, 'extensions', HASHED, 'config.json');
-  /** Matcher for an `INVALID_STORAGE_ROOT` with no OCFL code, whose message names `file` */
-  const invalidNaming = (file: string) => (error: OcflError) =>
-    ocflError('INVALID_STORAGE_ROOT')(error) && error.ocflCode === undefined && error.message.includes(file);
+  /** Matcher for an `OcflError` with `code` and no OCFL code, whose message names `file` */
+  const refusedNaming = (code: OcflErrorCode, file: string) => (error: OcflError) =>
+    ocflError(code)(error) && error.ocflCode === undefined && error.message.includes(file);
+  const invalidNaming = (file: string) => refusedNaming('INVALID_STORAGE_ROOT', file);
 
   it('reports the absolute path of a storage root given by a relative path', async () => {
     const rootPath = newPath();
@@ -161,9 +162,9 @@ describe('opening a storage root', () => {
       });
     }
 
-    it('rejects a root with no ocfl_layout.json, saying why', async () => {
+    it('refuses a root with no ocfl_layout.json as LAYOUT_NOT_DECLARED, with no OCFL code, saying why', async () => {
       const rootPath = await handMadeRoot();
-      await assert.rejects(openStorageRoot(rootPath), invalidNaming('ocfl_layout.json'));
+      await assert.rejects(openStorageRoot(rootPath), refusedNaming('LAYOUT_NOT_DECLARED', 'ocfl_layout.json'));
     });
 
     it('tells the owner of a root with no ocfl_layout.json to add one naming its layout, listing the layouts the library implements', async () => {
@@ -305,6 +306,12 @@ describe('opening a storage root', () => {
     it('reports E080 when the version declaration has the wrong contents', async () => {
       const rootPath = newPath();
       await writeFiles(rootPath, { '0=ocfl_1.1': 'wrong\n', 'ocfl_layout.json': declaring(HASHED) });
+      await assert.rejects(openStorageRoot(rootPath), ocflError('INVALID_STORAGE_ROOT', 'E080'));
+    });
+
+    it('reports E080, not LAYOUT_NOT_DECLARED, when the declaration is wrong and there is no ocfl_layout.json', async () => {
+      const rootPath = newPath();
+      await writeFiles(rootPath, { '0=ocfl_1.1': 'wrong\n' });
       await assert.rejects(openStorageRoot(rootPath), ocflError('INVALID_STORAGE_ROOT', 'E080'));
     });
   });

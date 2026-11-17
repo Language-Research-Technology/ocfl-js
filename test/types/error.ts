@@ -9,6 +9,7 @@ export function everyCodeIsHandled(code: OcflErrorCode): string {
     case 'INVALID_OBJECT':
     case 'STORAGE_ROOT_NOT_FOUND':
     case 'INVALID_STORAGE_ROOT':
+    case 'LAYOUT_NOT_DECLARED':
     case 'UNSUPPORTED_LAYOUT':
     case 'ID_INCOMPATIBLE_WITH_LAYOUT':
     case 'OBJECT_ROOT_CONFLICT':

@@ -58,11 +58,15 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 ### `INVALID_STORAGE_ROOT`
 
-**Cause:** `openStorageRoot` found no storage root it can read: the path is a file, is below a file, or is a directory with something in it, and its `0=ocfl_1.x` declaration is missing or wrong (`ocflCode` `E069` or `E080`), `ocfl_layout.json` is missing, or doesn't name a storage layout (`E070`), or the storage layout's `config.json` isn't a JSON object, is for another storage layout, or has parameters the storage layout refuses.
+**Cause:** `openStorageRoot` found no storage root it can read: the path is a file, is below a file, or is a directory with something in it, and its `0=ocfl_1.x` declaration is missing or wrong (`ocflCode` `E069` or `E080`), its `ocfl_layout.json` doesn't name a storage layout (`E070`), or the storage layout's `config.json` isn't a JSON object, is for another storage layout, or has parameters the storage layout refuses.
 
 **What to do:** check the path is a storage root. If it is, fix the declaration, `ocfl_layout.json` or `config.json`; the message names the file.
 
-A storage root with no `ocfl_layout.json` can't be opened: without it the library can't tell where each object is, and it doesn't guess. Add an `ocfl_layout.json` naming the storage layout the root's objects are laid out by, such as `{"extension": "0004-hashed-n-tuple-storage-layout"}`, with that storage layout's `config.json` under `extensions/` if it doesn't use the default parameters. The message lists the storage layouts the library has.
+### `LAYOUT_NOT_DECLARED`
+
+**Cause:** `openStorageRoot` found a storage root with no `ocfl_layout.json`. OCFL allows that, but without it the library can't tell where each object is, and it doesn't guess.
+
+**What to do:** add an `ocfl_layout.json` naming the storage layout the root's objects are laid out by, such as `{"extension": "0004-hashed-n-tuple-storage-layout"}`, with that storage layout's `config.json` under `extensions/` if it doesn't use the default parameters. The message lists the storage layouts the library has.
 
 ### `UNSUPPORTED_LAYOUT`
 
