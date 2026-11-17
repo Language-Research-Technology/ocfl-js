@@ -4,8 +4,9 @@
  * Start with {@link createStorageRoot} for a new storage root or {@link openStorageRoot} for an existing one. A
  * {@link StorageRoot} opens, creates, lists and purges objects. An {@link OcflObject} gives each version's files,
  * and `update` adds a version from a {@link Draft}. A failure the library detects is an {@link OcflError}; test its `code`.
- * File system errors, such as `ENOSPC`, pass through untouched, unless they leave a write needing recovery: then the error is
- * `RECOVERY_NEEDED`, with the file system error as its `cause`.
+ * File system errors, such as `ENOSPC`, pass through untouched, unless the library knows what one means or it leaves a write
+ * needing recovery: then the error has the code for that meaning, such as `CROSS_FILESYSTEM_MOVE`, or `RECOVERY_NEEDED`, with
+ * the file system error as its `cause`.
  *
  * @example
  * ```ts

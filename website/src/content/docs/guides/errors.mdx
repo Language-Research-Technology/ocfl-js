@@ -22,7 +22,7 @@ Two fields are set only some of the time:
 - `ocflCode` is the code the OCFL specification gives the rule that was broken, such as `E060`, when the fault has one. Only `INVALID_OBJECT` and `INVALID_STORAGE_ROOT` carry one.
 - `lockedAt` is when another writer took the object's lock. Only `OBJECT_LOCKED` sets it, and it is absent if the lock couldn't be read or was released in the meantime.
 
-`cause`, when set, is the error underneath. `RECOVERY_NEEDED` always sets it.
+`cause`, when set, is the error underneath. `RECOVERY_NEEDED` always sets it, and so does a code the library throws because a file system call failed in a way it knows the meaning of, such as `CROSS_FILESYSTEM_MOVE`. Finding nothing at a path, or finding a lock taken, isn't such a failure: `OBJECT_NOT_FOUND` and `OBJECT_LOCKED` don't carry the file system error.
 
 <Code code={branchOnCode} lang="ts" />
 
@@ -36,9 +36,9 @@ Two fields are set only some of the time:
 - A `RangeError` means a byte range given to `OcflFile.stream()` has an end that isn't a whole number from 0, a `start` after its `end`, or a `start` after the file's last byte.
 - A plain `Error` means a draft was used after its update finished, or an update ended with draft operations still running. Await every operation.
 - An aborted `signal` rejects `checkFixity`, `create` or `update` with the signal's `reason`, whatever that is: an `AbortSignal.timeout()` gives a `TimeoutError` `DOMException`, and `controller.abort()` with no reason an `AbortError` one.
-- File system errors, such as `ENOSPC` or `EACCES`, pass through untouched.
+- File system errors, such as `ENOSPC` or `EACCES`, pass through untouched, with two exceptions. Where the library knows what one means, it throws the code for that meaning, such as [`CROSS_FILESYSTEM_MOVE`](#cross_filesystem_move), [`UNSUPPORTED_FILESYSTEM`](#unsupported_filesystem) or, for a stored file that is missing, [`INVALID_OBJECT`](#invalid_object). Where one leaves a write needing recovery, it throws [`RECOVERY_NEEDED`](#recovery_needed).
 
-None of these is retryable as it stands. Fix the call, or the file system.
+None of these is retryable as it stands. Fix the call, or the file system. An abort is the caller's own choice, so whether to try again is too.
 
 ## Storage roots
 
@@ -168,7 +168,7 @@ These are checks the library makes before it uses an inventory's values as file 
 
 ### `CROSS_FILESYSTEM_MOVE`
 
-**Cause:** the new version couldn't be moved from the workspace (`extensions/ocfl-js-workspace` in the storage root) into the object, because the two are on different file systems. Nothing is committed.
+**Cause:** the new version couldn't be moved from the workspace (`extensions/ocfl-js-workspace` in the storage root) into the object, because the two are on different file systems. `cause` is the `EXDEV` error. Nothing is committed.
 
 **What to do:** keep the whole storage root on one file system. A mount point inside the storage root splits it.
 

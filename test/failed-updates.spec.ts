@@ -23,7 +23,7 @@ import {
 import { emptyDirectoriesUnder } from './helpers/empty-directories.ts';
 import { mountSeparately, withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
-import { ocflError } from './helpers/ocfl-error.ts';
+import { ocflError, rejection } from './helpers/ocfl-error.ts';
 
 type Change = (draft: Draft) => Promise<void>;
 /** Starts a `create` or an `update` with the callback it is given */
@@ -355,21 +355,23 @@ describe('an update that fails or finishes early', () => {
   });
 
   describe('with the workspace on another file system from the object', () => {
-    it('fails a create with CROSS_FILESYSTEM_MOVE and leaves nothing behind', async () => {
+    it('fails a create with CROSS_FILESYSTEM_MOVE, caused by EXDEV, and leaves nothing behind', async () => {
       const root = await newRoot();
       mountSeparately(path.join(root.path, 'extensions'));
 
-      await assert.rejects(root.create(ID, DETAILS, writeB), ocflError('CROSS_FILESYSTEM_MOVE'));
+      const error = await rejection(root.create(ID, DETAILS, writeB), 'CROSS_FILESYSTEM_MOVE');
+      assert.strictEqual((error.cause as NodeJS.ErrnoException).code, 'EXDEV');
 
       mock.restoreAll();
       await assertNoPartialObject(root);
     });
 
-    it('fails an update with CROSS_FILESYSTEM_MOVE and leaves the object at its previous version', async () => {
+    it('fails an update with CROSS_FILESYSTEM_MOVE, caused by EXDEV, and leaves the object at its previous version', async () => {
       const existing = await existingObject();
       mountSeparately(path.join(existing.root.path, 'extensions'));
 
-      await assert.rejects(existing.object.update(DETAILS, writeB), ocflError('CROSS_FILESYSTEM_MOVE'));
+      const error = await rejection(existing.object.update(DETAILS, writeB), 'CROSS_FILESYSTEM_MOVE');
+      assert.strictEqual((error.cause as NodeJS.ErrnoException).code, 'EXDEV');
 
       mock.restoreAll();
       await assertStillAtV1(existing);
