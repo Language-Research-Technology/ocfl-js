@@ -232,25 +232,44 @@ describe('updating an object', () => {
     });
   });
 
-  for (const [name, details] of [
-    ['no details', undefined],
-    ['a missing message', { user: { name: 'Alice' } }],
-    ['an empty message', { message: '', user: { name: 'Alice' } }],
-    ['a missing user', { message: 'A change' }],
-    ['a user with an empty name', { message: 'A change', user: { name: '' } }],
+  for (const [name, details, options, message] of [
+    ['no details', undefined, undefined, /^The message of the version is required\.$/],
+    ['a missing message', { user: { name: 'Alice' } }, undefined, /^The message of the version is required\.$/],
+    ['an empty message', { message: '', user: { name: 'Alice' } }, undefined, /^The message of the version is required\.$/],
+    ['a missing user', { message: 'A change' }, undefined, /^The name of the user making the version is required\.$/],
+    ['a user with an empty name', { message: 'A change', user: { name: '' } }, undefined, /^The name of the user making the version is required\.$/],
+    ['an unknown option', DETAILS, { sigal: 1 }, /^object\.update has no option 'sigal'\.$/],
+    ['two unknown options', DETAILS, { signal: undefined, sigal: 1, merge: true }, /^object\.update has no option 'sigal' or 'merge'\.$/],
+    ['options that are a string', DETAILS, 'x', /^Options must be an object, such as \{ signal: AbortSignal\.timeout\(60_000\) \}, not 'x'$/],
+    ['options that are null', DETAILS, null, /^Options must be an object, such as \{ signal: AbortSignal\.timeout\(60_000\) \}, not null$/],
+    ['a signal that is not an AbortSignal', DETAILS, { signal: 'abort' }, /^The signal option must be an AbortSignal, not 'abort'$/],
+    ['an unknown field in the details', { ...DETAILS, createdat: new Date(0) }, undefined, /^The details of the version have no field 'createdat'\.$/],
+    [
+      'the signal in the details',
+      { ...DETAILS, signal: undefined, mesage: 'x' },
+      undefined,
+      /^The details of the version have no field 'signal' or 'mesage'\.$/,
+    ],
+    [
+      'an unknown field in the user',
+      { message: 'A change', user: { name: 'Alice', adress: 'x' } },
+      undefined,
+      /^The user making the version has no field 'adress'\.$/,
+    ],
   ] as const) {
-    it(`throws a TypeError for ${name}, writing nothing`, async () => {
+    it(`throws a TypeError for ${name}, before calling back, taking no lock and writing nothing`, async () => {
       const root = await newRoot();
-      const object = await createObject(root, 'undescribed', { 'a.txt': 'a' });
+      const object = await createObject(root, 'refused', { 'a.txt': 'a' });
       const before = await snapshot(root.path);
       let called = false;
       const change = async () => {
         called = true;
       };
-      await assert.rejects(object.update(details as never, change), TypeError);
+      await assert.rejects(object.update(details as never, change, options as never), (e) => e instanceof TypeError && message.test(e.message));
       assert.ok(!called, 'the callback ran');
       assert.deepStrictEqual(await snapshot(root.path), before);
-      assert.ok(!fs.existsSync(path.join(root.path, 'extensions')));
+      assert.ok(!fs.existsSync(workspaceOf(root)));
+      assert.strictEqual(await root.unfinishedWrite('refused'), undefined);
     });
   }
 

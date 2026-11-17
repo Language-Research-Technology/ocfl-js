@@ -46,6 +46,14 @@ describe('cancelling a create or an update', () => {
     assert.strictEqual(called, false);
   });
 
+  it('ignores a signal the options only inherit', async () => {
+    const root = await temp.newRoot();
+    const object = await createObject(root, 'inherited', { 'a.txt': 'a' });
+    const options = Object.create({ signal: AbortSignal.abort(new Error('inherited')) });
+    const updated = await object.update(DETAILS, writeB, options);
+    assert.deepStrictEqual(await textFiles(updated.head), { 'a.txt': 'a', 'b.txt': 'b' });
+  });
+
   it('rejects a create with the reason of a signal already aborted, leaving no object root', async () => {
     const root = await temp.newRoot();
     const reason = new Error('never created');

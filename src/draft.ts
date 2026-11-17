@@ -7,7 +7,7 @@ import { ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import type { ContentRelease, DeletePlan, OcflObjectInventory, RelistPlan } from './inventory.ts';
 import { checkLogicalPath, fileLogicalPath, invalidLogicalPath, normaliseLogicalPath } from './logical-path.ts';
-import { createLimiter, isNonEmptyString } from './utils.ts';
+import { createLimiter, functionOption, isJsonObject, isNonEmptyString, optionsObject, rejectUnknownKeys, signalOption } from './utils.ts';
 
 /** The person or system responsible for a version. */
 interface User {
@@ -113,7 +113,7 @@ interface Draft {
    * @throws {@link OcflError} `SOURCE_CHANGED` if a file changed while it was being read.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `target` is empty or leaves the object.
    * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory.
-   * @throws `TypeError` if `options` is not an object, `target` is not a string, `filter` is not a function or it returns anything but `true` or `false`.
+   * @throws `TypeError` if `options` is not an object, has a key other than `target` and `filter`, `target` is not a string, `filter` is not a function or it returns anything but `true` or `false`.
    * @throws `Error` if the update this draft belongs to has finished.
    * @throws The error `filter` throws.
    * @throws The file system error if `source`, or something below it, is missing or can't be read.
@@ -133,7 +133,7 @@ interface Draft {
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
    * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a file would go where a directory is, or below a file, as the draft stands before the operation.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
-   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
+   * @throws `TypeError` if `options` is given and is not an object, has a key other than `merge`, or its `merge` is given and is not a boolean.
    * @throws `Error` if the update this draft belongs to has finished.
    * @example
    * ```ts
@@ -151,7 +151,7 @@ interface Draft {
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
    * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a file would go where a directory is, or below a file, as the draft stands before the operation.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
-   * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean.
+   * @throws `TypeError` if `options` is given and is not an object, has a key other than `merge`, or its `merge` is given and is not a boolean.
    * @throws `Error` if the update this draft belongs to has finished.
    * @example
    * ```ts
@@ -231,12 +231,18 @@ interface Draft {
 /**
  * @param head - The head version's date, which `createdAt` can't be earlier than, if there is a head
  * @returns A copy of `details` holding only what a version records
- * @throws `TypeError` if the message or the user's name is missing or empty, the user's address isn't a string, or `createdAt` isn't a valid `Date` or is earlier than `head`
+ * @throws `TypeError` if `details` has a field other than `message`, `user` and `createdAt`, its user has one other than `name` and `address`, the message or the user's name is missing or empty, the user's address isn't a string, or `createdAt` isn't a valid `Date` or is earlier than `head`
  */
 function checkedDetails(details: VersionDetails, head?: Date): VersionDetails {
+  if (isJsonObject(details)) {
+    rejectUnknownKeys(details, ['message', 'user', 'createdAt'], 'The details of the version have no field');
+  }
   const { message, user, createdAt } = details ?? {};
   if (!isNonEmptyString(message)) {
     throw new TypeError('The message of the version is required.');
+  }
+  if (isJsonObject(user)) {
+    rejectUnknownKeys(user, ['name', 'address'], 'The user making the version has no field');
   }
   if (!isNonEmptyString(user?.name)) {
     throw new TypeError('The name of the user making the version is required.');
@@ -257,6 +263,11 @@ function checkedDetails(details: VersionDetails, head?: Date): VersionDetails {
     user: { name: user.name, ...(user.address !== undefined && { address: user.address }) },
     ...(createdAt !== undefined && { createdAt: new Date(createdAt) }),
   };
+}
+
+function updateOptions(options: unknown, call: string): UpdateOptions {
+  const { signal } = optionsObject(options, call, ['signal'], '{ signal: AbortSignal.timeout(60_000) }');
+  return { signal: signalOption(signal) };
 }
 
 function unsupportedContent(content: unknown): TypeError {
@@ -281,22 +292,9 @@ function checkedContent(content: unknown): string | Uint8Array | AsyncIterable<u
 /** Only {@link commitDraft} has it, so a draft's class can't make another draft */
 const STARTING = Symbol('starting a draft');
 
-function optionsObject(options: unknown, example: string): Record<string, unknown> {
-  if (options === undefined) {
-    return {};
-  }
-  if (typeof options !== 'object' || options === null) {
-    throw new TypeError(`Options must be an object, such as ${example}, not ${inspect(options)}`);
-  }
-  return options as Record<string, unknown>;
-}
-
-/**
- * @returns Whether `options` asks for a merge
- * @throws `TypeError` if `options` is given and is not an object, or its `merge` is given and is not a boolean
- */
-function mergeOption(options: unknown): boolean {
-  const { merge } = optionsObject(options, '{ merge: true }');
+/** @returns Whether `options` asks for a merge */
+function mergeOption(options: unknown, call: string): boolean {
+  const { merge } = optionsObject(options, call, ['merge'], '{ merge: true }');
   if (merge !== undefined && typeof merge !== 'boolean') {
     throw new TypeError(`The merge option must be a boolean, not ${inspect(merge)}`);
   }
@@ -304,13 +302,11 @@ function mergeOption(options: unknown): boolean {
 }
 
 function importOptions(options: unknown): ImportOptions {
-  const checked = optionsObject(options, "{ target: 'raw' }");
+  const checked = optionsObject(options, 'draft.import', ['target', 'filter'], "{ target: 'raw' }");
   if (checked.target !== undefined && typeof checked.target !== 'string') {
     throw new TypeError(`The target option must be a string, not ${inspect(checked.target)}`);
   }
-  if (checked.filter !== undefined && typeof checked.filter !== 'function') {
-    throw new TypeError(`The filter option must be a function, not ${inspect(checked.filter)}`);
-  }
+  functionOption('filter', checked.filter);
   return checked as ImportOptions;
 }
 
@@ -740,7 +736,7 @@ class ObjectDraft implements Draft {
 
   async copy(source: string, target: string, options?: MergeOptions): Promise<void> {
     return this.#operate(async () => {
-      const merge = mergeOption(options);
+      const merge = mergeOption(options, 'draft.copy');
       const plan = this.#inventory._planCopy(fileLogicalPath(source), fileLogicalPath(target), merge);
       await this.#applyRelist(plan);
     });
@@ -749,7 +745,7 @@ class ObjectDraft implements Draft {
   // Content this version stored moves with its path; earlier versions' content stays where the manifest has it
   async rename(source: string, target: string, options?: MergeOptions): Promise<void> {
     return this.#operate(async () => {
-      const merge = mergeOption(options);
+      const merge = mergeOption(options, 'draft.rename');
       const plan = this.#inventory._planRename(fileLogicalPath(source), fileLogicalPath(target), merge);
       await this.#applyRelist(plan);
     });
@@ -863,6 +859,7 @@ export {
   type MergeOptions,
   type UpdateOptions,
   type User,
+  updateOptions,
   type VersionDetails,
   type WriteContent,
 };

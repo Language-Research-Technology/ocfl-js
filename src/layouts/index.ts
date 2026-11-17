@@ -49,7 +49,7 @@ function createLayout(config: LayoutConfig): BuiltInLayout {
     throw new TypeError(`Layout "${name}" is not supported.`);
   }
   const layout = new layoutClass(own);
-  rejectUnknownKeys(own, (parameter) => parameter === 'extensionName' || Object.hasOwn(layout.parameters, parameter), `Layout ${name} has no parameter`);
+  rejectUnknownKeys(own, ['extensionName', ...Object.keys(layout.parameters)], `Layout ${name} has no parameter`);
   return layout;
 }
 

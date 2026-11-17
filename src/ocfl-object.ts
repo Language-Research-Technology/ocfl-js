@@ -2,7 +2,7 @@ import nodePath from 'node:path';
 import { type DeclarationsFound, OcflConstants, type OcflVersion } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
-import { checkedDetails, commitDraft, type Draft, type UpdateOptions, type User, type VersionDetails } from './draft.ts';
+import { checkedDetails, commitDraft, type Draft, type UpdateOptions, type User, updateOptions, type VersionDetails } from './draft.ts';
 import { OcflError, objectRootConflict, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { type Inventory, OcflObjectInventory, versionNumbers } from './inventory.ts';
@@ -21,6 +21,7 @@ import {
 } from './object-on-disk.ts';
 import { type FileHistory, type OcflFile, StoredFile } from './ocfl-file.ts';
 import type { StorageRoot } from './storage-root.ts';
+import { functionOption, optionsObject, signalOption } from './utils.ts';
 import { objectWorkspace } from './workspace.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
@@ -68,7 +69,9 @@ interface OcflObject {
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `UPDATE_IN_PROGRESS`. Also thrown, before `change` runs, if an earlier update left an unfinished version in the workspace, or the update was refused and its lock couldn't be released. Don't simply repeat the update: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object again to see whether it was committed.
-   * @throws `TypeError` if the message or the user's name is missing or empty, the user's address isn't a string, or `createdAt` isn't a valid `Date` or is earlier than the head version's date. Nothing is changed.
+   * @throws `TypeError` if the message or the user's name is missing or empty, the user's address isn't a string, `createdAt` isn't a valid `Date` or is earlier than the head version's date,
+   * `details` has a field other than `message`, `user` and `createdAt`, its user has one other than `name` and `address`,
+   * or `options` isn't an object, has a key other than `signal`, or its `signal` isn't an `AbortSignal`. Nothing is changed.
    * @throws `Error` if `change` returned while draft operations it started were still running. Await every operation.
    * @throws `options.signal.reason` if the signal is aborted before the commit begins, even if `change` caught the error a draft operation rejected with; the update is discarded, and the object is as it was and isn't locked. A signal already aborted is refused before the lock is taken.
    * @throws Whatever `change` or a draft operation throws; the update is discarded, and the object is as it was and isn't locked.
@@ -91,6 +94,8 @@ interface OcflObject {
    * `onProgress` is called after each stored file is checked, whether it passed, changed or is missing, and reaches every file before the check resolves.
    * Aborting `signal` stops the check, and no stored file is still open or being read once it rejects.
    *
+   * @throws `TypeError`, before anything is read, if `options` is given and isn't an object, has a key other than `signal` and `onProgress`,
+   * or `signal` isn't an `AbortSignal` or `onProgress` isn't a function.
    * @throws `signal.reason` if `signal` is aborted, before anything is read if it already is.
    * @throws Whatever `onProgress` throws, which stops the check.
    * @throws The file system error, such as `EACCES` or `EIO`, if a stored file can't be read for any reason but being missing.
@@ -184,9 +189,10 @@ class OpenedObject implements OcflObject {
     Object.freeze(this);
   }
 
-  async update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>, options: UpdateOptions = {}): Promise<OcflObject> {
+  async update(details: VersionDetails, change: (draft: Draft) => Promise<unknown>, options?: UpdateOptions): Promise<OcflObject> {
     const checked = checkedDetails(details, this.head.createdAt);
-    options.signal?.throwIfAborted();
+    const { signal } = updateOptions(options, 'object.update');
+    signal?.throwIfAborted();
     const declared = await declaredVersion(this.#storageRoot, this.#root).catch(async (error: unknown) => {
       if (error instanceof OcflError && error.ocflCode === 'E003' && (await fileSystem.isDirEmpty(this.#root))) {
         throw ocflError(
@@ -203,7 +209,7 @@ class OpenedObject implements OcflObject {
     );
     const inventory = OcflObjectInventory._newVersion(this.#inventory);
     const place = { storageRoot: this.#storageRoot, objectRoot: this.#root, ocflVersion: this.ocflVersion };
-    const committed = await commitDraft(place, inventory, checked, change, options.signal);
+    const committed = await commitDraft(place, inventory, checked, change, signal);
     return committed ? new OpenedObject(this.#storageRoot, this.#rootVersion, this.#root, this.ocflVersion, committed) : this;
   }
 
@@ -220,8 +226,8 @@ class OpenedObject implements OcflObject {
     return fileSystem.sameIdentity(identity, this.#inventory._identity as fileSystem.FileIdentity);
   }
 
-  async checkFixity(options: FixityOptions = {}): Promise<readonly FixityProblem[]> {
-    const { signal, onProgress } = options;
+  async checkFixity(options?: FixityOptions): Promise<readonly FixityProblem[]> {
+    const { signal, onProgress } = fixityOptions(options);
     signal?.throwIfAborted();
     const totalFiles = Object.values(this.#inventory.manifest).reduce((count, contentPaths) => count + contentPaths.length, 0);
     const storedFiles = storedFilesOf(this.#inventory);
@@ -293,6 +299,13 @@ function affectedFiles(inventory: OcflObjectInventory, contentPaths: ReadonlySet
     }
   }
   return affected;
+}
+
+function fixityOptions(options: unknown): FixityOptions {
+  const checked = optionsObject(options, 'object.checkFixity', ['signal', 'onProgress'], '{ signal: AbortSignal.timeout(60_000) }');
+  signalOption(checked.signal);
+  functionOption('onProgress', checked.onProgress);
+  return checked as FixityOptions;
 }
 
 /** The digest of the stored file at `file`, or `undefined` if it is missing or isn't a regular file */

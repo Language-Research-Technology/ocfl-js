@@ -441,6 +441,9 @@ describe('importing into a draft', () => {
       ['null', null, /Options must be an object, such as \{ target: 'raw' \}, not null/],
       ['a target that is a number', { target: 1 }, /The target option must be a string, not 1/],
       ['a filter that is a string', { filter: '.git' }, /The filter option must be a function, not '.git'/],
+      ['an unknown option', { taget: 'raw' }, /^draft\.import has no option 'taget'\.$/],
+      ['an unknown option set to undefined', { taget: undefined }, /^draft\.import has no option 'taget'\.$/],
+      ['two unknown options', { target: 'raw', taget: 'raw', filtr: () => true }, /^draft\.import has no option 'taget' or 'filtr'\.$/],
     ] as const) {
       it(`throws a TypeError for ${name}, adding nothing`, async () => {
         const source = await newSource({ 'a.txt': 'a' });

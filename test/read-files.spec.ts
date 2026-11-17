@@ -149,6 +149,17 @@ describe('reading the files of an object', () => {
         await assert.rejects(object.head.files.get('a.txt')!.stream(range), RangeError);
       });
     }
+
+    for (const [name, range, message] of [
+      ['with an unknown key', { strat: 1 }, /^file\.stream has no option 'strat'\.$/],
+      ['with two unknown keys', { start: 1, strat: 1, signal: undefined }, /^file\.stream has no option 'strat' or 'signal'\.$/],
+      ['that is a string', 'bytes=0-1', /^Options must be an object, such as \{ start: 0, end: 1023 \}, not 'bytes=0-1'$/],
+      ['that is null', null, /^Options must be an object, such as \{ start: 0, end: 1023 \}, not null$/],
+    ] as const) {
+      it(`rejects with TypeError a range ${name}`, async () => {
+        await assert.rejects(object.head.files.get('a.txt')!.stream(range as never), (e) => e instanceof TypeError && message.test(e.message));
+      });
+    }
   });
 
   describe('a byte range of an empty file', () => {
@@ -237,6 +248,11 @@ describe('reading the files of an object', () => {
 
     it('does not leave it open', async () => {
       await assert.rejects(file.stream(), ocflError('INVALID_OBJECT'));
+      assert.strictEqual(timesOpen(path.join(objectRoot, 'v1/content/a.txt')), 0);
+    });
+
+    it('refuses a range with an unknown key before opening it', async () => {
+      await assert.rejects(file.stream({ strat: 1 } as never), TypeError);
       assert.strictEqual(timesOpen(path.join(objectRoot, 'v1/content/a.txt')), 0);
     });
   });

@@ -71,6 +71,17 @@ describe('creating a storage root', () => {
     });
   }
 
+  it('names a misspelt layout option, rather than saying the layout is missing', async () => {
+    const options = { layuot: { extensionName: HASHED } } as never;
+    await assert.rejects(createStorageRoot(newPath(), options), { name: 'TypeError', message: /^createStorageRoot has no option 'layuot'\.$/ });
+  });
+
+  it('refuses options that are not an object', async () => {
+    for (const options of ['layout', null, [{ extensionName: HASHED }]]) {
+      await assert.rejects(createStorageRoot(newPath(), options as never), { name: 'TypeError', message: /^Options must be an object, such as \{ layout: / });
+    }
+  });
+
   it('names every option it does not know', async () => {
     const options = { layout: { extensionName: HASHED }, ocflVersion: '1.0', fixityAlgorithms: ['md5'] } as never;
     await assert.rejects(createStorageRoot(newPath(), options), { name: 'TypeError', message: /'ocflVersion'.*'fixityAlgorithms'/ });

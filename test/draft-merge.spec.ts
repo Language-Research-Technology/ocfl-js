@@ -233,6 +233,8 @@ describe('merging a directory into another in a draft', () => {
         ['a merge that is a string', { merge: 'true' }, /The merge option must be a boolean, not 'true'/],
         ['a merge that is a number', { merge: 1 }, /The merge option must be a boolean, not 1/],
         ['a merge that is null', { merge: null }, /The merge option must be a boolean, not null/],
+        ['an unknown option', { merg: true }, new RegExp(`^draft\\.${op} has no option 'merg'\\.$`)],
+        ['a known and an unknown option', { merge: true, signal: undefined }, new RegExp(`^draft\\.${op} has no option 'signal'\\.$`)],
       ] as const) {
         it(`throws a TypeError for ${name}, writing nothing`, async () => {
           const files = { 'src/a': 'A', 'dst/b': 'B', lone: 'L' };
