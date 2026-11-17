@@ -33,6 +33,8 @@ the codes in its name. Other specs use `spec-ex-full` and the `content/` directo
   - `E049_E050_E054_bad_version_block_values`
   - `E050_state_digest_not_in_manifest`
   - `E053_E052_invalid_logical_paths`
+  - `E058_no_sidecar`: refused because no lock is held. The library accepts a root inventory whose sidecar is
+    missing or doesn't match only while the object's lock is held, between a commit's two renames (ADR 0007).
   - `E060_E064_root_inventory_digest_mismatch`
   - `E095_conflicting_logical_paths`
   - `E095_non_unique_logical_paths`
@@ -48,8 +50,6 @@ These bad objects name a code the library raises but are left out, because the l
   inventory, and the library reads only the root inventory.
 - `E050_manifest_digest_wrong_case`: the library compares digests without regard to case, as the spec's
   implementation note on digests advises, so the state's upper-case digest matches the manifest's.
-- `E058_no_sidecar`: a root inventory with no sidecar that matches its head version's inventory is what a commit
-  leaves between replacing the inventory and its sidecar, so the library accepts it (ADR 0005).
 - `E100_E099_fixity_invalid_content_paths`: the fault is in the `fixity` block, which the library doesn't read.
 
 These are left out because they have no object declaration, so listing doesn't count them as objects:

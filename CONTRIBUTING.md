@@ -63,7 +63,7 @@ A new storage root gets a copy of the OCFL specification text. Its source is `re
 
 ## The API report
 
-`docs/ocfl-fs.api.md` lists the package's public API, and `pnpm lint:api` fails when the built API differs from it. If you meant to change the API, run `pnpm api:update` and commit the report's diff with the change, so reviewers can see it. If you didn't, fix the code and leave the report alone. [ADR 0002](docs/adr/0002-the-api-report-is-the-public-api-contract.md) explains the rules for the public API.
+`docs/ocfl-fs.api.md` lists the package's public API, and `pnpm lint:api` fails when the built API differs from it, when a public member has no doc comment, or when api-extractor warns, for example about a public signature that uses a type the entry point doesn't export. The build sets `isolatedDeclarations`, so an export whose type can't be read off its declaration fails to compile. If you meant to change the API, run `pnpm api:update` and commit the report's diff with the change, so reviewers can see it. If you didn't, fix the code and leave the report alone. [ADR 0002](docs/adr/0002-the-api-report-is-the-public-api-contract.md) explains the rules for the public API.
 
 ## Commit messages
 

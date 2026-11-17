@@ -25,3 +25,4 @@ The library works on a local file system, often an NFS mount. Most file system e
 - Code that turns a new file system error into an `OcflError` picks the code for its meaning, or adds one, and sets `cause`.
 - Renaming or removing a code, moving a failure from one code to another, or moving a file system error from one path to another changes what callers' `catch` blocks see, and is a breaking change. That includes giving a new code to an error that passed through, since a caller handling the plain error stops seeing it. Making a wrong call throw an `OcflError`, or the reverse, is breaking too.
 - The full list of codes, with what causes each and whether retrying helps, is in the doc comment on `OcflErrorCode` and the website's errors guide.
+- A subclass of `OcflError`, or making messages part of the contract, contradicts this decision and needs a new ADR first.
