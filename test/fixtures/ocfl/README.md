@@ -30,6 +30,7 @@ the codes in its name. Other specs use `spec-ex-full` and the `content/` directo
   - `E040_wrong_head_format`
   - `E049_E050_E054_bad_version_block_values`
   - `E050_state_digest_not_in_manifest`
+  - `E053_E052_invalid_logical_paths`
   - `E060_E064_root_inventory_digest_mismatch`
   - `E096_manifest_duplicate_digests`
   - `E100_E099_manifest_invalid_content_paths`

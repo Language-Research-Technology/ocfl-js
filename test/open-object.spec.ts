@@ -470,6 +470,22 @@ describe('opening an object', () => {
       ]),
       ...(
         [
+          ['E052', '../../etc/cron.d/job'],
+          ['E052', 'a/./b.txt'],
+          ['E052', 'a//b.txt'],
+          ['E052', ''],
+          ['E053', '/etc/passwd'],
+          ['E053', 'a.txt/'],
+        ] as const
+      ).map(([ocflCode, logicalPath]): (typeof corruptions)[number] => [
+        `the logical path "${logicalPath}"`,
+        ocflCode,
+        (inventory) => {
+          inventory.versions!.v1!.state = { [DIGESTS_OF_ABC.sha512]: [logicalPath] };
+        },
+      ]),
+      ...(
+        [
           ['E017', 'a/b'],
           ['E018', '.'],
           ['E018', '..'],
@@ -498,6 +514,22 @@ describe('opening an object', () => {
       });
     }
 
+    it('throws INVALID_OBJECT with E052 for a logical path that only an earlier version has', async () => {
+      const objectRoot = await writeVersions(root.path, 'earlier-version', [{ 'a.txt': 'abc' }, { 'b.txt': 'abc' }]);
+      await rewriteInventory(objectRoot, (inventory) => {
+        inventory.versions!.v1!.state = { [DIGESTS_OF_ABC.sha512]: ['../a.txt'] };
+      });
+      await assert.rejects(root.open('earlier-version'), invalid('E052'));
+    });
+
+    it('opens an object whose logical paths have dots in their names', async () => {
+      await damaged('dotted-names', (inventory) => {
+        inventory.versions!.v1!.state = { [DIGESTS_OF_ABC.sha512]: ['.hidden', 'a..b', 'c/...'] };
+      });
+      const object = await root.open('dotted-names');
+      assert.deepStrictEqual([...object.head.files.keys()].sort(), ['.hidden', 'a..b', 'c/...']);
+    });
+
     it('says in its message which rule is broken, where and how', async () => {
       await damaged('broken-rule', (inventory) => {
         inventory.head = 'v2';
@@ -518,6 +550,20 @@ describe('opening an object', () => {
       });
       await assert.rejects(root.open('same-number'), invalid());
     });
+
+    for (const [ocflCode, problem, state] of [
+      ['E048', 'no state', undefined],
+      ['E050', 'a state that is a list', ['a.txt']],
+      ['E050', 'a state whose logical paths are a string', { [DIGESTS_OF_ABC.sha512]: 'x/y' }],
+    ] as const) {
+      it(`throws INVALID_OBJECT with ${ocflCode} for an inventory with a version that has ${problem}`, async () => {
+        const id = `state-${problem.replaceAll(' ', '-')}`;
+        await damaged(id, (inventory) => {
+          (inventory.versions!.v1 as { state?: unknown }).state = state;
+        });
+        await assert.rejects(root.open(id), invalid(ocflCode));
+      });
+    }
 
     it('throws INVALID_OBJECT with the SyntaxError as its cause for an inventory that is not JSON', async () => {
       const objectRoot = await writeVersions(root.path, 'not-json', [{ 'a.txt': 'abc' }]);
