@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { OcflConstants, type OcflVersion } from './constants.ts';
+import { OcflConstants, type OcflSpecVersion } from './constants.ts';
 import * as Hashing from './digest.ts';
 import type { VersionDetails } from './draft.ts';
 import { ocflError } from './error.ts';
@@ -23,7 +23,7 @@ interface ObjectPlace {
   /** Absolute path of the object root, inside the storage root */
   readonly objectRoot: string;
   /** Declared when the first commit creates the object */
-  readonly ocflVersion: OcflVersion;
+  readonly ocflVersion: OcflSpecVersion;
   readonly flusher: fileSystem.Flusher;
 }
 
@@ -32,7 +32,7 @@ interface ObjectPlace {
  * @returns The path of the declaration file, if this call wrote one
  * @throws {@link OcflError} `INVALID_OBJECT` with `E007` for an invalid declaration, or `E003` for more than one or if an update finds none; `DIRECTORY_NOT_EMPTY` if a create finds none in a directory that isn't empty
  */
-async function ensureObjectDeclaration(root: string, ocflVersion: OcflVersion, creating: boolean): Promise<string | undefined> {
+async function ensureObjectDeclaration(root: string, ocflVersion: OcflSpecVersion, creating: boolean): Promise<string | undefined> {
   if (await objectDeclaration(root)) {
     return;
   }

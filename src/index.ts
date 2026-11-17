@@ -21,7 +21,7 @@
  * @packageDocumentation
  */
 
-export type { OcflVersion } from './constants.ts';
+export type { OcflSpecVersion } from './constants.ts';
 export type { DigestAlgorithm, FixityAlgorithm } from './digest.ts';
 export type {
   CreateOptions,

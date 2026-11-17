@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
-import { findNamasteVersion, OcflConstants, type OcflVersion, SEVERAL_DECLARATIONS } from './constants.ts';
+import { findNamasteVersion, OcflConstants, type OcflSpecVersion, SEVERAL_DECLARATIONS } from './constants.ts';
 import { type CreateOptions, type Draft, writeOptions } from './draft.ts';
 import { OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
@@ -65,7 +65,7 @@ function declaredLayoutName(file: string, content: string): string {
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if `ocfl_layout.json` names a layout this library doesn't implement.
  * @throws The file system error if `root` has no declaration and can't be read, or the storage root declaration, `ocfl_layout.json` or the layout's `config.json` exists but can't be read.
  */
-async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion; layout: BuiltInLayout }> {
+async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflSpecVersion; layout: BuiltInLayout }> {
   const layoutPath = nodePath.join(root, OCFL_LAYOUT);
   const [namaste, layoutRead] = await Promise.allSettled([findNamasteVersion(NAMASTE_PREFIX_STORAGE, root), fileSystem.readIfExists(layoutPath)]);
   if (namaste.status === 'rejected') {
@@ -164,7 +164,7 @@ const FLUSHERS: Readonly<Record<Durability, fileSystem.Flusher>> = { full: fileS
 /** What an object takes from the storage root it is opened or created through */
 interface RootSettings {
   /** The storage root's OCFL version */
-  readonly ocflVersion: OcflVersion;
+  readonly ocflVersion: OcflSpecVersion;
   readonly flusher: fileSystem.Flusher;
 }
 
@@ -196,7 +196,7 @@ interface StorageRoot {
   /** Absolute path of the storage root. */
   readonly path: string;
   /** OCFL version of the storage root, and of objects created in it. */
-  readonly ocflVersion: OcflVersion;
+  readonly ocflVersion: OcflSpecVersion;
   /** The storage root's layout, with every parameter present. */
   readonly layout: Layout;
 
@@ -383,7 +383,7 @@ async function fittingObjectRoot(id: string, objectRoot: string, longest: (objec
 
 const isUnplaceable = (error: unknown): error is OcflError => error instanceof OcflError && error.code === 'ID_INCOMPATIBLE_WITH_LAYOUT';
 
-function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayout, flusher: fileSystem.Flusher): StorageRoot {
+function storageRoot(root: string, ocflVersion: OcflSpecVersion, layout: BuiltInLayout, flusher: fileSystem.Flusher): StorageRoot {
   const settings: RootSettings = { ocflVersion, flusher };
   const longestWriterPathOf = (objectRoot: string) => longestWriterPath(root, objectRoot);
   /** The object root of `id`, or the layout's refusal if no object can have the id */

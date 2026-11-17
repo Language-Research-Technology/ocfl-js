@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
-import { type DeclarationsFound, findNamasteVersion, OcflConstants, type OcflVersion, SEVERAL_DECLARATIONS } from './constants.ts';
+import { type DeclarationsFound, findNamasteVersion, OcflConstants, type OcflSpecVersion, SEVERAL_DECLARATIONS } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
 import { type OcflError, objectRootConflict, ocflError } from './error.ts';
@@ -175,7 +175,7 @@ function holdsAnotherObject(objectRoot: string, found: string, id: string): Ocfl
  * The OCFL version the declaration `declared`, found in `objectRoot`, gives
  * @throws {@link OcflError} `INVALID_OBJECT` with `E003` for more than one declaration, or `E007` for one with the wrong contents
  */
-function checkedDeclaration(objectRoot: string, declared: DeclarationsFound): OcflVersion {
+function checkedDeclaration(objectRoot: string, declared: DeclarationsFound): OcflSpecVersion {
   if (declared === SEVERAL_DECLARATIONS) {
     throw createError('E003', objectRoot, 'it has more than one object declaration');
   }
@@ -189,7 +189,7 @@ function checkedDeclaration(objectRoot: string, declared: DeclarationsFound): Oc
  * The OCFL version the object declaration in `objectRoot` gives, or `undefined` if it has none
  * @throws {@link OcflError} `INVALID_OBJECT` as {@link checkedDeclaration} does
  */
-async function objectDeclaration(objectRoot: string): Promise<OcflVersion | undefined> {
+async function objectDeclaration(objectRoot: string): Promise<OcflSpecVersion | undefined> {
   const declared = await findNamasteVersion(NAMASTE_PREFIX_OBJECT, objectRoot);
   return declared === undefined ? undefined : checkedDeclaration(objectRoot, declared);
 }
@@ -228,7 +228,7 @@ async function objectState(storageRoot: string, objectRoot: string): Promise<'co
  * The OCFL version declared by the object at `objectRoot`, which has an inventory.
  * @throws {@link OcflError} `INVALID_OBJECT` if its declaration is missing (`E003`) or wrong as {@link checkedDeclaration} finds it, or it is inside another object
  */
-async function declaredVersion(storageRoot: string, objectRoot: string): Promise<OcflVersion> {
+async function declaredVersion(storageRoot: string, objectRoot: string): Promise<OcflSpecVersion> {
   const [ocflVersion, outer] = await Promise.all([objectDeclaration(objectRoot), enclosingObject(storageRoot, objectRoot)]);
   if (!ocflVersion) {
     throw createError('E003', objectRoot, 'it has an inventory but no object declaration');
@@ -244,7 +244,7 @@ async function declaredVersion(storageRoot: string, objectRoot: string): Promise
  * @throws {@link OcflError} `INVALID_OBJECT` as {@link declaredVersion} does
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it is an object with another id
  */
-async function confirmedVersion(storageRoot: string, objectRoot: string, inventory: OcflObjectInventory, id: string): Promise<OcflVersion> {
+async function confirmedVersion(storageRoot: string, objectRoot: string, inventory: OcflObjectInventory, id: string): Promise<OcflSpecVersion> {
   const ocflVersion = await declaredVersion(storageRoot, objectRoot);
   if (inventory.id !== id) {
     throw holdsAnotherObject(objectRoot, inventory.id, id);
@@ -256,7 +256,7 @@ async function confirmedVersion(storageRoot: string, objectRoot: string, invento
  * `ocflVersion`, declared by the object at `objectRoot`, once it is known to be no later than `rootVersion`, its storage root's.
  * @throws {@link OcflError} `INVALID_OBJECT` with E081 if it is later
  */
-function withinRootVersion(objectRoot: string, ocflVersion: OcflVersion, rootVersion: OcflVersion): OcflVersion {
+function withinRootVersion(objectRoot: string, ocflVersion: OcflSpecVersion, rootVersion: OcflSpecVersion): OcflSpecVersion {
   if (ocflVersion > rootVersion) {
     throw createError('E081', objectRoot, `an OCFL ${ocflVersion} object in an OCFL ${rootVersion} storage root`);
   }
