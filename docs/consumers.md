@@ -33,6 +33,7 @@ Unmaintained, still on 0.2.x (two releases back), or using the library only outs
 ## Notes
 
 - Every LDaCA consumer configures `000N-path-direct-storage-layout`; production storage roots declare it.
+- oni-ocfl is CommonJS and loads the library with `require('@ocfl/ocfl-fs')`, so it needs a Node.js that can `require()` an ES module (ADR 0001). ldacapi and arocapi are ES modules.
 - All reads are by logical path at the head version. No consumer reads an old version, or looks a file up by digest.
 - Content paths are the internal most often relied on (arocapi, oni, islandty). From 1.0 the library gives out no content paths: files are read through `file.stream()`, which arocapi can serve from. Apart from `StorageRoot.path`, which names the storage root itself, the only paths on disk it gives out name something it found broken, a damaged object root or a stored file that fails a fixity check (ADR 0006).
 - From 1.0 a storage root must declare a storage layout the library implements (ADR 0007), and objects are opened only by id through it, never by path (ADR 0004). arocapi's `objectRoot` option has no equivalent: a storage root it served that way needs an `ocfl_layout.json`, or the layout added to the library.

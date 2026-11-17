@@ -21,9 +21,9 @@ The OCFL spec lets a storage root have an `extensions` directory holding only ex
 ## Consequences
 
 - The lock is in the workspace, not the object root, so an object never holds a non-OCFL file, and an object that doesn't exist yet can be locked.
-- No storage layout nests object roots (ADR 0005), so one object's workspace directory is never inside another's.
+- No storage layout nests object roots (ADR 0009), so one object's workspace directory is never inside another's.
 - A storage root with a workspace in use gets a W016 warning from validators, because `ocfl-js-workspace` isn't a registered extension name.
 - Part of the object hierarchy mounted from another filesystem can't be updated. Callers get an error, not a slow copy.
-- Removing the empty workspace can race another writer creating it, so a writer tries again when its directory vanishes before its lock is in place.
 - What an interrupted update leaves in the workspace stays there until its unfinished write is recovered (ADR 0005).
 - A writer never changes an `ocfl-js-workspace.md` that is already there, so an operator's edits stay. A writer that can't write the file carries on without it, and one that crashes while writing it can leave it truncated.
+- A `workspace` option, or a workspace anywhere but `extensions/ocfl-js-workspace/` in the storage root, contradicts this decision and needs a new ADR first.
