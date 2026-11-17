@@ -33,10 +33,10 @@ describe('telling whether an opened object is still current', () => {
     assert.strictEqual(await object.isCurrent(), false);
   });
 
-  it('is false once the object is removed', async () => {
+  it('is false once the object is purged', async () => {
     const root = await temp.newRoot();
     const object = await createObject(root, 'removed', { 'a.txt': 'a' });
-    await root.remove('removed');
+    await root.purge('removed');
     assert.strictEqual(await object.isCurrent(), false);
   });
 

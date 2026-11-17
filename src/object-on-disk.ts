@@ -291,7 +291,7 @@ async function committedInventory(storageRoot: string, objectRoot: string): Prom
   if (inventory || !(await hasObjectDeclaration(objectRoot)) || (await isLocked(objectWorkspace(storageRoot, objectRoot)))) {
     return inventory;
   }
-  // Its writer may have finished between the two: a create by committing, a remove by deleting it
+  // Its writer may have finished between the two: a create by committing, a purge by deleting it
   const reread = await readInventory(storageRoot, objectRoot);
   if (!reread && (await hasObjectDeclaration(objectRoot))) {
     throw declarationWithoutInventory(objectRoot);
@@ -330,7 +330,7 @@ async function noCommittedObject(storageRoot: string, objectRoot: string, id: st
   if ((await strayAt(objectRoot)) === undefined || (await isLocked(objectWorkspace(storageRoot, objectRoot)))) {
     return objectNotFound(storageRoot, id);
   }
-  // A writer may have finished between the two: a remove by deleting what it had left, a failed create by discarding what it made
+  // A writer may have finished between the two: a purge by deleting what it had left, a failed create by discarding what it made
   const stray = await strayAt(objectRoot);
   return stray === undefined ? objectNotFound(storageRoot, id) : strayContents(objectRoot, id, stray);
 }

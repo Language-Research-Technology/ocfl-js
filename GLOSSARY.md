@@ -33,8 +33,12 @@ The inventory in an object root, which names the object's head: its latest versi
 _Avoid_: Main inventory, top-level inventory
 
 **Writer**:
-A process creating, updating or removing an OCFL object through this library.
+A process creating, updating or purging an OCFL object through this library.
 _Avoid_: Client, updater
+
+**Purge**:
+To delete an OCFL object and every version of it from the storage root, which can't be undone. Taking a file out of a draft only leaves it out of the new version; earlier versions keep it. The OCFL implementation notes use "purging" for taking one file out of every version, which this library doesn't do.
+_Avoid_: Remove, delete (of an object)
 
 **Draft**:
 The changes being assembled during an update to an OCFL object, which become one new version or are discarded.
@@ -49,7 +53,7 @@ The library's directory inside a storage root where a new version is assembled b
 _Avoid_: Staging area, temp directory, deposit directory
 
 **Lock**:
-The file in the workspace that marks an OCFL object as having a writer, held from the start of a create, update or remove until it ends cleanly. A second writer is refused, never made to wait, and the library never removes a lock because of its age.
+The file in the workspace that marks an OCFL object as having a writer, held from the start of a create, update or purge until it ends cleanly. A second writer is refused, never made to wait, and the library never removes a lock because of its age.
 _Avoid_: Mutex, lease, lock file
 
 **Commit point**:
@@ -57,7 +61,7 @@ The rename that replaces an OCFL object's root inventory. Before it an update is
 _Avoid_: Publish, finalise
 
 **Recover**:
-To clear what a dead writer left of an OCFL object and release its lock, on the caller's word that no writer is alive: an update that wasn't committed is discarded, one that was is completed, and a remove that had begun deleting is finished. A remove that hadn't begun deleting is recovered as an update that wasn't committed.
+To clear what a dead writer left of an OCFL object and release its lock, on the caller's word that no writer is alive: an update that wasn't committed is discarded, one that was is completed, and a purge that had begun deleting is finished. A purge that hadn't begun deleting is recovered as an update that wasn't committed.
 _Avoid_: Repair, unlock, roll back
 
 **Durability**:
@@ -65,7 +69,7 @@ Whether a create or update through a storage root flushes what it writes to disk
 _Avoid_: Fsync mode, safe mode, sync option
 
 **Unfinished write**:
-A create, update or remove of an OCFL object whose lock is still held: its writer is still working, or died. The library can't tell which. An OCFL object is recovered only through its unfinished write.
+A create, update or purge of an OCFL object whose lock is still held: its writer is still working, or died. The library can't tell which. An OCFL object is recovered only through its unfinished write.
 _Avoid_: Stale lock, orphan, leftover
 
 **Digest algorithm**:

@@ -49,7 +49,7 @@ describe('an id whose paths are too long for the file system', () => {
       [
         ['create', 'throws ID_INCOMPATIBLE_WITH_LAYOUT', createRefused],
         ['open', 'throws OBJECT_NOT_FOUND', (root, id) => assert.rejects(root.open(id), ocflError('OBJECT_NOT_FOUND'))],
-        ['remove', 'throws OBJECT_NOT_FOUND', (root, id) => assert.rejects(root.remove(id), ocflError('OBJECT_NOT_FOUND'))],
+        ['purge', 'throws OBJECT_NOT_FOUND', (root, id) => assert.rejects(root.purge(id), ocflError('OBJECT_NOT_FOUND'))],
         ['has', 'is false', async (root, id) => assert.strictEqual(await root.has(id), false)],
         ['unfinishedWrite', 'is undefined', async (root, id) => assert.strictEqual(await root.unfinishedWrite(id), undefined)],
       ],
@@ -59,7 +59,7 @@ describe('an id whose paths are too long for the file system', () => {
       lockTooLong,
       [
         ['create', 'throws ID_INCOMPATIBLE_WITH_LAYOUT', createRefused],
-        ['remove', 'throws ID_INCOMPATIBLE_WITH_LAYOUT', (root, id) => assert.rejects(root.remove(id), incompatible)],
+        ['purge', 'throws ID_INCOMPATIBLE_WITH_LAYOUT', (root, id) => assert.rejects(root.purge(id), incompatible)],
       ],
     ],
   ];
@@ -96,18 +96,18 @@ describe('an id whose paths are too long for the file system', () => {
 
       assert.deepStrictEqual(await textFiles((await root.open(id)).head), { 'a.txt': 'a' });
       assert.strictEqual(await root.unfinishedWrite(id), undefined);
-      await assert.rejects(root.remove(id), incompatible);
+      await assert.rejects(root.purge(id), incompatible);
     });
   });
 
-  it('leaves the longest id that fits to create, open and remove', async () => {
+  it('leaves the longest id that fits to create, open and purge', async () => {
     const root = await temp.newRoot({ extensionName: PATH_DIRECT });
     const id = idWithObjectRootOf(root, LONGEST_PATH - stagedLockExtra(root));
 
     await createObject(root, id, { 'a.txt': 'a' });
     assert.deepStrictEqual(await textFiles((await root.open(id)).head), { 'a.txt': 'a' });
     assert.strictEqual(await root.unfinishedWrite(id), undefined);
-    await root.remove(id);
+    await root.purge(id);
     await assert.rejects(root.open(id), ocflError('OBJECT_NOT_FOUND'));
   });
 

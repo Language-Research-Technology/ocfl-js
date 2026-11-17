@@ -23,7 +23,7 @@ describe('a path-direct id whose path has the suffix part-way through', () => {
       const outcomes: [string, string, (root: StorageRoot, id: string) => Promise<unknown>][] = [
         ['create', 'throws ID_INCOMPATIBLE_WITH_LAYOUT', (root, id) => assert.rejects(createObject(root, id, { 'b.txt': 'b' }), incompatible)],
         ['open', 'throws OBJECT_NOT_FOUND', (root, id) => assert.rejects(root.open(id), notFound)],
-        ['remove', 'throws OBJECT_NOT_FOUND', (root, id) => assert.rejects(root.remove(id), notFound)],
+        ['purge', 'throws OBJECT_NOT_FOUND', (root, id) => assert.rejects(root.purge(id), notFound)],
         ['has', 'is false', async (root, id) => assert.strictEqual(await root.has(id), false)],
         ['unfinishedWrite', 'is undefined', async (root, id) => assert.strictEqual(await root.unfinishedWrite(id), undefined)],
       ];

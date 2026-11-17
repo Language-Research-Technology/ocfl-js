@@ -6,13 +6,13 @@
  * | --- | --- | --- |
  * | `OBJECT_NOT_FOUND` | No object has this id, or the storage layout can't place one with it. Safe to treat as not found. | No |
  * | `OBJECT_EXISTS` | `create` found an object with this id. Open it instead. | No |
- * | `OBJECT_OUT_OF_DATE` | A version was committed, or the object removed, since it was opened. | After opening it again |
+ * | `OBJECT_OUT_OF_DATE` | A version was committed, or the object purged, since it was opened. | After opening it again |
  * | `INVALID_OBJECT` | The object on disk is damaged, or isn't one the library can safely read. | No |
  * | `STORAGE_ROOT_NOT_FOUND` | `openStorageRoot` found nothing at the path, or an empty directory. | No |
  * | `INVALID_STORAGE_ROOT` | `openStorageRoot` found something that isn't a storage root it can read. | No |
  * | `LAYOUT_NOT_DECLARED` | The storage root has no `ocfl_layout.json`. | No |
  * | `UNSUPPORTED_LAYOUT` | The storage root names a storage layout the library doesn't have. | No |
- * | `ID_INCOMPATIBLE_WITH_LAYOUT` | `create` was given an id the storage layout can't place, or `create` or `remove` an id whose lock path is too long. | No |
+ * | `ID_INCOMPATIBLE_WITH_LAYOUT` | `create` was given an id the storage layout can't place, or `create` or `purge` an id whose lock path is too long. | No |
  * | `OBJECT_ROOT_CONFLICT` | The object root for this id holds the wrong thing. A person needs to look at it. | No |
  * | `DIRECTORY_NOT_EMPTY` | `createStorageRoot` was given a directory with something in it. | No |
  * | `OBJECT_LOCKED` | A writer holds the object's lock, or died holding it, as a write that threw `RECOVERY_NEEDED` does; see `lockedAt`. | Later, not in a loop; or recover a dead writer's unfinished write |

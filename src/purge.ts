@@ -53,21 +53,21 @@ async function deleteObjectRoot(storageRoot: string, objectRoot: string): Promis
   await fileSystem.removeEmptyAncestorsQuietly(path.dirname(objectRoot), storageRoot);
 }
 
-/** For a remove that ended holding its lock */
+/** For a purge that ended holding its lock */
 function recoveryNeeded(objectRoot: string, state: string, advice: string, cause: unknown): OcflError {
-  return lockKept(`Removing the object at ${objectRoot} ${state}`, advice, cause);
+  return lockKept(`Purging the object at ${objectRoot} ${state}`, advice, cause);
 }
 
 /**
  * Deletes the object `id` that the storage root's layout places at `objectRoot`, with every version, and the parent directories that leaves empty.
  * The object's lock is held throughout, and what dead writers left in its workspace directory is removed with it.
- * Once the lock says the object is being removed, the remove is carried through: by this call, or by recovery.
+ * Once the lock says the object is being deleted, the purge is carried through: by this call, or by recovery.
  * @throws {@link OcflError} `OBJECT_LOCKED` if the object is locked; `UNSUPPORTED_FILESYSTEM` if its lock can't be hard-linked; `OBJECT_NOT_FOUND`, `INVALID_OBJECT` or `OBJECT_ROOT_CONFLICT` if `objectRoot` doesn't hold the object. Nothing is deleted, and a lock this took is released.
  * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting it failed, or its lock couldn't be released; the lock is kept
  */
-async function removeObject(storageRoot: string, objectRoot: string, id: string): Promise<void> {
+async function purgeObject(storageRoot: string, objectRoot: string, id: string): Promise<void> {
   const workspace = objectWorkspace(storageRoot, objectRoot);
-  const lock = await takeLock(workspace, storageRoot, id, true, 'remove');
+  const lock = await takeLock(workspace, storageRoot, id, true, 'purge');
   try {
     await assertHoldsObject(storageRoot, objectRoot, id);
     await markRemoving(workspace, lock);
@@ -75,7 +75,7 @@ async function removeObject(storageRoot: string, objectRoot: string, id: string)
     try {
       await releaseLock(workspace, storageRoot);
     } catch {
-      throw recoveryNeeded(objectRoot, 'was refused, and its lock could not be released', 'then remove the object again', error);
+      throw recoveryNeeded(objectRoot, 'was refused, and its lock could not be released', 'then purge the object again', error);
     }
     throw error;
   }
@@ -84,19 +84,19 @@ async function removeObject(storageRoot: string, objectRoot: string, id: string)
     await clearWorkspace(workspace);
     await releaseLock(workspace, storageRoot);
   } catch (error) {
-    throw recoveryNeeded(objectRoot, 'failed part of the way through', 'which finishes removing it', error);
+    throw recoveryNeeded(objectRoot, 'failed part of the way through', 'which finishes purging it', error);
   }
 }
 
 /**
- * Finishes the remove that the dead writer holding the lock of the object at `objectRoot` had begun, and releases the lock.
+ * Finishes the purge that the dead writer holding the lock of the object at `objectRoot` had begun, and releases the lock.
  * The lock goes last, so a failure keeps the object locked.
  */
-async function recoverRemove(storageRoot: string, objectRoot: string): Promise<void> {
+async function recoverPurge(storageRoot: string, objectRoot: string): Promise<void> {
   const workspace = objectWorkspace(storageRoot, objectRoot);
   await clearWorkspace(workspace);
   await deleteObjectRoot(storageRoot, objectRoot);
   await releaseLock(workspace, storageRoot);
 }
 
-export { recoverRemove, removeObject };
+export { purgeObject, recoverPurge };

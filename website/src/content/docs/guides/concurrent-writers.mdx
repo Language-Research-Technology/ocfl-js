@@ -17,7 +17,7 @@ The library refuses a second writer rather than managing one. It never waits, qu
 
 ## The lock
 
-Each OCFL object has one lock, a file in the storage root's workspace, which must be on [the same file system](/ocfl-js/#what-it-doesnt-check-or-do) as the rest of the storage root. `root.create`, `object.update` and `root.remove` take it before they do anything else, and release it only when they end cleanly. Readers take no lock, so opening an object or reading its files never waits on a writer.
+Each OCFL object has one lock, a file in the storage root's workspace, which must be on [the same file system](/ocfl-js/#what-it-doesnt-check-or-do) as the rest of the storage root. `root.create`, `object.update` and `root.purge` take it before they do anything else, and release it only when they end cleanly. Readers take no lock, so opening an object or reading its files never waits on a writer.
 
 ### Sharing a storage root over NFS
 
@@ -31,7 +31,7 @@ The library never removes a lock because of its age, and never removes one it di
 
 ## `OBJECT_LOCKED`: another writer holds the lock
 
-A create, update or remove that finds the lock taken throws an [`OcflError`](/ocfl-js/api/classes/ocflerror/) with code [`OBJECT_LOCKED`](/ocfl-js/guides/errors/#object_locked), and changes nothing. Its `lockedAt` is the time the lock was taken.
+A create, update or purge that finds the lock taken throws an [`OcflError`](/ocfl-js/api/classes/ocflerror/) with code [`OBJECT_LOCKED`](/ocfl-js/guides/errors/#object_locked), and changes nothing. Its `lockedAt` is the time the lock was taken.
 
 <Code code={objectLocked} lang="ts" />
 
@@ -44,7 +44,7 @@ Nothing was written, so you can wait and try again. If the lock stays, its write
 
 ## `OBJECT_OUT_OF_DATE`: the object changed since you opened it
 
-An opened OCFL object is the object as read at one moment. It doesn't change when another writer commits a later version or removes the object. If you update an object that is no longer the head, or no longer exists, the update throws [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date) and is discarded, so your change is never built on files you didn't see. That includes an object you have updated yourself: make the next update on the object `update` returned, as [Updating objects](/ocfl-js/guides/updating-objects/#how-an-update-works) explains.
+An opened OCFL object is the object as read at one moment. It doesn't change when another writer commits a later version or purges the object. If you update an object that is no longer the head, or no longer exists, the update throws [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date) and is discarded, so your change is never built on files you didn't see. That includes an object you have updated yourself: make the next update on the object `update` returned, as [Updating objects](/ocfl-js/guides/updating-objects/#how-an-update-works) explains.
 
 Open the object again and repeat the update. Any error other than `RECOVERY_NEEDED` means the update wasn't committed, so repeating it never applies a change twice.
 
@@ -59,7 +59,7 @@ An update is committed at one moment: the rename that replaces the object's root
 After `RECOVERY_NEEDED`:
 
 - The object stays readable.
-- The lock is kept, so later creates, updates and removes of the object throw `OBJECT_LOCKED` until it is recovered.
+- The lock is kept, so later creates, updates and purges of the object throw `OBJECT_LOCKED` until it is recovered.
 - The object you called `update` on is unchanged. Opening the object again shows what is on disk.
 
 Recover the object's unfinished write, from `root.unfinishedWrite(id)`, then open the object again. Its head says whether the update was committed. Repeat the update only if the head hasn't moved.
@@ -69,19 +69,19 @@ Recover the object's unfinished write, from `root.unfinishedWrite(id)`, then ope
 The same goes for the other writers:
 
 - **Create:** after `RECOVERY_NEEDED`, recover, then open the object to see whether it was created.
-- **Remove:** after `RECOVERY_NEEDED`, the object is partly or wholly deleted, and may still open with files missing. Recovering it finishes the remove.
+- **Purge:** after `RECOVERY_NEEDED`, the object is partly or wholly deleted, and may still open with files missing. Recovering it finishes the purge.
 
 ## Recovering
 
-Every held lock is an **unfinished write**: a create, update or remove whose writer is still working, or died. `root.unfinishedWrites()` lists them all, and `root.unfinishedWrite(id)` finds the one for an id, or gives `undefined` if the object isn't locked. Each has the object's `id`, the `lockedAt` time and its `operation`: `'create'`, `'update'` or `'remove'`. More operations may be added, so handle each by name. Listing changes nothing.
+Every held lock is an **unfinished write**: a create, update or purge whose writer is still working, or died. `root.unfinishedWrites()` lists them all, and `root.unfinishedWrite(id)` finds the one for an id, or gives `undefined` if the object isn't locked. Each has the object's `id`, the `lockedAt` time and its `operation`: `'create'`, `'update'` or `'purge'`. More operations may be added, so handle each by name. Listing changes nothing.
 
 `write.recover()` clears what the write left and releases the lock last:
 
 - an update that wasn't committed is discarded;
 - an update that was committed is completed, by writing the root inventory's sidecar;
 - a create that wasn't committed is discarded;
-- a remove that had begun deleting is finished;
-- a remove that hadn't begun deleting is recovered as an update that wasn't committed, which for an object that can be opened only releases the lock.
+- a purge that had begun deleting is finished;
+- a purge that hadn't begun deleting is recovered as an update that wasn't committed, which for an object that can be opened only releases the lock.
 
 It never makes a version the head, and never removes a version directory other than the one the dead writer was adding, with one exception: an object that has only a first version and has lost its root inventory is taken for a dead create, whatever the write's `operation`, and its first version is removed. If the lock has been released since you got the write, it does nothing. If another writer has taken the lock since, it throws `OBJECT_LOCKED` and changes nothing. If it fails part of the way through, the lock is still there and you can recover the write again.
 
@@ -95,11 +95,11 @@ Two recoveries of the same unfinished write at once aren't kept apart, whether t
 
 You know a writer is dead when, for example, it is your own process and it has stopped, or the host that ran it has been restarted. A `lockedAt` from long ago is a hint, not proof: a writer can stall for minutes on a slow mount and then carry on.
 
-Don't delete a lock by hand. Recovery uses what the lock records to decide what to clear, and a write whose lock was removed by hand is no longer an unfinished write, so it can't be recovered. A version its dead writer left in the workspace makes the next create or update of the object throw `RECOVERY_NEEDED` and keep its lock, so that write can then be recovered; the next remove deletes it. A dead create's object root has to be removed by hand.
+Don't delete a lock by hand. Recovery uses what the lock records to decide what to clear, and a write whose lock was removed by hand is no longer an unfinished write, so it can't be recovered. A version its dead writer left in the workspace makes the next create or update of the object throw `RECOVERY_NEEDED` and keep its lock, so that write can then be recovered; the next purge deletes it. A dead create's object root has to be removed by hand.
 
 ### When a writer dies
 
-A writer that dies leaves its lock, and every later create, update or remove of the object throws `OBJECT_LOCKED`. Once you know the writer is dead, recover its unfinished write and then try again.
+A writer that dies leaves its lock, and every later create, update or purge of the object throws `OBJECT_LOCKED`. Once you know the writer is dead, recover its unfinished write and then try again.
 
 ### After a crash
 
@@ -125,7 +125,7 @@ A create or update through a storage root opened with the default durability, `'
 
 With `durability: 'none'`, only the lock is flushed. A write that returned can still be lost, or leave its version with empty or short files and no lock to show it, until the operating system writes its data out. Run the system `sync` command, and keep the sources, before relying on it. See [A bulk load](/ocfl-js/guides/use-cases/#a-bulk-load).
 
-A remove isn't flushed under either setting. After a power failure, the object is still there, is gone, or has its lock held for recovery.
+A purge isn't flushed under either setting. After a power failure, the object is still there, is gone, or has its lock held for recovery.
 
 ## Upgrade every writer together
 

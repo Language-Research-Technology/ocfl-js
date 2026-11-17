@@ -12,7 +12,7 @@ import { LOCK_NAME } from './lock.ts';
 import { objectNotFound, objectState } from './object-on-disk.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
 import { createError } from './ocfl-rules.ts';
-import { removeObject } from './remove.ts';
+import { purgeObject } from './purge.ts';
 import { SPEC_TEXT } from './spec-text.ts';
 import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
 import { deepFreeze, isNonEmptyString, optionsObject, parseJsonObject } from './utils.ts';
@@ -27,19 +27,19 @@ A local storage root extension used by the ocfl-js library (@ocfl/ocfl-fs).
 
 Each object has one directory here, \`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<object path>/\`, where
 \`<object path>\` is the object root relative to the storage root. While the object is being created,
-updated or removed, that directory holds:
+updated or purged, that directory holds:
 
 - \`${LOCK_NAME}\`: the object's lock, a JSON object. \`id\` is the id of the object, \`operation\` what
-  its writer is doing (\`create\`, \`update\` or \`remove\`), \`lockedAt\` the time the lock was taken
+  its writer is doing (\`create\`, \`update\` or \`purge\`), \`lockedAt\` the time the lock was taken
   (ISO 8601, UTC), and \`objectRootExisted\` whether the object root existed then. \`removing\`, if
-  \`true\`, means a remove has begun deleting the object root. Only the writer that created the lock
+  \`true\`, means a purge has begun deleting the object root. Only the writer that created the lock
   may change the object. The library never waits for a lock, and never removes one because of its
   age. A lock is written whole to a file beside it whose name starts \`.lock-\`, then put in place.
 - \`<version>/\`: the new version being assembled, which is then moved into the object root.
 
-The directories exist only while a create, update or remove is in progress. Anything left in them
+The directories exist only while a create, update or purge is in progress. Anything left in them
 afterwards is from one that was interrupted, and is not part of any OCFL object. A lock left
-behind keeps the object from being updated or removed, until the library recovers the object's
+behind keeps the object from being updated or purged, until the library recovers the object's
 unfinished write.
 `;
 
@@ -288,27 +288,27 @@ interface StorageRoot {
   objects(): AsyncIterable<ListedObject>;
 
   /**
-   * Deletes an object and all its versions, and the parent directories that leaves empty. The object's lock is held while it is deleted.
+   * Purges an object: deletes it and all its versions for good, and the parent directories that leaves empty. The object's lock is held while it is deleted. To take a file out of only the next version, use {@link Draft.remove}.
    *
    * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id, or the layout can't map the id to a directory the file system can hold, so no object can have it; then `cause` is the layout's `ID_INCOMPATIBLE_WITH_LAYOUT`. Nothing is deleted.
-   * @throws {@link OcflError} `OBJECT_LOCKED` if the object is being updated or created, or a writer died doing so; `lockedAt` says since when. Nothing is deleted. After a dead writer, recover its unfinished write ({@link StorageRoot.unfinishedWrite}) and then `remove` again.
+   * @throws {@link OcflError} `OBJECT_LOCKED` if the object is being updated or created, or a writer died doing so; `lockedAt` says since when. Nothing is deleted. After a dead writer, recover its unfinished write ({@link StorageRoot.unfinishedWrite}) and then `purge` again.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is deleted.
    * @throws {@link OcflError} `INVALID_OBJECT` if the id's directory holds an object whose inventory is missing, corrupt or inconsistent, so its id can't be confirmed; nothing is deleted.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the object's directory fits, but its lock in the workspace would be too long for the file system; nothing is deleted.
    * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if that directory holds an object with another id, or holds files that aren't an object, is a file or is below one; nothing is deleted.
    * @throws `TypeError` if the id is missing or empty.
-   * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting the object failed part of the way through, or it was deleted and its lock couldn't be released; `cause` is the failure. The object stays locked, and may be partly deleted: recovering its unfinished write ({@link StorageRoot.unfinishedWrite}) finishes removing it.
-   * Also thrown if the remove was refused and its lock couldn't be released; nothing is deleted, and recovering only releases the lock, so `remove` again after it.
-   * @throws The file system error that stopped the remove before it began deleting; nothing is deleted.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting the object failed part of the way through, or it was deleted and its lock couldn't be released; `cause` is the failure. The object stays locked, and may be partly deleted: recovering its unfinished write ({@link StorageRoot.unfinishedWrite}) finishes purging it.
+   * Also thrown if the purge was refused and its lock couldn't be released; nothing is deleted, and recovering only releases the lock, so `purge` again after it.
+   * @throws The file system error that stopped the purge before it began deleting; nothing is deleted.
    * @example
    * ```ts
-   * await root.remove('arcp://name,corpus/item/1');
+   * await root.purge('arcp://name,corpus/item/1');
    * ```
    */
-  remove(id: string): Promise<void>;
+  purge(id: string): Promise<void>;
 
   /**
-   * Lists every unfinished write in the storage root, in no particular order: each create, update or remove whose lock is still held.
+   * Lists every unfinished write in the storage root, in no particular order: each create, update or purge whose lock is still held.
    * The library can't tell whether a write's writer is still working or died; `lockedAt` is what it offers towards deciding.
    * Nothing is changed.
    *
@@ -324,7 +324,7 @@ interface StorageRoot {
   unfinishedWrites(): AsyncIterable<UnfinishedWrite>;
 
   /**
-   * The unfinished write of an object: its create, update or remove whose lock is still held. Nothing is changed.
+   * The unfinished write of an object: its create, update or purge whose lock is still held. Nothing is changed.
    *
    * @returns The write, or `undefined` if the object isn't locked or the layout can't map the id to a directory the file system can hold
    * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if that directory is locked by a writer of another id.
@@ -424,10 +424,10 @@ function storageRoot(root: string, ocflVersion: OcflSpecVersion, layout: BuiltIn
     objects() {
       return listObjects(root, settings);
     },
-    async remove(id: string) {
+    async purge(id: string) {
       const objectId = checkedId(id);
       const objectRoot = await existingObjectRoot(objectId);
-      await removeObject(root, await fittingObjectRoot(objectId, objectRoot, longestWriterPathOf), objectId);
+      await purgeObject(root, await fittingObjectRoot(objectId, objectRoot, longestWriterPathOf), objectId);
     },
     unfinishedWrites() {
       return listUnfinishedWrites(root, flusher, (id) => mappedObjectPath(root, layout, id));

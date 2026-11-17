@@ -228,7 +228,7 @@ describe('cancelling a create or an update', () => {
     const object = await createObject(root, 'exists', { 'a.txt': 'a' });
     const reason = new Error('never started');
     await assert.rejects(root.create('exists', { ...DETAILS, signal: AbortSignal.abort(reason) }, writeB), (error) => error === reason);
-    await root.remove('exists');
+    await root.purge('exists');
     await assert.rejects(object.update({ ...DETAILS, signal: AbortSignal.abort(reason) }, writeB), (error) => error === reason);
   });
 

@@ -27,12 +27,12 @@ import { HASHED, PATH_DIRECT } from './helpers/layouts.ts';
 import { ocflError, rejection } from './helpers/ocfl-error.ts';
 import { writeFiles } from './helpers/storage-roots.ts';
 
-const ID = 'removing';
+const ID = 'purging';
 const NESTED: LayoutConfig = { extensionName: PATH_DIRECT };
 const DECLARATION = { '0=ocfl_object_1.1': 'ocfl_object_1.1\n' };
 
-describe('root.remove', () => {
-  const temp = useTempRoots('ocfl-remove-object-');
+describe('root.purge', () => {
+  const temp = useTempRoots('ocfl-purge-object-');
   const { newRoot } = temp;
   afterEach(() => {
     mock.restoreAll();
@@ -41,11 +41,11 @@ describe('root.remove', () => {
   /** A storage root holding the object {@link ID} at v1 */
   const existingObject = async () => objectAtV1(await newRoot(), ID);
 
-  /** Asserts that removing `id` is refused with `code`, and that nothing in the storage root changes */
+  /** Asserts that purging `id` is refused with `code`, and that nothing in the storage root changes */
   async function assertRefused(root: StorageRoot, id: string, code: Parameters<typeof ocflError>[0], ocflCode?: string) {
     const before = await snapshot(root.path);
     const empty = await emptyDirectoriesUnder(root.path);
-    await assert.rejects(root.remove(id), ocflError(code, ocflCode));
+    await assert.rejects(root.purge(id), ocflError(code, ocflCode));
     assert.deepStrictEqual(await snapshot(root.path), before);
     assert.deepStrictEqual(await emptyDirectoriesUnder(root.path), empty);
   }
@@ -55,7 +55,7 @@ describe('root.remove', () => {
       const { root, object, objectRoot } = await existingObject();
       await object.update(DETAILS, writeB);
 
-      assert.strictEqual(await root.remove(ID), undefined);
+      assert.strictEqual(await root.purge(ID), undefined);
 
       assert.ok(!fs.existsSync(objectRoot));
       await assert.rejects(root.open(ID), ocflError('OBJECT_NOT_FOUND'));
@@ -67,7 +67,7 @@ describe('root.remove', () => {
       await createObject(root, ID, { 'a.txt': 'a' });
       const before = await fs.promises.readdir(root.path);
 
-      await root.remove(ID);
+      await root.purge(ID);
 
       assert.deepStrictEqual(await emptyDirectoriesUnder(root.path), []);
       assert.deepStrictEqual((await fs.promises.readdir(root.path)).sort(), before.filter((name) => !/^[0-9a-f]{3}$/.test(name)).sort());
@@ -79,7 +79,7 @@ describe('root.remove', () => {
       await createObject(root, 'collection/nested/removed', { 'a.txt': 'a' });
       await createObject(root, 'collection/sibling', { 'a.txt': 'sibling' });
 
-      await root.remove('collection/nested/removed');
+      await root.purge('collection/nested/removed');
 
       assert.ok(!fs.existsSync(path.join(root.path, 'collection', 'nested')));
       assert.deepStrictEqual(await textFiles((await root.open('collection/sibling')).head), { 'a.txt': 'sibling' });
@@ -92,7 +92,7 @@ describe('root.remove', () => {
       const readOnly = path.dirname(leftover);
       await fs.promises.chmod(readOnly, 0o555);
       try {
-        await root.remove('collection/nested/removed');
+        await root.purge('collection/nested/removed');
       } finally {
         await fs.promises.chmod(readOnly, 0o755);
       }
@@ -104,7 +104,7 @@ describe('root.remove', () => {
     it('lets an object with the same id be created and updated afterwards', async () => {
       const { root } = await existingObject();
 
-      await root.remove(ID);
+      await root.purge(ID);
       const recreated = await createObject(root, ID, { 'new.txt': 'new' });
       const updated = await recreated.update(DETAILS, writeC);
 
@@ -114,7 +114,7 @@ describe('root.remove', () => {
 
     it('makes an object opened before it out of date, refusing its update before the callback runs', async () => {
       const { root, object } = await existingObject();
-      await root.remove(ID);
+      await root.purge(ID);
 
       const { result, called } = await attemptUpdate(object);
 
@@ -127,7 +127,7 @@ describe('root.remove', () => {
 
     it('makes an object opened before it out of date, even once an object with the same id is created', async () => {
       const { root, object } = await existingObject();
-      await root.remove(ID);
+      await root.purge(ID);
       const recreated = await createObject(root, ID, { 'new.txt': 'new' });
 
       await assert.rejects(object.update(DETAILS, writeC), ocflError('OBJECT_OUT_OF_DATE'));
@@ -140,7 +140,7 @@ describe('root.remove', () => {
       const { root } = await existingObject();
       await createObject(root, 'kept', { 'a.txt': 'a' });
 
-      await root.remove(ID);
+      await root.purge(ID);
 
       const ids = [];
       for await (const entry of root.objects()) {
@@ -156,7 +156,7 @@ describe('root.remove', () => {
 
       const updated = await sibling.update(DETAILS, async (draft) => {
         await writeB(draft);
-        await root.remove('collection/nested/removed');
+        await root.purge('collection/nested/removed');
         assert.ok(!fs.existsSync(path.join(workspaceOf(root), 'collection', 'nested')));
       });
 
@@ -182,7 +182,7 @@ describe('root.remove', () => {
       const { root } = await existingObject();
       await lockObject(root, ID, new Date('2026-01-02T03:04:05.000Z'));
 
-      await assert.rejects(root.remove(ID), (error: { code?: string; lockedAt?: Date; message?: string }) => {
+      await assert.rejects(root.purge(ID), (error: { code?: string; lockedAt?: Date; message?: string }) => {
         assert.strictEqual(error.code, 'OBJECT_LOCKED');
         assert.strictEqual(error.lockedAt?.toISOString(), '2026-01-02T03:04:05.000Z');
         assert.doesNotMatch(error.message ?? '', /updating/);
@@ -208,7 +208,7 @@ describe('root.remove', () => {
       await assertRefused(root, ID, 'OBJECT_LOCKED');
 
       await recover(root, ID);
-      await root.remove(ID);
+      await root.purge(ID);
 
       assert.ok(!fs.existsSync(objectRoot));
       assertNoWorkspace(root);
@@ -274,7 +274,7 @@ describe('root.remove', () => {
       await assertRefused(root, 'a-file/inner', 'OBJECT_ROOT_CONFLICT');
     });
 
-    it('throws INVALID_OBJECT with E060 for an object whose sidecar is that of its previous version, though remove holds the lock', async () => {
+    it('throws INVALID_OBJECT with E060 for an object whose sidecar is that of its previous version, though purge holds the lock', async () => {
       const { root, object, objectRoot } = await existingObject();
       const sidecar = path.join(objectRoot, 'inventory.json.sha512');
       const previous = await fs.promises.readFile(sidecar);
@@ -346,7 +346,7 @@ describe('root.remove', () => {
         await writeFiles(path.join(root.path, id), DECLARATION);
         const before = await snapshot(parent);
 
-        await assert.rejects(root.remove(id), ocflError('OBJECT_NOT_FOUND'));
+        await assert.rejects(root.purge(id), ocflError('OBJECT_NOT_FOUND'));
 
         assert.deepStrictEqual(await snapshot(parent), before);
       });
@@ -364,7 +364,7 @@ describe('root.remove', () => {
     it("throws OBJECT_NOT_FOUND whose cause is the layout's ID_INCOMPATIBLE_WITH_LAYOUT", async () => {
       const root = await newRoot(NESTED);
 
-      const error = await rejection(root.remove('mistake/../other'), 'OBJECT_NOT_FOUND');
+      const error = await rejection(root.purge('mistake/../other'), 'OBJECT_NOT_FOUND');
 
       assert.ok(ocflError('ID_INCOMPATIBLE_WITH_LAYOUT')(error.cause));
     });
@@ -376,24 +376,24 @@ describe('root.remove', () => {
       it(`throws a TypeError for ${what}`, async () => {
         const root = await newRoot();
 
-        await assert.rejects(root.remove(id as string), TypeError);
+        await assert.rejects(root.purge(id as string), TypeError);
       });
     }
   });
 
   describe('when it fails', () => {
-    /** Asserts that `remove` rejects with `RECOVERY_NEEDED` caused by an injected `EIO`, and that the object stays locked */
-    async function assertRecoveryNeeded(root: StorageRoot, remove: Promise<void>) {
-      const error = await rejection(remove, 'RECOVERY_NEEDED');
+    /** Asserts that `purge` rejects with `RECOVERY_NEEDED` caused by an injected `EIO`, and that the object stays locked */
+    async function assertRecoveryNeeded(root: StorageRoot, purge: Promise<void>) {
+      const error = await rejection(purge, 'RECOVERY_NEEDED');
       assert.strictEqual((error.cause as NodeJS.ErrnoException).code, 'EIO');
-      await assert.rejects(root.remove(ID), ocflError('OBJECT_LOCKED'));
+      await assert.rejects(root.purge(ID), ocflError('OBJECT_LOCKED'));
     }
 
     it('throws RECOVERY_NEEDED and keeps the lock when a version cannot be deleted; the object can still be opened', async () => {
       const { root, object, objectRoot } = await existingObject();
       await object.update(DETAILS, writeB);
 
-      await withFsFailure('rm', path.join(objectRoot, 'v2'), () => assertRecoveryNeeded(root, root.remove(ID)));
+      await withFsFailure('rm', path.join(objectRoot, 'v2'), () => assertRecoveryNeeded(root, root.purge(ID)));
 
       assert.ok(!fs.existsSync(path.join(objectRoot, 'v1')));
       assert.strictEqual((await root.open(ID)).head.number, 2);
@@ -402,10 +402,10 @@ describe('root.remove', () => {
       assertNoWorkspace(root);
     });
 
-    it('throws RECOVERY_NEEDED and keeps the lock when the object root cannot be listed, deleting nothing; recover then removes it', async () => {
+    it('throws RECOVERY_NEEDED and keeps the lock when the object root cannot be listed, deleting nothing; recover then purges it', async () => {
       const { root, objectRoot, before } = await existingObject();
 
-      await withFsFailure('readdir', objectRoot, () => assertRecoveryNeeded(root, root.remove(ID)));
+      await withFsFailure('readdir', objectRoot, () => assertRecoveryNeeded(root, root.purge(ID)));
 
       assert.deepStrictEqual(await snapshot(objectRoot), before);
       await recover(root, ID);
@@ -440,7 +440,7 @@ describe('root.remove', () => {
     it('throws the file system error and deletes nothing when its lock cannot be marked, and releases the lock', async () => {
       const { root, objectRoot, lock, before } = await existingObject();
 
-      await withFsFailure('rename', lock, () => assert.rejects(root.remove(ID), { code: 'EIO' }));
+      await withFsFailure('rename', lock, () => assert.rejects(root.purge(ID), { code: 'EIO' }));
 
       assert.deepStrictEqual(await snapshot(objectRoot), before);
       assertNoWorkspace(root);
@@ -449,12 +449,12 @@ describe('root.remove', () => {
     it('throws RECOVERY_NEEDED when the object is deleted and its lock cannot be released; recover then releases it', async () => {
       const { root, objectRoot, lock } = await existingObject();
 
-      await withFsFailure('rm', lock, () => assertRecoveryNeeded(root, root.remove(ID)));
+      await withFsFailure('rm', lock, () => assertRecoveryNeeded(root, root.purge(ID)));
 
       assert.ok(!fs.existsSync(objectRoot));
       await recover(root, ID);
       assertNoWorkspace(root);
-      await assert.rejects(root.remove(ID), ocflError('OBJECT_NOT_FOUND'));
+      await assert.rejects(root.purge(ID), ocflError('OBJECT_NOT_FOUND'));
     });
 
     it('throws RECOVERY_NEEDED when it is refused and its lock cannot be released, deleting nothing', async () => {
@@ -465,7 +465,7 @@ describe('root.remove', () => {
       const error = await withFsFailure(
         'rm',
         (target) => path.basename(target) === 'lock',
-        () => rejection(root.remove('http://example.org/object'), 'RECOVERY_NEEDED'),
+        () => rejection(root.purge('http://example.org/object'), 'RECOVERY_NEEDED'),
       );
 
       assert.ok(ocflError('OBJECT_ROOT_CONFLICT')(error.cause));
@@ -478,7 +478,7 @@ describe('root.remove', () => {
     it('throws the file system error when the lock cannot be taken, and deletes nothing', async () => {
       const { root, objectRoot, before } = await existingObject();
 
-      await withFsFailure('link', lockOf(root, ID), () => assert.rejects(root.remove(ID), { code: 'EIO' }));
+      await withFsFailure('link', lockOf(root, ID), () => assert.rejects(root.purge(ID), { code: 'EIO' }));
 
       assert.deepStrictEqual(await snapshot(objectRoot), before);
       assertNoWorkspace(root);
@@ -489,7 +489,7 @@ describe('root.remove', () => {
     const { root, objectRoot, workspace } = await existingObject();
     await writeFiles(path.join(workspace, 'v2', 'content'), { 'half-written.txt': 'x' });
 
-    await root.remove(ID);
+    await root.purge(ID);
 
     assert.ok(!fs.existsSync(objectRoot));
     assertNoWorkspace(root);
