@@ -1,5 +1,6 @@
 import { inspect } from 'node:util';
 import { type OcflError, ocflError } from '../error.ts';
+import { rejectUnknownKeys } from '../utils.ts';
 import type { LayoutName } from './index.ts';
 
 /** A layout's config as callers and config.json give it, before any checking */
@@ -21,13 +22,15 @@ function ownCopy(name: string, value: unknown): unknown {
 
 /**
  * `defaults` with the parameters `config` sets, and the names of those parameters. The values are copies, so they can't change under the layout.
- * @throws `TypeError` if a parameter `config` sets holds anything but plain data
+ * @throws `TypeError` if `config` has a key that is neither `extensionName` nor a parameter, or a parameter it sets holds anything but plain data
  */
 function mergeParameters(defaults: object | undefined, config: OcflExtensionConfig = {}): { parameters: OcflExtensionConfig; setNames: string[] } {
   const parameters: OcflExtensionConfig = structuredClone({ ...defaults });
+  const subject = typeof config.extensionName === 'string' ? `Layout ${config.extensionName}` : 'The layout';
+  rejectUnknownKeys(config, ['extensionName', ...Object.keys(parameters)], `${subject} has no parameter`);
   const setNames: string[] = [];
   for (const name of Object.keys(config)) {
-    if (Object.hasOwn(parameters, name) && config[name] !== undefined) {
+    if (name !== 'extensionName' && config[name] !== undefined) {
       parameters[name] = ownCopy(name, config[name]);
       setNames.push(name);
     }
@@ -46,7 +49,7 @@ abstract class BuiltInLayout<C extends object = object> {
   /** Names of the parameters the caller or config.json set, which config.json records */
   readonly #setNames: string[];
 
-  /** @throws `TypeError` if a parameter `config` sets isn't plain data of the type of its default */
+  /** @throws `TypeError` if `config` has a key the layout doesn't have, or a parameter it sets isn't plain data of the type of its default */
   constructor(config?: OcflExtensionConfig, defaultConfig?: C) {
     const { parameters, setNames } = mergeParameters(defaultConfig, config);
     for (const name of setNames) {

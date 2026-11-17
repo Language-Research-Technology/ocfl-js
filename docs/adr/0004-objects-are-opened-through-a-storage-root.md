@@ -10,7 +10,7 @@ ocfl-java and rocfl open objects only through a storage root, and accept a bare 
 
 ## Decision
 
-- **Objects come from a storage root.** `root.open(id)` opens an object by its id and `root.create(id, …)` makes one. Nothing in the package opens an object by its path.
+- **Objects come from a storage root.** `root.open(id)` opens an object by its id and `root.create(id, …)` makes one. Nothing in the package opens an object by its path, read-only included.
 - **A new object takes its storage root's OCFL version.**
 - **A new object is always sha512 with a `content` directory.** `root.create` has no option for either: the inventory names `sha512` as the digest algorithm and `content` as the content directory.
 - **An existing object keeps its own OCFL version and digest algorithm.** An opened object reports the OCFL version its declaration gives and the digest algorithm its inventory names. A 1.0 object in a 1.1 storage root opens, reports 1.0, and stays 1.0 when updated.
@@ -21,4 +21,4 @@ ocfl-java and rocfl open objects only through a storage root, and accept a bare 
 - Every create, update and purge goes through a storage root, so it uses that root's workspace and lock. There is no in-place update.
 - A caller that has only an object's path opens the object through its storage root, by id. Under a hashed layout it must already know the id, or read it from the object's inventory.
 - A directory that isn't inside a storage root can't be opened or updated with this library.
-- A read-only way to open an object by path, for example for a validator, can be added without a breaking change.
+- Opening an object by path, even read-only, needs a new ADR first.

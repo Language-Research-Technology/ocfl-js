@@ -28,20 +28,28 @@ describe('opening a storage root', () => {
     await fs.promises.rm(tempdir, { recursive: true, force: true });
   });
 
-  /** An OCFL 1.1 storage root written by hand, with the given `ocfl_layout.json` and 0004 extension config */
-  const handMadeRoot = async ({ layoutFile, extensionConfig }: { layoutFile?: string; extensionConfig?: object | string } = {}) => {
+  /** An OCFL 1.1 storage root written by hand, with the given `ocfl_layout.json` and extension config for `extension` */
+  const handMadeRoot = async ({
+    layoutFile,
+    extension = HASHED,
+    extensionConfig,
+  }: {
+    layoutFile?: string;
+    extension?: string;
+    extensionConfig?: object | string;
+  } = {}) => {
     const rootPath = newPath();
     const files: Record<string, string> = { '0=ocfl_1.1': 'ocfl_1.1\n' };
     if (layoutFile !== undefined) {
       files['ocfl_layout.json'] = layoutFile;
     }
     if (extensionConfig !== undefined) {
-      files[`extensions/${HASHED}/config.json`] = typeof extensionConfig === 'string' ? extensionConfig : JSON.stringify(extensionConfig);
+      files[`extensions/${extension}/config.json`] = typeof extensionConfig === 'string' ? extensionConfig : JSON.stringify(extensionConfig);
     }
     await writeFiles(rootPath, files);
     return rootPath;
   };
-  const configFileOf = (rootPath: string) => path.join(rootPath, 'extensions', HASHED, 'config.json');
+  const configFileOf = (rootPath: string, extension = HASHED) => path.join(rootPath, 'extensions', extension, 'config.json');
   /** Matcher for an `OcflError` with `code` and no OCFL code, whose message names `file` */
   const refusedNaming = (code: OcflErrorCode, file: string) => (error: OcflError) =>
     ocflError(code)(error) && error.ocflCode === undefined && error.message.includes(file);
@@ -157,14 +165,12 @@ describe('opening a storage root', () => {
     });
 
     it('rejects a path-direct root whose extension config sets an empty suffix, naming the file', async () => {
-      const rootPath = newPath();
-      const configFile = path.join(rootPath, 'extensions', PATH_DIRECT, 'config.json');
-      await writeFiles(rootPath, {
-        '0=ocfl_1.1': 'ocfl_1.1\n',
-        'ocfl_layout.json': declaring(PATH_DIRECT),
-        [path.relative(rootPath, configFile)]: JSON.stringify({ extensionName: PATH_DIRECT, suffix: '' }),
-      });
-      await assert.rejects(openStorageRoot(rootPath), (error: OcflError) => invalidNaming(configFile)(error) && error.cause instanceof TypeError);
+      const extensionConfig = { extensionName: PATH_DIRECT, suffix: '' };
+      const rootPath = await handMadeRoot({ layoutFile: declaring(PATH_DIRECT), extension: PATH_DIRECT, extensionConfig });
+      await assert.rejects(
+        openStorageRoot(rootPath),
+        (error: OcflError) => invalidNaming(configFileOf(rootPath, PATH_DIRECT))(error) && error.cause instanceof TypeError,
+      );
     });
 
     for (const [digestAlgorithm, digest] of eachDigest(DIGESTS_OF_ABC)) {
@@ -275,6 +281,17 @@ describe('opening a storage root', () => {
       it(`rejects a root whose extension config ${problem}, naming the file`, async () => {
         const rootPath = await handMadeRoot({ layoutFile: declaring(HASHED), extensionConfig });
         await assert.rejects(openStorageRoot(rootPath), invalidNaming(configFileOf(rootPath)));
+      });
+    }
+
+    for (const layout of IMPLEMENTED_LAYOUTS) {
+      it(`rejects a ${layout} root whose extension config has a parameter the layout doesn't have, naming the file and the parameter`, async () => {
+        const extensionConfig = { extensionName: layout, idPrefix: 'ark:' };
+        const rootPath = await handMadeRoot({ layoutFile: declaring(layout), extension: layout, extensionConfig });
+        await assert.rejects(
+          openStorageRoot(rootPath),
+          (error: OcflError) => invalidNaming(configFileOf(rootPath, layout))(error) && error.message.includes("'idPrefix'"),
+        );
       });
     }
   });
