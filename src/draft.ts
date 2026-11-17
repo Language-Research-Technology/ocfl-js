@@ -92,6 +92,14 @@ interface ImportOptions {
   readonly filter?: ((relativePath: string, entry: Dirent) => boolean) | undefined;
 }
 
+/** A file in a draft, as {@link Draft.files} lists it. */
+interface DraftFile {
+  /** Logical path within the draft, such as `audio/1.wav`: the file's key in {@link Draft.files}. */
+  readonly path: string;
+  /** Lowercase hex digest of the content, in the object's `OcflObject.digestAlgorithm`. */
+  readonly digest: string;
+}
+
 /**
  * The changes being assembled during an update, which become one new version or are discarded.
  *
@@ -225,9 +233,9 @@ interface Draft {
   clear(): Promise<void>;
 
   /**
-   * The draft's files: each logical path, with its digest in lowercase in the object's digest algorithm, as `OcflFile.digest` gives it.
+   * The draft's files: a {@link DraftFile} for each logical path, whose `digest` is as `OcflFile.digest` gives it.
    * Directories aren't listed. It takes its turn like any other operation, so it shows every operation started before it, and none started after.
-   * The map is a snapshot that later operations don't change. It gives no content.
+   * The map and its files are a snapshot that later operations don't change. It gives no content.
    *
    * @throws `Error` if the update this draft belongs to has finished.
    * @example
@@ -239,7 +247,7 @@ interface Draft {
    * });
    * ```
    */
-  files(): Promise<ReadonlyMap<string, string>>;
+  files(): Promise<ReadonlyMap<string, DraftFile>>;
 }
 
 /**
@@ -788,10 +796,10 @@ class ObjectDraft implements Draft {
     return this.#operate(() => this.#applyDelete(this.#inventory._planClear()));
   }
 
-  async files(): Promise<ReadonlyMap<string, string>> {
+  async files(): Promise<ReadonlyMap<string, DraftFile>> {
     return this.#operate(async () => {
       const inventory = this.#inventory;
-      return new Map(Array.from(inventory.files(inventory.head), ({ logicalPath, digest }) => [logicalPath, digest]));
+      return new Map(Array.from(inventory.files(inventory.head), ({ logicalPath, digest }) => [logicalPath, Object.freeze({ path: logicalPath, digest })]));
     });
   }
 
@@ -867,6 +875,7 @@ export {
   type CreateOptions,
   commitDraft,
   type Draft,
+  type DraftFile,
   type ImportOptions,
   type MergeOptions,
   type UpdateOptions,

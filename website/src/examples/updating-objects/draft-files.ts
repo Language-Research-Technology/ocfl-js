@@ -6,7 +6,7 @@ const stub = JSON.stringify({ '@context': 'https://w3id.org/ro/crate/1.1/context
 
 await object.update({ message: 'Deposit session 4', user: { name: 'Alice' } }, async (draft) => {
   await draft.import('/data/session-4');
-  // The draft as the import left it: each logical path with its digest
+  // The draft as the import left it
   const files = await draft.files();
   if (!files.has('ro-crate-metadata.json')) {
     await draft.write('ro-crate-metadata.json', stub);

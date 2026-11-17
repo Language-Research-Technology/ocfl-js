@@ -23,7 +23,17 @@
 
 export type { OcflVersion } from './constants.ts';
 export type { DigestAlgorithm, FixityAlgorithm } from './digest.ts';
-export type { CreateOptions, Draft, ImportOptions, MergeOptions, UpdateOptions, User, VersionDetails, WriteContent } from './draft.ts';
+export type {
+  CreateOptions,
+  Draft,
+  DraftFile,
+  ImportOptions,
+  MergeOptions,
+  UpdateOptions,
+  User,
+  VersionDetails,
+  WriteContent,
+} from './draft.ts';
 export type { OcflErrorCode } from './error.ts';
 export { OcflError } from './error.ts';
 export type {

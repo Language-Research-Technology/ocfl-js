@@ -1,6 +1,7 @@
 import type {
   CreateOptions,
   Draft,
+  DraftFile,
   FixityOptions,
   FixityProblem,
   FixityProgress,
@@ -12,6 +13,7 @@ import type {
 
 declare const details: VersionDetails;
 declare const build: (draft: Draft) => Promise<void>;
+declare const draftFile: DraftFile;
 
 export async function fixityTakesASignalAndAProgressCallback(object: OcflObject): Promise<(readonly FixityProblem[])[]> {
   const onProgress = ({ checkedFiles, totalFiles }: FixityProgress): void => void (checkedFiles / totalFiles);
@@ -59,14 +61,16 @@ export async function hasResolvesToABoolean(root: StorageRoot): Promise<boolean>
   return root.has('an-id');
 }
 
-export async function draftFilesAreAReadOnlySnapshotOfDigests(draft: Draft): Promise<string | undefined> {
-  const files: ReadonlyMap<string, string> = await draft.files();
+export async function draftFilesAreAReadOnlySnapshot(draft: Draft): Promise<string | undefined> {
+  const files: ReadonlyMap<string, DraftFile> = await draft.files();
   // @ts-expect-error read-only
-  files.set('a.txt', 'abc');
+  files.set('a.txt', { path: 'a.txt', digest: 'abc' });
+  // @ts-expect-error read-only
+  draftFile.digest = 'abc';
   // @ts-expect-error resolve it first
-  const unresolved: ReadonlyMap<string, string> = draft.files();
+  const unresolved: ReadonlyMap<string, DraftFile> = draft.files();
   void unresolved;
-  return files.get('a.txt');
+  return files.get('a.txt')?.digest;
 }
 
 export function versionDetailsMayGiveADate(): VersionDetails[] {
