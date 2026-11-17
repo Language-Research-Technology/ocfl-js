@@ -118,6 +118,14 @@ A create writes the object declaration before the root inventory. If its writer 
 
 So a dead create doesn't show up when you list the storage root's objects, but it is among its unfinished writes. Listing also leaves out an object that has lost its declaration: see [what the library doesn't check or do](/ocfl-js/#what-it-doesnt-check-or-do).
 
+## What survives a power failure
+
+A create or update through a storage root opened with the default durability, `'full'`, flushes every file and directory of the new version to disk before it returns. Once it has returned, the version survives a crash or power failure. If the power fails while it is running, the object is left as it was before the write or, once its root inventory was replaced, at the new version, with its lock held either way: recover its unfinished write as for any dead writer.
+
+With `durability: 'none'`, only the lock is flushed. A write that returned can still be lost, or leave its version with empty or short files and no lock to show it, until the operating system writes its data out. Run the system `sync` command, and keep the sources, before relying on it. See [A bulk load](/ocfl-js/guides/use-cases/#a-bulk-load).
+
+A remove isn't flushed under either setting. After a power failure, the object is still there, is gone, or has its lock held for recovery.
+
 ## Upgrade every writer together
 
 The lock only keeps apart writers that take it. Writers on ocfl-js 0.4, or on a beta from before the lock, don't. Upgrade every process and host that writes to a storage root at the same time, and don't run old and new writers side by side.

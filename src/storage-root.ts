@@ -129,7 +129,7 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion
 }
 
 /** Write the files that make the empty directory `root` an OCFL 1.1 storage root */
-async function writeStorageRoot(root: string, layout: BuiltInLayout): Promise<void> {
+async function writeStorageRoot(root: string, layout: BuiltInLayout, flusher: fileSystem.Flusher): Promise<void> {
   await fileSystem.writeFile(nodePath.join(root, SPEC_TEXT_FILE), SPEC_TEXT);
   await fileSystem.writeFile(nodePath.join(root, `${WORKSPACE_EXTENSION}.md`), WORKSPACE_EXTENSION_TEXT);
   if (layout.documentation) {
@@ -139,9 +139,55 @@ async function writeStorageRoot(root: string, layout: BuiltInLayout): Promise<vo
     await fileSystem.writeFile(nodePath.join(root, EXTENSIONS_DIR, layout.name, EXTENSION_CONFIG), JSON.stringify(layout.config, null, 2));
   }
   await fileSystem.writeFile(nodePath.join(root, OCFL_LAYOUT), JSON.stringify({ extension: layout.name, description: layout.description }, null, 2));
+  await flusher.flushTree(root);
   // Last, so that a root left half-written can't be opened, least of all with the default parameters of its layout
   const declaration = NAMASTE_PREFIX_STORAGE + OCFL_VERSION;
-  await fileSystem.writeFile(nodePath.join(root, NAMASTE_T + declaration), `${declaration}\n`);
+  const declarationFile = nodePath.join(root, NAMASTE_T + declaration);
+  await fileSystem.writeFile(declarationFile, `${declaration}\n`);
+  await flusher.flush(declarationFile, root);
+}
+
+/**
+ * Whether a create or update through a storage root flushes what it writes to disk before it resolves.
+ *
+ * - `'full'`: every file and directory of the new version is flushed, so once `create()` or `update()` resolves the version survives a
+ *   crash or power failure. Recovering an unfinished write flushes the files it writes too, and so does creating a storage root.
+ * - `'none'`: nothing is flushed but the object's lock, so that bulk loading isn't slowed by a flush per file. After a crash or power
+ *   failure an object written lately can be left with empty or short files, and nothing reports it until a fixity check. Run the system
+ *   `sync` command after the batch, and keep the source files until it returns.
+ */
+type Durability = 'full' | 'none';
+
+const FLUSHERS: Readonly<Record<Durability, fileSystem.Flusher>> = { full: fileSystem.FLUSHING, none: fileSystem.NOT_FLUSHING };
+
+/** What an object takes from the storage root it is opened or created through */
+interface RootSettings {
+  /** The storage root's OCFL version */
+  readonly ocflVersion: OcflVersion;
+  readonly flusher: fileSystem.Flusher;
+}
+
+/** Options for {@link openStorageRoot}. */
+interface OpenStorageRootOptions {
+  /** Whether creates and updates through the storage root flush what they write to disk before they resolve. Defaults to `'full'`. */
+  readonly durability?: Durability | undefined;
+}
+
+/** Options for {@link createStorageRoot}. */
+interface CreateStorageRootOptions extends OpenStorageRootOptions {
+  /** The storage layout that maps an object id to the directory of its object. */
+  readonly layout: LayoutConfig;
+}
+
+/**
+ * @returns What flushes as `durability` says, `'full'` if it is `undefined`
+ * @throws `TypeError` if it is neither durability
+ */
+function checkedFlusher(durability: unknown = 'full'): fileSystem.Flusher {
+  if (typeof durability !== 'string' || !Object.hasOwn(FLUSHERS, durability)) {
+    throw new TypeError(`The durability must be 'full' or 'none', not ${inspect(durability)}.`);
+  }
+  return FLUSHERS[durability as Durability];
 }
 
 /** The base directory holding OCFL objects. */
@@ -327,7 +373,8 @@ async function placedObjectRoot(root: string, layout: BuiltInLayout, id: string,
   return objectRoot;
 }
 
-function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayout): StorageRoot {
+function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayout, flusher: fileSystem.Flusher): StorageRoot {
+  const settings: RootSettings = { ocflVersion, flusher };
   const objectRootToRead = (id: string) => placedObjectRoot(root, layout, id, (objectRoot) => objectRoot);
   const objectRootToWrite = (id: string) => placedObjectRoot(root, layout, id, (objectRoot) => longestWriterPath(root, objectRoot));
   return deepFreeze({
@@ -335,7 +382,7 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
     ocflVersion,
     layout: { extensionName: layout.name, ...layout.parameters } as Layout,
     async open(id: string) {
-      return openObject(root, await objectRootToRead(checkedId(id)), id, ocflVersion);
+      return openObject(root, await objectRootToRead(checkedId(id)), id, settings);
     },
     async has(id: string) {
       return (await objectState(root, await objectRootToRead(checkedId(id)))) === 'committed';
@@ -345,19 +392,19 @@ function storageRoot(root: string, ocflVersion: OcflVersion, layout: BuiltInLayo
       const checked = checkedDetails(details);
       const { signal } = updateOptions(options, 'root.create');
       signal?.throwIfAborted();
-      return createObject(root, await objectRootToWrite(objectId), objectId, ocflVersion, checked, build, signal);
+      return createObject(root, await objectRootToWrite(objectId), objectId, settings, checked, build, signal);
     },
     objects() {
-      return listObjects(root, ocflVersion);
+      return listObjects(root, settings);
     },
     async remove(id: string) {
       await removeObject(root, await objectRootToWrite(checkedId(id)), id);
     },
     unfinishedWrites() {
-      return listUnfinishedWrites(root, (id) => mappedObjectPath(root, layout, id));
+      return listUnfinishedWrites(root, flusher, (id) => mappedObjectPath(root, layout, id));
     },
     async unfinishedWrite(id: string) {
-      return findUnfinishedWrite(root, await objectRootToRead(checkedId(id)), id);
+      return findUnfinishedWrite(root, flusher, await objectRootToRead(checkedId(id)), id);
     },
   });
 }
@@ -373,7 +420,7 @@ function absolutePath(rootPath: string): string {
  * Creates a new OCFL 1.1 storage root in an empty or missing directory.
  *
  * @throws {@link OcflError} `DIRECTORY_NOT_EMPTY` if `path` holds anything.
- * @throws `TypeError` if `path` is missing or empty, `options` isn't an object or has a key other than `layout`, or the layout or one of its parameters is invalid.
+ * @throws `TypeError` if `path` is missing or empty, `options` isn't an object or has a key other than `layout` and `durability`, the layout or one of its parameters is invalid, or the durability isn't one.
  * @throws The file system error if the directory can't be made or written to.
  * @example
  * ```ts
@@ -382,16 +429,21 @@ function absolutePath(rootPath: string): string {
  * });
  * ```
  */
-async function createStorageRoot(path: string, options: { layout: LayoutConfig }): Promise<StorageRoot> {
+async function createStorageRoot(path: string, options: CreateStorageRootOptions): Promise<StorageRoot> {
   const root = absolutePath(path);
-  const checked = optionsObject(options, 'createStorageRoot', ['layout'], "{ layout: { extensionName: '0004-hashed-n-tuple-storage-layout' } }");
+  const checked = optionsObject(options, 'createStorageRoot', ['layout', 'durability'], "{ layout: { extensionName: '0004-hashed-n-tuple-storage-layout' } }");
   const layout = createLayout(checked.layout as LayoutConfig);
-  await fs.promises.mkdir(root, { recursive: true });
+  const flusher = checkedFlusher(checked.durability);
+  const made = await fs.promises.mkdir(root, { recursive: true });
   if (!(await fileSystem.isDirEmpty(root))) {
     throw ocflError('DIRECTORY_NOT_EMPTY', `Cannot create a storage root in ${root}, which is not empty.`);
   }
-  await writeStorageRoot(root, layout);
-  return storageRoot(root, OCFL_VERSION, layout);
+  await writeStorageRoot(root, layout, flusher);
+  if (made !== undefined) {
+    // Each directory holding the name of one mkdir made
+    await flusher.flush(...fileSystem.directoriesUpTo(nodePath.dirname(root), nodePath.dirname(made)));
+  }
+  return storageRoot(root, OCFL_VERSION, layout, flusher);
 }
 
 /**
@@ -401,17 +453,20 @@ async function createStorageRoot(path: string, options: { layout: LayoutConfig }
  * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if anything else at `path` is not a storage root.
  * @throws {@link OcflError} `LAYOUT_NOT_DECLARED` if it is a storage root with no `ocfl_layout.json`; the message says to add one naming the storage layout, and lists the layouts this library implements.
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if it declares a layout this library doesn't implement; the message names it, lists the layouts this library implements, and says to ask for it to be added.
- * @throws `TypeError` if `path` is missing or empty.
+ * @throws `TypeError` if `path` is missing or empty, `options` isn't an object or has a key other than `durability`, or the durability isn't one.
  * @throws The file system error if `path` has no declaration and can't be read, or the storage root declaration, `ocfl_layout.json` or the storage layout's `config.json` exists but can't be read.
  * @example
  * ```ts
  * const root = await openStorageRoot('/srv/ocfl');
+ * // A bulk load, which runs `sync` itself once it is done
+ * const bulk = await openStorageRoot('/srv/ocfl', { durability: 'none' });
  * ```
  */
-async function openStorageRoot(path: string): Promise<StorageRoot> {
+async function openStorageRoot(path: string, options: OpenStorageRootOptions = {}): Promise<StorageRoot> {
   const root = absolutePath(path);
+  const flusher = checkedFlusher(optionsObject(options, 'openStorageRoot', ['durability'], "{ durability: 'none' }").durability);
   const { ocflVersion, layout } = await readStorageRoot(root);
-  return storageRoot(root, ocflVersion, layout);
+  return storageRoot(root, ocflVersion, layout, flusher);
 }
 
-export { createStorageRoot, openStorageRoot, type StorageRoot };
+export { type CreateStorageRootOptions, createStorageRoot, type Durability, type OpenStorageRootOptions, openStorageRoot, type RootSettings, type StorageRoot };

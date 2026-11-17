@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { recoverWrite } from './commit.ts';
 import { objectRootConflict } from './error.ts';
+import type { Flusher } from './file-system.ts';
 import { type Lock, readLock, sameWriter, updateInProgress } from './lock.ts';
 import { recoverRemove } from './remove.ts';
 import { deepFreeze } from './utils.ts';
@@ -54,7 +55,7 @@ interface UnfinishedWrite {
 }
 
 /** @param seen - The lock as it was when the write was found */
-function unfinishedWrite(storageRoot: string, objectRoot: string, seen: Lock): UnfinishedWrite {
+function unfinishedWrite(storageRoot: string, flusher: Flusher, objectRoot: string, seen: Lock): UnfinishedWrite {
   const workspace = objectWorkspace(storageRoot, objectRoot);
   return deepFreeze({
     id: seen.id,
@@ -68,7 +69,7 @@ function unfinishedWrite(storageRoot: string, objectRoot: string, seen: Lock): U
       if (!sameWriter(lock, seen)) {
         throw await updateInProgress(workspace);
       }
-      await (lock.removing ? recoverRemove(storageRoot, objectRoot) : recoverWrite(storageRoot, objectRoot, lock));
+      await (lock.removing ? recoverRemove(storageRoot, objectRoot) : recoverWrite(storageRoot, objectRoot, lock, flusher));
     },
   });
 }
@@ -77,7 +78,7 @@ function unfinishedWrite(storageRoot: string, objectRoot: string, seen: Lock): U
  * The unfinished write of `id`, whose object the storage root's layout places at `objectRoot`, or `undefined` if it isn't locked.
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if the lock there is a writer's of another id
  */
-async function findUnfinishedWrite(storageRoot: string, objectRoot: string, id: string): Promise<UnfinishedWrite | undefined> {
+async function findUnfinishedWrite(storageRoot: string, flusher: Flusher, objectRoot: string, id: string): Promise<UnfinishedWrite | undefined> {
   const lock = await readLock(objectWorkspace(storageRoot, objectRoot));
   if (lock === undefined) {
     return undefined;
@@ -85,7 +86,7 @@ async function findUnfinishedWrite(storageRoot: string, objectRoot: string, id: 
   if (lock.id !== id) {
     throw objectRootConflict(objectRoot, id, `is locked by a writer of <${lock.id}>`);
   }
-  return unfinishedWrite(storageRoot, objectRoot, lock);
+  return unfinishedWrite(storageRoot, flusher, objectRoot, lock);
 }
 
 /**
@@ -93,12 +94,12 @@ async function findUnfinishedWrite(storageRoot: string, objectRoot: string, id: 
  * A file named as a lock counts only if it holds a lock, and sits where the layout places its id's directory in the workspace.
  * @param objectPathOf - The object root of an id, relative to the storage root; throws if the layout can't place it
  */
-async function* listUnfinishedWrites(storageRoot: string, objectPathOf: (id: string) => string): AsyncGenerator<UnfinishedWrite> {
+async function* listUnfinishedWrites(storageRoot: string, flusher: Flusher, objectPathOf: (id: string) => string): AsyncGenerator<UnfinishedWrite> {
   const workspace = workspaceRoot(storageRoot);
   for await (const { dir, lock } of locksBelow(workspace)) {
     const objectPath = path.relative(workspace, dir);
     if (placedAt(objectPathOf, lock.id) === objectPath) {
-      yield unfinishedWrite(storageRoot, path.join(storageRoot, objectPath), lock);
+      yield unfinishedWrite(storageRoot, flusher, path.join(storageRoot, objectPath), lock);
     }
   }
 }

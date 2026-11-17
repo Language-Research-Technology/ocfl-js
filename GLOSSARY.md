@@ -60,6 +60,10 @@ _Avoid_: Publish, finalise
 To clear what a dead writer left of an OCFL object and release its lock, on the caller's word that no writer is alive: an update that wasn't committed is discarded, one that was is completed, and a remove that had begun deleting is finished.
 _Avoid_: Repair, unlock, roll back
 
+**Durability**:
+Whether a create or update through a storage root flushes what it writes to disk before it returns, set when the storage root is opened or created. `'full'`, the default, flushes every file and directory of the new version, so a version that returned survives a crash or power failure; `'none'` flushes only the lock, for bulk loading, and leaves the caller to run `sync`.
+_Avoid_: Fsync mode, safe mode, sync option
+
 **Unfinished write**:
 A create, update or remove of an OCFL object whose lock is still held: its writer is still working, or died. The library can't tell which. An OCFL object is recovered only through its unfinished write.
 _Avoid_: Stale lock, orphan, leftover
