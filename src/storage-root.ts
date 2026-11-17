@@ -9,7 +9,6 @@ import * as fileSystem from './file-system.ts';
 import type { BuiltInLayout } from './layouts/built-in-layout.ts';
 import { builtInLayoutClass, createLayout, IMPLEMENTED_LAYOUTS, type Layout, type LayoutConfig } from './layouts/index.ts';
 import { type ListedObject, listObjects } from './list.ts';
-import { LOCK_NAME } from './lock.ts';
 import { longestWriterPath, type ObjectPlace, objectPlace } from './object-place.ts';
 import { objectNotFound, objectState } from './object-root.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
@@ -18,31 +17,9 @@ import { purgeObject } from './purge.ts';
 import { SPEC_TEXT } from './spec-text.ts';
 import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
 import { deepFreeze, isNonEmptyString, optionsObject, parseJsonObject } from './utils.ts';
+import { writeWorkspaceDocumentation } from './workspace-documentation.ts';
 
-const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, STORAGE_ROOT_DECLARATION_PREFIX, DECLARATION_TAG } = OcflConstants;
-
-/** A local storage root extension, documented in the root as the OCFL spec (§4.5) allows */
-const WORKSPACE_EXTENSION_TEXT = `# ${WORKSPACE_EXTENSION}
-
-A local storage root extension used by the ocfl-js library (@ocfl/ocfl-fs).
-
-Each object has one directory here, \`${EXTENSIONS_DIR}/${WORKSPACE_EXTENSION}/<object path>/\`, where
-\`<object path>\` is the object root relative to the storage root. While the object is being created,
-updated or purged, that directory holds:
-
-- \`${LOCK_NAME}\`: the object's lock, a JSON object. \`id\` is the id of the object, \`operation\` what
-  its writer is doing (\`create\`, \`update\` or \`purge\`), \`lockedAt\` the time the lock was taken
-  (ISO 8601, UTC), and \`objectRootExisted\` whether the object root existed then. \`removing\`, if
-  \`true\`, means a purge has begun deleting the object root. Only the writer that created the lock
-  may change the object. The library never waits for a lock, and never removes one because of its
-  age. A lock is written whole to a file beside it whose name starts \`.lock-\`, then put in place.
-- \`<version>/\`: the new version being assembled, which is then moved into the object root.
-
-The directories exist only while a create, update or purge is in progress. Anything left in them
-afterwards is from one that was interrupted, and is not part of any OCFL object. A lock left
-behind keeps the object from being updated or purged, until the library recovers the object's
-unfinished write.
-`;
+const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, STORAGE_ROOT_DECLARATION_PREFIX, DECLARATION_TAG } = OcflConstants;
 
 const SPEC_TEXT_FILE = 'ocfl_1.1.md';
 
@@ -133,7 +110,7 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflSpecVer
 /** Write the files that make the empty directory `root` an OCFL 1.1 storage root */
 async function writeStorageRoot(root: string, layout: BuiltInLayout, flusher: fileSystem.Flusher): Promise<void> {
   await fileSystem.writeFile(nodePath.join(root, SPEC_TEXT_FILE), SPEC_TEXT);
-  await fileSystem.writeFile(nodePath.join(root, `${WORKSPACE_EXTENSION}.md`), WORKSPACE_EXTENSION_TEXT);
+  await writeWorkspaceDocumentation(root);
   if (layout.documentation) {
     await fileSystem.writeFile(nodePath.join(root, `${layout.name}.md`), layout.documentation);
   }

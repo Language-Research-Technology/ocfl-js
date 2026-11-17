@@ -13,7 +13,7 @@ The OCFL spec lets a storage root have an `extensions` directory holding only ex
 - **No `workspace` option.** Neither `createStorageRoot()` nor `openStorageRoot()` accepts a workspace path.
 - **One workspace per storage root**, at `<storage root>/extensions/ocfl-js-workspace/`.
 - **One workspace directory per object**, at `<workspace>/<object path>/`, where `<object path>` is the object root relative to the storage root. It holds the object's lock, the file `lock` (ADR 0005), and beside it the version being assembled, the directory `vN`.
-- **The name is a local extension.** `ocfl-js-workspace` has no `NNNN-` prefix, so it can't collide with a registered extension. `createStorageRoot()` documents it in a plain-text file in the storage root (§4.5).
+- **The name is a local extension.** `ocfl-js-workspace` has no `NNNN-` prefix, so it can't collide with a registered extension. The library documents it in a plain-text file in the storage root, `ocfl-js-workspace.md` (§4.5): `createStorageRoot()` writes it, and so does a writer that takes its lock when the file isn't there, as in a storage root another tool made.
 - **No cross-filesystem moves.** If the rename into the object root fails with `EXDEV`, the update fails with `CROSS_FILESYSTEM_MOVE` and nothing is copied.
 - **No empty directories are left behind.** An object's workspace directory, the workspace, and `extensions/` when nothing else uses it, are removed once empty.
 - **Objects stay out of `extensions/`.** An id whose object root would be the storage root, under `extensions/`, or outside the storage root has no object: `create` refuses it with `ID_INCOMPATIBLE_WITH_LAYOUT`, and `has`, `open`, `purge` and `unfinishedWrite` find no object. Listing a storage root's objects skips `extensions/`.
@@ -26,3 +26,4 @@ The OCFL spec lets a storage root have an `extensions` directory holding only ex
 - Part of the object hierarchy mounted from another filesystem can't be updated. Callers get an error, not a slow copy.
 - Removing the empty workspace can race another writer creating it, so a writer tries again when its directory vanishes before its lock is in place.
 - What an interrupted update leaves in the workspace stays there until its unfinished write is recovered (ADR 0005).
+- A writer never changes an `ocfl-js-workspace.md` that is already there, so an operator's edits stay. A writer that can't write the file carries on without it, and one that crashes while writing it can leave it truncated.

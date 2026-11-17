@@ -5,11 +5,13 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { OcflConstants } from './constants.ts';
 import { type OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { parseJsonObject } from './utils.ts';
+import { documentWorkspaceQuietly } from './workspace-documentation.ts';
 
-const LOCK_NAME = 'lock';
+const { LOCK_NAME } = OcflConstants;
 /** Prefix of the file a lock's content is written to before it is put in place, so a lock is never seen half-written */
 const STAGED_LOCK_PREFIX = '.lock-';
 const MAX_LOCK_ATTEMPTS = 3;
@@ -204,7 +206,8 @@ async function objectLocked(workspace: string): Promise<OcflError> {
 }
 
 /**
- * Takes the lock of the object `id`, without waiting for a writer that holds it.
+ * Takes the lock of the object `id`, without waiting for a writer that holds it. Once it is taken, documents the workspace in the
+ * storage root if nothing does yet, as in a storage root another tool made.
  * @param workspace - The object's directory in the workspace of the storage root at `storageRoot`
  * @param objectRootExisted - Recorded in the lock, for recovery
  * @param operation - Recorded in the lock, for whoever finds it unfinished
@@ -218,6 +221,7 @@ async function takeLock(workspace: string, storageRoot: string, id: string, obje
   if (!(await createLockInWorkspace(workspace, storageRoot, formatLock(lock)))) {
     throw await objectLocked(workspace);
   }
+  await documentWorkspaceQuietly(storageRoot);
   return lock;
 }
 
@@ -275,4 +279,4 @@ async function isLocked(workspace: string): Promise<boolean> {
 }
 
 export type { Lock };
-export { isLocked, isStagedLock, LOCK_NAME, lockKept, markRemoving, objectLocked, readLock, readLockFile, releaseLock, sameWriter, stagedLockPath, takeLock };
+export { isLocked, isStagedLock, lockKept, markRemoving, objectLocked, readLock, readLockFile, releaseLock, sameWriter, stagedLockPath, takeLock };
