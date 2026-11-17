@@ -14,9 +14,12 @@ export interface ByteRange {
 }
 
 // @public
-export function createStorageRoot(path: string, options: {
-    layout: LayoutConfig;
-}): Promise<StorageRoot>;
+export function createStorageRoot(path: string, options: CreateStorageRootOptions): Promise<StorageRoot>;
+
+// @public
+export interface CreateStorageRootOptions extends OpenStorageRootOptions {
+    readonly layout: LayoutConfig;
+}
 
 // @public
 export type DigestAlgorithm = 'sha256' | 'sha512';
@@ -32,6 +35,9 @@ export interface Draft {
     rename(source: string, target: string, options?: MergeOptions): Promise<void>;
     write(path: string, content: WriteContent): Promise<void>;
 }
+
+// @public
+export type Durability = 'full' | 'none';
 
 // @public
 export type FixityAlgorithm = 'md5' | 'sha1' | 'sha256' | 'sha512' | 'sha512/256' | 'blake2b-512';
@@ -148,7 +154,12 @@ export interface OcflObject {
 export type OcflVersion = '1.0' | '1.1';
 
 // @public
-export function openStorageRoot(path: string): Promise<StorageRoot>;
+export function openStorageRoot(path: string, options?: OpenStorageRootOptions): Promise<StorageRoot>;
+
+// @public
+export interface OpenStorageRootOptions {
+    readonly durability?: Durability | undefined;
+}
 
 // @public
 export interface PathDirectLayoutConfig {

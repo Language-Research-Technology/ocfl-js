@@ -1,11 +1,12 @@
 ---
 title: Use cases and best practices
-description: The library applied to a deposit service, a read-only file server, an indexing job, a fixity check across a storage root and writing a version out, with practices that keep them safe.
+description: The library applied to a deposit service, a bulk load, a read-only file server, an indexing job, a fixity check across a storage root and writing a version out, with practices that keep them safe.
 sidebar:
   order: 5
 ---
 
 import { Code } from '@astrojs/starlight/components';
+import bulkLoad from '../../../examples/use-cases/bulk-load.ts?raw';
 import depositService from '../../../examples/use-cases/deposit-service.ts?raw';
 import fileServer from '../../../examples/use-cases/file-server.ts?raw';
 import indexingJob from '../../../examples/use-cases/indexing-job.ts?raw';
@@ -29,6 +30,17 @@ A deposit service takes a directory of files, such as a finished upload, and sto
 Another writer can get in between the steps. If it removes the object after `create` throws `OBJECT_EXISTS`, `open` throws [`OBJECT_NOT_FOUND`](/ocfl-js/guides/errors/#object_not_found). If it commits a version after `open`, `update` throws [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date). Neither commits anything, so `deposit` starts again from `create`, which makes the object again if it was removed. Running the build again is safe because it reads nothing from the object: whatever the head holds, the new version holds only the deposit. A build that decides what to change from files it read earlier mustn't be retried this way; see [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_out_of_date-the-object-changed-since-you-opened-it).
 
 The retry limit keeps a busy object from looping forever. [`UPDATE_IN_PROGRESS`](/ocfl-js/guides/errors/#update_in_progress), when another writer holds the object's lock, isn't retried here: that writer may be slow or dead, and only you can judge which. See [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/).
+
+## A bulk load
+
+A bulk load stores a whole catalogue at once, such as when a collection moves into OCFL. By default every create and update flushes each file it writes to disk before it returns, so that a deposit that returned is stored even if the power fails a moment later. Across many thousands of files that costs time, so a bulk load can turn it off for the storage root it opens, and flush everything once at the end.
+
+<Code code={bulkLoad} lang="ts" />
+
+- `durability: 'none'` holds for every create and update through that storage root, and every object opened or listed through it. Open the storage root again without it for writes that must be durable once they return.
+- Until `sync` returns, a crash or power failure can leave an object written lately with empty or short files, and nothing reports it until a [fixity check](#checking-fixity-across-a-storage-root). Keep every source until then, so a damaged object can be removed and loaded again.
+- The lock is flushed under either setting, so the rules in [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/) hold the same. See [What survives a power failure](/ocfl-js/guides/concurrent-writers/#what-survives-a-power-failure).
+- `createStorageRoot` takes the same option, for a bulk load into a new storage root.
 
 ## A read-only file server
 

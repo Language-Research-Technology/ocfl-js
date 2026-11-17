@@ -24,6 +24,7 @@ interface ObjectPlace {
   readonly objectRoot: string;
   /** Declared when the first commit creates the object */
   readonly ocflVersion: OcflVersion;
+  readonly flusher: fileSystem.Flusher;
 }
 
 /**
@@ -106,6 +107,11 @@ async function placeSidecar(objectRoot: string, digestAlgorithm: string): Promis
   await fileSystem.move(stagedSidecar, sidecar);
 }
 
+/** Flushes the removal of what a write left in the object root, before its lock goes */
+async function flushRemovals(flusher: fileSystem.Flusher, objectRoot: string, storageRoot: string): Promise<void> {
+  await flusher.flush(await fileSystem.nearestExisting(objectRoot, storageRoot));
+}
+
 /**
  * A create or update of an object, from taking its lock to releasing it.
  * The write is committed when the root inventory is replaced. A failure before that discards everything
@@ -160,6 +166,8 @@ class ObjectWrite {
     }
     try {
       await placeSidecar(objectRoot, this.#inventory.digestAlgorithm);
+      // Keeps both renames: until the lock goes, recovery puts right a sidecar that outlived the root inventory
+      await this.#place.flusher.flush(objectRoot);
       await releaseLock(this.#workspace, this.#place.storageRoot);
     } catch (error) {
       throw recoveryNeeded(objectRoot, 'was committed, but could not be finished', error);
@@ -187,6 +195,9 @@ class ObjectWrite {
       if (!this.#rootExisted) {
         await fileSystem.removeEmptyAncestorsQuietly(objectRoot, storageRoot);
       }
+      if (this.#createdNamaste || this.#versionPath.startsWith(objectRoot + path.sep)) {
+        await flushRemovals(this.#place.flusher, objectRoot, storageRoot);
+      }
       await releaseLock(this.#workspace, storageRoot);
     } catch (undoFailure) {
       throw recoveryNeeded(objectRoot, 'was not committed, and what it made could not all be removed', failure ? failure.error : undoFailure);
@@ -199,7 +210,7 @@ class ObjectWrite {
    */
   async #replaceRootInventory(details: VersionDetails): Promise<{ error: unknown } | undefined> {
     const inventory = this.#inventory;
-    const { objectRoot, ocflVersion } = this.#place;
+    const { storageRoot, objectRoot, ocflVersion, flusher } = this.#place;
     const digestAlgorithm = inventory.digestAlgorithm;
     inventory._stamp((details.createdAt ?? new Date()).toISOString(), details.message, details.user);
 
@@ -213,6 +224,7 @@ class ObjectWrite {
     await fileSystem.writeFile(`${workspaceInvPath}.${digestAlgorithm}`, sidecarContent(inventory));
     // Before anything in the object root changes, so a moved head never surfaces as a failed rename
     await assertUpToDate(objectRoot, inventory);
+    await flusher.flushTree(this.#versionPath);
     const creating = inventory.versionNumber.previous() === undefined;
     this.#createdNamaste = await ensureObjectDeclaration(objectRoot, ocflVersion, creating);
     try {
@@ -228,6 +240,9 @@ class ObjectWrite {
     const invPath = path.join(objectVersionPath, INVENTORY_NAME);
     await fileSystem.copyFile(invPath, rootInv.stagedInventory);
     await fileSystem.copyFile(`${invPath}.${digestAlgorithm}`, rootInv.stagedSidecar);
+    // A create also makes the declaration, the object root and the layout's directories above it
+    const holdingNames = this.#createdNamaste ? [this.#createdNamaste, ...fileSystem.directoriesUpTo(objectRoot, storageRoot)] : [objectRoot];
+    await flusher.flush(rootInv.stagedInventory, rootInv.stagedSidecar, ...holdingNames);
     // A rename keeps it, and no other writer can replace the root inventory while this one holds the lock
     inventory._identity = await fileSystem.identityOf(rootInv.stagedInventory);
     try {
@@ -270,6 +285,8 @@ async function startWrite(place: ObjectPlace, inventory: OcflObjectInventory): P
     }
     throw error;
   };
+  // The lock's name, so that what the write leaves in the object root is never found without it
+  await place.flusher.flush(...fileSystem.directoriesUpTo(workspace, storageRoot)).catch(refuse);
   await assertUpToDate(objectRoot, inventory).catch(refuse);
   try {
     await fs.promises.mkdir(versionPath);
@@ -297,12 +314,13 @@ function nextVersionName(inventory: OcflObjectInventory): string | undefined {
 }
 
 /** Replaces the sidecar of the root inventory if it doesn't record that inventory's digest */
-async function completeSidecar(objectRoot: string, inventory: OcflObjectInventory): Promise<void> {
+async function completeSidecar(objectRoot: string, inventory: OcflObjectInventory, flusher: fileSystem.Flusher): Promise<void> {
   const { sidecar, stagedSidecar } = rootInventoryPaths(objectRoot, inventory.digestAlgorithm);
   if (sidecarDigest(await fileSystem.readIfExists(sidecar)) === inventory._digest) {
     return;
   }
   await fileSystem.writeFile(stagedSidecar, sidecarContent(inventory));
+  await flusher.flush(stagedSidecar);
   await placeSidecar(objectRoot, inventory.digestAlgorithm);
 }
 
@@ -317,7 +335,7 @@ async function completeSidecar(objectRoot: string, inventory: OcflObjectInventor
  * object, or is inside one, was refused before it wrote anything there, so the object root is left alone.
  * @throws {@link OcflError} `INVALID_OBJECT` if the root inventory can't be used, or the object has a declaration and no root inventory but isn't what a dead create leaves; changing nothing
  */
-async function recoverWrite(storageRoot: string, objectRoot: string, lock: Lock): Promise<void> {
+async function recoverWrite(storageRoot: string, objectRoot: string, lock: Lock, flusher: fileSystem.Flusher): Promise<void> {
   const workspace = objectWorkspace(storageRoot, objectRoot);
   const [inventory, rootNames, outer] = await Promise.all([
     readInventory(storageRoot, objectRoot),
@@ -343,7 +361,7 @@ async function recoverWrite(storageRoot: string, objectRoot: string, lock: Lock)
       objectRoot,
       rootNames.filter((name) => isStagedRootInventory(name) || name === next),
     );
-    await completeSidecar(objectRoot, inventory);
+    await completeSidecar(objectRoot, inventory, flusher);
   } else {
     if (createLeft) {
       await removeAll(objectRoot, [...rootNames.filter((name) => isStagedRootInventory(name) || name === FIRST_VERSION), ...declarations]);
@@ -352,6 +370,7 @@ async function recoverWrite(storageRoot: string, objectRoot: string, lock: Lock)
       await fileSystem.removeEmptyAncestors(objectRoot, storageRoot);
     }
   }
+  await flushRemovals(flusher, objectRoot, storageRoot);
   await releaseLock(workspace, storageRoot);
 }
 

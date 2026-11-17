@@ -20,7 +20,7 @@ import {
   withinRootVersion,
 } from './object-on-disk.ts';
 import { type FileHistory, type OcflFile, StoredFile } from './ocfl-file.ts';
-import type { StorageRoot } from './storage-root.ts';
+import type { RootSettings, StorageRoot } from './storage-root.ts';
 import { functionOption, optionsObject, signalOption } from './utils.ts';
 import { objectWorkspace } from './workspace.ts';
 
@@ -170,15 +170,15 @@ class OpenedObject implements OcflObject {
   readonly #inventory: OcflObjectInventory;
   readonly #root: string;
   readonly #storageRoot: string;
-  readonly #rootVersion: OcflVersion;
+  readonly #rootSettings: RootSettings;
 
   /**
-   * @param rootVersion - The storage root's OCFL version
+   * @param rootSettings - Of the storage root the object was opened or created through
    * @param inventory - As {@link readInventory} returns it, or as a commit returns it
    */
-  constructor(storageRoot: string, rootVersion: OcflVersion, root: string, ocflVersion: OcflVersion, inventory: OcflObjectInventory) {
+  constructor(storageRoot: string, rootSettings: RootSettings, root: string, ocflVersion: OcflVersion, inventory: OcflObjectInventory) {
     this.#storageRoot = storageRoot;
-    this.#rootVersion = rootVersion;
+    this.#rootSettings = rootSettings;
     this.#root = root;
     this.#inventory = inventory;
     this.id = inventory.id;
@@ -202,15 +202,15 @@ class OpenedObject implements OcflObject {
       }
       throw error;
     });
-    withinRootVersion(this.#root, declared, this.#rootVersion);
+    withinRootVersion(this.#root, declared, this.#rootSettings.ocflVersion);
     await assertNoMutableHead(
       this.#root,
       `The object <${this.id}> has an active mutable head (extension 0005), which this library doesn't support; it can't be updated until the head is committed or removed.`,
     );
     const inventory = OcflObjectInventory._newVersion(this.#inventory);
-    const place = { storageRoot: this.#storageRoot, objectRoot: this.#root, ocflVersion: this.ocflVersion };
+    const place = { storageRoot: this.#storageRoot, objectRoot: this.#root, ocflVersion: this.ocflVersion, flusher: this.#rootSettings.flusher };
     const committed = await commitDraft(place, inventory, checked, change, signal);
-    return committed ? new OpenedObject(this.#storageRoot, this.#rootVersion, this.#root, this.ocflVersion, committed) : this;
+    return committed ? new OpenedObject(this.#storageRoot, this.#rootSettings, this.#root, this.ocflVersion, committed) : this;
   }
 
   async isCurrent(): Promise<boolean> {
@@ -402,22 +402,22 @@ function versionsOf(inventory: OcflObjectInventory, objectRoot: string): Readonl
 }
 
 /**
- * Opens the object `id` that the layout of the storage root, of OCFL version `rootVersion`, places at `objectRoot`.
+ * Opens the object `id` that the layout of the storage root, with the settings `rootSettings`, places at `objectRoot`.
  * @throws {@link OcflError} `OBJECT_NOT_FOUND` if `objectRoot` has no inventory, and either nothing in it or a lock held: a create that isn't committed
  * @throws {@link OcflError} `INVALID_OBJECT` if it has a declaration and no inventory and isn't locked, is inside another object, is of a later OCFL version than the storage root, or its inventory can't be used
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it holds an object with another id, or, with no declaration, inventory or lock, holds anything else, is a file or is below one
  */
-async function openObject(storageRoot: string, objectRoot: string, id: string, rootVersion: OcflVersion): Promise<OcflObject> {
+async function openObject(storageRoot: string, objectRoot: string, id: string, rootSettings: RootSettings): Promise<OcflObject> {
   const inventory = await committedInventory(storageRoot, objectRoot);
   if (!inventory) {
     throw await noCommittedObject(storageRoot, objectRoot, id);
   }
-  const ocflVersion = withinRootVersion(objectRoot, await confirmedVersion(storageRoot, objectRoot, inventory, id), rootVersion);
-  return new OpenedObject(storageRoot, rootVersion, objectRoot, ocflVersion, inventory);
+  const ocflVersion = withinRootVersion(objectRoot, await confirmedVersion(storageRoot, objectRoot, inventory, id), rootSettings.ocflVersion);
+  return new OpenedObject(storageRoot, rootSettings, objectRoot, ocflVersion, inventory);
 }
 
 /**
- * Opens the object at `objectRoot`, a directory found with the object declaration `declared` and inside no other object, in a storage root of OCFL version `rootVersion`.
+ * Opens the object at `objectRoot`, a directory found with the object declaration `declared` and inside no other object, in a storage root with the settings `rootSettings`.
  * @param declared - As `findNamasteVersion` returns it for a declaration that exists
  * @returns `undefined` if it has no inventory and its lock is held, a create that isn't committed; or if it has gone
  * @throws {@link OcflError} `INVALID_OBJECT` if it has more than one declaration (`E003`), or its declaration is invalid or of a later OCFL version than the storage root, or its inventory is missing or can't be used
@@ -426,11 +426,11 @@ async function openDeclaredObject(
   storageRoot: string,
   objectRoot: string,
   declared: DeclarationsFound,
-  rootVersion: OcflVersion,
+  rootSettings: RootSettings,
 ): Promise<OcflObject | undefined> {
   const ocflVersion = checkedDeclaration(objectRoot, declared);
   const inventory = await committedInventory(storageRoot, objectRoot);
-  return inventory && new OpenedObject(storageRoot, rootVersion, objectRoot, withinRootVersion(objectRoot, ocflVersion, rootVersion), inventory);
+  return inventory && new OpenedObject(storageRoot, rootSettings, objectRoot, withinRootVersion(objectRoot, ocflVersion, rootSettings.ocflVersion), inventory);
 }
 
 /**
@@ -444,7 +444,7 @@ async function createObject(
   storageRoot: string,
   objectRoot: string,
   id: string,
-  ocflVersion: OcflVersion,
+  rootSettings: RootSettings,
   details: VersionDetails,
   build: (draft: Draft) => Promise<unknown>,
   signal: AbortSignal | undefined,
@@ -464,20 +464,21 @@ async function createObject(
   if (outer !== undefined) {
     throw objectRootConflict(objectRoot, id, `is inside the object at ${outer}`);
   }
+  const { ocflVersion, flusher } = rootSettings;
   const inventory = OcflObjectInventory._newVersion({
     id,
     digestAlgorithm: 'sha512',
     type: `https://ocfl.io/${ocflVersion}/spec/#inventory`,
     contentDirectory: 'content',
   });
-  const committed = await commitDraft({ storageRoot, objectRoot, ocflVersion }, inventory, details, build, signal);
+  const committed = await commitDraft({ storageRoot, objectRoot, ocflVersion, flusher }, inventory, details, build, signal);
   // A first version always differs from no version, so it is always committed
   /* node:coverage disable */
   if (!committed) {
     throw new Error(`No first version of <${id}> was committed.`);
   }
   /* node:coverage enable */
-  return new OpenedObject(storageRoot, ocflVersion, objectRoot, ocflVersion, committed);
+  return new OpenedObject(storageRoot, rootSettings, objectRoot, ocflVersion, committed);
 }
 
 export { createObject, type FixityOptions, type FixityProblem, type FixityProgress, type OcflObject, openDeclaredObject, openObject, type Version };

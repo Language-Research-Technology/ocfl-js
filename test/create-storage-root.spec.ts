@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it, mock } from 'node:test';
 import { createStorageRoot, openStorageRoot } from '../src/index.ts';
+import { flushedDuring, flushedFrom } from './helpers/flushes.ts';
 import { fsError, stillOpen, trackOpendir, withFsFailure } from './helpers/fs-failures.ts';
 import { HASHED } from './helpers/layouts.ts';
 import { ocflError } from './helpers/ocfl-error.ts';
@@ -27,6 +28,49 @@ describe('creating a storage root', () => {
     assert.strictEqual(root.path, rootPath);
     assert.strictEqual(root.ocflVersion, '1.1');
     assert.strictEqual(await fs.promises.readFile(path.join(rootPath, '0=ocfl_1.1'), 'utf8'), 'ocfl_1.1\n');
+  });
+
+  describe('durability', () => {
+    /** Each path the storage root's creation flushed, from `tempdir` */
+    const flushedCreating = async (rootPath: string, durability?: 'full' | 'none') =>
+      flushedFrom(tempdir, await flushedDuring(() => createStorageRoot(rootPath, { layout: { extensionName: HASHED }, durability })));
+
+    it("flushes every file and directory it makes, and the directories holding their names, with 'full', the default", async () => {
+      const made = newPath();
+      const rootPath = path.join(made, 'nested');
+
+      const flushed = await flushedCreating(rootPath);
+
+      const inRoot = await fs.promises.readdir(rootPath, { recursive: true });
+      for (const expected of [
+        '',
+        path.basename(made),
+        path.relative(tempdir, rootPath),
+        ...inRoot.map((name) => path.relative(tempdir, path.join(rootPath, name))),
+      ]) {
+        assert.ok(flushed.includes(expected), `${expected} was not flushed`);
+      }
+      assert.ok(
+        flushed.indexOf(path.relative(tempdir, path.join(rootPath, 'ocfl_layout.json'))) <
+          flushed.indexOf(path.relative(tempdir, path.join(rootPath, '0=ocfl_1.1'))),
+      );
+    });
+
+    it("flushes nothing with 'none', in making the storage root or in creating an object in it", async () => {
+      const rootPath = path.join(newPath(), 'nested');
+      const flushed = await flushedDuring(async () => {
+        const root = await createStorageRoot(rootPath, { layout: { extensionName: HASHED }, durability: 'none' });
+        await root.create('item', { message: 'First', user: { name: 'Tester' } }, (draft) => draft.write('a.txt', 'a'));
+      });
+      assert.deepStrictEqual(flushedFrom(tempdir, flushed), []);
+    });
+
+    it('rejects a durability it does not know, and makes nothing', async () => {
+      const rootPath = newPath();
+      const options = { layout: { extensionName: HASHED }, durability: 'sometimes' } as never;
+      await assert.rejects(createStorageRoot(rootPath, options), { name: 'TypeError', message: /'sometimes'/ });
+      assert.ok(!fs.existsSync(rootPath));
+    });
   });
 
   it('makes a storage root in an empty directory', async () => {

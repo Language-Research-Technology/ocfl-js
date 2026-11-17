@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { type DeclarationsFound, findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
+import { type DeclarationsFound, findNamasteVersion, OcflConstants } from './constants.ts';
 import { OcflError } from './error.ts';
 import { isNothingAtPath, pathFromStorageRoot } from './file-system.ts';
 import { idInRootInventory } from './object-on-disk.ts';
 import { type OcflObject, openDeclaredObject } from './ocfl-object.ts';
+import type { RootSettings } from './storage-root.ts';
 
 const { EXTENSIONS_DIR, NAMASTE_PREFIX_OBJECT } = OcflConstants;
 
@@ -46,10 +47,10 @@ async function listedObjectAt(
   storageRoot: string,
   objectRoot: string,
   declared: DeclarationsFound,
-  rootVersion: OcflVersion,
+  rootSettings: RootSettings,
 ): Promise<ListedObject | undefined> {
   try {
-    const object = await openDeclaredObject(storageRoot, objectRoot, declared, rootVersion);
+    const object = await openDeclaredObject(storageRoot, objectRoot, declared, rootSettings);
     return object && { object };
   } catch (error) {
     if (!(error instanceof OcflError && error.code === 'INVALID_OBJECT')) {
@@ -62,7 +63,7 @@ async function listedObjectAt(
 }
 
 /** A directory with an object declaration is an object, valid or not, and isn't searched: OCFL allows no object inside another */
-async function* objectsUnder(storageRoot: string, rootVersion: OcflVersion, dir: fs.Dir): AsyncGenerator<ListedObject> {
+async function* objectsUnder(storageRoot: string, rootSettings: RootSettings, dir: fs.Dir): AsyncGenerator<ListedObject> {
   for await (const entry of dir) {
     if (!entry.isDirectory() || (dir.path === storageRoot && entry.name === EXTENSIONS_DIR)) {
       continue;
@@ -72,11 +73,11 @@ async function* objectsUnder(storageRoot: string, rootVersion: OcflVersion, dir:
     if (declared === undefined) {
       const subdirectory = await openListedDirectory(entryPath);
       if (subdirectory) {
-        yield* objectsUnder(storageRoot, rootVersion, subdirectory);
+        yield* objectsUnder(storageRoot, rootSettings, subdirectory);
       }
       continue;
     }
-    const found = await listedObjectAt(storageRoot, entryPath, declared, rootVersion);
+    const found = await listedObjectAt(storageRoot, entryPath, declared, rootSettings);
     if (found) {
       yield found;
     }
@@ -84,11 +85,11 @@ async function* objectsUnder(storageRoot: string, rootVersion: OcflVersion, dir:
 }
 
 /**
- * Every object root in the storage root at `storageRoot`, of OCFL version `rootVersion`, each read when the listing reaches it.
+ * Every object root in the storage root at `storageRoot`, with the settings `rootSettings`, each read when the listing reaches it.
  * @throws The file system error that stopped the listing
  */
-async function* listObjects(storageRoot: string, rootVersion: OcflVersion): AsyncGenerator<ListedObject> {
-  yield* objectsUnder(storageRoot, rootVersion, await fs.promises.opendir(storageRoot));
+async function* listObjects(storageRoot: string, rootSettings: RootSettings): AsyncGenerator<ListedObject> {
+  yield* objectsUnder(storageRoot, rootSettings, await fs.promises.opendir(storageRoot));
 }
 
 export { type ListedObject, listObjects };

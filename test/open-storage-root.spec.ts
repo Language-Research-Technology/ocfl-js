@@ -76,6 +76,21 @@ describe('opening a storage root', () => {
     await assert.rejects(openStorageRoot(undefined as never), TypeError);
   });
 
+  it('takes either durability', async () => {
+    await openStorageRoot(STORAGE_FIXTURE, { durability: 'full' });
+    await openStorageRoot(STORAGE_FIXTURE, { durability: 'none' });
+    await openStorageRoot(STORAGE_FIXTURE, {});
+  });
+
+  it('names every option it does not know', async () => {
+    const options = { durability: 'none', layout: { extensionName: HASHED }, workspace: '/tmp' } as never;
+    await assert.rejects(openStorageRoot(STORAGE_FIXTURE, options), { name: 'TypeError', message: /'layout'.*'workspace'/ });
+  });
+
+  it('rejects a durability it does not know, naming it', async () => {
+    await assert.rejects(openStorageRoot(STORAGE_FIXTURE, { durability: 'fsync' } as never), { name: 'TypeError', message: /'fsync'/ });
+  });
+
   describe('OCFL version', () => {
     for (const ocflVersion of ['1.0', '1.1'] as const) {
       it(`takes the version from a ${ocflVersion} root`, async () => {

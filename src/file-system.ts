@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import { createLimiter } from './utils.ts';
 
 function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
@@ -234,6 +235,68 @@ export async function copyFile(source: string, target: string): Promise<void> {
   await createParents(target);
   await fs.promises.copyFile(source, target);
 }
+
+/** Flushes the file or directory at `target` to disk: its data, or for a directory the names in it */
+async function flush(target: string): Promise<void> {
+  const handle = await fs.promises.open(target, 'r');
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+/** `dir` and each directory above it, up to and including `top` */
+export function directoriesUpTo(dir: string, top: string): string[] {
+  const directories = [];
+  for (let current = dir; current !== top; current = path.dirname(current)) {
+    directories.push(current);
+  }
+  directories.push(top);
+  return directories;
+}
+
+/** `dir`, or else the nearest directory above it that exists, stopping at `top` */
+export async function nearestExisting(dir: string, top: string): Promise<string> {
+  let current = dir;
+  while (current !== top && !(await pathExists(current))) {
+    current = path.dirname(current);
+  }
+  return current;
+}
+
+const FLUSH_CONCURRENCY = 10;
+
+/** Flushes each of `targets`, at most {@link FLUSH_CONCURRENCY} at once; settles only once every flush has, throwing the first failure */
+async function flushAll(targets: readonly string[]): Promise<void> {
+  const limit = createLimiter(FLUSH_CONCURRENCY);
+  const flushes = await Promise.allSettled(targets.map((target) => limit(() => flush(target))));
+  const failed = flushes.find((result) => result.status === 'rejected');
+  if (failed) {
+    throw failed.reason;
+  }
+}
+
+/** Flushes files and directories to disk, or does nothing, as a storage root's durability says */
+export interface Flusher {
+  /** Flushes each of `targets`, in no particular order */
+  flush(...targets: string[]): Promise<void>;
+  /** Flushes `dir`, and every file and directory below it */
+  flushTree(dir: string): Promise<void>;
+}
+
+export const FLUSHING: Flusher = {
+  flush: (...targets) => flushAll(targets),
+  async flushTree(dir) {
+    const entries = await fs.promises.readdir(dir, { recursive: true, withFileTypes: true });
+    await flushAll([dir, ...entries.map((entry) => path.join(entry.parentPath, entry.name))]);
+  },
+};
+
+export const NOT_FLUSHING: Flusher = {
+  flush: async () => {},
+  flushTree: async () => {},
+};
 
 export async function move(source: string, target: string): Promise<void> {
   await createParents(target);
