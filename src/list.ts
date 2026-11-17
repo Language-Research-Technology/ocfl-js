@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
+import { type DeclarationsFound, findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
 import { OcflError } from './error.ts';
 import { isNothingAtPath, pathFromStorageRoot } from './file-system.ts';
 import { idInRootInventory } from './object-on-disk.ts';
@@ -45,7 +45,7 @@ async function openListedDirectory(dirPath: string): Promise<fs.Dir | undefined>
 async function listedObjectAt(
   storageRoot: string,
   objectRoot: string,
-  declared: OcflVersion | '',
+  declared: DeclarationsFound,
   rootVersion: OcflVersion,
 ): Promise<ListedObject | undefined> {
   try {

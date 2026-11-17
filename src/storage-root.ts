@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
-import { findNamasteVersion, OcflConstants, type OcflVersion } from './constants.ts';
+import { findNamasteVersion, OcflConstants, type OcflVersion, SEVERAL_DECLARATIONS } from './constants.ts';
 import { checkedDetails, type Draft, type UpdateOptions, type VersionDetails } from './draft.ts';
 import { type OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
@@ -58,7 +58,7 @@ function declaredLayoutName(file: string, content: string): string {
 /**
  * Read the OCFL version and layout a storage root declares.
  * @throws {@link OcflError} `STORAGE_ROOT_NOT_FOUND` if `root` is missing, with no file above it, or is an empty directory.
- * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if `root` is a file, is below one, or is a directory with something in it, and has no declaration (`E069`); or it has an invalid one (`E080`), has an `ocfl_layout.json`
+ * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if `root` is a file, is below one, or is a directory with something in it, and has no declaration (`E069`); or it has more than one (`E076`) or an invalid one (`E080`), has an `ocfl_layout.json`
  * with no string `extension` (`E070`), or its layout's `config.json` isn't a JSON object, is for another layout or has parameters the layout rejects.
  * @throws {@link OcflError} `LAYOUT_NOT_DECLARED` if `root` has a valid declaration but no `ocfl_layout.json`.
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if `ocfl_layout.json` names a layout this library doesn't implement.
@@ -71,6 +71,9 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflVersion
     throw namaste.reason;
   }
   const ocflVersion = namaste.value;
+  if (ocflVersion === SEVERAL_DECLARATIONS) {
+    throw createError('E076', root);
+  }
   if (ocflVersion === '') {
     throw createError('E080', root);
   }
@@ -192,7 +195,7 @@ interface StorageRoot {
    *
    * @throws {@link OcflError} `OBJECT_EXISTS` if an object with this id already exists.
    * @throws {@link OcflError} `DIRECTORY_NOT_EMPTY` if something appeared in the object's directory while its first version was being built. Nothing is created.
-   * @throws {@link OcflError} `INVALID_OBJECT` if an invalid object declaration appeared in the object's directory while its first version was being built (E007). Nothing is created.
+   * @throws {@link OcflError} `INVALID_OBJECT` if an invalid object declaration (E007), or more than one (E003), appeared in the object's directory while its first version was being built. Nothing is created.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, with its lock in the workspace.
    * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if that directory holds something else, is a file or is below one, or is inside another object.
    * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object, or died creating it; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.

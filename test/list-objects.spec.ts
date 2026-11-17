@@ -187,6 +187,18 @@ describe('root.objects', () => {
       assert.deepStrictEqual(damaged, [{ code: 'INVALID_OBJECT', ocflCode: 'E007', objectRoot: 'damaged' }]);
     });
 
+    it('is reported with E003, and the id its inventory names, when it has two object declarations', async () => {
+      const root = await newRoot();
+      await createObject(root, 'good', { 'a.txt': 'a' });
+      await createObject(root, 'twice', { 'a.txt': 'a' });
+      await writeFiles(objectRootOf(root, 'twice'), { '0=ocfl_object_1.0': 'ocfl_object_1.0\n' });
+
+      const { ids, damaged } = await listed(root);
+
+      assert.deepStrictEqual(ids, ['good']);
+      assert.deepStrictEqual(damaged, [{ code: 'INVALID_OBJECT', ocflCode: 'E003', objectRoot: 'twice', id: 'twice' }]);
+    });
+
     it('is reported with E081, and the id its inventory names, when its OCFL version is later than the storage root', async () => {
       const root = await newRoot();
       await createObject(root, 'a', { 'a.txt': 'a' });

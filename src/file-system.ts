@@ -18,7 +18,7 @@ export function isNotFound(error: unknown): boolean {
   return isErrnoException(error) && error.code === 'ENOENT';
 }
 
-export function isNotDir(error: unknown): boolean {
+function isNotDir(error: unknown): boolean {
   return isErrnoException(error) && error.code === 'ENOTDIR';
 }
 
@@ -62,6 +62,18 @@ export async function pathExists(filePath: string): Promise<boolean> {
   } catch (error) {
     if (isNotFound(error) || isNotDir(error)) {
       return false;
+    }
+    throw error;
+  }
+}
+
+/** The file's text, or `undefined` if nothing can be at its path */
+export async function readIfPresent(file: string): Promise<string | undefined> {
+  try {
+    return await fs.promises.readFile(file, 'utf8');
+  } catch (error) {
+    if (isNothingAtPath(error)) {
+      return undefined;
     }
     throw error;
   }
