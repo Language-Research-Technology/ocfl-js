@@ -190,6 +190,9 @@ importers:
       '@semantic-release/git':
         specifier: ^11.0.1
         version: 11.0.1(semantic-release@25.0.9(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)
+      '@semantic-release/npm':
+        specifier: ^13.2.0
+        version: 13.2.0(semantic-release@25.0.9(supports-color@7.2.0)(typescript@7.0.2))
       '@types/node':
         specifier: ^22.20.5
         version: 22.20.5
