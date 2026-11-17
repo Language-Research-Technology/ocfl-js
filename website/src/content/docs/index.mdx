@@ -13,6 +13,8 @@ It needs Node.js 22.12 or later and is published as an ES module with its own ty
 
 <Code code={quickStart} lang="ts" />
 
+The example creates its storage root in `ocfl-quick-start`, so delete that directory before running it again; otherwise it fails with [`DIRECTORY_NOT_EMPTY`](/ocfl-js/guides/errors/#directory_not_empty). In your own code, create a storage root once and open it with [`openStorageRoot`](/ocfl-js/api/functions/openstorageroot/) from then on.
+
 New to the library? [Getting started](/ocfl-js/guides/getting-started/) walks through this one step at a time. Upgrading from 0.x? See [Upgrading from 0.x](/ocfl-js/guides/upgrading-from-0-x/).
 
 ## What it does
