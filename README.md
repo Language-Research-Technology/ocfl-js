@@ -31,7 +31,7 @@ Create a storage root, deposit an object, add a version and read it back:
 ```ts
 import { createStorageRoot } from '@ocfl/ocfl-fs';
 
-const root = await createStorageRoot('/srv/ocfl', {
+const root = await createStorageRoot('ocfl-quick-start', {
   layout: { extensionName: '0004-hashed-n-tuple-storage-layout' },
 });
 
@@ -47,6 +47,8 @@ for (const [path, file] of updated.head.files) {
   console.log(path, await file.text());
 }
 ```
+
+The example creates its storage root in `ocfl-quick-start`, so delete that directory before running it again; otherwise it fails with [`DIRECTORY_NOT_EMPTY`](https://language-research-technology.github.io/ocfl-js/guides/errors/#directory_not_empty). In your own code, create a storage root once and open it with [`openStorageRoot`](https://language-research-technology.github.io/ocfl-js/api/functions/openstorageroot/) from then on.
 
 The [documentation site](https://language-research-technology.github.io/ocfl-js/) has guides to getting started, updating objects, concurrent writers and errors, and the full API reference. To see whether the library fits what you're building, read [Use cases and best practices](https://language-research-technology.github.io/ocfl-js/guides/use-cases/).
 

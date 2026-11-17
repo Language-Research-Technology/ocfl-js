@@ -1,6 +1,6 @@
 import { createStorageRoot } from '@ocfl/ocfl-fs';
 
-const root = await createStorageRoot('/srv/ocfl', {
+const root = await createStorageRoot('ocfl-quick-start', {
   layout: { extensionName: '0004-hashed-n-tuple-storage-layout' },
 });
 
