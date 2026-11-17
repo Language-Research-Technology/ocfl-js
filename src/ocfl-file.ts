@@ -6,11 +6,11 @@ import { openRegularFile } from './file-system.ts';
 import type { Version } from './ocfl-object.ts';
 import { optionsObject } from './utils.ts';
 
-/** Part of a file's content. Both ends are byte offsets from 0, and `end` is included, as in an HTTP `Range` header. */
-interface ByteRange {
-  /** First byte to read. Defaults to 0. */
+/** Options for {@link OcflFile.stream}. */
+interface StreamOptions {
+  /** First byte to read, counting from 0. Defaults to 0. */
   readonly start?: number;
-  /** Last byte to read. Defaults to the end of the file. */
+  /** Last byte to read, included as in an HTTP `Range` header. Defaults to the end of the file. */
   readonly end?: number;
 }
 
@@ -52,8 +52,8 @@ interface OcflFile {
    * Its chunks are `Buffer`s. With DOM typings, copy one into a `new Uint8Array` before giving it to a `Blob` or `Response`. For a
    * web stream, use `Readable.toWeb(await file.stream())`, and with DOM typings cast that to the global `ReadableStream`.
    *
-   * @throws `TypeError` if `range` is given and isn't an object, or has a key other than `start` and `end`.
-   * @throws `RangeError` if an end of the range isn't a whole number from 0, `start` is after `end`, or `start` is after the last
+   * @throws `TypeError` if `options` is given and isn't an object, or has a key other than `start` and `end`.
+   * @throws `RangeError` if `start` or `end` isn't a whole number from 0, `start` is after `end`, or `start` is after the last
    * byte. An `end` after the last byte reads to the end.
    * @throws {@link OcflError} `INVALID_OBJECT` if the stored file isn't a regular file, such as a directory.
    * @throws The file system error if the stored file is missing or can't be read.
@@ -65,7 +65,7 @@ interface OcflFile {
    * reply.code(206).header('content-range', `bytes ${start}-${end}/${size}`).send(body);
    * ```
    */
-  stream(range?: ByteRange): Promise<Readable>;
+  stream(options?: StreamOptions): Promise<Readable>;
   /**
    * Reads the content as UTF-8 text.
    *
@@ -151,8 +151,8 @@ class StoredFile implements OcflFile {
     return size;
   }
 
-  async stream(range?: ByteRange): Promise<Readable> {
-    const { start, end } = checkedRange(range);
+  async stream(options?: StreamOptions): Promise<Readable> {
+    const { start, end } = streamOptions(options);
     const { handle, size } = await this.#open();
     if (start !== undefined && start >= size) {
       await handle.close();
@@ -189,8 +189,8 @@ class StoredFile implements OcflFile {
   }
 }
 
-function checkedRange(range: unknown): ByteRange {
-  const checked: ByteRange = optionsObject(range, 'file.stream', ['start', 'end'], '{ start: 0, end: 1023 }');
+function streamOptions(options: unknown): StreamOptions {
+  const checked: StreamOptions = optionsObject(options, 'file.stream', ['start', 'end'], '{ start: 0, end: 1023 }');
   for (const side of ['start', 'end'] as const) {
     const offset = checked[side];
     if (offset !== undefined && !(Number.isSafeInteger(offset) && offset >= 0)) {
@@ -203,4 +203,4 @@ function checkedRange(range: unknown): ByteRange {
   return checked;
 }
 
-export { type ByteRange, type FileHistory, type OcflFile, StoredFile };
+export { type FileHistory, type OcflFile, StoredFile, type StreamOptions };

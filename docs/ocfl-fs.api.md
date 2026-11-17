@@ -8,12 +8,6 @@ import { Dirent } from 'node:fs';
 import type { Readable } from 'node:stream';
 
 // @public
-export interface ByteRange {
-    readonly end?: number;
-    readonly start?: number;
-}
-
-// @public
 export interface CreateOptions extends VersionDetails {
     readonly signal?: AbortSignal | undefined;
 }
@@ -159,7 +153,7 @@ export interface OcflFile {
     readonly modifiedIn: Version;
     readonly path: string;
     size(): Promise<number>;
-    stream(range?: ByteRange): Promise<Readable>;
+    stream(options?: StreamOptions): Promise<Readable>;
     text(): Promise<string>;
 }
 
@@ -206,6 +200,12 @@ export interface StorageRoot {
     remove(id: string): Promise<void>;
     unfinishedWrite(id: string): Promise<UnfinishedWrite | undefined>;
     unfinishedWrites(): AsyncIterable<UnfinishedWrite>;
+}
+
+// @public
+export interface StreamOptions {
+    readonly end?: number;
+    readonly start?: number;
 }
 
 // @public

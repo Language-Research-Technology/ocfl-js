@@ -1,5 +1,5 @@
 import type { Readable } from 'node:stream';
-import type { ByteRange, Draft, FixityProblem, OcflFile, OcflObject, StorageRoot, User, Version } from '../../src/index.ts';
+import type { Draft, FixityProblem, OcflFile, OcflObject, StorageRoot, StreamOptions, User, Version } from '../../src/index.ts';
 
 export async function openTakesOnlyAnId(root: StorageRoot): Promise<OcflObject> {
   // @ts-expect-error an object is opened by its id, not its path
@@ -71,15 +71,16 @@ export function fixityProblemNamesTheStoredFileFromTheStorageRoot(problem: Fixit
   return [problem.storedFile, files, problem.actual];
 }
 
-export async function fileContent(file: OcflFile, range: ByteRange, draft: Draft): Promise<[number, string, Uint8Array]> {
+export async function fileContent(file: OcflFile, options: StreamOptions, draft: Draft): Promise<[number, string, Uint8Array]> {
   // A stream resolves once the content is open, so a server can still answer with an error status
   const whole: Readable = await file.stream();
-  const part: Readable = await file.stream(range);
+  const part: Readable = await file.stream(options);
   // @ts-expect-error await it
   const unopened: Readable = file.stream();
   void unopened;
   await file.stream({ start: 0, end: 99 });
   await file.stream({ start: 100 });
+  await file.stream({ end: 99 });
   // @ts-expect-error a range is byte offsets
   await file.stream({ start: '0' });
   // @ts-expect-error text is always UTF-8

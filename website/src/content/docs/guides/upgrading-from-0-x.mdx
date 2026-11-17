@@ -101,7 +101,7 @@ The digest directories haven't changed, only the last directory, named by the en
 | `object.getFile(path, 'v1')`, `getFile({ logicalPath, version })`, `fileByLogicalPath()` | `object.versions.get(1)?.files.get(path)`, or `object.head.files.get(path)` |
 | `file.logicalPath` | `file.path` |
 | `file.text()`, `asString()`, `file.buffer()`, `asBuffer()` | `file.text()`, `file.bytes()` |
-| `file.stream()`, `asStream()` | `await file.stream(range?)`, a Node `Readable` |
+| `file.stream()`, `asStream()` | `await file.stream()`, or `await file.stream({ start, end })` for part of the content, a Node `Readable` |
 | `file.stat()`, `file.size` | `file.size()` |
 | `file.lastModified` | `file.modifiedAt` |
 | `file.fixity` | [Gone](#gone-with-no-replacement): use `file.digest` |
