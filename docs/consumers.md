@@ -35,7 +35,7 @@ Unmaintained, still on 0.2.x (two releases back), or using the library only outs
 - Every LDaCA consumer configures `000N-path-direct-storage-layout`; production storage roots declare it.
 - All reads are by logical path at the head version. No consumer reads an old version, or looks a file up by digest.
 - Content paths are the internal most often relied on (arocapi, oni, islandty). From 1.0 the library gives out no content paths: files are read through `file.stream()`, which arocapi can serve from. Apart from `StorageRoot.path`, which names the storage root itself, the only paths on disk it gives out name something it found broken, a damaged object root or a stored file that fails a fixity check (ADR 0006).
-- From 1.0 a storage root must declare a storage layout the library implements, and objects are opened only by id through it (ADR 0004, ADR 0007). arocapi's `objectRoot` option has no equivalent: a storage root it served that way needs an `ocfl_layout.json`, or the layout added to the library.
+- From 1.0 a storage root must declare a storage layout the library implements (ADR 0007), and objects are opened only by id through it, never by path (ADR 0004). arocapi's `objectRoot` option has no equivalent: a storage root it served that way needs an `ocfl_layout.json`, or the layout added to the library.
 - GitHub reports about 20 dependent repositories and shows 12, so some private consumers aren't listed.
 - "Last commit" is the newest commit on the default branch at survey time. It shows the project is alive, not that its use of the library changed: fin, lameta and redbox-portal are large projects where the library is a small part. No listed repository is archived.
 - oni had a push to another branch in September 2026.

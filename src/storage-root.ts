@@ -38,7 +38,7 @@ function declaredLayoutName(file: string, content: string): string {
  * Read the OCFL version and layout a storage root declares.
  * @throws {@link OcflError} `STORAGE_ROOT_NOT_FOUND` if `root` is missing, with no file above it, or is an empty directory.
  * @throws {@link OcflError} `INVALID_STORAGE_ROOT` if `root` is a file, is below one, or is a directory with something in it, and has no declaration (`E069`); or it has more than one (`E076`) or an invalid one (`E080`), has an `ocfl_layout.json`
- * with no string `extension` (`E070`), or its layout's `config.json` isn't a JSON object, is for another layout or has parameters the layout rejects.
+ * with no string `extension` (`E070`), or its layout's `config.json` isn't a JSON object, is for another layout, or has a parameter the layout doesn't have or a value it rejects.
  * @throws {@link OcflError} `LAYOUT_NOT_DECLARED` if `root` has a valid declaration but no `ocfl_layout.json`.
  * @throws {@link OcflError} `UNSUPPORTED_LAYOUT` if `ocfl_layout.json` names a layout this library doesn't implement.
  * @throws The file system error if `root` has no declaration and can't be read, or the storage root declaration, `ocfl_layout.json` or the layout's `config.json` exists but can't be read.
@@ -95,7 +95,6 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflSpecVer
     );
   }
   try {
-    // Not createLayout: a parameter the layout doesn't have is ignored in a root another tool may have written
     return { ocflVersion, layout: new layoutClass(config) };
   } catch (error) {
     if (error instanceof TypeError) {

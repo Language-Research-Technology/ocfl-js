@@ -1,4 +1,3 @@
-import { rejectUnknownKeys } from '../utils.ts';
 import { type PathDirectLayoutConfig, PathDirectStorageLayout } from './000N-path-direct-storage-layout.ts';
 import { type FlatDirectLayoutConfig, FlatDirectStorageLayout } from './0002-flat-direct-storage-layout.ts';
 import { type HashAndIdNTupleLayoutConfig, HashAndIdNTupleStorageLayout } from './0003-hash-and-id-n-tuple-storage-layout.ts';
@@ -48,9 +47,7 @@ function createLayout(config: LayoutConfig): BuiltInLayout {
   if (!layoutClass) {
     throw new TypeError(`Layout "${name}" is not supported.`);
   }
-  const layout = new layoutClass(own);
-  rejectUnknownKeys(own, ['extensionName', ...Object.keys(layout.parameters)], `Layout ${name} has no parameter`);
-  return layout;
+  return new layoutClass(own);
 }
 
 export {

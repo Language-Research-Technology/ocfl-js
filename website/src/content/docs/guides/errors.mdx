@@ -67,7 +67,7 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 ### `INVALID_STORAGE_ROOT`
 
-**Cause:** `openStorageRoot` found no storage root it can read: the path is a file, is below a file, or is a directory with something in it, and its `0=ocfl_1.x` declaration is missing or wrong (`ocflCode` `E069` or `E080`), its `ocfl_layout.json` doesn't name a storage layout (`E070`), or the storage layout's `config.json` isn't a JSON object, is for another storage layout, or has parameters the storage layout refuses.
+**Cause:** `openStorageRoot` found no storage root it can read: the path is a file, is below a file, or is a directory with something in it, and its `0=ocfl_1.x` declaration is missing or wrong (`ocflCode` `E069` or `E080`), its `ocfl_layout.json` doesn't name a storage layout (`E070`), or the storage layout's `config.json` isn't a JSON object, is for another storage layout, or has a parameter the storage layout doesn't have or a value it refuses.
 
 **What to do:** check the path is a storage root. If it is, fix the declaration, `ocfl_layout.json` or `config.json`; the message names the file. A directory with no declaration, or an empty one, may be what an interrupted `createStorageRoot` left: see [`DIRECTORY_NOT_EMPTY`](#directory_not_empty).
 

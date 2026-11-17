@@ -28,6 +28,7 @@ A few storage roots and ids need attention. 1.0 never changes anything on disk b
 | A `config.json` whose `replace` pattern is `{}`, because 0.4 wrote a `RegExp` pattern that way | `INVALID_STORAGE_ROOT` | Write the pattern as a string |
 | A `config.json` with a `digestAlgorithm` in another case, such as `SHA256`, or one that's no longer supported: `crc32`, `size`, `blake2b-160`, `blake2b-256` or `blake2b-384` | `INVALID_STORAGE_ROOT` | Write a supported name in lower case; an algorithm that's gone means the objects would need moving to new paths |
 | A `config.json` with `tupleSize` or `numberOfTuples` above 32, or only one of them 0 | `INVALID_STORAGE_ROOT` | None in this library: the extension doesn't allow these values |
+| A `config.json`, written by another tool or by hand, with a parameter its storage layout doesn't have | `INVALID_STORAGE_ROOT`, naming the parameter; 0.4 ignored it | Remove the parameter if it doesn't change where objects are; if it does, use the tool that wrote it |
 | A path-direct `suffix` of `''` or `/` | `INVALID_STORAGE_ROOT` | Let every update finish, move each object into a `__object__` directory and drop `suffix` from `config.json` |
 | A storage root with no `ocfl_layout.json` | `LAYOUT_NOT_DECLARED` | Add an `ocfl_layout.json` naming the storage layout its objects are laid out by |
 | A storage root using `0006-flat-omit-prefix-storage-layout` or `0007-n-tuple-omit-prefix-storage-layout` | `UNSUPPORTED_LAYOUT` | None: 0.4 could never map an id under these layouts |
