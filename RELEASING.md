@@ -55,9 +55,15 @@ nothing is committed back, which keeps `beta` a fast-forward of `main`.
 
 The [documentation site](https://language-research-technology.github.io/ocfl-js/) is deployed to
 GitHub Pages by Publish Packages after every release it publishes, stable or beta, built from the
-release's tag. It documents the most recent publish, not npm's `latest`: every releasable push to
-`main` publishes a beta, so the site usually describes a prerelease that `pnpm add @ocfl/ocfl-fs`
-doesn't install. A dry run, or a run with no releasable commits, doesn't deploy.
+release's tag, and can also be deployed by hand from `main`. It documents the most recent deploy,
+not npm's `latest`: every releasable push to `main` publishes a beta, so the site usually describes
+a prerelease that `pnpm add @ocfl/ocfl-fs` doesn't install. A dry run, or a run with no releasable
+commits, doesn't deploy.
+
+A `docs:` commit cuts no release, so it doesn't reach the site on its own. To deploy one, go to
+**Actions → Deploy Docs → Run workflow** and leave the branch as `main`. A run from any other branch
+fails without deploying. The site is then built from `main`, so it also shows any changes not yet
+released.
 
 Pages must be switched on once, before the first release that should deploy it:
 
