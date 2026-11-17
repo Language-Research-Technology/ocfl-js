@@ -63,7 +63,7 @@ An indexing job lists every OCFL object in a storage root and records what it fi
 <Code code={indexingJob} lang="ts" />
 
 - `root.objects()` yields each object as it finds it, in no particular order. Reading it lazily keeps memory use flat however large the storage root is, and breaking out of the loop stops the walk.
-- An object it can't open is yielded as an [`OcflError`](/ocfl-js/api/classes/ocflerror/) with code [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object), and the listing carries on. The job keeps these errors and reports them at the end, so one damaged object doesn't stop the index or go unnoticed. Their `ocflCode`, when present, names the OCFL rule the object breaks.
+- An object it can't open is yielded as `{ status: 'damaged', error, objectRoot, id? }`, where `error` is an [`OcflError`](/ocfl-js/api/classes/ocflerror/) with code [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object), and the listing carries on. The job keeps these errors and reports them at the end, so one damaged object root doesn't stop the index or go unnoticed. Their `ocflCode`, when present, names the OCFL rule the object breaks.
 - A file system error, such as a directory it can't read, is thrown, not yielded, and ends the listing.
 - The listing leaves out an object that has lost its declaration and [a create whose writer died](/ocfl-js/guides/concurrent-writers/#a-create-whose-writer-died), without an error. See [what the library doesn't check or do](/ocfl-js/#what-it-doesnt-check-or-do).
 

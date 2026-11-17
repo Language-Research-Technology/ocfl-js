@@ -1,6 +1,6 @@
 import nodePath from 'node:path';
 import { OcflConstants, type OcflSpecVersion } from './constants.ts';
-import { findNamasteVersion, hasObjectDeclaration, objectDeclaration } from './declaration.ts';
+import { findDeclaredVersion, hasObjectDeclaration, objectDeclaration } from './declaration.ts';
 import { type OcflError, objectRootConflict, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import type { OcflObjectInventory } from './inventory.ts';
@@ -9,7 +9,7 @@ import type { ObjectPlace } from './object-place.ts';
 import { createError } from './ocfl-rules.ts';
 import { invalidObject, type RootInventory, readInventory } from './root-inventory.ts';
 
-const { EXTENSIONS_DIR, INVENTORY_NAME, NAMASTE_PREFIX_OBJECT } = OcflConstants;
+const { EXTENSIONS_DIR, INVENTORY_NAME, OBJECT_DECLARATION_PREFIX } = OcflConstants;
 const MUTABLE_HEAD_INVENTORY = nodePath.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
 
 /** @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE`, with `message`, if the object has an active mutable head (extension 0005) */
@@ -30,7 +30,7 @@ async function enclosingObject({ storageRoot, objectRoot }: ObjectPlace): Promis
   for (let dir = nodePath.dirname(objectRoot); dir.startsWith(storageRoot + nodePath.sep); dir = nodePath.dirname(dir)) {
     ancestors.push(dir);
   }
-  const declared = await Promise.all(ancestors.map((dir) => findNamasteVersion(NAMASTE_PREFIX_OBJECT, dir)));
+  const declared = await Promise.all(ancestors.map((dir) => findDeclaredVersion(OBJECT_DECLARATION_PREFIX, dir)));
   return ancestors.find((_dir, i) => declared[i]);
 }
 

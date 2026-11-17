@@ -3,7 +3,7 @@ import { inspect } from 'node:util';
 import { hasOverlongSegment, MAX_NAME_BYTES } from '../file-system.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from './built-in-layout.ts';
 
-/** Object directories at the path spelled by their id. */
+/** Object roots at the path spelled by their id. */
 interface PathDirectLayoutConfig {
   /** Name of the layout's OCFL extension. */
   extensionName: '000N-path-direct-storage-layout';
@@ -11,7 +11,7 @@ interface PathDirectLayoutConfig {
   omitScheme?: boolean;
   /** Pairs of text to find in the id and what to put in its place. Defaults to none. */
   replace?: readonly (readonly [find: string, replacement: string])[];
-  /** Text added to the end of the object directory's path. Defaults to `/__object__`. */
+  /** Text added to the end of the object root's path. Defaults to `/__object__`. */
   suffix?: string;
 }
 

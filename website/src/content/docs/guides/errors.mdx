@@ -110,11 +110,11 @@ The storage root is in a state a person needs to look at, often from an object m
 
 **Cause:** what the library read where the object should be isn't an object it can safely use. The inventory is missing, isn't JSON, is inconsistent, or names paths that would lead outside the object; the sidecar digest is missing or doesn't match; the object declaration is missing or wrong, or declares a later OCFL version than the storage root's; or the object is inside another object. Reading a file throws it if its stored file is missing or isn't a regular file, such as a directory, with the file system error, if any, as its `cause`. `ocflCode` names the OCFL rule, for example `E003` (no object declaration), `E033` (inventory isn't JSON), `E060` (sidecar digest doesn't match) or `E081` (a 1.1 object in a 1.0 storage root).
 
-`open`, `update`, `purge`, recovering an unfinished write, `objects()`, and an `OcflFile`'s `size()`, `stream()`, `text()` and `bytes()` can all give it. `update` throws it if the declaration has been damaged since the object was opened, or removed while anything remains in the object root. Rarely, `create` throws it when an invalid declaration appeared in the new object's directory while its first version was being built.
+`open`, `update`, `purge`, recovering an unfinished write, `objects()`, and an `OcflFile`'s `size()`, `stream()`, `text()` and `bytes()` can all give it. `update` throws it if the declaration has been damaged since the object was opened, or removed while anything remains in the object root. Rarely, `create` throws it when an invalid declaration appeared in the new object root while its first version was being built.
 
 These are checks the library makes before it uses an inventory's values as file paths. They are not validation: an object that opens can still break OCFL rules the library never looks at. To check an object against the specification, use [an OCFL validator](/ocfl-js/#objects-written-by-other-tools). See [It doesn't validate](/ocfl-js/#it-doesnt-validate) for what the library checks and what it doesn't.
 
-**What to do:** don't retry; the object is damaged and needs a person to look at it. Repair it with the tool that made it, or from a backup. If you no longer want it, see [Removing a damaged object](#removing-a-damaged-object).
+**What to do:** don't retry; the object is damaged and needs a person to look at it. Repair it with the tool that made it, or from a backup. If you no longer want it, `purge` it, or, if `purge` refuses because the object can't be opened, see [Removing a damaged object root](#removing-a-damaged-object-root).
 
 ### `MUTABLE_HEAD_ACTIVE`
 
@@ -226,7 +226,7 @@ An object with zero-padded version names that has reached `VERSION_LIMIT_REACHED
 
 <Code code={copyHead} lang="ts" />
 
-### Removing a damaged object
+### Removing a damaged object root
 
 `purge` refuses an object it can't read with `INVALID_OBJECT`, because it can't confirm the directory holds the object you named. Nothing is deleted.
 

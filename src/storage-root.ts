@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
 import { OcflConstants, type OcflSpecVersion } from './constants.ts';
-import { findNamasteVersion, SEVERAL_DECLARATIONS } from './declaration.ts';
+import { findDeclaredVersion, SEVERAL_DECLARATIONS } from './declaration.ts';
 import { type CreateOptions, type Draft, writeOptions } from './draft.ts';
 import { OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
@@ -19,7 +19,7 @@ import { SPEC_TEXT } from './spec-text.ts';
 import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
 import { deepFreeze, isNonEmptyString, optionsObject, parseJsonObject } from './utils.ts';
 
-const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, NAMASTE_PREFIX_STORAGE, NAMASTE_T } = OcflConstants;
+const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, WORKSPACE_EXTENSION, STORAGE_ROOT_DECLARATION_PREFIX, DECLARATION_TAG } = OcflConstants;
 
 /** A local storage root extension, documented in the root as the OCFL spec (§4.5) allows */
 const WORKSPACE_EXTENSION_TEXT = `# ${WORKSPACE_EXTENSION}
@@ -68,11 +68,11 @@ function declaredLayoutName(file: string, content: string): string {
  */
 async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflSpecVersion; layout: BuiltInLayout }> {
   const layoutPath = nodePath.join(root, OCFL_LAYOUT);
-  const [namaste, layoutRead] = await Promise.allSettled([findNamasteVersion(NAMASTE_PREFIX_STORAGE, root), fileSystem.readIfExists(layoutPath)]);
-  if (namaste.status === 'rejected') {
-    throw namaste.reason;
+  const [declared, layoutRead] = await Promise.allSettled([findDeclaredVersion(STORAGE_ROOT_DECLARATION_PREFIX, root), fileSystem.readIfExists(layoutPath)]);
+  if (declared.status === 'rejected') {
+    throw declared.reason;
   }
-  const ocflVersion = namaste.value;
+  const ocflVersion = declared.value;
   if (ocflVersion === SEVERAL_DECLARATIONS) {
     throw createError('E076', root);
   }
@@ -143,8 +143,8 @@ async function writeStorageRoot(root: string, layout: BuiltInLayout, flusher: fi
   await fileSystem.writeFile(nodePath.join(root, OCFL_LAYOUT), JSON.stringify({ extension: layout.name, description: layout.description }, null, 2));
   await flusher.flushTree(root);
   // Last, so that a root left half-written can't be opened, least of all with the default parameters of its layout
-  const declaration = NAMASTE_PREFIX_STORAGE + OCFL_VERSION;
-  const declarationFile = nodePath.join(root, NAMASTE_T + declaration);
+  const declaration = STORAGE_ROOT_DECLARATION_PREFIX + OCFL_VERSION;
+  const declarationFile = nodePath.join(root, DECLARATION_TAG + declaration);
   await fileSystem.writeFile(declarationFile, `${declaration}\n`);
   await flusher.flush(declarationFile, root);
 }
@@ -220,12 +220,12 @@ interface StorageRoot {
 
   /**
    * Whether there is an object with this id: `true` exactly when {@link StorageRoot.create} would throw `OBJECT_EXISTS`, unless the object's lock in the workspace would be too long for the file system.
-   * A create that another writer hasn't committed gives `false`, and so does an id the layout can't map to a directory the file system can hold. The inventory isn't read or checked, so a damaged object gives `true`, and {@link StorageRoot.open} then reports the damage.
+   * A create that another writer hasn't committed gives `false`, and so does an id the layout can't map to a directory the file system can hold. The inventory isn't read or checked, so a damaged object root gives `true`, and {@link StorageRoot.open} then reports the damage.
    *
    * Another writer can create the object between `has()` and a `create()`; to create an object only if it is absent, catch `OBJECT_EXISTS` from `create()` instead.
    *
    * @throws `TypeError` if the id is missing or empty.
-   * @throws The file system error if the object's directory, inventory or lock can't be checked.
+   * @throws The file system error if the object root, inventory or lock can't be checked.
    * @example
    * ```ts
    * console.log(`${id}: ${(await root.has(id)) ? 'in the archive' : 'not deposited yet'}`);
@@ -238,7 +238,7 @@ interface StorageRoot {
    * The object uses sha512 digests and the `content` directory, at the storage root's OCFL version.
    *
    * @throws {@link OcflError} `OBJECT_EXISTS` if an object with this id already exists.
-   * @throws {@link OcflError} `INVALID_OBJECT` if an invalid object declaration (E007), or more than one (E003), appeared in the object's directory while its first version was being built. Nothing is created.
+   * @throws {@link OcflError} `INVALID_OBJECT` if an invalid object declaration (E007), or more than one (E003), appeared in the object root while its first version was being built. Nothing is created.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, with its lock in the workspace.
    * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if that directory holds something else, is a file or is below one, or is inside another object; or if something appeared in it while the first version was being built, and then nothing is created.
    * @throws {@link OcflError} `OBJECT_LOCKED` if another writer is creating the same object, or died creating it; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.
@@ -295,7 +295,7 @@ interface StorageRoot {
    * @throws {@link OcflError} `OBJECT_LOCKED` if the object is being updated or created, or a writer died doing so; `lockedAt` says since when. Nothing is deleted. After a dead writer, recover its unfinished write ({@link StorageRoot.unfinishedWrite}) and then `purge` again.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is deleted.
    * @throws {@link OcflError} `INVALID_OBJECT` if the id's directory holds an object whose inventory is missing, corrupt or inconsistent, so its id can't be confirmed; nothing is deleted.
-   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the object's directory fits, but its lock in the workspace would be too long for the file system; nothing is deleted.
+   * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the object root fits, but its lock in the workspace would be too long for the file system; nothing is deleted.
    * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if that directory holds an object with another id, or holds files that aren't an object, is a file or is below one; nothing is deleted.
    * @throws `TypeError` if the id is missing or empty.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting the object failed part of the way through, or it was deleted and its lock couldn't be released; `cause` is the failure. The object stays locked, and may be partly deleted: recovering its unfinished write ({@link StorageRoot.unfinishedWrite}) finishes purging it.

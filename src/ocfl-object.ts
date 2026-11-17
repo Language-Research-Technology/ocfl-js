@@ -21,7 +21,7 @@ import {
   objectState,
   withinRootVersion,
 } from './object-root.ts';
-import { type FileHistory, type OcflFile, StoredFile } from './ocfl-file.ts';
+import { type FileHistory, type OcflFile, VersionFile } from './ocfl-file.ts';
 import type { RootInventory } from './root-inventory.ts';
 import type { RootSettings, StorageRoot } from './storage-root.ts';
 import { functionOption, optionsObject, signalOption } from './utils.ts';
@@ -46,7 +46,7 @@ interface Version {
 
 /** An OCFL object as read at one moment. */
 interface OcflObject {
-  /** The object's identifier. */
+  /** The object's id. */
   readonly id: string;
   /** OCFL version the object conforms to. */
   readonly ocflVersion: OcflSpecVersion;
@@ -394,7 +394,7 @@ class ObjectVersion implements Version {
     if (!this.#files) {
       const files = new Map<string, OcflFile>();
       for (const { logicalPath: path, digest, contentPath } of this.#inventory.files(this.#name)) {
-        files.set(path, new StoredFile({ path, digest, version: this.number, objectRoot: this.#objectRoot, contentPath, history: this.#history }));
+        files.set(path, new VersionFile({ path, digest, version: this.number, objectRoot: this.#objectRoot, contentPath, history: this.#history }));
       }
       this.#files = files;
     }
@@ -428,7 +428,7 @@ async function openObject(place: ObjectPlace, id: string, rootSettings: RootSett
 
 /**
  * Opens the object at `place`, a directory found with the object declaration `declared` and inside no other object, in a storage root with the settings `rootSettings`.
- * @param declared - As `findNamasteVersion` returns it for a declaration that exists
+ * @param declared - As `findDeclaredVersion` returns it for a declaration that exists
  * @returns `undefined` if it has no inventory and its lock is held, a create that isn't committed; or if it has gone
  * @throws {@link OcflError} `INVALID_OBJECT` if it has more than one declaration (`E003`), or its declaration is invalid or of a later OCFL version than the storage root, or its inventory is missing or can't be used
  */

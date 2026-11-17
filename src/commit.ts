@@ -16,7 +16,7 @@ import { parseJsonObject } from './utils.ts';
 import { isVersionName } from './version-number.ts';
 import { clearWorkspace, namesIn, removeAll } from './workspace.ts';
 
-const { INVENTORY_NAME, NAMASTE_PREFIX_OBJECT, NAMASTE_T } = OcflConstants;
+const { INVENTORY_NAME, OBJECT_DECLARATION_PREFIX, DECLARATION_TAG } = OcflConstants;
 const FIRST_VERSION = 'v1';
 
 /** How a write creates or updates its object */
@@ -39,8 +39,8 @@ async function ensureObjectDeclaration(root: string, id: string, ocflVersion: Oc
     throw createError('E003', root, 'it has an inventory but no object declaration');
   }
   await assertEmptyObjectRoot(root, id);
-  const declaration = NAMASTE_PREFIX_OBJECT + ocflVersion;
-  const filePath = path.join(root, NAMASTE_T + declaration);
+  const declaration = OBJECT_DECLARATION_PREFIX + ocflVersion;
+  const filePath = path.join(root, DECLARATION_TAG + declaration);
   await fileSystem.writeFile(filePath, `${declaration}\n`);
   return filePath;
 }
@@ -123,7 +123,7 @@ class ObjectWrite {
   #madeFrom: RootInventory | undefined;
   #versionPath: string;
   #lock: Lock;
-  #createdNamaste: string | undefined;
+  #createdDeclaration: string | undefined;
   #rootInventoryPaths: ReturnType<typeof rootInventoryPaths>;
   #rootInventoryStaged = false;
 
@@ -200,13 +200,13 @@ class ObjectWrite {
         await fs.promises.rm(this.#rootInventoryPaths.stagedSidecar, { recursive: true, force: true });
       }
       await fs.promises.rm(this.#versionPath, { recursive: true, force: true });
-      if (this.#createdNamaste) {
-        await fs.promises.rm(this.#createdNamaste, { recursive: true, force: true });
+      if (this.#createdDeclaration) {
+        await fs.promises.rm(this.#createdDeclaration, { recursive: true, force: true });
       }
       if (!this.#lock.objectRootExisted) {
         await fileSystem.removeEmptyAncestorsQuietly(objectRoot, storageRoot);
       }
-      if (this.#createdNamaste || this.#versionPath.startsWith(objectRoot + path.sep)) {
+      if (this.#createdDeclaration || this.#versionPath.startsWith(objectRoot + path.sep)) {
         await flushRemovals(this.#settings.flusher, this.#place);
       }
       await releaseLock(workspace, storageRoot);
@@ -237,7 +237,7 @@ class ObjectWrite {
     // Before anything in the object root changes, so a moved head never surfaces as a failed rename
     await assertUpToDate(objectRoot, inventory, this.#madeFrom?.digest);
     await flusher.flushTree(this.#versionPath);
-    this.#createdNamaste = await ensureObjectDeclaration(objectRoot, inventory.id, ocflVersion, this.#lock.operation === 'create');
+    this.#createdDeclaration = await ensureObjectDeclaration(objectRoot, inventory.id, ocflVersion, this.#lock.operation === 'create');
     try {
       await fileSystem.move(this.#versionPath, objectVersionPath);
     } catch (error) {
@@ -252,7 +252,7 @@ class ObjectWrite {
     await fileSystem.copyFile(invPath, rootInv.stagedInventory);
     await fileSystem.copyFile(`${invPath}.${digestAlgorithm}`, rootInv.stagedSidecar);
     // A create also makes the declaration, the object root and the layout's directories above it
-    const holdingNames = this.#createdNamaste ? [this.#createdNamaste, ...fileSystem.directoriesUpTo(objectRoot, storageRoot)] : [objectRoot];
+    const holdingNames = this.#createdDeclaration ? [this.#createdDeclaration, ...fileSystem.directoriesUpTo(objectRoot, storageRoot)] : [objectRoot];
     await flusher.flush(rootInv.stagedInventory, rootInv.stagedSidecar, ...holdingNames);
     // A rename keeps it, and no other writer can replace the root inventory while this one holds the lock
     const identity = await fileSystem.identityOf(rootInv.stagedInventory);
@@ -356,7 +356,7 @@ async function recoverWrite(place: ObjectPlace, lock: Lock, flusher: fileSystem.
     await releaseLock(workspace, storageRoot);
     return;
   }
-  const declarations = rootNames.filter((name) => name.startsWith(NAMASTE_T + NAMASTE_PREFIX_OBJECT));
+  const declarations = rootNames.filter((name) => name.startsWith(DECLARATION_TAG + OBJECT_DECLARATION_PREFIX));
   // A create writes the declaration before anything else in the object root, so without one nothing there is its
   const createLeft = !root && declarations.length > 0;
   if (createLeft && rootNames.some((name) => isVersionName(name) && name !== FIRST_VERSION)) {

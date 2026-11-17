@@ -10,11 +10,11 @@ import { confirmedVersion, declarationWithoutInventory, objectNotFound, strayCon
 import { readInventory } from './root-inventory.ts';
 import { clearWorkspace } from './workspace.ts';
 
-const { INVENTORY_NAME, NAMASTE_T } = OcflConstants;
+const { INVENTORY_NAME, DECLARATION_TAG } = OcflConstants;
 
 /** Whether `name`, in an object root, is the object's declaration, root inventory or sidecar: what opening the object reads */
 function isNeededToOpen(name: string): boolean {
-  return name.startsWith(NAMASTE_T) || name.startsWith(INVENTORY_NAME);
+  return name.startsWith(DECLARATION_TAG) || name.startsWith(INVENTORY_NAME);
 }
 
 /**
