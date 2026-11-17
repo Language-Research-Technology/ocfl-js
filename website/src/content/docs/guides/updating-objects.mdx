@@ -30,7 +30,7 @@ Every change to an OCFL object is one update, and every update adds at most one 
 
 - **All or nothing.** If `change` throws, or a draft operation throws and you let the error leave `change`, the whole update is discarded. The object is as it was and isn't locked.
 - **A new object comes back.** `update` returns the object with its new version. The object you called it on never changes. Use the returned object for the next update: the old one is no longer the head, so updating it throws [`OBJECT_OUT_OF_DATE`](/ocfl-js/guides/errors/#object_out_of_date).
-- **Only one writer at a time.** An update takes the object's lock before `change` runs. If another writer holds it, the update throws [`UPDATE_IN_PROGRESS`](/ocfl-js/guides/errors/#update_in_progress) straight away. See [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/) for what to do then, and for what happens when two updates race.
+- **Only one writer at a time.** An update takes the object's lock before `change` runs. If another writer holds it, the update throws [`OBJECT_LOCKED`](/ocfl-js/guides/errors/#object_locked) straight away. See [Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/) for what to do then, and for what happens when two updates race.
 - **Content is shared.** Content the object already holds, in any version, isn't stored again. Copying, renaming and reinstating store nothing new.
 
 `root.create(id, options, build)` works the same way, except that the draft starts empty and becomes version 1.
@@ -53,7 +53,7 @@ There's no separate replace operation. Writing, importing, copying, renaming or 
 
 ### write
 
-`write` stores the bytes as they were when you called it. A path that is a directory in the draft, or lies below a file, throws [`FILE_EXISTS`](/ocfl-js/guides/errors/#file_exists).
+`write` stores the bytes as they were when you called it. A path that is a directory in the draft, or lies below a file, throws [`PATH_CONFLICT`](/ocfl-js/guides/errors/#path_conflict).
 
 ### import
 
@@ -78,11 +78,11 @@ The filter isn't called for the source itself: a source that is a file is import
 
 `copy` and `rename` work within the draft, so their source is a logical path, not a path on disk. A source that isn't in the draft throws [`FILE_NOT_FOUND`](/ocfl-js/guides/errors/#file_not_found). A target inside the source throws `INVALID_LOGICAL_PATH`. A source and target that are the same path do nothing.
 
-A file copied or renamed onto an existing file replaces it. A directory copied or renamed onto a target that already has files throws `FILE_EXISTS`, unless you [merge](#merging-directories).
+A file copied or renamed onto an existing file replaces it. A directory copied or renamed onto a target that already has files throws [`TARGET_NOT_EMPTY`](/ocfl-js/guides/errors/#target_not_empty), unless you [merge](#merging-directories).
 
 ### reinstate
 
-`reinstate(path, version)` takes a version number, as in `object.versions`. It puts back what was at `path` in that version and replaces whatever is there now. Other files stay. A version that doesn't exist, or has nothing at `path`, throws `FILE_NOT_FOUND`.
+`reinstate(path, version)` takes a version number, as in `object.versions`. It puts back what was at `path` in that version and replaces whatever is there now. Other files stay. A version that doesn't exist throws [`VERSION_NOT_FOUND`](/ocfl-js/guides/errors/#version_not_found), and one that has nothing at `path` throws `FILE_NOT_FOUND`.
 
 Reinstating from the head version undoes what the draft has done to that path so far.
 
@@ -128,11 +128,11 @@ To replace the whole content of an object, clear the draft and import or write t
 
 ## Merging directories
 
-Copying or renaming a directory onto a target that already has files throws `FILE_EXISTS`. Pass `{ merge: true }` to put the directory there file by file instead: files at the same paths are replaced, and the target's other files stay.
+Copying or renaming a directory onto a target that already has files throws `TARGET_NOT_EMPTY`. Pass `{ merge: true }` to put the directory there file by file instead: files at the same paths are replaced, and the target's other files stay.
 
 <Code code={merge} lang="ts" />
 
-On a single file, or onto a target with no files, `{ merge: true }` makes no difference. A file that would go where the target has a directory, or below a file, still throws `FILE_EXISTS`.
+On a single file, or onto a target with no files, `{ merge: true }` makes no difference. A file that would go where the target has a directory, or below a file, still throws `PATH_CONFLICT`.
 
 ## An update that changes nothing
 
@@ -142,7 +142,7 @@ If the draft ends with exactly the files of the head version, no version is writ
 
 The draft is compared as it ends, not by what you did to it. Writing a file and removing it again, or renaming a file and back, changes nothing. Importing files that are already in the object, at the same paths with the same content, changes nothing either, which makes repeating a sync safe.
 
-The lock and the out-of-date check still happen before `change` runs, so an update that changes nothing can still throw `UPDATE_IN_PROGRESS` or `OBJECT_OUT_OF_DATE`.
+The lock and the out-of-date check still happen before `change` runs, so an update that changes nothing can still throw `OBJECT_LOCKED` or `OBJECT_OUT_OF_DATE`.
 
 A create always writes version 1, even with no files.
 

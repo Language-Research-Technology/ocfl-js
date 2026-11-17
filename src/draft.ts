@@ -112,7 +112,7 @@ interface Draft {
    * Puts one file at `path`, replacing a file already there.
    *
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
-   * @throws {@link OcflError} `FILE_EXISTS` if `path` is a directory, or lies below a file.
+   * @throws {@link OcflError} `PATH_CONFLICT` if `path` is a directory, or lies below a file.
    * @throws `TypeError` if `content` is not a {@link WriteContent}.
    * @throws `Error` if the update this draft belongs to has finished.
    * @example
@@ -134,7 +134,7 @@ interface Draft {
    * @throws {@link OcflError} `UNSUPPORTED_FILE_TYPE` if `source` is anything but a regular file or directory, such as a symlink, or contains one the filter keeps.
    * @throws {@link OcflError} `SOURCE_CHANGED` if a file changed while it was being read.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `target` is empty or leaves the object.
-   * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory.
+   * @throws {@link OcflError} `PATH_CONFLICT` if a path would become both a file and a directory.
    * @throws `TypeError` if `options` is not an object, has a key other than `target` and `filter`, `target` is not a string, `filter` is not a function or it returns anything but `true` or `false`.
    * @throws `Error` if the update this draft belongs to has finished.
    * @throws The error `filter` throws.
@@ -153,7 +153,8 @@ interface Draft {
    * With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay.
    *
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
-   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a file would go where a directory is, or below a file, as the draft stands before the operation.
+   * @throws {@link OcflError} `TARGET_NOT_EMPTY` if `source` is a directory and `target` already has files, unless `merge` is set.
+   * @throws {@link OcflError} `PATH_CONFLICT` if a file would go where a directory is, or below a file, as the draft stands before the operation.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
    * @throws `TypeError` if `options` is given and is not an object, has a key other than `merge`, or its `merge` is given and is not a boolean.
    * @throws `Error` if the update this draft belongs to has finished.
@@ -171,7 +172,8 @@ interface Draft {
    * With `merge`, a directory goes file by file into a `target` that has files: files at the same path are replaced and the rest stay.
    *
    * @throws {@link OcflError} `FILE_NOT_FOUND` if `source` is not in the draft.
-   * @throws {@link OcflError} `FILE_EXISTS` if `source` is a directory and `target` already has files, unless `merge` is set; or if a file would go where a directory is, or below a file, as the draft stands before the operation.
+   * @throws {@link OcflError} `TARGET_NOT_EMPTY` if `source` is a directory and `target` already has files, unless `merge` is set.
+   * @throws {@link OcflError} `PATH_CONFLICT` if a file would go where a directory is, or below a file, as the draft stands before the operation.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if a path is empty or leaves the object, or `target` is inside `source`.
    * @throws `TypeError` if `options` is given and is not an object, has a key other than `merge`, or its `merge` is given and is not a boolean.
    * @throws `Error` if the update this draft belongs to has finished.
@@ -187,8 +189,9 @@ interface Draft {
   /**
    * Puts a file, or every file below a directory, back as it was in an earlier version, at the same path.
    *
-   * @throws {@link OcflError} `FILE_NOT_FOUND` if the version doesn't exist or has nothing at `path`.
-   * @throws {@link OcflError} `FILE_EXISTS` if a path would become both a file and a directory.
+   * @throws {@link OcflError} `VERSION_NOT_FOUND` if the object has no committed version with this number.
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the version has nothing at `path`.
+   * @throws {@link OcflError} `PATH_CONFLICT` if a path would become both a file and a directory.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
    * @throws `TypeError` if `version` is not a number.
    * @throws `Error` if the update this draft belongs to has finished.

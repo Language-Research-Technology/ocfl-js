@@ -20,7 +20,7 @@ Test `code`. The message names the object or path involved and is useful in logs
 Two fields are set only some of the time:
 
 - `ocflCode` is the code the OCFL specification gives the rule that was broken, such as `E060`, when the fault has one. Only `INVALID_OBJECT` and `INVALID_STORAGE_ROOT` carry one.
-- `lockedAt` is when another writer took the object's lock. Only `UPDATE_IN_PROGRESS` sets it, and it is absent if the lock couldn't be read or was released in the meantime.
+- `lockedAt` is when another writer took the object's lock. Only `OBJECT_LOCKED` sets it, and it is absent if the lock couldn't be read or was released in the meantime.
 
 `cause`, when set, is the error underneath. `RECOVERY_NEEDED` always sets it.
 
@@ -44,7 +44,7 @@ None of these is retryable as it stands. Fix the call, or the file system.
 
 ### `DIRECTORY_NOT_EMPTY`
 
-**Cause:** `createStorageRoot` was given a directory that already has something in it. Rarely, `create` throws it too, when something appeared in the new object's directory while its first version was being built.
+**Cause:** `createStorageRoot` was given a directory that already has something in it.
 
 **What to do:** create the storage root in an empty or missing directory. To use a storage root that already exists, call `openStorageRoot`.
 
@@ -100,7 +100,7 @@ The id is at fault, not what is in the storage root. Only `create`, and `remove`
 
 ### `OBJECT_ROOT_CONFLICT`
 
-**Cause:** the storage layout places the id, but the directory it maps to holds the wrong thing. `open` and `remove` throw it when that directory holds an object with a different id, or has no object declaration but holds other files, is a file, or is below one. `create` throws it when the directory isn't empty, is a file or is below one, or is inside another object. `unfinishedWrite` throws it when the object's lock in the workspace belongs to a writer of a different id.
+**Cause:** the storage layout places the id, but the directory it maps to holds the wrong thing. `open` and `remove` throw it when that directory holds an object with a different id, or has no object declaration but holds other files, is a file, or is below one. `create` throws it when the directory isn't empty, is a file or is below one, or is inside another object, and also, rarely, when something appeared in the directory while the object's first version was being built. `unfinishedWrite` throws it when the object's lock in the workspace belongs to a writer of a different id.
 
 The storage root is in a state a person needs to look at, often from an object moved or copied by hand, or written by a tool with another storage layout. A server should log it, not treat it as not found.
 
@@ -130,11 +130,11 @@ These are checks the library makes before it uses an inventory's values as file 
 
 ## Writers and locks
 
-### `UPDATE_IN_PROGRESS`
+### `OBJECT_LOCKED`
 
-**Cause:** `create`, `update` or `remove` found the object's lock taken: another writer is creating, updating or removing it, or died doing so. The library refuses straight away, never waits, and never removes a lock because of its age. `lockedAt` says when the lock was taken.
+**Cause:** `create`, `update`, `remove` or recovering an unfinished write found the object's lock taken: another writer is creating, updating or removing it, or died doing so. The library refuses straight away, never waits, and never removes a lock because of its age. `lockedAt` says when the lock was taken.
 
-**What to do:** wait and try again. If you know the writer is dead, recover the object's unfinished write, from `root.unfinishedWrite(id)`, and then try again. Only recover it when its writer is no longer alive: recovering destroys a live writer's update. Recovering a write also throws `UPDATE_IN_PROGRESS`, changing nothing, if another writer took the lock after you got the write. See [`UPDATE_IN_PROGRESS` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#update_in_progress-another-writer-holds-the-lock).
+**What to do:** wait and try again. If you know the writer is dead, recover the object's unfinished write, from `root.unfinishedWrite(id)`, and then try again. Only recover it when its writer is no longer alive: recovering destroys a live writer's update. Recovering a write also throws `OBJECT_LOCKED`, changing nothing, if another writer took the lock after you got the write. See [`OBJECT_LOCKED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_locked-another-writer-holds-the-lock).
 
 ### `OBJECT_OUT_OF_DATE`
 
@@ -153,7 +153,7 @@ These are checks the library makes before it uses an inventory's values as file 
 - `create`, `update` or `remove` was refused and couldn't release the lock it had taken. Apart from the lock, nothing is changed.
 - An earlier writer left an unfinished version in the workspace. This is thrown before your change runs.
 
-`cause` is the underlying failure. The object stays locked, so later writes get `UPDATE_IN_PROGRESS` until it is recovered, and it is among the storage root's unfinished writes. It can still be read.
+`cause` is the underlying failure. The object stays locked, so later writes get `OBJECT_LOCKED` until it is recovered, and it is among the storage root's unfinished writes. It can still be read.
 
 **What to do:** don't simply repeat the write. Once no writer of the object is alive, recover its unfinished write: `(await root.unfinishedWrite(id))?.recover()`. After a `create` or `update`, open the object again and look at the head to see whether your version was committed; retry only if it wasn't. After a `remove` that had begun deleting, recovering finishes removing the object. After a refused write, recovering only releases the lock: nothing was changed, so repeat the write. See [`RECOVERY_NEEDED` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#recovery_needed-the-update-may-or-may-not-be-committed).
 
@@ -175,15 +175,27 @@ These come from draft operations inside the function you pass to `create` or `up
 
 ### `FILE_NOT_FOUND`
 
-**Cause:** `copy`, `rename` or `remove` was given a path with no file or directory in the draft, or `reinstate` a path with nothing at it in that version, or a version that doesn't exist.
+**Cause:** `copy`, `rename` or `remove` was given a path with no file or directory in the draft, or `reinstate` a path with nothing at it in that version.
 
 **What to do:** check the path against `object.head.files`, or against the version's `files` for `reinstate`.
 
-### `FILE_EXISTS`
+### `VERSION_NOT_FOUND`
 
-**Cause:** the operation would put a file where a directory is, or a file below another file. `copy` and `rename` also throw it for a directory onto a target that already has files, without `{ merge: true }`.
+**Cause:** `reinstate` was given a version number the object hasn't committed: one past the head, the version the draft is making, or one that isn't a whole number from 1.
 
-**What to do:** remove what is in the way first, or pass `{ merge: true }` to put the directory's files in among the target's.
+**What to do:** take the number from `object.versions`.
+
+### `PATH_CONFLICT`
+
+**Cause:** the operation would make a logical path both a file and a directory: a file where a directory is, or a file below another file. Writing over a file is allowed, and doesn't throw this.
+
+**What to do:** remove what is in the way first.
+
+### `TARGET_NOT_EMPTY`
+
+**Cause:** `copy` or `rename` was given a directory and a target that already has files, without `{ merge: true }`.
+
+**What to do:** pass `{ merge: true }` to put the directory's files in among the target's, replacing files at the same paths. To replace the target instead, remove it first. See [Merging directories](/ocfl-js/guides/updating-objects/#merging-directories).
 
 ### `INVALID_LOGICAL_PATH`
 

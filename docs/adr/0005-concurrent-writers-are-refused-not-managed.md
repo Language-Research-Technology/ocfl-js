@@ -10,7 +10,7 @@ Committing an update takes several filesystem steps, any of which can fail, and 
 
 ## Decision
 
-- **A second writer is refused, and dead writers are never detected.** A create, update or remove takes the object's lock (ADR 0003) before writing anything, and throws `UPDATE_IN_PROGRESS` if it is held. The library never waits, queues or expires a lock. The lock records when it was taken, and no process id, host or heartbeat.
+- **A second writer is refused, and dead writers are never detected.** A create, update or remove takes the object's lock (ADR 0003) before writing anything, and throws `OBJECT_LOCKED` if it is held. The library never waits, queues or expires a lock. The lock records when it was taken, and no process id, host or heartbeat.
 - **An update has one commit point, and nothing is rolled back after it.** The commit point is the rename that replaces the root inventory. A failure before it discards the update and throws the original error. A failure after it, or one that may have replaced the root inventory, or one while discarding, throws `RECOVERY_NEEDED` and keeps the lock.
 - **An object is recovered only on the caller's word that its writer is dead.** Held locks are listed as unfinished writes, and each is recovered on its own. There is no recovery by id alone or of every lock at once, since writers on other hosts may still be alive. Recovery removes only what a dead writer can have left, and never makes a version the head.
 

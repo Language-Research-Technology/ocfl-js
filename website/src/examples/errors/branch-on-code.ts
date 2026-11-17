@@ -16,7 +16,7 @@ try {
     case 'OBJECT_NOT_FOUND':
       console.log(`There is no object ${id}`);
       break;
-    case 'UPDATE_IN_PROGRESS':
+    case 'OBJECT_LOCKED':
       console.log(`Another writer has held the lock since ${error.lockedAt?.toISOString() ?? 'an unknown time'}`);
       break;
     case 'INVALID_OBJECT':

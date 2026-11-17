@@ -67,13 +67,13 @@ describe('the commit point', () => {
       assert.deepStrictEqual(await textFiles(object.head), { 'a.txt': 'a' });
     });
 
-    it('refuses later updates of the object with UPDATE_IN_PROGRESS', async () => {
+    it('refuses later updates of the object with OBJECT_LOCKED', async () => {
       const { root, object, objectRoot } = await existingObject();
       await withFsFailure('rename', path.join(objectRoot, 'inventory.json.sha512'), () => recoveryNeeded(object.update(DETAILS, writeB)));
       const after = await snapshot(root.path);
 
-      await assert.rejects(object.update(DETAILS, writeB), ocflError('UPDATE_IN_PROGRESS'));
-      await assert.rejects((await root.open(ID)).update(DETAILS, writeB), ocflError('UPDATE_IN_PROGRESS'));
+      await assert.rejects(object.update(DETAILS, writeB), ocflError('OBJECT_LOCKED'));
+      await assert.rejects((await root.open(ID)).update(DETAILS, writeB), ocflError('OBJECT_LOCKED'));
 
       assert.deepStrictEqual(await snapshot(root.path), after);
     });
@@ -199,7 +199,7 @@ describe('the commit point', () => {
       assert.deepStrictEqual(await rootInventory(objectRoot), { head: 'v2', sidecarMatches: true });
       assert.ok(fs.existsSync(lock));
       assert.strictEqual(object.head.number, 1);
-      await assert.rejects((await root.open(ID)).update(DETAILS, writeB), ocflError('UPDATE_IN_PROGRESS'));
+      await assert.rejects((await root.open(ID)).update(DETAILS, writeB), ocflError('OBJECT_LOCKED'));
     });
 
     it('throws RECOVERY_NEEDED from a create, and keeps the created object and the lock', async () => {
@@ -228,7 +228,7 @@ describe('the commit point', () => {
       assert.ok(fs.existsSync(lock));
       assert.strictEqual(object.head.number, 1);
       assert.strictEqual((await root.open(ID)).head.number, 1);
-      await assert.rejects(object.update(DETAILS, writeB), ocflError('UPDATE_IN_PROGRESS'));
+      await assert.rejects(object.update(DETAILS, writeB), ocflError('OBJECT_LOCKED'));
     });
 
     it("throws RECOVERY_NEEDED with the callback's error as its cause, and keeps the lock", async () => {
@@ -251,7 +251,7 @@ describe('the commit point', () => {
       assert.strictEqual(error.cause, failure);
       assert.deepStrictEqual(await snapshot(objectRoot), before);
       assert.ok(fs.existsSync(lock));
-      await assert.rejects(object.update(DETAILS, writeB), ocflError('UPDATE_IN_PROGRESS'));
+      await assert.rejects(object.update(DETAILS, writeB), ocflError('OBJECT_LOCKED'));
     });
 
     it('throws RECOVERY_NEEDED from a create, and the object still does not exist', async () => {
@@ -274,7 +274,7 @@ describe('the commit point', () => {
       assert.strictEqual(error.cause, failure);
       assert.ok(fs.existsSync(lock));
       await assert.rejects(root.open(ID), ocflError('OBJECT_NOT_FOUND'));
-      await assert.rejects(root.create(ID, DETAILS, writeB), ocflError('UPDATE_IN_PROGRESS'));
+      await assert.rejects(root.create(ID, DETAILS, writeB), ocflError('OBJECT_LOCKED'));
     });
 
     it('throws RECOVERY_NEEDED with the refusal as its cause when the lock of an out-of-date object cannot be released', async () => {

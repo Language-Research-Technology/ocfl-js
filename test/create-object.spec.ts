@@ -252,7 +252,7 @@ describe('creating an object', () => {
       await assertRefused(root, 'not-empty', ocflError('OBJECT_ROOT_CONFLICT'));
     });
 
-    it('throws DIRECTORY_NOT_EMPTY when its place fills while the draft is assembled, leaving what is there', async () => {
+    it('throws OBJECT_ROOT_CONFLICT when its place fills while the draft is assembled, leaving what is there', async () => {
       const root = await newRoot();
       const objectRoot = objectRootOf(root, 'filled');
       await assert.rejects(
@@ -260,7 +260,7 @@ describe('creating an object', () => {
           await draft.write('a.txt', 'new');
           await writeFiles(objectRoot, { 'stray.txt': 'x' });
         }),
-        ocflError('DIRECTORY_NOT_EMPTY'),
+        ocflError('OBJECT_ROOT_CONFLICT'),
       );
       assert.deepStrictEqual(await snapshot(objectRoot), { 'stray.txt': 'x' });
       assertNoWorkspace(root);

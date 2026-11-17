@@ -310,6 +310,14 @@ function strayContents(objectRoot: string, id: string, contents: Exclude<fileSys
   return objectRootConflict(objectRoot, id, STRAY_CONTENTS[contents]);
 }
 
+/** @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` unless `objectRoot`, given to the object `id`, is empty or missing */
+async function assertEmptyObjectRoot(objectRoot: string, id: string): Promise<void> {
+  const contents = await fileSystem.dirContents(objectRoot);
+  if (contents !== 'empty') {
+    throw strayContents(objectRoot, id, contents);
+  }
+}
+
 /** What is at `objectRoot`, which has no inventory, unless it is empty or has an object declaration */
 async function strayAt(objectRoot: string): Promise<Exclude<fileSystem.DirContents, 'empty'> | undefined> {
   const contents = await fileSystem.dirContents(objectRoot);
@@ -328,6 +336,7 @@ async function noCommittedObject(storageRoot: string, objectRoot: string, id: st
 }
 
 export {
+  assertEmptyObjectRoot,
   assertNoMutableHead,
   checkedDeclaration,
   committedInventory,

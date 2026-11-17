@@ -237,11 +237,10 @@ interface StorageRoot {
    * The object uses sha512 digests and the `content` directory, at the storage root's OCFL version.
    *
    * @throws {@link OcflError} `OBJECT_EXISTS` if an object with this id already exists.
-   * @throws {@link OcflError} `DIRECTORY_NOT_EMPTY` if something appeared in the object's directory while its first version was being built. Nothing is created.
    * @throws {@link OcflError} `INVALID_OBJECT` if an invalid object declaration (E007), or more than one (E003), appeared in the object's directory while its first version was being built. Nothing is created.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the layout can't map the id to a directory the file system can hold, with its lock in the workspace.
-   * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if that directory holds something else, is a file or is below one, or is inside another object.
-   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is creating the same object, or died creating it; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.
+   * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if that directory holds something else, is a file or is below one, or is inside another object; or if something appeared in it while the first version was being built, and then nothing is created.
+   * @throws {@link OcflError} `OBJECT_LOCKED` if another writer is creating the same object, or died creating it; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
    * @throws {@link OcflError} `RECOVERY_NEEDED` if the create failed after its root inventory was put in place, failed putting it in place in a way that may have done so, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The object may have been created, and stays locked. Also thrown, before `build` runs, if an earlier create left an unfinished version in the workspace, or the create was refused and its lock couldn't be released. Don't simply repeat the create: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object to see whether it was created.
@@ -292,7 +291,7 @@ interface StorageRoot {
    * Deletes an object and all its versions, and the parent directories that leaves empty. The object's lock is held while it is deleted.
    *
    * @throws {@link OcflError} `OBJECT_NOT_FOUND` if there is no object with this id, or the layout can't map the id to a directory the file system can hold, so no object can have it; then `cause` is the layout's `ID_INCOMPATIBLE_WITH_LAYOUT`. Nothing is deleted.
-   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if the object is being updated or created, or a writer died doing so; `lockedAt` says since when. Nothing is deleted. After a dead writer, recover its unfinished write ({@link StorageRoot.unfinishedWrite}) and then `remove` again.
+   * @throws {@link OcflError} `OBJECT_LOCKED` if the object is being updated or created, or a writer died doing so; `lockedAt` says since when. Nothing is deleted. After a dead writer, recover its unfinished write ({@link StorageRoot.unfinishedWrite}) and then `remove` again.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is deleted.
    * @throws {@link OcflError} `INVALID_OBJECT` if the id's directory holds an object whose inventory is missing, corrupt or inconsistent, so its id can't be confirmed; nothing is deleted.
    * @throws {@link OcflError} `ID_INCOMPATIBLE_WITH_LAYOUT` if the object's directory fits, but its lock in the workspace would be too long for the file system; nothing is deleted.

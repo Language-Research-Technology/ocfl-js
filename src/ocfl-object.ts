@@ -6,8 +6,9 @@ import { commitDraft, type Draft, type UpdateOptions, type User, type VersionDet
 import { OcflError, objectRootConflict, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { type Inventory, OcflObjectInventory, versionNumbers } from './inventory.ts';
-import { updateInProgress } from './lock.ts';
+import { objectLocked } from './lock.ts';
 import {
+  assertEmptyObjectRoot,
   assertNoMutableHead,
   checkedDeclaration,
   committedInventory,
@@ -16,7 +17,6 @@ import {
   enclosingObject,
   noCommittedObject,
   objectState,
-  strayContents,
   withinRootVersion,
 } from './object-on-disk.ts';
 import { type FileHistory, type OcflFile, StoredFile } from './ocfl-file.ts';
@@ -65,10 +65,10 @@ interface OcflObject {
    * @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE` if the object has an active mutable head (extension 0005).
    * @throws {@link OcflError} `VERSION_LIMIT_REACHED` if the object's version names are zero-padded and the next one couldn't start with a zero, as OCFL requires (E011): `v01` to `v09` leaves none.
    * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if a later version has been committed, or the object removed, since this object was opened; open it again and retry.
-   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer is updating or removing this object, or died doing so; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile. The update never waits for it.
+   * @throws {@link OcflError} `OBJECT_LOCKED` if another writer is updating or removing this object, or died doing so, as an update that threw `RECOVERY_NEEDED` did; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile. The update never waits for it.
    * @throws {@link OcflError} `CROSS_FILESYSTEM_MOVE` if the workspace is on a different file system from the object.
    * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the storage root's file system doesn't support hard links. Nothing is changed.
-   * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `UPDATE_IN_PROGRESS`. Also thrown, before `change` runs, if an earlier update left an unfinished version in the workspace, or the update was refused and its lock couldn't be released. Don't simply repeat the update: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object again to see whether it was committed.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` if the update failed after the root inventory was replaced, failed replacing it in a way that may have replaced it, or failed earlier and what it made couldn't all be removed; `cause` is the failure. The update may have been committed, and the object stays locked, so later updates throw `OBJECT_LOCKED`. Also thrown, before `change` runs, if an earlier update left an unfinished version in the workspace, or the update was refused and its lock couldn't be released. Don't simply repeat the update: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object again to see whether it was committed.
    * @throws `TypeError` if the message or the user's name is missing or empty, the user's address isn't a string, `createdAt` isn't a valid `Date` or is earlier than the head version's date,
    * `options` has a key other than `message`, `user`, `createdAt` and `signal`, its user has one other than `name` and `address`,
    * `options` isn't an object, or its `signal` isn't an `AbortSignal`. Nothing is changed.
@@ -446,7 +446,7 @@ async function openDeclaredObject(
  * Creates the object `id` at `objectRoot`, where the storage root's layout places it, with the draft `build` leaves as its first version.
  * @param details - As {@link writeOptions} returns them
  * @throws {@link OcflError} `OBJECT_EXISTS` if `objectRoot` has an object declaration or an inventory
- * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if it has a declaration, no inventory and a lock held: a create that isn't committed
+ * @throws {@link OcflError} `OBJECT_LOCKED` if it has a declaration, no inventory and a lock held: a create that isn't committed
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it holds anything else, is below a file, or is inside another object
  */
 async function createObject(
@@ -463,12 +463,9 @@ async function createObject(
     throw ocflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}, where the storage root ${storageRoot} places <${id}>.`);
   }
   if (state === 'creating') {
-    throw await updateInProgress(objectWorkspace(storageRoot, objectRoot));
+    throw await objectLocked(objectWorkspace(storageRoot, objectRoot));
   }
-  const contents = await fileSystem.dirContents(objectRoot);
-  if (contents !== 'empty') {
-    throw strayContents(objectRoot, id, contents);
-  }
+  await assertEmptyObjectRoot(objectRoot, id);
   const outer = await enclosingObject(storageRoot, objectRoot);
   if (outer !== undefined) {
     throw objectRootConflict(objectRoot, id, `is inside the object at ${outer}`);
