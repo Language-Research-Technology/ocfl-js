@@ -10,15 +10,19 @@ export type ValidationCode =
   | 'E012'
   | 'E017'
   | 'E018'
+  | 'E025'
+  | 'E033'
   | 'E036'
   | 'E040'
   | 'E048'
+  | 'E049'
   | 'E050'
   | 'E052'
   | 'E053'
   | 'E057'
   | 'E058'
   | 'E060'
+  | 'E063'
   | 'E069'
   | 'E070'
   | 'E076'
@@ -49,9 +53,12 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
   ],
   E017: ['INVALID_OBJECT', 'The contentDirectory value MUST NOT contain the forward slash (/) path separator.'],
   E018: ['INVALID_OBJECT', 'The contentDirectory value MUST NOT be either one or two periods (. or ..).'],
+  E025: ['INVALID_OBJECT', 'For content-addressing, OCFL Objects MUST use either sha512 or sha256, and SHOULD use sha512.'],
+  E033: ['INVALID_OBJECT', 'An OCFL Object Inventory MUST follow the [JSON] structure described in this section and MUST be named inventory.json.'],
   E036: ['INVALID_OBJECT', 'An OCFL Object Inventory MUST include the following keys: [id, type, digestAlgorithm, head].'],
   E040: ['INVALID_OBJECT', '[head] MUST be the version directory name with the highest version number.'],
   E048: ['INVALID_OBJECT', 'A JSON object to describe one OCFL Version, which MUST include the following keys: [created, state].'],
+  E049: ['INVALID_OBJECT', '[the value of the created key] MUST be expressed in the Internet Date/Time Format defined by [RFC3339].'],
   E050: [
     'INVALID_OBJECT',
     'The keys of [the state JSON object] are digest values, each of which MUST correspond to an entry in the manifest of the inventory.',
@@ -64,6 +71,10 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
   ],
   E058: ['INVALID_OBJECT', 'Every occurrence of an inventory file MUST have an accompanying sidecar file stating its digest.'],
   E060: ['INVALID_OBJECT', 'The digest sidecar file must contain the digest of the inventory file.'],
+  E063: [
+    'INVALID_OBJECT',
+    'Every OCFL Object MUST have an inventory file within the OCFL Object Root, corresponding to the state of the OCFL Object at the current version.',
+  ],
   E069: ['INVALID_STORAGE_ROOT', 'An OCFL Storage Root MUST contain a Root Conformance Declaration identifying it as such.'],
   E070: [
     'INVALID_STORAGE_ROOT',
@@ -93,13 +104,16 @@ const RULES: Record<ValidationCode, [violated: Violated, description: string]> =
   E111: ['INVALID_OBJECT', 'If present, [the fixity block] MUST be a JSON object, which MAY be empty.'],
 };
 
+/** Where a broken rule was found: the path it was found at, or the id of an object whose inventory, already read, has it */
+export type FaultAt = string | { objectId: string };
+
 /**
  * The `INVALID_OBJECT` or `INVALID_STORAGE_ROOT` error, whichever the rule is about, for a broken OCFL rule
  * @param code - OCFL validation code, eg 'E060', which becomes the error's `ocflCode`
- * @param path - Path the problem was found at
  * @param detail - Extra context appended to the message
  */
-export function createError(code: ValidationCode, path: string, detail?: string): OcflError {
+export function specViolation(code: ValidationCode, where: FaultAt, detail?: string, options: { cause?: unknown } = {}): OcflError {
   const [violated, description] = RULES[code];
-  return ocflError(violated, `${code}: ${description} At ${path}${detail ? ` (${detail})` : ''}`, { ocflCode: code });
+  const at = typeof where === 'string' ? `At ${where}` : `In object <${where.objectId}>`;
+  return ocflError(violated, `${code}: ${description} ${at}${detail ? ` (${detail})` : ''}`, { ...options, ocflCode: code });
 }

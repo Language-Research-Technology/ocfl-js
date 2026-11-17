@@ -1,6 +1,6 @@
 import { OcflConstants, type OcflSpecVersion } from './constants.ts';
 import { readIfPresent } from './file-system.ts';
-import { createError } from './ocfl-rules.ts';
+import { specViolation } from './ocfl-rules.ts';
 
 const { OBJECT_DECLARATION_PREFIX } = OcflConstants;
 
@@ -35,10 +35,10 @@ async function findDeclaredVersion(prefix: string, rootPath: string): Promise<De
  */
 function checkedDeclaration(objectRoot: string, declared: DeclarationsFound): OcflSpecVersion {
   if (declared === SEVERAL_DECLARATIONS) {
-    throw createError('E003', objectRoot, 'it has more than one object declaration');
+    throw specViolation('E003', objectRoot, 'it has more than one object declaration');
   }
   if (declared === '') {
-    throw createError('E007', objectRoot);
+    throw specViolation('E007', objectRoot);
   }
   return declared;
 }

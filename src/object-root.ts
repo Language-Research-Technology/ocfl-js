@@ -6,8 +6,8 @@ import * as fileSystem from './file-system.ts';
 import type { OcflObjectInventory } from './inventory.ts';
 import { isLocked } from './lock.ts';
 import type { ObjectPlace } from './object-place.ts';
-import { createError } from './ocfl-rules.ts';
-import { invalidObject, type RootInventory, readInventory } from './root-inventory.ts';
+import { specViolation } from './ocfl-rules.ts';
+import { type RootInventory, readInventory } from './root-inventory.ts';
 
 const { EXTENSIONS_DIR, INVENTORY_NAME, OBJECT_DECLARATION_PREFIX } = OcflConstants;
 const MUTABLE_HEAD_INVENTORY = nodePath.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
@@ -58,7 +58,7 @@ async function declaredVersion(place: ObjectPlace): Promise<OcflSpecVersion> {
   const { objectRoot } = place;
   const [ocflVersion, outer] = await Promise.all([objectDeclaration(objectRoot), enclosingObject(place)]);
   if (!ocflVersion) {
-    throw createError('E003', objectRoot, 'it has an inventory but no object declaration');
+    throw specViolation('E003', objectRoot, 'it has an inventory but no object declaration');
   }
   if (outer !== undefined) {
     throw nestedObject(objectRoot, outer);
@@ -85,14 +85,14 @@ async function confirmedVersion(place: ObjectPlace, inventory: OcflObjectInvento
  */
 function withinRootVersion(objectRoot: string, ocflVersion: OcflSpecVersion, rootVersion: OcflSpecVersion): OcflSpecVersion {
   if (ocflVersion > rootVersion) {
-    throw createError('E081', objectRoot, `an OCFL ${ocflVersion} object in an OCFL ${rootVersion} storage root`);
+    throw specViolation('E081', objectRoot, `an OCFL ${ocflVersion} object in an OCFL ${rootVersion} storage root`);
   }
   return ocflVersion;
 }
 
 /** For an object at `objectRoot`, which is inside the object at `outer` */
 function nestedObject(objectRoot: string, outer: string): OcflError {
-  return createError('E082', objectRoot, `nested under the object at ${outer}`);
+  return specViolation('E082', objectRoot, `nested under the object at ${outer}`);
 }
 
 /** @param unplaceable - The layout's refusal of `id`, if that is why there is no object */
@@ -105,7 +105,7 @@ function objectNotFound(storageRoot: string, id: string, unplaceable?: OcflError
 
 /** For an `objectRoot` with an object declaration and no inventory, which no writer is working on */
 function declarationWithoutInventory(objectRoot: string): OcflError {
-  return invalidObject(`${objectRoot} has an OCFL object declaration but no inventory.`, { ocflCode: 'E063' });
+  return specViolation('E063', objectRoot, 'an object declaration but no inventory');
 }
 
 /**
