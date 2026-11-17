@@ -5,6 +5,7 @@ description: What @ocfl/ocfl-fs does and doesn't do, to help you decide whether 
 
 import { Code } from '@astrojs/starlight/components';
 import pathDirectLayout from '../../examples/index/path-direct-layout.ts?raw';
+import chooseLayout from '../../examples/index/choose-layout.ts?raw';
 import quickStart from '../../examples/readme/quick-start.ts?raw';
 
 `@ocfl/ocfl-fs` is a Node.js library for keeping versioned digital objects under the [Oxford Common File Layout (OCFL)](https://ocfl.io/) on a local file system. It reads and writes storage roots and the OCFL objects in them, so your application can deposit files, add versions and read any version back without handling inventories, digests or version directories itself.
@@ -53,7 +54,7 @@ The library doesn't check that stored files exist or match their digests until y
 
 ### Objects written by other tools
 
-If you read OCFL objects that another tool wrote, check them with an OCFL validator, such as `ocfl-validate` from [ocfl-py](https://github.com/zimeon/ocfl-py). The [OCFL implementations list](https://github.com/OCFL/spec/wiki/Implementations) has others.
+If you read OCFL objects that another tool wrote, check them with an OCFL validator, such as `ocfl-validate` from [ocfl-py](https://github.com/zimeon/ocfl-py). The [OCFL implementations list](https://github.com/OCFL/spec/wiki/Implementations) has others. To take over a whole storage root another tool made, see [Adopting a storage root from another tool](/ocfl-js/guides/looking-after-a-storage-root/#adopting-a-storage-root-from-another-tool).
 
 ## What it doesn't check or do
 
@@ -82,5 +83,21 @@ The first three are registered [OCFL community extensions](https://ocfl.github.i
 `000N-path-direct-storage-layout` is a local extension of this library, not a registered OCFL extension. Each storage root that uses it holds a `000N-path-direct-storage-layout.md` file describing it, so another tool, or a person, can work out where each object is.
 
 <Code code={pathDirectLayout} lang="ts" />
+
+### Choosing a storage layout
+
+You choose the storage layout once, when you create the storage root. The library has no way to change it later: every object root would have to move.
+
+- **You want to find an object by its id when you browse the storage root:** `000N-path-direct-storage-layout`. Each `/` in the id becomes a directory, so ids that share a start, such as every item of one collection, sit together. Directories grow as wide as your ids do.
+- **You want objects spread evenly, whatever their ids:** `0004-hashed-n-tuple-storage-layout`, the layout [Getting started](/ocfl-js/guides/getting-started/) uses. With the defaults, each of the three levels of directories above an object root has at most 4096 entries, one for each three hex digits, so no directory gets crowded.
+- **You want that spread, and the id readable on disk:** `0003-hash-and-id-n-tuple-storage-layout`. The last directory is the percent-encoded id, cut to its first 100 characters and followed by the digest when it is longer.
+- **You have few objects with short, simple ids:** `0002-flat-direct-storage-layout`. Every object root is directly in the storage root, so it doesn't suit thousands of objects, and an id can't contain `/`.
+
+Two parameters make the paths shorter:
+
+<Code code={chooseLayout} lang="ts" />
+
+- **`omitScheme`** leaves the URI scheme, such as `arcp`, out of the first directory of a path-direct path. Use it when every id has the same scheme. Ids that differ only in their scheme then map to the same object root.
+- **`shortObjectRoot`** names a hashed n-tuple object root with only the part of the digest the directories above it don't already spell, so paths are shorter. It can't be set when the tuples use the whole digest.
 
 See the [API reference](/ocfl-js/api/readme/) for every function, type and layout parameter.
