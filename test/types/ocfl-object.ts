@@ -62,6 +62,12 @@ export function nothingOfTheOldObjectIsLeft(object: OcflObject, file: OcflFile):
   void size;
 }
 
+export function fixityProblemNamesItsKind(problem: FixityProblem): 'changed' | 'missing' {
+  // @ts-expect-error the kind is `kind`, not `problem`
+  problem.problem;
+  return problem.kind;
+}
+
 export function fixityProblemNamesTheStoredFileFromTheStorageRoot(problem: FixityProblem): [string, string[], string | undefined] {
   // @ts-expect-error a stored file is named from the storage root, not the object
   problem.contentPath;

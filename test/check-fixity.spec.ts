@@ -74,9 +74,9 @@ describe('checking the fixity of an object', () => {
     const object = await root.open(SPEC_EX_FULL_ID);
     assert.deepStrictEqual(await object.checkFixity(), {
       problems: [
-        { problem: 'missing', storedFile: 'spec-ex-full/__object__/v1/content/empty-copy.txt', affects: [], expected: sha512('') },
+        { kind: 'missing', storedFile: 'spec-ex-full/__object__/v1/content/empty-copy.txt', affects: [], expected: sha512('') },
         {
-          problem: 'missing',
+          kind: 'missing',
           storedFile: 'spec-ex-full/__object__/v1/content/empty.txt',
           affects: [
             { version: 1, path: 'empty.txt' },
@@ -99,13 +99,13 @@ describe('checking the fixity of an object', () => {
     await fs.promises.rm(path.join(root.path, objectPath, 'v1/content/b.txt'));
     assert.deepStrictEqual((await object.checkFixity()).problems, [
       {
-        problem: 'changed',
+        kind: 'changed',
         storedFile: `${objectPath}/v1/content/a.txt`,
         affects: [{ version: 1, path: 'a.txt' }],
         expected: DIGESTS_OF_ABC.sha512,
         actual: sha512('abd'),
       },
-      { problem: 'missing', storedFile: `${objectPath}/v1/content/b.txt`, affects: [{ version: 1, path: 'b.txt' }], expected: sha512('b') },
+      { kind: 'missing', storedFile: `${objectPath}/v1/content/b.txt`, affects: [{ version: 1, path: 'b.txt' }], expected: sha512('b') },
     ]);
   });
 
@@ -115,7 +115,7 @@ describe('checking the fixity of an object', () => {
     await fs.promises.writeFile(path.join(objectRootOf(root, 'changed'), 'v1/content/a.txt'), 'abd');
     assert.deepStrictEqual((await object.checkFixity()).problems, [
       {
-        problem: 'changed',
+        kind: 'changed',
         storedFile: 'changed/v1/content/a.txt',
         affects: [{ version: 1, path: 'a.txt' }],
         expected: DIGESTS_OF_ABC.sha512,
@@ -129,7 +129,7 @@ describe('checking the fixity of an object', () => {
     const object = await createObject(root, 'missing', { 'a.txt': 'abc', 'b.txt': 'intact' });
     await fs.promises.rm(path.join(objectRootOf(root, 'missing'), 'v1/content/a.txt'));
     assert.deepStrictEqual((await object.checkFixity()).problems, [
-      { problem: 'missing', storedFile: 'missing/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
+      { kind: 'missing', storedFile: 'missing/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
     ]);
   });
 
@@ -141,8 +141,8 @@ describe('checking the fixity of an object', () => {
     await fs.promises.mkdir(path.join(objectRoot, 'v1/content/a.txt'));
     await fs.promises.writeFile(path.join(objectRoot, 'v1/content/b.txt'), 'c');
     assert.deepStrictEqual((await object.checkFixity()).problems, [
-      { problem: 'missing', storedFile: 'directory/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
-      { problem: 'changed', storedFile: 'directory/v1/content/b.txt', affects: [{ version: 1, path: 'b.txt' }], expected: sha512('b'), actual: sha512('c') },
+      { kind: 'missing', storedFile: 'directory/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
+      { kind: 'changed', storedFile: 'directory/v1/content/b.txt', affects: [{ version: 1, path: 'b.txt' }], expected: sha512('b'), actual: sha512('c') },
     ]);
   });
 
@@ -153,7 +153,7 @@ describe('checking the fixity of an object', () => {
     await fs.promises.rm(stored);
     execFileSync('mkfifo', [stored]);
     assert.deepStrictEqual((await object.checkFixity()).problems, [
-      { problem: 'missing', storedFile: 'fifo/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
+      { kind: 'missing', storedFile: 'fifo/v1/content/a.txt', affects: [{ version: 1, path: 'a.txt' }], expected: DIGESTS_OF_ABC.sha512 },
     ]);
   });
 
@@ -167,7 +167,7 @@ describe('checking the fixity of an object', () => {
     await fs.promises.writeFile(path.join(objectRoot, 'v2/content/d.txt'), 'e');
     assert.deepStrictEqual((await object.checkFixity()).problems, [
       {
-        problem: 'changed',
+        kind: 'changed',
         storedFile: 'several/v1/content/a.txt',
         affects: [
           { version: 1, path: 'a.txt' },
@@ -177,7 +177,7 @@ describe('checking the fixity of an object', () => {
         actual: sha512('abd'),
       },
       {
-        problem: 'missing',
+        kind: 'missing',
         storedFile: 'several/v1/content/b.txt',
         affects: [
           { version: 1, path: 'b.txt' },
@@ -185,7 +185,7 @@ describe('checking the fixity of an object', () => {
         ],
         expected: sha512('b'),
       },
-      { problem: 'changed', storedFile: 'several/v2/content/d.txt', affects: [{ version: 2, path: 'd.txt' }], expected: sha512('d'), actual: sha512('e') },
+      { kind: 'changed', storedFile: 'several/v2/content/d.txt', affects: [{ version: 2, path: 'd.txt' }], expected: sha512('d'), actual: sha512('e') },
     ]);
   });
 
@@ -197,7 +197,7 @@ describe('checking the fixity of an object', () => {
     await fs.promises.writeFile(path.join(objectRootOf(root, 'shared'), 'v1/content/a.txt'), 'abd');
     assert.deepStrictEqual((await object.checkFixity()).problems, [
       {
-        problem: 'changed',
+        kind: 'changed',
         storedFile: 'shared/v1/content/a.txt',
         affects: [
           { version: 1, path: 'a.txt' },
@@ -237,7 +237,7 @@ describe('checking the fixity of an object', () => {
     await fs.promises.writeFile(path.join(objectRoot, 'v1/content/a.txt'), 'abd');
     assert.deepStrictEqual((await object.checkFixity()).problems, [
       {
-        problem: 'changed',
+        kind: 'changed',
         storedFile: 'sha256-object/v1/content/a.txt',
         affects: [{ version: 1, path: 'a.txt' }],
         expected: DIGESTS_OF_ABC.sha256,
@@ -256,7 +256,7 @@ describe('checking the fixity of an object', () => {
     });
     const object = await root.open('upper-case');
     const changedA = {
-      problem: 'changed',
+      kind: 'changed',
       storedFile: 'upper-case/v1/content/a.txt',
       affects: [{ version: 1, path: 'a.txt' }],
       expected: DIGESTS_OF_ABC.sha512,
@@ -268,7 +268,7 @@ describe('checking the fixity of an object', () => {
     await fs.promises.rm(path.join(objectRoot, 'v1/content/b.txt'));
     assert.deepStrictEqual((await object.checkFixity()).problems, [
       changedA,
-      { problem: 'missing', storedFile: 'upper-case/v1/content/b.txt', affects: [{ version: 1, path: 'b.txt' }], expected: sha512('b') },
+      { kind: 'missing', storedFile: 'upper-case/v1/content/b.txt', affects: [{ version: 1, path: 'b.txt' }], expected: sha512('b') },
     ]);
   });
 
@@ -280,12 +280,12 @@ describe('checking the fixity of an object', () => {
     await fs.promises.rm(path.join(objectRoot, 'v2/content/later.txt'));
     assert.deepStrictEqual((await opened.checkFixity()).problems, []);
     assert.deepStrictEqual((await updated.checkFixity()).problems, [
-      { problem: 'missing', storedFile: 'earlier/v2/content/later.txt', affects: [{ version: 2, path: 'later.txt' }], expected: sha512('later') },
+      { kind: 'missing', storedFile: 'earlier/v2/content/later.txt', affects: [{ version: 2, path: 'later.txt' }], expected: sha512('later') },
     ]);
     await fs.promises.writeFile(path.join(objectRoot, 'v1/content/a.txt'), 'abd');
     assert.deepStrictEqual((await opened.checkFixity()).problems, [
       {
-        problem: 'changed',
+        kind: 'changed',
         storedFile: 'earlier/v1/content/a.txt',
         affects: [{ version: 1, path: 'a.txt' }],
         expected: DIGESTS_OF_ABC.sha512,
@@ -326,7 +326,7 @@ describe('checking the fixity of an object', () => {
     await fs.promises.rm(path.join(objectRoot, 'v1/content/file-33.txt'));
     const { problems } = await object.checkFixity();
     assert.deepStrictEqual(
-      problems.map(({ problem, storedFile }) => [problem, storedFile]),
+      problems.map(({ kind, storedFile }) => [kind, storedFile]),
       [
         ['missing', 'many/v1/content/file-07.txt'],
         ['missing', 'many/v1/content/file-33.txt'],
