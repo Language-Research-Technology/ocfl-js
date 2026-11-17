@@ -88,4 +88,15 @@ async function removeObject(storageRoot: string, objectRoot: string, id: string)
   }
 }
 
-export { deleteObjectRoot, removeObject };
+/**
+ * Finishes the remove that the dead writer holding the lock of the object at `objectRoot` had begun, and releases the lock.
+ * The lock goes last, so a failure keeps the object locked.
+ */
+async function recoverRemove(storageRoot: string, objectRoot: string): Promise<void> {
+  const workspace = objectWorkspace(storageRoot, objectRoot);
+  await clearWorkspace(workspace);
+  await deleteObjectRoot(storageRoot, objectRoot);
+  await releaseLock(workspace, storageRoot);
+}
+
+export { recoverRemove, removeObject };
