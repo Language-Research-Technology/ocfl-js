@@ -195,10 +195,10 @@ async function linkLock(staged: string, lock: string): Promise<void> {
   }
 }
 
-/** The `UPDATE_IN_PROGRESS` for an object whose lock is held, with `lockedAt` if the lock can still be read */
-async function updateInProgress(workspace: string): Promise<OcflError> {
+/** The `OBJECT_LOCKED` for an object whose lock is held, with `lockedAt` if the lock can still be read */
+async function objectLocked(workspace: string): Promise<OcflError> {
   const lock = lockPath(workspace);
-  return ocflError('UPDATE_IN_PROGRESS', `Another writer is updating the object, and holds its lock ${lock}.`, { lockedAt: await readLockedAt(lock) });
+  return ocflError('OBJECT_LOCKED', `A writer holds the object's lock ${lock}, or died holding it.`, { lockedAt: await readLockedAt(lock) });
 }
 
 /**
@@ -207,14 +207,14 @@ async function updateInProgress(workspace: string): Promise<OcflError> {
  * @param objectRootExisted - Recorded in the lock, for recovery
  * @param operation - Recorded in the lock, for whoever finds it unfinished
  * @returns What the lock records
- * @throws {@link OcflError} `UPDATE_IN_PROGRESS`, with `lockedAt` if the lock can be read, if the lock is already taken. A lock file that
+ * @throws {@link OcflError} `OBJECT_LOCKED`, with `lockedAt` if the lock can be read, if the lock is already taken. A lock file that
  * exists refuses, even if it can't be read
  * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the lock can't be hard-linked into place; nothing is left behind
  */
 async function takeLock(workspace: string, storageRoot: string, id: string, objectRootExisted: boolean, operation: Operation): Promise<Lock> {
   const lock: Lock = { id, operation, lockedAt: new Date(), objectRootExisted, removing: false };
   if (!(await createLockInWorkspace(workspace, storageRoot, formatLock(lock)))) {
-    throw await updateInProgress(workspace);
+    throw await objectLocked(workspace);
   }
   return lock;
 }
@@ -273,17 +273,4 @@ async function isLocked(workspace: string): Promise<boolean> {
 }
 
 export type { Lock };
-export {
-  isLocked,
-  isStagedLock,
-  LOCK_NAME,
-  lockKept,
-  markRemoving,
-  readLock,
-  readLockFile,
-  releaseLock,
-  sameWriter,
-  stagedLockPath,
-  takeLock,
-  updateInProgress,
-};
+export { isLocked, isStagedLock, LOCK_NAME, lockKept, markRemoving, objectLocked, readLock, readLockFile, releaseLock, sameWriter, stagedLockPath, takeLock };

@@ -228,7 +228,7 @@ describe('OcflObjectInventory class', () => {
       let inv = OcflObjectInventory._newVersion(data);
       assert.strictEqual(inv.getDigest(name), undefined);
       assert.strictEqual(inv._add(`${name}/a`, 'd1'), true);
-      assert.throws(() => inv._add(name, 'd2'), { name: 'OcflError', code: 'FILE_EXISTS' });
+      assert.throws(() => inv._add(name, 'd2'), { name: 'OcflError', code: 'PATH_CONFLICT' });
       assert.strictEqual(remove(inv, name), 1);
       assert.strictEqual(inv._add(name, 'd2'), true);
       assert.strictEqual(inv.getDigest(name), 'd2');
@@ -256,7 +256,7 @@ describe('OcflObjectInventory class', () => {
     });
 
     it('does not make the head a version to reinstate', () => {
-      assert.throws(() => reinstate(inv, 'a', 2), { name: 'OcflError', code: 'FILE_NOT_FOUND' });
+      assert.throws(() => reinstate(inv, 'a', 2), { name: 'OcflError', code: 'VERSION_NOT_FOUND' });
       assert.deepStrictEqual(inv.state, { d2: ['a'] });
     });
 
@@ -303,12 +303,12 @@ describe('OcflObjectInventory class', () => {
     ] as const) {
       describe(`${op} target`, () => {
         const refused: [string, Record<string, string>, string, string, string][] = [
-          ['a directory with content', { a: 'd1', 'y/f': 'd2' }, 'a', 'y', 'FILE_EXISTS'],
-          ['a target inside an existing file', { a: 'd1', b: 'd2' }, 'a', 'b/c/d', 'FILE_EXISTS'],
-          ['a doubled-slash form of a path inside a file', { a: 'd1', b: 'd2' }, 'a', 'b//c', 'FILE_EXISTS'],
-          ['a directory source onto non-overlapping content', { 'x/a': 'd1', 'x/b': 'd2', 'y/c': 'd3' }, 'x', 'y', 'FILE_EXISTS'],
-          ['a directory source onto a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b', 'FILE_EXISTS'],
-          ['a directory source inside a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b/c', 'FILE_EXISTS'],
+          ['a directory with content', { a: 'd1', 'y/f': 'd2' }, 'a', 'y', 'PATH_CONFLICT'],
+          ['a target inside an existing file', { a: 'd1', b: 'd2' }, 'a', 'b/c/d', 'PATH_CONFLICT'],
+          ['a doubled-slash form of a path inside a file', { a: 'd1', b: 'd2' }, 'a', 'b//c', 'PATH_CONFLICT'],
+          ['a directory source onto non-overlapping content', { 'x/a': 'd1', 'x/b': 'd2', 'y/c': 'd3' }, 'x', 'y', 'TARGET_NOT_EMPTY'],
+          ['a directory source onto a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b', 'PATH_CONFLICT'],
+          ['a directory source inside a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b/c', 'PATH_CONFLICT'],
           ['a missing source, even onto an existing file', { a: 'd1' }, 'missing', 'a', 'FILE_NOT_FOUND'],
           ['a missing source, even as its own target', { a: 'd1' }, 'missing', 'missing', 'FILE_NOT_FOUND'],
           ['a directory source into itself', { 'x/a': 'd1' }, 'x', 'x/y', 'INVALID_LOGICAL_PATH'],
@@ -380,12 +380,12 @@ describe('OcflObjectInventory class', () => {
         });
 
         const refusedMerging: [string, Record<string, string>, string, string, string][] = [
-          ['a file where the target has a directory', { 'x/a': 'd1', 'x/b': 'd2', 'y/a/c': 'd3' }, 'x', 'y', 'FILE_EXISTS'],
-          ['a directory where the target has a file', { 'x/a/c': 'd1', 'x/b': 'd2', 'y/a': 'd3' }, 'x', 'y', 'FILE_EXISTS'],
-          ['a directory source onto a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b', 'FILE_EXISTS'],
-          ['a directory source inside a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b/c', 'FILE_EXISTS'],
-          ['a file source onto a directory', { a: 'd1', 'y/f': 'd2' }, 'a', 'y', 'FILE_EXISTS'],
-          ['a file onto the directory it is in', { 'y/a': 'd1' }, 'y/a', 'y', 'FILE_EXISTS'],
+          ['a file where the target has a directory', { 'x/a': 'd1', 'x/b': 'd2', 'y/a/c': 'd3' }, 'x', 'y', 'PATH_CONFLICT'],
+          ['a directory where the target has a file', { 'x/a/c': 'd1', 'x/b': 'd2', 'y/a': 'd3' }, 'x', 'y', 'PATH_CONFLICT'],
+          ['a directory source onto a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b', 'PATH_CONFLICT'],
+          ['a directory source inside a file', { 'x/a': 'd1', b: 'd2' }, 'x', 'b/c', 'PATH_CONFLICT'],
+          ['a file source onto a directory', { a: 'd1', 'y/f': 'd2' }, 'a', 'y', 'PATH_CONFLICT'],
+          ['a file onto the directory it is in', { 'y/a': 'd1' }, 'y/a', 'y', 'PATH_CONFLICT'],
           ['a directory source into itself', { 'x/a': 'd1', 'x/y/b': 'd2' }, 'x', 'x/y', 'INVALID_LOGICAL_PATH'],
           ['a missing source', { 'y/a': 'd1' }, 'missing', 'y', 'FILE_NOT_FOUND'],
         ];
@@ -400,9 +400,9 @@ describe('OcflObjectInventory class', () => {
           });
         }
 
-        it('throws FILE_EXISTS for a directory source onto a directory with content when merge is false', () => {
+        it('throws TARGET_NOT_EMPTY for a directory source onto a directory with content when merge is false', () => {
           const inv = inventoryWith({ 'x/a': 'd1', 'y/a': 'd2' });
-          assert.throws(() => transfer(inv, 'x', 'y', false), { name: 'OcflError', code: 'FILE_EXISTS' });
+          assert.throws(() => transfer(inv, 'x', 'y', false), { name: 'OcflError', code: 'TARGET_NOT_EMPTY' });
           assertHeadStateValid(inv);
         });
 
@@ -632,12 +632,12 @@ describe('OcflObjectInventory class', () => {
       ['onto a dot-prefixed form of a directory', './d'],
       ['onto a doubled-slash form of a path inside a file', 'a//b'],
     ] as const) {
-      it(`throws FILE_EXISTS adding a file ${name}, changing nothing`, () => {
+      it(`throws PATH_CONFLICT adding a file ${name}, changing nothing`, () => {
         const inv = OcflObjectInventory._newVersion(data);
         inv._add('a', 'd1');
         inv._add('d/x', 'd2');
         const before = inv.toJSON();
-        assert.throws(() => inv._add(logicalPath, 'd3'), { name: 'OcflError', code: 'FILE_EXISTS' });
+        assert.throws(() => inv._add(logicalPath, 'd3'), { name: 'OcflError', code: 'PATH_CONFLICT' });
         assert.deepStrictEqual(inv.toJSON(), before);
         assertHeadStateValid(inv);
       });
@@ -651,8 +651,8 @@ describe('OcflObjectInventory class', () => {
       inv = OcflObjectInventory._newVersion(inv);
       remove(inv, 'd/x');
       rename(inv, 'd/sub/y', 'y');
-      assert.throws(() => inv._add('d/sub', 'd4'), { name: 'OcflError', code: 'FILE_EXISTS' });
-      assert.throws(() => inv._add('d', 'd4'), { name: 'OcflError', code: 'FILE_EXISTS' });
+      assert.throws(() => inv._add('d/sub', 'd4'), { name: 'OcflError', code: 'PATH_CONFLICT' });
+      assert.throws(() => inv._add('d', 'd4'), { name: 'OcflError', code: 'PATH_CONFLICT' });
       remove(inv, 'd/sub/z');
       inv._add('d', 'd4');
       assert.deepStrictEqual(inv.state, { d2: ['y'], d4: ['d'] });
@@ -660,7 +660,7 @@ describe('OcflObjectInventory class', () => {
     });
 
     for (const logicalPath of ['d/x', 'd']) {
-      it(`throws FILE_EXISTS reinstating ${logicalPath} when it puts a file inside a file, changing nothing`, () => {
+      it(`throws PATH_CONFLICT reinstating ${logicalPath} when it puts a file inside a file, changing nothing`, () => {
         let inv = OcflObjectInventory._newVersion(data);
         inv._add('d/x', 'd1');
         inv._add('d/y', 'd2');
@@ -668,13 +668,13 @@ describe('OcflObjectInventory class', () => {
         remove(inv, 'd');
         inv._add('d', 'd3');
         const before = inv.toJSON();
-        assert.throws(() => reinstate(inv, logicalPath, 1), { name: 'OcflError', code: 'FILE_EXISTS' });
+        assert.throws(() => reinstate(inv, logicalPath, 1), { name: 'OcflError', code: 'PATH_CONFLICT' });
         assert.deepStrictEqual(inv.toJSON(), before);
         assertHeadStateValid(inv);
       });
     }
 
-    it('throws FILE_EXISTS reinstating a file where a directory is, changing nothing', () => {
+    it('throws PATH_CONFLICT reinstating a file where a directory is, changing nothing', () => {
       let inv = OcflObjectInventory._newVersion(data);
       inv._add('x', 'd1');
       inv = OcflObjectInventory._newVersion(inv);
@@ -682,7 +682,7 @@ describe('OcflObjectInventory class', () => {
       inv._add('x/y', 'd2');
       inv = OcflObjectInventory._newVersion(inv);
       const before = inv.toJSON();
-      assert.throws(() => reinstate(inv, 'x', 1), { name: 'OcflError', code: 'FILE_EXISTS' });
+      assert.throws(() => reinstate(inv, 'x', 1), { name: 'OcflError', code: 'PATH_CONFLICT' });
       assert.deepStrictEqual(inv.toJSON(), before);
       assertHeadStateValid(inv);
     });
@@ -703,13 +703,13 @@ describe('OcflObjectInventory class', () => {
     });
 
     for (const version of [2, 3, 0, -1, 1.5, Number.NaN]) {
-      it(`throws FILE_NOT_FOUND reinstating from version ${version}, which is not a committed version`, () => {
+      it(`throws VERSION_NOT_FOUND reinstating from version ${version}, which is not a committed version`, () => {
         let inv = OcflObjectInventory._newVersion(data);
         inv._add('x', 'd1');
         inv = OcflObjectInventory._newVersion(inv);
         inv._add('x', 'd2');
         const before = inv.toJSON();
-        assert.throws(() => reinstate(inv, 'x', version), { name: 'OcflError', code: 'FILE_NOT_FOUND' });
+        assert.throws(() => reinstate(inv, 'x', version), { name: 'OcflError', code: 'VERSION_NOT_FOUND' });
         assert.deepStrictEqual(inv.toJSON(), before);
       });
     }
@@ -849,7 +849,7 @@ describe('OcflObjectInventory class', () => {
       remove(inv, 'a');
       inv._add('a/x', 'd2');
       inv._add('a/y', 'd3');
-      assert.throws(() => reinstate(inv, 'a', 1), { name: 'OcflError', code: 'FILE_EXISTS' });
+      assert.throws(() => reinstate(inv, 'a', 1), { name: 'OcflError', code: 'PATH_CONFLICT' });
       assert.deepStrictEqual(inv.manifest, { d1: ['v1/content/a'], d2: ['v2/content/a/x'], d3: ['v2/content/a/y'] });
       assertHeadStateValid(inv);
     });

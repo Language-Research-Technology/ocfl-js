@@ -2,7 +2,7 @@ import path from 'node:path';
 import { recoverWrite } from './commit.ts';
 import { objectRootConflict } from './error.ts';
 import type { Flusher } from './file-system.ts';
-import { type Lock, readLock, sameWriter, updateInProgress } from './lock.ts';
+import { type Lock, objectLocked, readLock, sameWriter } from './lock.ts';
 import { recoverRemove } from './remove.ts';
 import { deepFreeze } from './utils.ts';
 import { locksBelow, objectWorkspace, workspaceRoot } from './workspace.ts';
@@ -42,7 +42,7 @@ interface UnfinishedWrite {
    *
    * After `RECOVERY_NEEDED`, recover the write and then open the object again before retrying: the head shows whether the update was committed.
    *
-   * @throws {@link OcflError} `UPDATE_IN_PROGRESS` if another writer has taken the object's lock since; `lockedAt` says when. Nothing is changed.
+   * @throws {@link OcflError} `OBJECT_LOCKED` if another writer has taken the object's lock since; `lockedAt` says when. Nothing is changed.
    * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is corrupt or inconsistent, or it has a declaration and no inventory and a version other than the first, which a dead create never leaves. Nothing is changed.
    * @throws The file system error that stopped it; the object stays locked, and the write can be recovered again.
    * @example
@@ -73,7 +73,7 @@ function unfinishedWrite(storageRoot: string, flusher: Flusher, objectRoot: stri
         return;
       }
       if (!sameWriter(lock, seen)) {
-        throw await updateInProgress(workspace);
+        throw await objectLocked(workspace);
       }
       await (lock.removing ? recoverRemove(storageRoot, objectRoot) : recoverWrite(storageRoot, objectRoot, lock, flusher));
     },

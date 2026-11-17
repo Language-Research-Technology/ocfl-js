@@ -1,4 +1,5 @@
 import assert from 'node:assert';
+import fs from 'node:fs';
 import { describe, it } from 'node:test';
 import { ocflError as makeError, OcflError } from '../src/error.ts';
 import { ocflError } from './helpers/ocfl-error.ts';
@@ -34,7 +35,7 @@ describe('OcflError', () => {
 
   it('carries when the lock was taken', () => {
     const lockedAt = new Date('2026-01-02T03:04:05Z');
-    const e = makeError('UPDATE_IN_PROGRESS', 'locked', { lockedAt });
+    const e = makeError('OBJECT_LOCKED', 'locked', { lockedAt });
     assert.equal(e.lockedAt, lockedAt);
     assert.equal('ocflCode' in e, false);
   });
@@ -44,6 +45,22 @@ describe('OcflError', () => {
     assert.ok(ocflError('VERSION_LIMIT_REACHED')(e));
     assert.equal(ocflError('INVALID_OBJECT')(e), false);
     assert.equal('ocflCode' in e, false);
+  });
+});
+
+describe('the documentation of every code', () => {
+  const read = (file: string) => fs.readFileSync(new URL(file, import.meta.url), 'utf8');
+  const codesIn = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].map((match) => match[1]).sort();
+  const source = read('../src/error.ts');
+  const codes = codesIn(source, /^ {2}\| '([A-Z_]+)'/gm);
+
+  it('has a row in the table on OcflErrorCode', () => {
+    assert.ok(codes.includes('OBJECT_NOT_FOUND'));
+    assert.deepStrictEqual(codesIn(source, /^ \* \| `([A-Z_]+)` \|/gm), codes);
+  });
+
+  it('has a section in the errors guide', () => {
+    assert.deepStrictEqual(codesIn(read('../website/src/content/docs/guides/errors.mdx'), /^### `([A-Z_]+)`$/gm), codes);
   });
 });
 

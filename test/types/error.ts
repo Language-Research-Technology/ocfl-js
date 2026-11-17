@@ -14,14 +14,16 @@ export function everyCodeIsHandled(code: OcflErrorCode): string {
     case 'ID_INCOMPATIBLE_WITH_LAYOUT':
     case 'OBJECT_ROOT_CONFLICT':
     case 'DIRECTORY_NOT_EMPTY':
-    case 'UPDATE_IN_PROGRESS':
+    case 'OBJECT_LOCKED':
     case 'RECOVERY_NEEDED':
     case 'MUTABLE_HEAD_ACTIVE':
     case 'CROSS_FILESYSTEM_MOVE':
     case 'UNSUPPORTED_FILESYSTEM':
     case 'VERSION_LIMIT_REACHED':
+    case 'VERSION_NOT_FOUND':
     case 'FILE_NOT_FOUND':
-    case 'FILE_EXISTS':
+    case 'PATH_CONFLICT':
+    case 'TARGET_NOT_EMPTY':
     case 'INVALID_LOGICAL_PATH':
     case 'SOURCE_CHANGED':
     case 'UNSUPPORTED_FILE_TYPE':
@@ -42,5 +44,9 @@ export function nothingElseIsACode(): OcflErrorCode[] {
   const invalidLayoutConfig: OcflErrorCode = 'INVALID_LAYOUT_CONFIG';
   // @ts-expect-error an OCFL validation code is the `ocflCode`, not the `code`
   const validationCode: OcflErrorCode = 'E060';
-  return [notLoaded, notAnObject, invalidPath, invalidLayoutConfig, validationCode];
+  // @ts-expect-error renamed OBJECT_LOCKED
+  const updateInProgress: OcflErrorCode = 'UPDATE_IN_PROGRESS';
+  // @ts-expect-error split into PATH_CONFLICT and TARGET_NOT_EMPTY
+  const fileExists: OcflErrorCode = 'FILE_EXISTS';
+  return [notLoaded, notAnObject, invalidPath, invalidLayoutConfig, validationCode, updateInProgress, fileExists];
 }

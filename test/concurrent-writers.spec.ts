@@ -44,7 +44,7 @@ describe('concurrent writers', () => {
   }
 
   describe('a second writer of a locked object', () => {
-    it('is refused with UPDATE_IN_PROGRESS when it updates from inside another update, and changes nothing', async () => {
+    it('is refused with OBJECT_LOCKED when it updates from inside another update, and changes nothing', async () => {
       const { root, object, objectRoot } = await existingObject();
       let secondRan = false;
 
@@ -56,7 +56,7 @@ describe('concurrent writers', () => {
             secondRan = true;
             await writeC(second);
           }),
-          ocflError('UPDATE_IN_PROGRESS'),
+          ocflError('OBJECT_LOCKED'),
         );
         assert.deepStrictEqual(await snapshot(root.path), before);
       });
@@ -74,7 +74,7 @@ describe('concurrent writers', () => {
 
       const refused = results.filter((result) => result.status === 'rejected').map((result) => result.reason);
       assert.strictEqual(refused.length, 1);
-      assert.ok(ocflError('UPDATE_IN_PROGRESS')(refused[0]) || ocflError('OBJECT_OUT_OF_DATE')(refused[0]), String(refused[0]));
+      assert.ok(ocflError('OBJECT_LOCKED')(refused[0]) || ocflError('OBJECT_OUT_OF_DATE')(refused[0]), String(refused[0]));
       assert.deepStrictEqual([...(await root.open(ID)).versions.keys()], [1, 2]);
       assertNoWorkspace(root);
     });
@@ -85,7 +85,7 @@ describe('concurrent writers', () => {
       const returned = await object.update(DETAILS, async (draft) => {
         await draft.write('x/b.txt', 'b');
         await draft.remove('x/b.txt');
-        await assert.rejects(object.update(DETAILS, writeC), ocflError('UPDATE_IN_PROGRESS'));
+        await assert.rejects(object.update(DETAILS, writeC), ocflError('OBJECT_LOCKED'));
       });
 
       assert.strictEqual(returned, object);
@@ -105,12 +105,12 @@ describe('concurrent writers', () => {
       });
     });
 
-    it('is refused with UPDATE_IN_PROGRESS even when it holds an out-of-date object', async () => {
+    it('is refused with OBJECT_LOCKED even when it holds an out-of-date object', async () => {
       const { stale, current } = await outOfDateObject();
 
       const updated = await current.update(DETAILS, async (draft) => {
         await writeC(draft);
-        await assert.rejects(stale.update(DETAILS, writeC), ocflError('UPDATE_IN_PROGRESS'));
+        await assert.rejects(stale.update(DETAILS, writeC), ocflError('OBJECT_LOCKED'));
       });
 
       assert.strictEqual(updated.head.number, 3);
@@ -122,7 +122,7 @@ describe('concurrent writers', () => {
       const created = await root.create(ID, DETAILS, async (draft) => {
         await writeB(draft);
         const { code } = await rejection(root.create(ID, DETAILS, writeC));
-        assert.ok(code === 'UPDATE_IN_PROGRESS' || code === 'OBJECT_EXISTS', code);
+        assert.ok(code === 'OBJECT_LOCKED' || code === 'OBJECT_EXISTS', code);
       });
 
       for (const object of [created, await root.open(ID)]) {
@@ -139,7 +139,7 @@ describe('concurrent writers', () => {
       await root.create(ID, DETAILS, async (draft) => {
         await writeB(draft);
         const { code, lockedAt } = await rejection(root.create(ID, DETAILS, writeC));
-        assert.strictEqual(code, 'UPDATE_IN_PROGRESS');
+        assert.strictEqual(code, 'OBJECT_LOCKED');
         assert.ok(lockedAt instanceof Date);
         assert.ok(lockedAt.getTime() >= started && lockedAt.getTime() <= Date.now(), lockedAt.toISOString());
       });
@@ -164,7 +164,7 @@ describe('concurrent writers', () => {
       await fs.promises.mkdir(path.dirname(lock), { recursive: true });
       await fs.promises.writeFile(lock, '');
 
-      const error = await rejection(object.update(DETAILS, writeB), 'UPDATE_IN_PROGRESS');
+      const error = await rejection(object.update(DETAILS, writeB), 'OBJECT_LOCKED');
 
       assert.ok(!('lockedAt' in error));
       assert.strictEqual(await fs.promises.readFile(lock, 'utf8'), '');
@@ -179,14 +179,14 @@ describe('concurrent writers', () => {
 
       const { code, lockedAt } = await rejection(object.update(DETAILS, writeB));
 
-      assert.strictEqual(code, 'UPDATE_IN_PROGRESS');
+      assert.strictEqual(code, 'OBJECT_LOCKED');
       assert.deepStrictEqual(lockedAt, longAgo);
       assert.strictEqual(await fs.promises.readFile(lock, 'utf8'), content);
     });
   });
 
   describe('a create that has written its declaration and not yet its root inventory', () => {
-    it('is not found by a reader, and refuses a second create with UPDATE_IN_PROGRESS, until it commits', async () => {
+    it('is not found by a reader, and refuses a second create with OBJECT_LOCKED, until it commits', async () => {
       const root = await newRoot();
       const { objectRoot } = placesOf(root, ID);
       const started = Date.now();
@@ -196,7 +196,7 @@ describe('concurrent writers', () => {
         async () => {
           assert.ok(fs.existsSync(path.join(objectRoot, '0=ocfl_object_1.1')));
           await assert.rejects(root.open(ID), ocflError('OBJECT_NOT_FOUND'));
-          const { lockedAt } = await rejection(root.create(ID, DETAILS, writeC), 'UPDATE_IN_PROGRESS');
+          const { lockedAt } = await rejection(root.create(ID, DETAILS, writeC), 'OBJECT_LOCKED');
           assert.ok(lockedAt instanceof Date);
           assert.ok(lockedAt.getTime() >= started && lockedAt.getTime() <= Date.now(), lockedAt.toISOString());
         },
@@ -217,7 +217,7 @@ describe('concurrent writers', () => {
       );
 
       await assert.rejects(root.open(ID), ocflError('OBJECT_NOT_FOUND'));
-      await assert.rejects(root.create(ID, DETAILS, writeC), ocflError('UPDATE_IN_PROGRESS'));
+      await assert.rejects(root.create(ID, DETAILS, writeC), ocflError('OBJECT_LOCKED'));
 
       await fs.promises.rm(lock);
       await assert.rejects(root.open(ID), ocflError('INVALID_OBJECT', 'E063'));
@@ -523,7 +523,7 @@ describe('concurrent writers', () => {
       const { root, object } = await existingObject();
       const lock = await lockObject(root, ID);
 
-      const error = await withFsFailure('open', lock, () => rejection(object.update(DETAILS, writeB), 'UPDATE_IN_PROGRESS'), 'EACCES');
+      const error = await withFsFailure('open', lock, () => rejection(object.update(DETAILS, writeB), 'OBJECT_LOCKED'), 'EACCES');
 
       assert.ok(!('lockedAt' in error));
       assert.ok(fs.existsSync(lock));

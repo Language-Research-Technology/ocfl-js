@@ -154,7 +154,7 @@ describe('reinstating in a draft', () => {
         await draft.write('d/b', 'B2');
         await draft.remove('d/a');
         await draft.write('d/a/x', 'XXX');
-        await assert.rejects(draft.reinstate('d', 1), ocflError('FILE_EXISTS'));
+        await assert.rejects(draft.reinstate('d', 1), ocflError('PATH_CONFLICT'));
       });
       await assertHolds(root, updated, { 'd/a/x': 'XXX', 'd/b': 'B2' });
       assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v2'), ['v2/content/d/a/x', 'v2/content/d/b']);
@@ -197,7 +197,7 @@ describe('reinstating in a draft', () => {
         await draft.reinstate('a', 3);
         await draft.reinstate('d', 3);
         await assert.rejects(draft.reinstate('a', 2), ocflError('FILE_NOT_FOUND'));
-        await assert.rejects(draft.reinstate('a', 5), ocflError('FILE_NOT_FOUND'));
+        await assert.rejects(draft.reinstate('a', 5), ocflError('VERSION_NOT_FOUND'));
       });
       assert.deepStrictEqual(await textFiles(fifth.head), { a: 'THREE', 'd/b': 'B3' });
       assert.deepStrictEqual(await textFiles((await root.open(id)).head), { a: 'THREE', 'd/b': 'B3' });
@@ -252,9 +252,9 @@ describe('reinstating in a draft', () => {
     });
 
     for (const version of [3, 4, 99, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
-      it(`throws FILE_NOT_FOUND for version ${version} of an object with two versions, writing nothing`, async () => {
+      it(`throws VERSION_NOT_FOUND for version ${version} of an object with two versions, writing nothing`, async () => {
         const object = await objectWith({ a: 'ONE' }, (draft) => draft.write('a', 'TWO'));
-        await assertRefuses(root, object, (draft) => draft.reinstate('a', version), 'FILE_NOT_FOUND');
+        await assertRefuses(root, object, (draft) => draft.reinstate('a', version), 'VERSION_NOT_FOUND');
       });
     }
 
@@ -286,20 +286,20 @@ describe('reinstating in a draft', () => {
       );
     });
 
-    it('throws FILE_NOT_FOUND for the version being made, keeping what the draft wrote', async () => {
+    it('throws VERSION_NOT_FOUND for the version being made, keeping what the draft wrote', async () => {
       const object = await createObject(root, newId(), { a: 'ONE' });
       const updated = await object.update(DETAILS, async (draft) => {
         await draft.write('a', 'TWO');
-        await assert.rejects(draft.reinstate('a', 2), ocflError('FILE_NOT_FOUND'));
+        await assert.rejects(draft.reinstate('a', 2), ocflError('VERSION_NOT_FOUND'));
       });
       await assertHolds(root, updated, { a: 'TWO' });
     });
 
     for (const version of [1, 0]) {
-      it(`throws FILE_NOT_FOUND for version ${version} while the object is being created`, async () => {
+      it(`throws VERSION_NOT_FOUND for version ${version} while the object is being created`, async () => {
         const object = await root.create(newId(), DETAILS, async (draft) => {
           await draft.write('a', 'AAA');
-          await assert.rejects(draft.reinstate('a', version), ocflError('FILE_NOT_FOUND'));
+          await assert.rejects(draft.reinstate('a', version), ocflError('VERSION_NOT_FOUND'));
         });
         await assertHolds(root, object, { a: 'AAA' });
       });
@@ -326,13 +326,13 @@ describe('reinstating in a draft', () => {
   });
 
   describe('a path that would be both a file and a directory', () => {
-    it('throws FILE_EXISTS for a file where the draft now has a directory, removing nothing', async () => {
+    it('throws PATH_CONFLICT for a file where the draft now has a directory, removing nothing', async () => {
       const object = await createObject(root, newId(), { a: 'AAA' });
       const updated = await object.update(DETAILS, async (draft) => {
         await draft.remove('a');
         await draft.write('a/x', 'XXX');
         await draft.write('b', 'BBB');
-        await assert.rejects(draft.reinstate('a', 1), ocflError('FILE_EXISTS'));
+        await assert.rejects(draft.reinstate('a', 1), ocflError('PATH_CONFLICT'));
       });
       await assertHolds(root, updated, { 'a/x': 'XXX', b: 'BBB' });
       assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v2'), ['v2/content/a/x', 'v2/content/b']);
@@ -344,7 +344,7 @@ describe('reinstating in a draft', () => {
         await draft.remove('a');
         await draft.write('a/x', 'XXX');
         await draft.write('b', 'BBB');
-        await assert.rejects(draft.reinstate('a', 1), ocflError('FILE_EXISTS'));
+        await assert.rejects(draft.reinstate('a', 1), ocflError('PATH_CONFLICT'));
         await draft.remove('a');
         await draft.reinstate('a', 1);
       });
@@ -352,21 +352,21 @@ describe('reinstating in a draft', () => {
       assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v2'), ['v2/content/b']);
     });
 
-    it('throws FILE_EXISTS for a file where a later version has a directory, writing nothing', async () => {
+    it('throws PATH_CONFLICT for a file where a later version has a directory, writing nothing', async () => {
       const object = await objectWith({ x: 'file' }, async (draft) => {
         await draft.remove('x');
         await draft.write('x/y', 'y');
       });
-      await assertRefuses(root, object, (draft) => draft.reinstate('x', 1), 'FILE_EXISTS');
+      await assertRefuses(root, object, (draft) => draft.reinstate('x', 1), 'PATH_CONFLICT');
     });
 
     for (const logicalPath of ['d/x', 'd']) {
-      it(`throws FILE_EXISTS reinstating ${logicalPath} when its files now lie below a file, changing nothing`, async () => {
+      it(`throws PATH_CONFLICT reinstating ${logicalPath} when its files now lie below a file, changing nothing`, async () => {
         const object = await createObject(root, newId(), { a: 'a', 'd/x': 'x', 'd/y': 'y' });
         const updated = await object.update(DETAILS, async (draft) => {
           await draft.remove('d');
           await draft.write('d', 'file');
-          await assert.rejects(draft.reinstate(logicalPath, 1), ocflError('FILE_EXISTS'));
+          await assert.rejects(draft.reinstate(logicalPath, 1), ocflError('PATH_CONFLICT'));
         });
         assert.strictEqual(updated.head.number, 2);
         await assertHolds(root, updated, { a: 'a', d: 'file' });

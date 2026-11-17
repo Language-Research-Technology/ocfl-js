@@ -8,7 +8,7 @@ import * as fileSystem from './file-system.ts';
 import type { OcflObjectInventory } from './inventory.ts';
 import { isStagedRootInventory, isVersionName, rootInventoryPaths, sidecarContent, sidecarDigest } from './inventory-files.ts';
 import { type Lock, lockKept, releaseLock, takeLock } from './lock.ts';
-import { declarationWithoutInventory, enclosingObject, objectDeclaration, readInventory } from './object-on-disk.ts';
+import { assertEmptyObjectRoot, declarationWithoutInventory, enclosingObject, objectDeclaration, readInventory } from './object-on-disk.ts';
 import { createError } from './ocfl-rules.ts';
 import { parseJsonObject } from './utils.ts';
 import { clearWorkspace, namesIn, objectWorkspace, removeAll } from './workspace.ts';
@@ -30,18 +30,16 @@ interface ObjectPlace {
 /**
  * Writes the object declaration for a create into an empty object root; an update only checks that it is there
  * @returns The path of the declaration file, if this call wrote one
- * @throws {@link OcflError} `INVALID_OBJECT` with `E007` for an invalid declaration, or `E003` for more than one or if an update finds none; `DIRECTORY_NOT_EMPTY` if a create finds none in a directory that isn't empty
+ * @throws {@link OcflError} `INVALID_OBJECT` with `E007` for an invalid declaration, or `E003` for more than one or if an update finds none; `OBJECT_ROOT_CONFLICT` if a create finds none in a directory that isn't empty
  */
-async function ensureObjectDeclaration(root: string, ocflVersion: OcflSpecVersion, creating: boolean): Promise<string | undefined> {
+async function ensureObjectDeclaration(root: string, id: string, ocflVersion: OcflSpecVersion, creating: boolean): Promise<string | undefined> {
   if (await objectDeclaration(root)) {
     return;
   }
   if (!creating) {
     throw createError('E003', root, 'it has an inventory but no object declaration');
   }
-  if (!(await fileSystem.isDirEmpty(root))) {
-    throw ocflError('DIRECTORY_NOT_EMPTY', 'Cannot create an OCFL Object in a non-empty directory');
-  }
+  await assertEmptyObjectRoot(root, id);
   const declaration = NAMASTE_PREFIX_OBJECT + ocflVersion;
   const filePath = path.join(root, NAMASTE_T + declaration);
   await fileSystem.writeFile(filePath, `${declaration}\n`);
@@ -225,7 +223,7 @@ class ObjectWrite {
     // Before anything in the object root changes, so a moved head never surfaces as a failed rename
     await assertUpToDate(objectRoot, inventory);
     await flusher.flushTree(this.#versionPath);
-    this.#createdNamaste = await ensureObjectDeclaration(objectRoot, ocflVersion, this.#lock.operation === 'create');
+    this.#createdNamaste = await ensureObjectDeclaration(objectRoot, inventory.id, ocflVersion, this.#lock.operation === 'create');
     try {
       await fileSystem.move(this.#versionPath, objectVersionPath);
     } catch (error) {

@@ -199,10 +199,10 @@ describe('writing a file to a draft', () => {
       ['onto a directory', 'd'],
       ['onto a doubled-slash form of a directory', './/d'],
     ] as const) {
-      it(`throws FILE_EXISTS ${name} of the head version, writing no version`, async () => {
+      it(`throws PATH_CONFLICT ${name} of the head version, writing no version`, async () => {
         const object = await createObject(root, newId(), files);
         const returned = await object.update(DETAILS, async (draft) => {
-          await assert.rejects(draft.write(target, 'new'), ocflError('FILE_EXISTS'));
+          await assert.rejects(draft.write(target, 'new'), ocflError('PATH_CONFLICT'));
         });
         assert.strictEqual(returned, object);
         assert.strictEqual((await readInventory(objectRootOf(root, object.id))).head, 'v1');
@@ -210,11 +210,11 @@ describe('writing a file to a draft', () => {
       });
     }
 
-    it('throws FILE_EXISTS onto a directory written in the same draft, keeping its files', async () => {
+    it('throws PATH_CONFLICT onto a directory written in the same draft, keeping its files', async () => {
       const object = await root.create(newId(), DETAILS, async (draft) => {
         await draft.write('d/x', 'x');
-        await assert.rejects(draft.write('d', 'new'), ocflError('FILE_EXISTS'));
-        await assert.rejects(draft.write('d/x/y', 'new'), ocflError('FILE_EXISTS'));
+        await assert.rejects(draft.write('d', 'new'), ocflError('PATH_CONFLICT'));
+        await assert.rejects(draft.write('d/x/y', 'new'), ocflError('PATH_CONFLICT'));
       });
       await assertHolds(root, object, { 'd/x': 'x' });
     });
@@ -226,8 +226,8 @@ describe('writing a file to a draft', () => {
         await draft.write('./raw//1.wav', 'wav');
         await draft.write('./d//x', 'x');
         await draft.write('./e/./y/', 'y');
-        await assert.rejects(draft.write('d', 'new'), ocflError('FILE_EXISTS'));
-        await assert.rejects(draft.write('e/y/z', 'new'), ocflError('FILE_EXISTS'));
+        await assert.rejects(draft.write('d', 'new'), ocflError('PATH_CONFLICT'));
+        await assert.rejects(draft.write('e/y/z', 'new'), ocflError('PATH_CONFLICT'));
         await draft.write('d/x', 'replaced');
       });
       await assertHolds(root, object, { 'raw/1.wav': 'wav', 'd/x': 'replaced', 'e/y': 'y' });

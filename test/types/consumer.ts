@@ -25,8 +25,8 @@ export function describeError(error: OcflError): string {
   switch (error.code) {
     case 'OBJECT_NOT_FOUND':
       return 'There is no such object';
-    case 'UPDATE_IN_PROGRESS':
-      return 'Another writer is updating the object';
+    case 'OBJECT_LOCKED':
+      return "Another writer holds the object's lock";
     default:
       throw error;
   }

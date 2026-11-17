@@ -124,8 +124,8 @@ describe('merging a directory into another in a draft', () => {
         ['a directory where the target has a file', { 'src/a/x': 'X', 'src/b': 'B', 'dst/a': 'A' }],
         ['a file below a file of the target', { 'src/a/x/y': 'Y', 'src/b': 'B', 'dst/a': 'A', 'dst/b': 'old b' }],
       ] as const) {
-        it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
-          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, 'src', 'dst', MERGE), 'FILE_EXISTS');
+        it(`throws PATH_CONFLICT for ${name}, changing nothing`, async () => {
+          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, 'src', 'dst', MERGE), 'PATH_CONFLICT');
         });
       }
 
@@ -136,13 +136,13 @@ describe('merging a directory into another in a draft', () => {
         ['a file onto the directory it is in', 'dst/c', 'dst'],
         ['a directory onto the directory it is in, where a file would be a directory', 'dst/deep', 'dst'],
       ] as const) {
-        it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
+        it(`throws PATH_CONFLICT for ${name}, changing nothing`, async () => {
           const files = { 'src/a': 'A', 'dst/c': 'C', 'dst/deep/deep': 'D', 'dst/deep/e': 'E', file: 'F' };
-          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, source, target, MERGE), 'FILE_EXISTS');
+          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, source, target, MERGE), 'PATH_CONFLICT');
         });
       }
 
-      it('throws FILE_EXISTS for a clash without dropping content the draft stored', async () => {
+      it('throws PATH_CONFLICT for a clash without dropping content the draft stored', async () => {
         const id = newId();
         const object = await root.create(id, DETAILS, async (draft) => {
           await draft.write('src/a', 'A');
@@ -150,7 +150,7 @@ describe('merging a directory into another in a draft', () => {
           await draft.write('dst/a', 'old a');
           await draft.write('dst/b', 'old b');
           const stored = await snapshot(path.join(workspaceOf(root), id));
-          await assert.rejects(transfer(draft, 'src', 'dst', MERGE), ocflError('FILE_EXISTS'));
+          await assert.rejects(transfer(draft, 'src', 'dst', MERGE), ocflError('PATH_CONFLICT'));
           assert.deepStrictEqual(await snapshot(path.join(workspaceOf(root), id)), stored);
         });
         await assertHolds(root, object, { 'src/a': 'A', 'src/b/x': 'X', 'dst/a': 'old a', 'dst/b': 'old b' });
@@ -178,8 +178,8 @@ describe('merging a directory into another in a draft', () => {
           const updated = await object.update(DETAILS, async (draft) => {
             await transfer(draft, 'a', 'b', options);
             await transfer(draft, 'd/x', 'new', options);
-            await assert.rejects(transfer(draft, 'b', 'e', options), ocflError('FILE_EXISTS'));
-            await assert.rejects(transfer(draft, 'b', 'new/x', options), ocflError('FILE_EXISTS'));
+            await assert.rejects(transfer(draft, 'b', 'e', options), ocflError('PATH_CONFLICT'));
+            await assert.rejects(transfer(draft, 'b', 'new/x', options), ocflError('PATH_CONFLICT'));
           });
           const expected = op === 'rename' ? { b: 'A', new: 'X', 'e/y': 'Y' } : { a: 'A', b: 'A', 'd/x': 'X', new: 'X', 'e/y': 'Y' };
           results.push(await assertHolds(root, updated, expected));
@@ -217,10 +217,10 @@ describe('merging a directory into another in a draft', () => {
         ['no options', undefined],
         ['{ merge: false }', { merge: false }],
       ] as const) {
-        it(`throws FILE_EXISTS with ${name} for a directory onto a target with files, changing nothing`, async () => {
+        it(`throws TARGET_NOT_EMPTY with ${name} for a directory onto a target with files, changing nothing`, async () => {
           const files = { 'src/a': 'A', 'dst/b': 'B', 'twin/a': 'A' };
-          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, 'src', 'dst', options), 'FILE_EXISTS');
-          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, 'src', 'twin', options), 'FILE_EXISTS');
+          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, 'src', 'dst', options), 'TARGET_NOT_EMPTY');
+          await assertRefusesWith(root, newId(), files, (draft) => transfer(draft, 'src', 'twin', options), 'TARGET_NOT_EMPTY');
         });
       }
     });
@@ -256,7 +256,7 @@ describe('merging a directory into another in a draft', () => {
       it('accepts options without merge as not merging', async () => {
         const object = await createObject(root, newId(), { 'src/a': 'A', 'dst/b': 'B' });
         const updated = await object.update(DETAILS, async (draft) => {
-          await assert.rejects(transfer(draft, 'src', 'dst', {} as never), ocflError('FILE_EXISTS'));
+          await assert.rejects(transfer(draft, 'src', 'dst', {} as never), ocflError('TARGET_NOT_EMPTY'));
           await transfer(draft, 'src', 'new', { merge: undefined } as never);
         });
         await assertHolds(root, updated, { ...without({ 'src/a': 'A' }, sourceGone), 'dst/b': 'B', 'new/a': 'A' });

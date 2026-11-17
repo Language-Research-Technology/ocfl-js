@@ -166,35 +166,36 @@ describe('root.remove', () => {
   });
 
   describe('while the object is locked', () => {
-    it('throws UPDATE_IN_PROGRESS from inside an update, which then commits, and deletes nothing', async () => {
+    it('throws OBJECT_LOCKED from inside an update, which then commits, and deletes nothing', async () => {
       const { root, object } = await existingObject();
 
       const updated = await object.update(DETAILS, async (draft) => {
         await writeB(draft);
-        await assertRefused(root, ID, 'UPDATE_IN_PROGRESS');
+        await assertRefused(root, ID, 'OBJECT_LOCKED');
       });
 
       await assertHolds(root, updated, { 'a.txt': 'a', 'b.txt': 'b' });
       assertNoWorkspace(root);
     });
 
-    it('says when the lock was taken', async () => {
+    it('says when the lock was taken, without claiming an update', async () => {
       const { root } = await existingObject();
       await lockObject(root, ID, new Date('2026-01-02T03:04:05.000Z'));
 
-      await assert.rejects(root.remove(ID), (error: { code?: string; lockedAt?: Date }) => {
-        assert.strictEqual(error.code, 'UPDATE_IN_PROGRESS');
+      await assert.rejects(root.remove(ID), (error: { code?: string; lockedAt?: Date; message?: string }) => {
+        assert.strictEqual(error.code, 'OBJECT_LOCKED');
         assert.strictEqual(error.lockedAt?.toISOString(), '2026-01-02T03:04:05.000Z');
+        assert.doesNotMatch(error.message ?? '', /updating/);
         return true;
       });
     });
 
-    it('throws UPDATE_IN_PROGRESS for an object that is being created', async () => {
+    it('throws OBJECT_LOCKED for an object that is being created', async () => {
       const root = await newRoot();
 
       const created = await root.create(ID, DETAILS, async (draft) => {
         await draft.write('a.txt', 'a');
-        await assertRefused(root, ID, 'UPDATE_IN_PROGRESS');
+        await assertRefused(root, ID, 'OBJECT_LOCKED');
       });
 
       await assertHolds(root, created, { 'a.txt': 'a' });
@@ -204,7 +205,7 @@ describe('root.remove', () => {
       const { root, objectRoot, workspace } = await existingObject();
       await lockObject(root, ID);
       await writeFiles(path.join(workspace, 'v2', 'content'), { 'half-written.txt': 'x' });
-      await assertRefused(root, ID, 'UPDATE_IN_PROGRESS');
+      await assertRefused(root, ID, 'OBJECT_LOCKED');
 
       await recover(root, ID);
       await root.remove(ID);
@@ -385,7 +386,7 @@ describe('root.remove', () => {
     async function assertRecoveryNeeded(root: StorageRoot, remove: Promise<void>) {
       const error = await rejection(remove, 'RECOVERY_NEEDED');
       assert.strictEqual((error.cause as NodeJS.ErrnoException).code, 'EIO');
-      await assert.rejects(root.remove(ID), ocflError('UPDATE_IN_PROGRESS'));
+      await assert.rejects(root.remove(ID), ocflError('OBJECT_LOCKED'));
     }
 
     it('throws RECOVERY_NEEDED and keeps the lock when a version cannot be deleted; the object can still be opened', async () => {

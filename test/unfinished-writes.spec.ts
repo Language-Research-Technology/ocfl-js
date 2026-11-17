@@ -309,7 +309,7 @@ describe('root.unfinishedWrites', () => {
 
     assert.strictEqual(results.filter((result) => result.status === 'fulfilled').length, 1);
     const [refused] = results.filter((result) => result.status === 'rejected');
-    assert.ok(ocflError('UPDATE_IN_PROGRESS')(refused?.reason), String(refused?.reason));
+    assert.ok(ocflError('OBJECT_LOCKED')(refused?.reason), String(refused?.reason));
   });
 
   it('takes its lock when linking it succeeds but reports EEXIST, as a retried NFS request does after a lost reply', async () => {
@@ -349,7 +349,7 @@ describe('root.unfinishedWrite', () => {
 describe('write.recover', () => {
   const { newRoot } = useTempRoots('ocfl-unfinished-recover-');
 
-  it('throws UPDATE_IN_PROGRESS, changing nothing, if another writer has taken the lock since it was listed', async () => {
+  it('throws OBJECT_LOCKED, changing nothing, if another writer has taken the lock since it was listed', async () => {
     const root = await newRoot();
     const object = await createObject(root, 'a', { 'a.txt': 'a' });
     await lockObject(root, 'a', new Date('2026-11-10T22:01:44.000Z'));
@@ -359,7 +359,7 @@ describe('write.recover', () => {
     await update.inside;
     const before = await snapshot(root.path);
 
-    const error = await rejection(write?.recover() ?? Promise.resolve(), 'UPDATE_IN_PROGRESS');
+    const error = await rejection(write?.recover() ?? Promise.resolve(), 'OBJECT_LOCKED');
 
     assert.strictEqual(error.lockedAt?.getTime(), (await root.unfinishedWrite('a'))?.lockedAt.getTime());
     assert.deepStrictEqual(await snapshot(root.path), before);

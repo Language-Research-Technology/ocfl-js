@@ -219,8 +219,8 @@ describe('copying in a draft', () => {
       ['a file below a file, spelled un-normalised', 'a.txt', 'b.txt//x'],
       ['a file onto the directory it is in', 'other/d.txt', 'other'],
     ] as const) {
-      it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
-        await assertRefusesWith(root, newId(), { 'a.txt': 'a', 'b.txt': 'b', 'other/d.txt': 'd' }, (draft) => draft.copy(source, target), 'FILE_EXISTS');
+      it(`throws PATH_CONFLICT for ${name}, changing nothing`, async () => {
+        await assertRefusesWith(root, newId(), { 'a.txt': 'a', 'b.txt': 'b', 'other/d.txt': 'd' }, (draft) => draft.copy(source, target), 'PATH_CONFLICT');
       });
     }
   });
@@ -268,16 +268,16 @@ describe('copying in a draft', () => {
       await assertHolds(root, updated, { 'dir/c': 'c', 'other/c': 'c' });
     });
 
-    for (const [name, source, target] of [
-      ['a directory onto a directory that has other files', 'dir', 'other'],
-      ['a directory onto a directory that has the same files', 'dir', 'twin'],
-      ['a directory onto a file', 'dir', 'a.txt'],
-      ['a directory below a file', 'dir', 'a.txt/sub'],
-      ['a directory onto the directory it is in', 'other/sub', 'other'],
+    for (const [name, source, target, code] of [
+      ['a directory onto a directory that has other files', 'dir', 'other', 'TARGET_NOT_EMPTY'],
+      ['a directory onto a directory that has the same files', 'dir', 'twin', 'TARGET_NOT_EMPTY'],
+      ['a directory onto a file', 'dir', 'a.txt', 'PATH_CONFLICT'],
+      ['a directory below a file', 'dir', 'a.txt/sub', 'PATH_CONFLICT'],
+      ['a directory onto the directory it is in', 'other/sub', 'other', 'TARGET_NOT_EMPTY'],
     ] as const) {
-      it(`throws FILE_EXISTS for ${name}, changing nothing`, async () => {
+      it(`throws ${code} for ${name}, changing nothing`, async () => {
         const files = { 'a.txt': 'a', 'dir/c.txt': 'c', 'twin/c.txt': 'c', 'other/d.txt': 'd', 'other/sub/e.txt': 'e' };
-        await assertRefusesWith(root, newId(), files, (draft) => draft.copy(source, target), 'FILE_EXISTS');
+        await assertRefusesWith(root, newId(), files, (draft) => draft.copy(source, target), code);
       });
     }
   });

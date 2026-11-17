@@ -301,29 +301,29 @@ describe('importing into a draft', () => {
   describe('a path that would be both a file and a directory', () => {
     const files = { a: 'a', 'd/x': 'x' };
 
-    it('throws FILE_EXISTS for a file inside an existing file, importing nothing', async () => {
+    it('throws PATH_CONFLICT for a file inside an existing file, importing nothing', async () => {
       const source = await newSource({ 'a/inner.txt': 'inner', 'ok.txt': 'ok' });
       const object = await createObject(root, newId(), files);
       const returned = await object.update(DETAILS, async (draft) => {
-        await assert.rejects(draft.import(source), ocflError('FILE_EXISTS'));
+        await assert.rejects(draft.import(source), ocflError('PATH_CONFLICT'));
       });
       assert.strictEqual(returned, object);
       await assertUnchanged(object, files);
     });
 
-    it('throws FILE_EXISTS for a file onto a directory, creating no version', async () => {
+    it('throws PATH_CONFLICT for a file onto a directory, creating no version', async () => {
       const source = await newSource({ 'new.txt': 'new' });
       const object = await createObject(root, newId(), files);
       await assert.rejects(
         object.update(DETAILS, async (draft) => {
           await draft.import(path.join(source, 'new.txt'), { target: 'd' });
         }),
-        ocflError('FILE_EXISTS'),
+        ocflError('PATH_CONFLICT'),
       );
       await assertUnchanged(object, files);
     });
 
-    it('throws FILE_EXISTS for a file where an earlier import of the same draft put a directory', async () => {
+    it('throws PATH_CONFLICT for a file where an earlier import of the same draft put a directory', async () => {
       const source = await newSource({ 'a.txt': 'a', 'sub/b.txt': 'b' });
       const file = await newSource({ 'sub.txt': 'not a directory' });
       const id = newId();
@@ -332,7 +332,7 @@ describe('importing into a draft', () => {
           await draft.import(source);
           await draft.import(path.join(file, 'sub.txt'), { target: 'sub' });
         }),
-        ocflError('FILE_EXISTS'),
+        ocflError('PATH_CONFLICT'),
       );
       await assertNothingCreated(id);
     });
@@ -570,7 +570,7 @@ describe('importing into a draft', () => {
       const failures: [string, Record<string, string>, (source: string) => Promise<void>, (e: unknown) => boolean, skip?: boolean][] = [
         ['a file that cannot be read', {}, lockB, (e) => (e as NodeJS.ErrnoException).code === 'EACCES', process.getuid?.() === 0],
         ['a symlink', {}, (source) => fs.promises.symlink(path.join(source, 'a.txt'), path.join(source, 'link')), ocflError('UNSUPPORTED_FILE_TYPE')],
-        ['a file inside an existing file', { 'file/inner.txt': 'inner' }, async () => {}, ocflError('FILE_EXISTS')],
+        ['a file inside an existing file', { 'file/inner.txt': 'inner' }, async () => {}, ocflError('PATH_CONFLICT')],
         ['a file that changes while it is copied', {}, changeBBeforeItsCopy, ocflError('SOURCE_CHANGED')],
       ];
 

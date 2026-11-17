@@ -8,7 +8,7 @@ try {
     await draft.write('notes.txt', 'Recorded in the field');
   });
 } catch (error) {
-  if (!(error instanceof OcflError && error.code === 'UPDATE_IN_PROGRESS')) {
+  if (!(error instanceof OcflError && error.code === 'OBJECT_LOCKED')) {
     throw error;
   }
   const since = error.lockedAt?.toISOString() ?? 'an unknown time';

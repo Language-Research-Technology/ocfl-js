@@ -549,7 +549,7 @@ class OcflObjectInventory {
   /**
    * Add a new file to the inventory or update the digest of an existing file
    * @returns true if the state is changed
-   * @throws {@link OcflError} `FILE_EXISTS` if the path is a directory, or is inside a file
+   * @throws {@link OcflError} `PATH_CONFLICT` if the path is a directory, or is inside a file
    * @internal
    */
   _add(logicalPath: string, rawDigest: string): boolean {
@@ -618,29 +618,29 @@ class OcflObjectInventory {
     return parentDirectories(logicalPath).some((directory) => this.getDigest(directory));
   }
 
-  /** @throws {@link OcflError} `FILE_EXISTS` if the path is inside a file in the head state */
+  /** @throws {@link OcflError} `PATH_CONFLICT` if the path is inside a file in the head state */
   #checkNotInsideFile(logicalPath: string) {
     if (this.#isInsideFile(logicalPath)) {
-      throw ocflError('FILE_EXISTS', `Logical path "${logicalPath}" is inside an existing file in object [${this.id}]`);
+      throw ocflError('PATH_CONFLICT', `Logical path "${logicalPath}" is inside an existing file in object [${this.id}]`);
     }
   }
 
   /**
    * Check a file can be listed at the path, replacing any file already there
-   * @throws {@link OcflError} `FILE_EXISTS` if the path is a directory, or is inside a file, in the head state
+   * @throws {@link OcflError} `PATH_CONFLICT` if the path is a directory, or is inside a file, in the head state
    * @internal
    */
   _checkFilePath(logicalPath: string) {
     const target = normaliseLogicalPath(logicalPath);
     this.#checkNotInsideFile(target);
     if (this.#headDirectories.has(target)) {
-      throw ocflError('FILE_EXISTS', `Logical path "${logicalPath}" is an existing directory in object [${this.id}]`);
+      throw ocflError('PATH_CONFLICT', `Logical path "${logicalPath}" is an existing directory in object [${this.id}]`);
     }
   }
 
   /**
    * Resolve a copy or rename to the files it transfers and the files they replace, changing nothing.
-   * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
+   * @throws {@link OcflError} `FILE_NOT_FOUND`, `TARGET_NOT_EMPTY`, `PATH_CONFLICT` or `INVALID_LOGICAL_PATH`
    */
   #planTransfer(source: string, target: string, merge: boolean): TransferPlan {
     const src = normaliseLogicalPath(source);
@@ -665,10 +665,10 @@ class OcflObjectInventory {
     if (!isFile) {
       this.#checkNotInsideFile(dest);
       if (this.getDigest(dest) !== undefined) {
-        throw ocflError('FILE_EXISTS', `Target logical path "${target}" is an existing file in object [${this.id}]`);
+        throw ocflError('PATH_CONFLICT', `Target logical path "${target}" is an existing file in object [${this.id}]`);
       }
       if (!merge && this.#headDirectories.has(dest)) {
-        throw ocflError('FILE_EXISTS', `Target logical path "${target}" already has files in object [${this.id}]`);
+        throw ocflError('TARGET_NOT_EMPTY', `Target logical path "${target}" already has files in object [${this.id}]; pass { merge: true } to merge into it`);
       }
     }
     const transfers = sources.map(([file, digest]) => ({ src: file, dest: `${dest}${file.slice(src.length)}`, digest }));
@@ -700,7 +700,7 @@ class OcflObjectInventory {
   /**
    * Resolve a rename to the paths it unlists, the files it lists and what happens to stored content,
    * changing nothing. Only files this version stored at a source's or a replaced file's own content path move.
-   * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
+   * @throws {@link OcflError} `FILE_NOT_FOUND`, `TARGET_NOT_EMPTY`, `PATH_CONFLICT` or `INVALID_LOGICAL_PATH`
    * @internal
    */
   _planRename(source: string, target: string, merge = false): RelistPlan {
@@ -711,7 +711,7 @@ class OcflObjectInventory {
   /**
    * Resolve a copy to the files it replaces, the files it lists and what happens to the replaced
    * files' content, changing nothing
-   * @throws {@link OcflError} `FILE_NOT_FOUND`, `FILE_EXISTS` or `INVALID_LOGICAL_PATH`
+   * @throws {@link OcflError} `FILE_NOT_FOUND`, `TARGET_NOT_EMPTY`, `PATH_CONFLICT` or `INVALID_LOGICAL_PATH`
    * @internal
    */
   _planCopy(source: string, target: string, merge = false): RelistPlan {
@@ -774,14 +774,17 @@ class OcflObjectInventory {
    * Resolve a reinstate to the files it lists, the files they replace and what happens to the
    * replaced files' content, changing nothing
    * @param version - The number of a committed version
-   * @throws {@link OcflError} `FILE_NOT_FOUND` if the version doesn't exist or has nothing at the path,
-   * `FILE_EXISTS` if a file it lists is a directory or inside a file in the head state
+   * @throws {@link OcflError} `VERSION_NOT_FOUND` if the version doesn't exist, `FILE_NOT_FOUND` if it has nothing at the path,
+   * `PATH_CONFLICT` if a file it lists is a directory or inside a file in the head state
    * @internal
    */
   _planReinstate(logicalPath: string, version: number): RelistPlan {
     const path = normaliseLogicalPath(logicalPath);
     const versionName = this.#committedVersionName(version);
-    const found = versionName === undefined ? [] : this.#indexFindFiles(path, versionName);
+    if (versionName === undefined) {
+      throw ocflError('VERSION_NOT_FOUND', `Object [${this.id}] has no committed version ${version}`);
+    }
+    const found = this.#indexFindFiles(path, versionName);
     if (found.length === 0) {
       throw ocflError('FILE_NOT_FOUND', `Version ${version} of object [${this.id}] has nothing at logical path "${logicalPath}"`);
     }

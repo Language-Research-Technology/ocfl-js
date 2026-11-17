@@ -139,7 +139,7 @@ describe('root.recover', () => {
       assert.ok(!fs.existsSync(placesOf(root, ID).workspace));
       assert.ok(fs.existsSync(otherLock));
       assert.deepStrictEqual(await snapshot(placesOf(root, 'other').workspace), others);
-      await assert.rejects((await root.open('other')).update(DETAILS, writeB), ocflError('UPDATE_IN_PROGRESS'));
+      await assert.rejects((await root.open('other')).update(DETAILS, writeB), ocflError('OBJECT_LOCKED'));
     });
   });
 
