@@ -64,7 +64,9 @@ interface OcflErrorOptions {
 
 /**
  * The error the library throws for anything a caller might handle; test `code`. The message isn't part of the contract.
- * Misuse throws a plain `TypeError` or `Error`, and file system errors such as `ENOSPC` pass through untouched.
+ * A wrong call throws a plain `TypeError`, `RangeError` or `Error`, and an aborted signal rejects with its `reason`.
+ * File system errors such as `ENOSPC` pass through untouched, unless the library knows what one means or it leaves a write
+ * needing recovery: then the error has the code for that meaning, or `RECOVERY_NEEDED`, with the file system error as `cause`.
  * See the {@link https://language-research-technology.github.io/ocfl-js/guides/errors/ | errors guide}.
  * @example
  * ```ts

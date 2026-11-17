@@ -54,7 +54,7 @@ The retry limit keeps a busy object from looping forever. Pick one that suits ho
 
 ## `RECOVERY_NEEDED`: the update may or may not be committed
 
-An update is committed at one moment: the rename that replaces the object's root `inventory.json`, its commit point. A failure before it discards everything and throws the original error. A failure after it, or a failure while discarding, throws [`RECOVERY_NEEDED`](/ocfl-js/guides/errors/#recovery_needed) with the failure as its `cause`. The version may or may not be committed, so don't simply repeat the update.
+An update is committed at one moment: the rename that replaces the object's root `inventory.json`, its commit point. A failure before it discards everything and throws the error for that failure. A failure after it, or a failure while discarding, throws [`RECOVERY_NEEDED`](/ocfl-js/guides/errors/#recovery_needed) with the failure as its `cause`. The version may or may not be committed, so don't simply repeat the update.
 
 After `RECOVERY_NEEDED`:
 

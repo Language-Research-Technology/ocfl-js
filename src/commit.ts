@@ -242,7 +242,9 @@ class ObjectWrite {
       await fileSystem.move(this.#versionPath, objectVersionPath);
     } catch (error) {
       throw fileSystem.hasErrorCode(error, 'EXDEV')
-        ? ocflError('CROSS_FILESYSTEM_MOVE', `Cannot move the new version into "${objectRoot}": it is on a different filesystem from the workspace.`)
+        ? ocflError('CROSS_FILESYSTEM_MOVE', `Cannot move the new version into "${objectRoot}": it is on a different filesystem from the workspace.`, {
+            cause: error,
+          })
         : error;
     }
     this.#versionPath = objectVersionPath;
