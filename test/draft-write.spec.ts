@@ -81,29 +81,33 @@ describe('writing a file to a draft', () => {
       await assertHolds(root, object, { empty: '' });
     });
 
+    /** The message for `content` of `type` as a whole, and for one chunk of `type` from a stream */
+    const contentOf = (type: string) => new RegExp(`^The content must be a string, a Uint8Array or an async iterable of them, not \\[object ${type}\\]\\.$`);
+    const chunkOf = (type: string) => new RegExp(`^Each chunk of the content must be a string or a Uint8Array, not \\[object ${type}\\]\\.$`);
+
     const unsupported: [string, () => unknown, RegExp][] = [
-      ['a number', () => 42, /Unsupported data type: \[object Number\]/],
-      ['a plain object', () => ({ text: 'héllo' }), /Unsupported data type: \[object Object\]/],
-      ['nothing', () => undefined, /Unsupported data type: \[object Undefined\]/],
-      ['an ArrayBuffer', () => encode('héllo').buffer, /Unsupported data type: \[object ArrayBuffer\]/],
-      ['a Blob', () => new Blob(['héllo']), /Unsupported data type: \[object Blob\]/],
-      ['a DataView', () => new DataView(encode('héllo').buffer), /Unsupported data type: \[object DataView\]/],
-      ['a Uint16Array', () => new Uint16Array(4), /Unsupported data type: \[object Uint16Array\]/],
-      ['an iterable yielding something other than bytes or strings', () => Readable.from([{ text: 'héllo' }]), /Unsupported data type: \[object Object\]/],
+      ['a number', () => 42, contentOf('Number')],
+      ['a plain object', () => ({ text: 'héllo' }), contentOf('Object')],
+      ['nothing', () => undefined, contentOf('Undefined')],
+      ['an ArrayBuffer', () => encode('héllo').buffer, contentOf('ArrayBuffer')],
+      ['a Blob', () => new Blob(['héllo']), contentOf('Blob')],
+      ['a DataView', () => new DataView(encode('héllo').buffer), contentOf('DataView')],
+      ['a Uint16Array', () => new Uint16Array(4), contentOf('Uint16Array')],
+      ['an iterable yielding something other than bytes or strings', () => Readable.from([{ text: 'héllo' }]), chunkOf('Object')],
       [
         'an async generator yielding a Uint16Array after a string',
         async function* () {
           yield 'hé';
           yield new Uint16Array(4);
         },
-        /Unsupported data type: \[object Uint16Array\]/,
+        chunkOf('Uint16Array'),
       ],
       [
         'an async generator yielding an ArrayBuffer',
         async function* () {
           yield encode('héllo').buffer;
         },
-        /Unsupported data type: \[object ArrayBuffer\]/,
+        chunkOf('ArrayBuffer'),
       ],
     ];
 

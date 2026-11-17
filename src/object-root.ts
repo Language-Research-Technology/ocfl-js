@@ -6,7 +6,7 @@ import * as fileSystem from './file-system.ts';
 import type { OcflObjectInventory } from './inventory.ts';
 import { isLocked } from './lock.ts';
 import type { ObjectPlace } from './object-place.ts';
-import { specViolation } from './ocfl-rules.ts';
+import { type FaultAt, specViolation } from './ocfl-rules.ts';
 import { type RootInventory, readInventory } from './root-inventory.ts';
 
 const { EXTENSIONS_DIR, INVENTORY_NAME, OBJECT_DECLARATION_PREFIX } = OcflConstants;
@@ -52,16 +52,18 @@ async function objectState(place: ObjectPlace): Promise<'committed' | 'creating'
 
 /**
  * The OCFL version declared by the object at `place`, which has an inventory.
+ * @param id - The id `place` is given to, for the error
  * @throws {@link OcflError} `INVALID_OBJECT` if its declaration is missing (`E003`) or wrong as `checkedDeclaration` finds it, or it is inside another object
  */
-async function declaredVersion(place: ObjectPlace): Promise<OcflSpecVersion> {
+async function declaredVersion(place: ObjectPlace, id: string): Promise<OcflSpecVersion> {
   const { objectRoot } = place;
+  const where: FaultAt = { objectId: id, file: objectRoot };
   const [ocflVersion, outer] = await Promise.all([objectDeclaration(objectRoot), enclosingObject(place)]);
   if (!ocflVersion) {
-    throw specViolation('E003', objectRoot, 'it has an inventory but no object declaration');
+    throw specViolation('E003', where, 'it has an inventory but no object declaration');
   }
   if (outer !== undefined) {
-    throw nestedObject(objectRoot, outer);
+    throw nestedObject(where, outer);
   }
   return ocflVersion;
 }
@@ -72,7 +74,7 @@ async function declaredVersion(place: ObjectPlace): Promise<OcflSpecVersion> {
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it is an object with another id
  */
 async function confirmedVersion(place: ObjectPlace, inventory: OcflObjectInventory, id: string): Promise<OcflSpecVersion> {
-  const ocflVersion = await declaredVersion(place);
+  const ocflVersion = await declaredVersion(place, id);
   if (inventory.id !== id) {
     throw holdsAnotherObject(place.objectRoot, inventory.id, id);
   }
@@ -80,27 +82,40 @@ async function confirmedVersion(place: ObjectPlace, inventory: OcflObjectInvento
 }
 
 /**
- * `ocflVersion`, declared by the object at `objectRoot`, once it is known to be no later than `rootVersion`, its storage root's.
+ * `ocflVersion`, declared by the object `where` is, once it is known to be no later than `rootVersion`, its storage root's.
  * @throws {@link OcflError} `INVALID_OBJECT` with E081 if it is later
  */
-function withinRootVersion(objectRoot: string, ocflVersion: OcflSpecVersion, rootVersion: OcflSpecVersion): OcflSpecVersion {
+function withinRootVersion(where: FaultAt, ocflVersion: OcflSpecVersion, rootVersion: OcflSpecVersion): OcflSpecVersion {
   if (ocflVersion > rootVersion) {
-    throw specViolation('E081', objectRoot, `an OCFL ${ocflVersion} object in an OCFL ${rootVersion} storage root`);
+    throw specViolation('E081', where, `an OCFL ${ocflVersion} object in an OCFL ${rootVersion} storage root`);
   }
   return ocflVersion;
 }
 
-/** For an object at `objectRoot`, which is inside the object at `outer` */
-function nestedObject(objectRoot: string, outer: string): OcflError {
-  return specViolation('E082', objectRoot, `nested under the object at ${outer}`);
+/** For the object `where` is, which is inside the object at `outer` */
+function nestedObject(where: FaultAt, outer: string): OcflError {
+  return specViolation('E082', where, `nested under the object at ${outer}`);
 }
 
 /** @param unplaceable - The layout's refusal of `id`, if that is why there is no object */
-function objectNotFound(storageRoot: string, id: string, unplaceable?: OcflError): OcflError {
-  const message = `There is no object <${id}> in the storage root ${storageRoot}`;
+function objectNotFound(id: string, unplaceable?: OcflError): OcflError {
+  const message = `There is no object <${id}> in the storage root`;
   return unplaceable === undefined
     ? ocflError('OBJECT_NOT_FOUND', `${message}.`)
     : ocflError('OBJECT_NOT_FOUND', `${message}: its storage layout can't place this id.`, { cause: unplaceable });
+}
+
+/** For a create of the object `id`, which already exists */
+function objectExists(id: string): OcflError {
+  return ocflError('OBJECT_EXISTS', `The object <${id}> already exists in the storage root.`);
+}
+
+/**
+ * For a write to the object `id`, opened at version `opened`, that has changed since
+ * @param since - What became of it, continuing "…was opened at v1, and "
+ */
+function objectOutOfDate(id: string, opened: string | undefined, since: string): OcflError {
+  return ocflError('OBJECT_OUT_OF_DATE', `The object <${id}> was opened at ${opened}, and ${since}. Open it again and retry.`);
 }
 
 /** For an `objectRoot` with an object declaration and no inventory, which no writer is working on */
@@ -154,14 +169,14 @@ async function strayAt(objectRoot: string): Promise<Exclude<fileSystem.DirConten
 
 /** For the object root of `place`, given to the object `id`, with no committed inventory */
 async function noCommittedObject(place: ObjectPlace, id: string): Promise<OcflError> {
-  const { storageRoot, objectRoot } = place;
+  const { objectRoot } = place;
   // A create writes the declaration first, and a writer holds its lock until it has finished
   if ((await strayAt(objectRoot)) === undefined || (await isLocked(place.workspace))) {
-    return objectNotFound(storageRoot, id);
+    return objectNotFound(id);
   }
   // A writer may have finished between the two: a purge by deleting what it had left, a failed create by discarding what it made
   const stray = await strayAt(objectRoot);
-  return stray === undefined ? objectNotFound(storageRoot, id) : strayContents(objectRoot, id, stray);
+  return stray === undefined ? objectNotFound(id) : strayContents(objectRoot, id, stray);
 }
 
 export {
@@ -173,7 +188,9 @@ export {
   declaredVersion,
   enclosingObject,
   noCommittedObject,
+  objectExists,
   objectNotFound,
+  objectOutOfDate,
   objectState,
   strayContents,
   withinRootVersion,

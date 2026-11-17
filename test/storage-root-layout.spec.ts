@@ -185,6 +185,22 @@ describe('choosing the layout of a new storage root', () => {
       await rejects({ extensionName: '0006-flat-omit-prefix-storage-layout' });
     });
 
+    it('names the layout, and lists the four the library has', async () => {
+      const implemented = [
+        '0002-flat-direct-storage-layout',
+        '0003-hash-and-id-n-tuple-storage-layout',
+        '0004-hashed-n-tuple-storage-layout',
+        '000N-path-direct-storage-layout',
+      ];
+      await assert.rejects(
+        createStorageRoot(rootPath, { layout: { extensionName: '0006-flat-omit-prefix-storage-layout' } as never }),
+        (error: Error) =>
+          error instanceof TypeError &&
+          error.message.includes('"0006-flat-omit-prefix-storage-layout"') &&
+          implemented.every((name) => error.message.includes(`"${name}"`)),
+      );
+    });
+
     for (const name of UNSUPPORTED_LAYOUT_NAMES) {
       it(`rejects ${name}`, async () => {
         await rejects(name);

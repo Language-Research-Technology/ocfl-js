@@ -86,7 +86,7 @@ async function readStorageRoot(root: string): Promise<{ ocflVersion: OcflSpecVer
   const content = await fileSystem.readIfExists(configPath);
   const config = content === undefined ? undefined : parseJsonObject(content);
   if (content !== undefined && !config) {
-    throw ocflError('INVALID_STORAGE_ROOT', `The layout config ${configPath} is not a JSON object.`);
+    throw ocflError('INVALID_STORAGE_ROOT', `The layout config ${configPath} isn't a JSON object.`);
   }
   if (config?.extensionName !== undefined && config.extensionName !== declaredName) {
     throw ocflError(
@@ -376,7 +376,7 @@ function storageRoot(root: string, ocflVersion: OcflSpecVersion, layout: BuiltIn
   const existingPlace = async (id: string) => {
     const placed = await placeToRead(id);
     if (placed instanceof OcflError) {
-      throw objectNotFound(root, id, placed);
+      throw objectNotFound(id, placed);
     }
     return placed;
   };
@@ -441,7 +441,7 @@ async function createStorageRoot(path: string, options: CreateStorageRootOptions
   const flusher = checkedFlusher(checked.durability);
   const made = await fs.promises.mkdir(root, { recursive: true });
   if (!(await fileSystem.isDirEmpty(root))) {
-    throw ocflError('DIRECTORY_NOT_EMPTY', `Cannot create a storage root in ${root}, which is not empty.`);
+    throw ocflError('DIRECTORY_NOT_EMPTY', `Can't create a storage root in ${root}, which isn't empty.`);
   }
   await writeStorageRoot(root, layout, flusher);
   if (made !== undefined) {

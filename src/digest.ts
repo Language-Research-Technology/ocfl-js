@@ -38,7 +38,7 @@ function toBytes(data: unknown): Uint8Array {
   if (data instanceof ArrayBuffer || data instanceof SharedArrayBuffer) {
     return new Uint8Array(data);
   }
-  throw new TypeError(`Unsupported data type: ${Object.prototype.toString.call(data)}`);
+  throw new TypeError(`Can't digest ${Object.prototype.toString.call(data)}: it must be a string, an ArrayBuffer or a view of one.`);
 }
 
 /** Each algorithm by its OCFL name, with the name `node:crypto` knows it by */

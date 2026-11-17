@@ -149,18 +149,18 @@ async function writeDurably(file: string, content: string): Promise<void> {
 }
 
 /**
- * Puts `content` at `lock` whole: it is staged beside the lock under a name no other writer uses, then hard-linked to the lock if
+ * Puts `record` at `lock` whole: it is staged beside the lock under a name no other writer uses, then hard-linked to the lock if
  * `exclusive`, which fails if the lock exists, NFS included, or else renamed over it.
  * @returns Whether it was put in place: `false` only if `exclusive` and the lock already exists
  * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if `exclusive` and the file system refuses the hard link
  */
-async function putLock(lock: string, content: string, exclusive: boolean): Promise<boolean> {
+async function putLock(lock: string, record: Lock, exclusive: boolean): Promise<boolean> {
   const staged = stagedLockPath(lock);
   let placed = true;
   try {
-    await writeDurably(staged, content);
+    await writeDurably(staged, formatLock(record));
     if (exclusive) {
-      await linkLock(staged, lock);
+      await linkLock(staged, lock, record.id);
     } else {
       await fs.promises.rename(staged, lock);
     }
@@ -181,7 +181,7 @@ async function putLock(lock: string, content: string, exclusive: boolean): Promi
  * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the file system refuses the hard link with `EPERM`, `ENOTSUP`, `EOPNOTSUPP`
  * or `ENOSYS`. `EPERM` is how some, such as FAT, say they have none, but it also comes from an immutable or append-only directory
  */
-async function linkLock(staged: string, lock: string): Promise<void> {
+async function linkLock(staged: string, lock: string, id: string): Promise<void> {
   try {
     await fs.promises.link(staged, lock);
   } catch (error) {
@@ -191,7 +191,7 @@ async function linkLock(staged: string, lock: string): Promise<void> {
     if (fileSystem.hasErrorCode(error, 'EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS')) {
       throw ocflError(
         'UNSUPPORTED_FILESYSTEM',
-        `Couldn't hard-link the lock ${lock}: the storage root's file system doesn't support hard links, which locks need, or refused this one.`,
+        `Couldn't hard-link the lock ${lock} of the object <${id}>: the storage root's file system doesn't support hard links, which locks need, or refused this one.`,
         { cause: error },
       );
     }
@@ -199,10 +199,10 @@ async function linkLock(staged: string, lock: string): Promise<void> {
   }
 }
 
-/** The `OBJECT_LOCKED` for an object whose lock is held, with `lockedAt` if the lock can still be read */
-async function objectLocked(workspace: string): Promise<OcflError> {
+/** The `OBJECT_LOCKED` for the object `id`, whose lock is held, with `lockedAt` if the lock can still be read */
+async function objectLocked(workspace: string, id: string): Promise<OcflError> {
   const lock = lockPath(workspace);
-  return ocflError('OBJECT_LOCKED', `A writer holds the object's lock ${lock}, or died holding it.`, { lockedAt: await readLockedAt(lock) });
+  return ocflError('OBJECT_LOCKED', `A writer holds the lock ${lock} of the object <${id}>, or died holding it.`, { lockedAt: await readLockedAt(lock) });
 }
 
 /**
@@ -218,22 +218,22 @@ async function objectLocked(workspace: string): Promise<OcflError> {
  */
 async function takeLock(workspace: string, storageRoot: string, id: string, objectRootExisted: boolean, operation: Operation): Promise<Lock> {
   const lock: Lock = { id, operation, lockedAt: new Date(), objectRootExisted, removing: false };
-  if (!(await createLockInWorkspace(workspace, storageRoot, formatLock(lock)))) {
-    throw await objectLocked(workspace);
+  if (!(await createLockInWorkspace(workspace, storageRoot, lock))) {
+    throw await objectLocked(workspace, id);
   }
   await documentWorkspaceQuietly(storageRoot);
   return lock;
 }
 
 /** @returns Whether the lock was created: `false` if it already exists */
-async function createLockInWorkspace(workspace: string, storageRoot: string, content: string, attempt = 1): Promise<boolean> {
+async function createLockInWorkspace(workspace: string, storageRoot: string, lock: Lock, attempt = 1): Promise<boolean> {
   try {
     await fs.promises.mkdir(workspace, { recursive: true });
-    return await putLock(lockPath(workspace), content, true);
+    return await putLock(lockPath(workspace), lock, true);
   } catch (error) {
     // Not found: another update's clean-up removed the empty workspace before the lock was created in it
     if (fileSystem.isNotFound(error) && attempt < MAX_LOCK_ATTEMPTS) {
-      return createLockInWorkspace(workspace, storageRoot, content, attempt + 1);
+      return createLockInWorkspace(workspace, storageRoot, lock, attempt + 1);
     }
     await fileSystem.removeEmptyAncestorsQuietly(workspace, storageRoot);
     throw error;
@@ -251,7 +251,7 @@ async function releaseLock(workspace: string, storageRoot: string): Promise<void
  * The lock is replaced whole, so it doesn't say so until this returns.
  */
 async function markRemoving(workspace: string, held: Lock): Promise<void> {
-  await putLock(lockPath(workspace), formatLock({ ...held, removing: true }), false);
+  await putLock(lockPath(workspace), { ...held, removing: true }, false);
 }
 
 /** Whether `name`, in an object's directory in the workspace, is a lock's content that was staged and never put in place */

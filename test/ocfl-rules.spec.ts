@@ -14,7 +14,7 @@ describe('ocfl-rules.specViolation', () => {
   it('names an object by its id, not as a path, when the fault is in an inventory already read', () => {
     const e = specViolation('E050', { objectId: 'item-1' }, 'digest "abc" is not in the manifest');
     assert.ok(ocflError('INVALID_OBJECT', 'E050')(e));
-    assert.match(e.message, / In object <item-1> \(digest "abc" is not in the manifest\)$/);
+    assert.match(e.message, / In the object <item-1> \(digest "abc" is not in the manifest\)$/);
     assert.doesNotMatch(e.message, / At /);
   });
 

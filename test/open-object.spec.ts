@@ -605,7 +605,7 @@ describe('opening an object', () => {
         assert.ok(invalid('E040')(error));
         assert.match(
           error.message,
-          /^E040: \[head\] MUST be the version directory name with the highest version number\. At .*\(head "v2" is not in versions\)$/,
+          /^E040: \[head\] MUST be the version directory name with the highest version number\. At .*inventory\.json, in the object <broken-rule> \(head "v2" isn't in versions\)$/,
         );
         return true;
       });

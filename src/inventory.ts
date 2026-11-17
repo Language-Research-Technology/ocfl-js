@@ -66,7 +66,7 @@ function isNonEmpty<T>(arr: readonly T[] | undefined): arr is readonly [T, ...T[
 }
 
 function headNotInVersions(where: FaultAt, head: string) {
-  return specViolation('E040', where, `head "${head}" is not in versions`);
+  return specViolation('E040', where, `head "${head}" isn't in versions`);
 }
 
 function headVersion(data: Inventory): InventoryVersion {
@@ -86,84 +86,84 @@ function isDigestBlock(block: unknown): boolean {
  * Checks an inventory read from storage, before its values are used as paths in the object root.
  * The constructor checks that `head` is one of the versions, that no digest is in the manifest twice (E096), and that the manifest
  * has content paths for every state digest (E050).
- * @param file - The inventory's path, for the error
+ * @param where - The inventory's path, and the object's id if known, for the error
  * @throws {@link OcflError} `INVALID_OBJECT` with `E036` or `E040` for a missing or empty head, `E104` for a version name,
  * `E017` or `E018` for the contentDirectory, `E099` or `E100` for a content path, `E052` or `E053` for a logical path in any
  * version, `E095` for logical paths of one version that repeat or conflict, `E048` or `E050` for a version's state, or `E111` or `E057` for the fixity block
  */
-function validateStoredInventory(data: Inventory, file: string): void {
+function validateStoredInventory(data: Inventory, where: FaultAt): void {
   if (data.head === undefined) {
-    throw specViolation('E036', file, 'missing head');
+    throw specViolation('E036', where, 'missing head');
   }
   if (data.head === '') {
-    throw specViolation('E040', file, 'empty head');
+    throw specViolation('E040', where, 'empty head');
   }
   for (const name of Object.keys(data.versions ?? {})) {
     if (!isVersionName(name)) {
-      throw specViolation('E104', file, `version "${name}"`);
+      throw specViolation('E104', where, `version "${name}"`);
     }
   }
   const { contentDirectory } = data;
   if (typeof contentDirectory === 'string') {
     if (contentDirectory.includes('/')) {
-      throw specViolation('E017', file, `contentDirectory "${contentDirectory}"`);
+      throw specViolation('E017', where, `contentDirectory "${contentDirectory}"`);
     }
     if (contentDirectory === '.' || contentDirectory === '..') {
-      throw specViolation('E018', file, `contentDirectory "${contentDirectory}"`);
+      throw specViolation('E018', where, `contentDirectory "${contentDirectory}"`);
     }
   }
   const fixity: unknown = data.fixity;
   if (fixity !== undefined && fixity !== null) {
     if (!isJsonObject(fixity)) {
-      throw specViolation('E111', file, 'fixity is not an object');
+      throw specViolation('E111', where, "fixity isn't an object");
     }
     const malformed = Object.keys(fixity).find((algorithm) => !isDigestBlock(fixity[algorithm]));
     if (malformed !== undefined) {
-      throw specViolation('E057', file, `fixity "${malformed}"`);
+      throw specViolation('E057', where, `fixity "${malformed}"`);
     }
   }
   for (const contentPaths of Object.values(data.manifest)) {
     for (const contentPath of contentPaths) {
-      checkInventoryPath(contentPath, { slash: 'E100', element: 'E099' }, file, `content path "${contentPath}"`);
+      checkInventoryPath(contentPath, { slash: 'E100', element: 'E099' }, where, `content path "${contentPath}"`);
     }
   }
   for (const [name, version] of Object.entries(data.versions ?? {})) {
     if (version.state === undefined) {
-      throw specViolation('E048', file, `${name} has no state`);
+      throw specViolation('E048', where, `${name} has no state`);
     }
     if (!isDigestBlock(version.state)) {
-      throw specViolation('E050', file, `${name} has a state that does not map digests to logical paths`);
+      throw specViolation('E050', where, `${name} has a state that doesn't map digests to logical paths`);
     }
     const seen = new Set<string>();
     for (const logicalPaths of Object.values(version.state)) {
       for (const logicalPath of logicalPaths) {
-        checkInventoryPath(logicalPath, { slash: 'E053', element: 'E052' }, file, `logical path "${logicalPath}" in ${name}`);
+        checkInventoryPath(logicalPath, { slash: 'E053', element: 'E052' }, where, `logical path "${logicalPath}" in ${name}`);
         if (seen.has(logicalPath)) {
-          throw specViolation('E095', file, `logical path "${logicalPath}" appears twice in ${name}`);
+          throw specViolation('E095', where, `logical path "${logicalPath}" appears twice in ${name}`);
         }
         seen.add(logicalPath);
       }
     }
-    checkNoDirectoryIsAFile(seen, file, name);
+    checkNoDirectoryIsAFile(seen, where, name);
   }
 }
 
 /** @throws {@link OcflError} `INVALID_OBJECT` with `E095` if one of the logical paths of version `name` is the directory of another */
-function checkNoDirectoryIsAFile(logicalPaths: Set<string>, file: string, name: string): void {
+function checkNoDirectoryIsAFile(logicalPaths: Set<string>, where: FaultAt, name: string): void {
   for (const logicalPath of logicalPaths) {
     const directory = parentDirectories(logicalPath).find((dir) => logicalPaths.has(dir));
     if (directory !== undefined) {
-      throw specViolation('E095', file, `logical path "${directory}" is a directory of "${logicalPath}" in ${name}`);
+      throw specViolation('E095', where, `logical path "${directory}" is a directory of "${logicalPath}" in ${name}`);
     }
   }
 }
 
-function checkInventoryPath(path: string, codes: { slash: ValidationCode; element: ValidationCode }, file: string, detail: string): void {
+function checkInventoryPath(path: string, codes: { slash: ValidationCode; element: ValidationCode }, where: FaultAt, detail: string): void {
   if (path.startsWith('/') || path.endsWith('/')) {
-    throw specViolation(codes.slash, file, detail);
+    throw specViolation(codes.slash, where, detail);
   }
   if (path.split('/').some((element) => element === '' || element === '.' || element === '..')) {
-    throw specViolation(codes.element, file, detail);
+    throw specViolation(codes.element, where, detail);
   }
 }
 
@@ -361,7 +361,7 @@ class OcflObjectInventory {
   #requireManifestKey(digest: string, where: FaultAt = { objectId: this.id }): string {
     const key = this.#manifestKey(digest);
     if (key === undefined) {
-      throw specViolation('E050', where, `digest "${digest}" is not in the manifest`);
+      throw specViolation('E050', where, `digest "${digest}" isn't in the manifest`);
     }
     return key;
   }
@@ -602,7 +602,7 @@ class OcflObjectInventory {
   /** @throws {@link OcflError} `PATH_CONFLICT` if the path is inside a file in the head state */
   #checkNotInsideFile(logicalPath: string) {
     if (this.#isInsideFile(logicalPath)) {
-      throw ocflError('PATH_CONFLICT', `Logical path "${logicalPath}" is inside an existing file in object [${this.id}]`);
+      throw ocflError('PATH_CONFLICT', `Logical path "${logicalPath}" is inside an existing file in the object <${this.id}>.`);
     }
   }
 
@@ -615,7 +615,7 @@ class OcflObjectInventory {
     const target = normaliseLogicalPath(logicalPath);
     this.#checkNotInsideFile(target);
     if (this.#headDirectories.has(target)) {
-      throw ocflError('PATH_CONFLICT', `Logical path "${logicalPath}" is an existing directory in object [${this.id}]`);
+      throw ocflError('PATH_CONFLICT', `Logical path "${logicalPath}" is an existing directory in the object <${this.id}>.`);
     }
   }
 
@@ -635,7 +635,7 @@ class OcflObjectInventory {
     const isFile = srcDigest !== undefined;
     const sources: [string, string][] = isFile ? [[src, srcDigest]] : this.#indexFindFiles(src);
     if (sources.length === 0) {
-      throw ocflError('FILE_NOT_FOUND', `Source logical path "${source}" does not exist in object [${this.id}]`);
+      throw ocflError('FILE_NOT_FOUND', `Source logical path "${source}" doesn't exist in the object <${this.id}>.`);
     }
     if (src === dest) {
       return { transfers: [], replaced: [] };
@@ -646,10 +646,13 @@ class OcflObjectInventory {
     if (!isFile) {
       this.#checkNotInsideFile(dest);
       if (this.getDigest(dest) !== undefined) {
-        throw ocflError('PATH_CONFLICT', `Target logical path "${target}" is an existing file in object [${this.id}]`);
+        throw ocflError('PATH_CONFLICT', `Target logical path "${target}" is an existing file in the object <${this.id}>.`);
       }
       if (!merge && this.#headDirectories.has(dest)) {
-        throw ocflError('TARGET_NOT_EMPTY', `Target logical path "${target}" already has files in object [${this.id}]; pass { merge: true } to merge into it`);
+        throw ocflError(
+          'TARGET_NOT_EMPTY',
+          `Target logical path "${target}" already has files in the object <${this.id}>; pass { merge: true } to merge into it.`,
+        );
       }
     }
     const transfers = sources.map(([file, digest]) => ({ src: file, dest: `${dest}${file.slice(src.length)}`, digest }));
@@ -763,11 +766,11 @@ class OcflObjectInventory {
     const path = normaliseLogicalPath(logicalPath);
     const versionName = this.#committedVersionName(version);
     if (versionName === undefined) {
-      throw ocflError('VERSION_NOT_FOUND', `Object [${this.id}] has no committed version ${version}`);
+      throw ocflError('VERSION_NOT_FOUND', `The object <${this.id}> has no committed version ${version}.`);
     }
     const found = this.#indexFindFiles(path, versionName);
     if (found.length === 0) {
-      throw ocflError('FILE_NOT_FOUND', `Version ${version} of object [${this.id}] has nothing at logical path "${logicalPath}"`);
+      throw ocflError('FILE_NOT_FOUND', `Version ${version} of the object <${this.id}> has nothing at logical path "${logicalPath}".`);
     }
     const files = found.flatMap(([filePath, digest]) => {
       if (this.getDigest(filePath) === digest) {

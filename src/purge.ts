@@ -23,12 +23,12 @@ function isNeededToOpen(name: string): boolean {
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it is an object with another id, or has no object declaration but holds something, is a file or is below one
  */
 async function assertHoldsObject(place: ObjectPlace, id: string): Promise<void> {
-  const { storageRoot, objectRoot } = place;
+  const { objectRoot } = place;
   const root = await readInventory(place, { callerHoldsLock: true });
   if (!root) {
     const contents = await fileSystem.dirContents(objectRoot);
     if (contents === 'empty') {
-      throw objectNotFound(storageRoot, id);
+      throw objectNotFound(id);
     }
     throw contents === 'not empty' && (await hasObjectDeclaration(objectRoot))
       ? declarationWithoutInventory(objectRoot)
@@ -58,8 +58,8 @@ async function deleteObjectRoot({ storageRoot, objectRoot }: ObjectPlace): Promi
 }
 
 /** For a purge that ended holding its lock */
-function recoveryNeeded(objectRoot: string, state: string, advice: string, cause: unknown): OcflError {
-  return lockKept(`Purging the object at ${objectRoot} ${state}`, advice, cause);
+function recoveryNeeded(objectRoot: string, id: string, state: string, advice: string, cause: unknown): OcflError {
+  return lockKept(`Purging the object <${id}> at ${objectRoot} ${state}`, advice, cause);
 }
 
 /**
@@ -79,7 +79,7 @@ async function purgeObject(place: ObjectPlace, id: string): Promise<void> {
     try {
       await releaseLock(workspace, storageRoot);
     } catch {
-      throw recoveryNeeded(objectRoot, 'was refused, and its lock could not be released', 'then purge the object again', error);
+      throw recoveryNeeded(objectRoot, id, "was refused, and its lock couldn't be released", 'then purge the object again', error);
     }
     throw error;
   }
@@ -88,7 +88,7 @@ async function purgeObject(place: ObjectPlace, id: string): Promise<void> {
     await clearWorkspace(workspace);
     await releaseLock(workspace, storageRoot);
   } catch (error) {
-    throw recoveryNeeded(objectRoot, 'failed part of the way through', 'which finishes purging it', error);
+    throw recoveryNeeded(objectRoot, id, 'failed part of the way through', 'which finishes purging it', error);
   }
 }
 

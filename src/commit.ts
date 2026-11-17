@@ -9,7 +9,7 @@ import * as fileSystem from './file-system.ts';
 import type { OcflObjectInventory } from './inventory.ts';
 import { type Lock, lockKept, releaseLock, takeLock } from './lock.ts';
 import type { ObjectPlace } from './object-place.ts';
-import { assertEmptyObjectRoot, declarationWithoutInventory, enclosingObject } from './object-root.ts';
+import { assertEmptyObjectRoot, declarationWithoutInventory, enclosingObject, objectExists, objectOutOfDate } from './object-root.ts';
 import { specViolation } from './ocfl-rules.ts';
 import { isStagedRootInventory, type RootInventory, readInventory, rootInventoryPaths, sidecarContent, sidecarDigest } from './root-inventory.ts';
 import { parseJsonObject } from './utils.ts';
@@ -36,7 +36,7 @@ async function ensureObjectDeclaration(root: string, id: string, ocflVersion: Oc
     return;
   }
   if (!creating) {
-    throw specViolation('E003', root, 'it has an inventory but no object declaration');
+    throw specViolation('E003', { objectId: id, file: root }, 'it has an inventory but no object declaration');
   }
   await assertEmptyObjectRoot(root, id);
   const declaration = OBJECT_DECLARATION_PREFIX + ocflVersion;
@@ -78,24 +78,21 @@ async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory
     if (content === undefined || madeFrom === undefined || (await Hashing.digest(inventory.digestAlgorithm, content)) === madeFrom) {
       return;
     }
-    throw ocflError(
-      'OBJECT_OUT_OF_DATE',
-      `The object at ${objectRoot} was opened at ${expected}, and its root inventory has been replaced since. Open it again and retry.`,
-    );
+    throw objectOutOfDate(inventory.id, expected, 'its root inventory has been replaced since');
   }
   if (expected === undefined) {
-    throw ocflError('OBJECT_EXISTS', `There is already an object at ${objectRoot}.`);
+    throw objectExists(inventory.id);
   }
   const found = actual === undefined ? 'no root inventory' : actual === null ? 'a root inventory with no head' : `the head ${actual}`;
-  throw ocflError('OBJECT_OUT_OF_DATE', `The object at ${objectRoot} was opened at ${expected}, and now has ${found}. Open it again and retry.`);
+  throw objectOutOfDate(inventory.id, expected, `now has ${found}`);
 }
 
 /**
  * For an update that ended holding its lock: it may be committed, or may have left files behind.
  * @param cause - What the update failed with
  */
-function recoveryNeeded(objectRoot: string, state: string, cause: unknown) {
-  return lockKept(`The update of the object at ${objectRoot} ${state}`, 'then open the object again before retrying', cause);
+function recoveryNeeded(objectRoot: string, id: string, state: string, cause: unknown) {
+  return lockKept(`The update of the object <${id}> at ${objectRoot} ${state}`, 'then open the object again before retrying', cause);
 }
 
 /** Renames the staged sidecar of the root inventory over its sidecar */
@@ -173,7 +170,12 @@ class ObjectWrite {
     }
     const { objectRoot, workspace, storageRoot } = this.#place;
     if ('unconfirmed' in replaced) {
-      throw recoveryNeeded(objectRoot, 'may have been committed: replacing its root inventory failed, but may have taken effect', replaced.unconfirmed);
+      throw recoveryNeeded(
+        objectRoot,
+        this.#inventory.id,
+        'may have been committed: replacing its root inventory failed, but may have taken effect',
+        replaced.unconfirmed,
+      );
     }
     try {
       await placeSidecar(objectRoot, this.#inventory.digestAlgorithm);
@@ -181,7 +183,7 @@ class ObjectWrite {
       await this.#settings.flusher.flush(objectRoot);
       await releaseLock(workspace, storageRoot);
     } catch (error) {
-      throw recoveryNeeded(objectRoot, 'was committed, but could not be finished', error);
+      throw recoveryNeeded(objectRoot, this.#inventory.id, "was committed, but couldn't be finished", error);
     }
     return replaced.committed;
   }
@@ -211,7 +213,7 @@ class ObjectWrite {
       }
       await releaseLock(workspace, storageRoot);
     } catch (undoFailure) {
-      throw recoveryNeeded(objectRoot, 'was not committed, and what it made could not all be removed', failure ? failure.error : undoFailure);
+      throw recoveryNeeded(objectRoot, this.#inventory.id, "wasn't committed, and what it made couldn't all be removed", failure ? failure.error : undoFailure);
     }
   }
 
@@ -242,9 +244,13 @@ class ObjectWrite {
       await fileSystem.move(this.#versionPath, objectVersionPath);
     } catch (error) {
       throw fileSystem.hasErrorCode(error, 'EXDEV')
-        ? ocflError('CROSS_FILESYSTEM_MOVE', `Cannot move the new version into "${objectRoot}": it is on a different filesystem from the workspace.`, {
-            cause: error,
-          })
+        ? ocflError(
+            'CROSS_FILESYSTEM_MOVE',
+            `Can't move the new version of the object <${inventory.id}> into ${objectRoot}: it is on a different file system from the workspace.`,
+            {
+              cause: error,
+            },
+          )
         : error;
     }
     this.#versionPath = objectVersionPath;
@@ -296,7 +302,7 @@ async function startWrite(place: ObjectPlace, settings: WriteSettings, inventory
     try {
       await releaseLock(workspace, storageRoot);
     } catch {
-      throw recoveryNeeded(objectRoot, 'was refused, and its lock could not be released', error);
+      throw recoveryNeeded(objectRoot, inventory.id, "was refused, and its lock couldn't be released", error);
     }
     throw error;
   };
@@ -309,7 +315,7 @@ async function startWrite(place: ObjectPlace, settings: WriteSettings, inventory
     // Kept locked, so that what an earlier writer left there never becomes part of a version
     if (fileSystem.isAlreadyExists(error)) {
       throw lockKept(
-        `The object at ${objectRoot} can't be updated: an earlier update left ${versionPath} behind`,
+        `The object <${inventory.id}> at ${objectRoot} can't be updated: an earlier update left ${versionPath} behind`,
         'then open the object again before retrying',
         error,
       );

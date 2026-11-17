@@ -32,7 +32,10 @@ describe('Hashing', () => {
       assert.strictEqual(await Hashing.digest('sha512', createReadable('utf8')), controlDigest);
     });
     it('rejects a chunk that is not bytes or a string', async () => {
-      await assert.rejects(Hashing.digest('sha512', Readable.from([42])), /Unsupported data type: \[object Number\]/);
+      await assert.rejects(
+        Hashing.digest('sha512', Readable.from([42])),
+        /Can't digest \[object Number\]: it must be a string, an ArrayBuffer or a view of one\.$/,
+      );
     });
   });
 

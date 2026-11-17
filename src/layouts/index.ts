@@ -45,7 +45,7 @@ function createLayout(config: LayoutConfig): BuiltInLayout {
   }
   const layoutClass = builtInLayoutClass(name);
   if (!layoutClass) {
-    throw new TypeError(`Layout "${name}" is not supported.`);
+    throw new TypeError(`The storage layout "${name}" isn't one this library implements; it implements ${IMPLEMENTED_LAYOUTS}.`);
   }
   return new layoutClass(own);
 }
