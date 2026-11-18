@@ -337,10 +337,9 @@ async function completeSidecar(objectRoot: string, { inventory, digest }: RootIn
  *
  * Only what a dead writer can have left is removed from the object root: staged root inventory files, and the version after the head or,
  * with no root inventory, the declaration and first version of a create, and the object root and the layout directories above it that
- * that leaves empty if the lock says the create made them. A root inventory lost from a committed object with only a first version is
- * taken for a dead create too, whatever operation the lock records. A writer of an id whose directory holds another
+ * that leaves empty if the lock says the create made them. A writer of an id whose directory holds another
  * object, or is inside one, was refused before it wrote anything there, so the object root is left alone.
- * @throws {@link OcflError} `INVALID_OBJECT` if the root inventory can't be used, or the object has a declaration and no root inventory but isn't what a dead create leaves; changing nothing
+ * @throws {@link OcflError} `INVALID_OBJECT` if the root inventory can't be used, or the object has a declaration and no root inventory but isn't what a dead create leaves: the write is an update, or there is a version other than the first; changing nothing
  */
 export async function recoverWrite(place: ObjectPlace, lock: Lock, flusher: fileSystem.Flusher): Promise<void> {
   const { storageRoot, objectRoot, workspace } = place;
@@ -353,7 +352,7 @@ export async function recoverWrite(place: ObjectPlace, lock: Lock, flusher: file
   const declarations = rootNames.filter((name) => name.startsWith(DECLARATION_TAG + OBJECT_DECLARATION_PREFIX));
   // A create writes the declaration before anything else in the object root, so without one nothing there is its
   const createLeft = !root && declarations.length > 0;
-  if (createLeft && rootNames.some((name) => isVersionName(name) && name !== FIRST_VERSION)) {
+  if (createLeft && (lock.operation !== 'create' || rootNames.some((name) => isVersionName(name) && name !== FIRST_VERSION))) {
     throw declarationWithoutInventory(objectRoot, lock.id);
   }
 

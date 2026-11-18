@@ -20,6 +20,7 @@ import {
   workspaceOf,
   writeB,
   writeC,
+  writeLock,
 } from './helpers/drafts.ts';
 import { emptyDirectoriesUnder } from './helpers/empty-directories.ts';
 import { withFsFailure } from './helpers/fs-failures.ts';
@@ -430,8 +431,8 @@ describe('root.purge', () => {
       ['everything', ['.']],
     ] as const) {
       it(`is finished by recover after it died having deleted ${gone}`, async () => {
-        const { root, objectRoot, lock } = await existingObject();
-        await writeFiles(path.dirname(lock), { lock: JSON.stringify({ id: ID, lockedAt: new Date().toISOString(), objectRootExisted: true, removing: true }) });
+        const { root, objectRoot } = await existingObject();
+        await writeLock(root, ID, JSON.stringify({ id: ID, operation: 'purge', lockedAt: new Date().toISOString(), objectRootExisted: true, removing: true }));
         for (const name of names) {
           await fs.promises.rm(path.join(objectRoot, name), { recursive: true });
         }
@@ -442,6 +443,24 @@ describe('root.purge', () => {
         assertNoWorkspace(root);
         assert.deepStrictEqual(await emptyDirectoriesUnder(root.path), []);
         await assertHolds(root, await createObject(root, ID, { 'new.txt': 'new' }), { 'new.txt': 'new' });
+      });
+    }
+
+    for (const [state, damage] of [
+      ['a healthy object', async () => {}],
+      ['an object that lost its root inventory', (objectRoot: string) => fs.promises.rm(path.join(objectRoot, 'inventory.json'))],
+      ['an object whose root inventory is corrupt', (objectRoot: string) => fs.promises.writeFile(path.join(objectRoot, 'inventory.json'), '{')],
+    ] as const) {
+      it(`only has its lock released by recover after it died before it began deleting ${state}`, async () => {
+        const { root, objectRoot } = await existingObject();
+        await damage(objectRoot);
+        await writeLock(root, ID, JSON.stringify({ id: ID, operation: 'purge', lockedAt: new Date().toISOString(), objectRootExisted: true }));
+        const held = await snapshot(objectRoot);
+
+        await recover(root, ID);
+
+        assert.deepStrictEqual(await snapshot(objectRoot), held);
+        assertNoWorkspace(root);
       });
     }
 

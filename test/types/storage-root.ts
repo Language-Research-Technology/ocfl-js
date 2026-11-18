@@ -140,10 +140,6 @@ export function anUnfinishedWriteNamesItsOperation(write: UnfinishedWrite): stri
   const operation: 'create' | 'update' | 'purge' = write.operation;
   // @ts-expect-error read-only
   write.operation = 'update';
-  // @ts-expect-error renamed purge
-  if (write.operation === 'remove') {
-    return '';
-  }
   // @ts-expect-error whether a purge had begun deleting is not public
   void write.removing;
   return operation;
