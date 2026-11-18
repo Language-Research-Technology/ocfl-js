@@ -55,7 +55,7 @@ A file server reads files from OCFL objects and sends them over HTTP. It never w
 - `file.modifiedAt` is when the version that gave the file its current content was committed, which makes a good `Last-Modified`. It comes from the inventory, not the stored file, so copying or restoring the storage root doesn't change it. Content changed back to an earlier content counts as a change, so the date is that of the change back, not the earlier version's.
 - `await file.stream({ start, end })` opens and checks the stored file before it resolves. One that is missing or isn't a regular file rejects with `INVALID_OBJECT`, and one that can't be read rejects with the file system error, all before any headers are sent, so the server answers `500`. A stored file removed once the stream is open is still read in full.
 - The stream holds the stored file open until it ends. `pipeline` destroys it if the client goes away; code that gets a stream and doesn't read it should `destroy()` it.
-- To serve an earlier version, read its files from `object.versions.get(number)?.files` instead of `object.head.files`.
+- To serve an earlier version, read its files from `object.version(number).files` instead of `object.head.files`. Convert the number from the request with `Number()` first, since a string throws a `TypeError`. A number that isn't a version, `NaN` among them, throws `VERSION_NOT_FOUND`, which the server can answer with a 404.
 
 ## A file's history
 
@@ -66,7 +66,7 @@ This lists each file of an object's head, with the version that added it and the
 - [`createdIn`](/ocfl-js/glossary/#created-in) follows the logical path, not the content: a renamed file is created in the version of the rename, and one removed and later put back is created again in the version that puts it back.
 - [`modifiedIn`](/ocfl-js/glossary/#modified-in) follows the content: content modified and later put back as it was is modified again in the version that puts it back.
 - `createdAt` and `modifiedAt` come from the inventory, so restoring the storage root from a backup doesn't change them.
-- A file read from an earlier version, through `object.versions.get(number)?.files`, gives its history up to that version.
+- A file read from an earlier version, through `object.version(number).file(path)`, gives its history up to that version.
 
 ## An indexing job
 

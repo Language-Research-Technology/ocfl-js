@@ -98,8 +98,8 @@ The digest directories haven't changed, only the last directory, named by the en
 | `for await (const o of storage)`, `storage.objects()` | `root.objects()`, which yields `{ status: 'opened', object }`, or `{ status: 'damaged', error, objectRoot, id? }` for an object it can't open |
 | `storage.remove(id)`, `delete(id)`, `purge(id)` | `root.purge(id)` |
 | `object.getInventory()`, `object.inventory`, `object.headVersion` | `object.versions`, and `object.head` with its `number` |
-| `object.files(version)`, `object.count(version)` | `object.versions.get(n)?.files`, and its `size` |
-| `object.getFile(path, 'v1')`, `getFile({ logicalPath, version })`, `fileByLogicalPath()` | `object.versions.get(1)?.files.get(path)`, or `object.head.files.get(path)` |
+| `object.files(version)`, `object.count(version)` | `object.version(n).files`, and its `size` |
+| `object.getFile(path, 'v1')`, `getFile({ logicalPath, version })`, `fileByLogicalPath()` | `object.version(1).file(path)`, or `object.head.file(path)`; both throw if it isn't there |
 | `file.logicalPath` | `file.path` |
 | `file.text()`, `asString()`, `file.buffer()`, `asBuffer()` | `file.text()`, `file.bytes()` |
 | `file.stream()`, `asStream()` | `await file.stream()`, or `await file.stream({ start, end })` for part of the content, a Node `Readable` |

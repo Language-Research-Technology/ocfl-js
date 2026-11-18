@@ -21,8 +21,8 @@
  * | `CROSS_FILESYSTEM_MOVE` | The workspace and the object are on different file systems. | No |
  * | `UNSUPPORTED_FILESYSTEM` | The storage root's file system can't hard-link the object's lock. | No |
  * | `VERSION_LIMIT_REACHED` | The object's zero-padded version names have run out. | No |
- * | `VERSION_NOT_FOUND` | `reinstate` was given a version the object hasn't committed. | No |
- * | `FILE_NOT_FOUND` | A draft operation was given a logical path with nothing at it, in the draft or in the version to reinstate from. | No |
+ * | `VERSION_NOT_FOUND` | `object.version()` was given a number that isn't a version, or `reinstate` one that isn't committed. | No |
+ * | `FILE_NOT_FOUND` | `version.file()` found no file at a logical path; a draft operation found nothing there, in the draft or in the version to reinstate from. | No |
  * | `PATH_CONFLICT` | A draft operation would make a logical path both a file and a directory. | No |
  * | `TARGET_NOT_EMPTY` | A directory was copied or renamed onto a target that has files. | With `{ merge: true }` |
  * | `INVALID_LOGICAL_PATH` | A logical path is empty, absolute or has a `..` segment, or a target is inside its source. | No |

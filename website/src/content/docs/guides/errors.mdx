@@ -188,15 +188,22 @@ These come from draft operations inside the function you pass to `create` or `up
 
 ### `FILE_NOT_FOUND`
 
-**Cause:** `copy`, `rename` or `remove` was given a path with no file or directory in the draft, or `reinstate` a path with nothing at it in that version.
+**Cause:** one of these found nothing at the path:
 
-**What to do:** check the path against `object.head.files`, or against the version's `files` for `reinstate`.
+- `version.file()`: no file in that version. A directory isn't a file.
+- `copy`, `rename` or `remove`: no file or directory in the draft.
+- `reinstate`: nothing in that version.
+
+**What to do:** check the path against the version's `files`, or against `object.head.files` for a draft operation. Where a missing file is a normal outcome, such as a request for a path that may not exist, use `version.files.get(path)`, which gives `undefined` instead of throwing. It looks the path up exactly as written, without normalising it, so `./a.txt` or `a.txt/` isn't found there.
 
 ### `VERSION_NOT_FOUND`
 
-**Cause:** `reinstate` was given a version number the object hasn't committed: one past the head, the version the draft is making, or one that isn't a whole number from 1.
+**Cause:** the version number isn't there:
 
-**What to do:** take the number from `object.versions`.
+- `object.version()`: the object has no version with that number.
+- `reinstate`: the object hasn't committed it. That includes one past the head, the version the draft is making, and one that isn't a whole number from 1.
+
+**What to do:** take the number from `object.versions`, or use `object.versions.get(number)`, which gives `undefined` instead of throwing.
 
 ### `PATH_CONFLICT`
 
