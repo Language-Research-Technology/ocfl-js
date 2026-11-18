@@ -14,6 +14,8 @@ fail() {
 tgz="$tmp/package.tgz"
 pnpm -C "$root" pack --out "$tgz" >/dev/null || fail "packing failed"
 pnpm -C "$root" exec publint run "$tgz" --strict || fail "publint rejected the tarball"
+# esm-only: attw can't model require() of an ES module, which Node.js 22.12 allows (ADR 0001)
+pnpm -C "$root" exec attw "$tgz" --profile esm-only || fail "attw rejected the tarball"
 
 consumer="$tmp/consumer"
 mkdir "$consumer"

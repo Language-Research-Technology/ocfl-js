@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createStorageRoot, openStorageRoot } from '@ocfl/ocfl-fs';
+import manifest from '@ocfl/ocfl-fs/package.json' with { type: 'json' };
+
+assert.equal(manifest.name, '@ocfl/ocfl-fs', 'the package.json export resolved to the wrong manifest');
 
 const resources = process.argv[2];
 

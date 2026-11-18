@@ -35,7 +35,8 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
@@ -61,6 +62,7 @@
   },
   "packageManager": "pnpm@12.18.0",
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@biomejs/biome": "^2.6.6",
     "@commitlint/cli": "^21.2.4",
     "@commitlint/config-conventional": "^21.2.4",
