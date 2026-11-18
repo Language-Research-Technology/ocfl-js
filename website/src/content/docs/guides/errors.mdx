@@ -15,14 +15,17 @@ The library throws one error class, [`OcflError`](/ocfl-js/api/classes/ocflerror
 
 ## Catching an `OcflError`
 
-Test `code`. The message names the object by its id, as `<id>`, and gives a path only where a person may need to look on disk. It is useful in logs, but it isn't part of the contract and may change. New codes can arrive in a minor release, so a `switch` on `code` keeps a `default` branch.
+Recognise one with `isOcflError(error)`, then test `code`. `isOcflError(error, 'OBJECT_LOCKED')` tests both, and tells TypeScript the code. Unlike `instanceof OcflError`, it also recognises an error from another installed copy of this release or a later one. The message names the object by its id, as `<id>`, and gives a path only where a person may need to look on disk. It is useful in logs, but it isn't part of the contract and may change. New codes can arrive in a minor release, so a `switch` on `code` keeps a `default` branch.
 
 :::caution
-Messages can contain absolute paths on the server, including the paths of stored files. Log them, but don't send `error.message` back in an HTTP response or show it to the people using your service.
+Messages can contain absolute paths on the server, including the paths of stored files. No field gives a path in the storage root. Log them, but don't send `error.message` back in an HTTP response or show it to the people using your service.
 :::
 
-Two fields are set only some of the time:
+These fields are set only some of the time. Read them, rather than parsing the message:
 
+- `objectId` is the id of the object the error is about. Every code about one object sets it. Codes about the storage root as a whole don't, and nor does `INVALID_OBJECT` when the fault leaves the id unknown, such as an inventory its sidecar doesn't confirm.
+- `logicalPath` is the logical path at fault, as the inventory lists it, for [`FILE_NOT_FOUND`](#file_not_found), [`PATH_CONFLICT`](#path_conflict), [`TARGET_NOT_EMPTY`](#target_not_empty) and [`INVALID_LOGICAL_PATH`](#invalid_logical_path).
+- `sourcePath` is the file `import` couldn't take, for [`SOURCE_CHANGED`](#source_changed) and [`UNSUPPORTED_FILE_TYPE`](#unsupported_file_type): the `source` you gave `import`, joined, as `path.join` does, with the file's path below it, and not resolved.
 - `ocflCode` is the code the OCFL specification gives the rule that was broken, such as `E060`, when the fault has one. Only `INVALID_OBJECT` and `INVALID_STORAGE_ROOT` carry one.
 - `lockedAt` is when another writer took the object's lock. Only `OBJECT_LOCKED` sets it, and it is absent if the lock couldn't be read or was released in the meantime.
 
@@ -194,7 +197,7 @@ These come from draft operations inside the function you pass to `create` or `up
 - `copy`, `rename` or `remove`: no file or directory in the draft.
 - `reinstate`: nothing in that version.
 
-**What to do:** check the path against the version's `files`, or against `object.head.files` for a draft operation. Where a missing file is a normal outcome, such as a request for a path that may not exist, use `version.files.get(path)`, which gives `undefined` instead of throwing. It looks the path up exactly as written, without normalising it, so `./a.txt` or `a.txt/` isn't found there.
+**What to do:** check the path against the version's `files`, or against `object.head.files` for a draft operation. `logicalPath` is the path that wasn't found: the source, for `copy` and `rename`. Where a missing file is a normal outcome, such as a request for a path that may not exist, use `version.files.get(path)`, which gives `undefined` instead of throwing. It looks the path up exactly as written, without normalising it, so `./a.txt` or `a.txt/` isn't found there.
 
 ### `VERSION_NOT_FOUND`
 
@@ -209,7 +212,7 @@ These come from draft operations inside the function you pass to `create` or `up
 
 **Cause:** the operation would make a logical path both a file and a directory: a file where a directory is, or a file below another file. Writing over a file is allowed, and doesn't throw this.
 
-**What to do:** remove what is in the way first.
+**What to do:** remove what is in the way first. `logicalPath` is the path that would conflict, which for a directory copied or renamed may be a file below its target.
 
 ### `TARGET_NOT_EMPTY`
 
@@ -221,17 +224,17 @@ These come from draft operations inside the function you pass to `create` or `up
 
 **Cause:** a logical path is empty, absolute, or has a `..` segment (a backslash counts as a separator); a `copy` or `rename` target is inside its source; or an `import` target is empty or names the top of the object, such as `.`.
 
-**What to do:** use a relative path without `..`. To import a directory's contents at the top of the object, leave out the target.
+**What to do:** use a relative path without `..`. `logicalPath` is the path refused, exactly as you gave it if it is absolute or has `..`, and absent if it is empty. To import a directory's contents at the top of the object, leave out the target.
 
 ### `SOURCE_CHANGED`
 
 **Cause:** a file changed while `import` was copying it in: the copy's digest doesn't match the source.
 
-**What to do:** retry once nothing is writing to the source.
+**What to do:** retry once nothing is writing to the source. `sourcePath` is the file that changed.
 
 ### `UNSUPPORTED_FILE_TYPE`
 
-**Cause:** `import` found a symbolic link, socket, device or anything else that isn't a regular file or directory.
+**Cause:** `import` found a symbolic link, socket, device or anything else that isn't a regular file or directory. `sourcePath` is what it found.
 
 **What to do:** import the files the link points to, or, for a link below the source, leave it out with `import`'s [`filter` option](/ocfl-js/guides/updating-objects/#leaving-files-out).
 

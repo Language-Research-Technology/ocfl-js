@@ -425,7 +425,16 @@ class OcflObjectInventory {
         throw headNotInVersions({ objectId: data.id }, data.head);
       }
       state = JSON.parse(JSON.stringify(prev.state));
-      data.head = VersionNumber._among(data.head, Object.keys(data.versions)).next().toString();
+      const head = VersionNumber._among(data.head, Object.keys(data.versions));
+      const next = head.next();
+      if (next === undefined) {
+        throw ocflError(
+          'VERSION_LIMIT_REACHED',
+          `The object <${data.id}> can have no version after ${head}: a zero-padded version name must start with a zero (E011), and one of ${head.zeroPaddingLength} digits can't for ${head.value + 1}.`,
+          { objectId: data.id },
+        );
+      }
+      data.head = next.toString();
     } else {
       data.head = 'v1';
     }
@@ -602,7 +611,10 @@ class OcflObjectInventory {
   /** @throws {@link OcflError} `PATH_CONFLICT` if the path is inside a file in the head state */
   #checkNotInsideFile(logicalPath: string) {
     if (this.#isInsideFile(logicalPath)) {
-      throw ocflError('PATH_CONFLICT', `Logical path "${logicalPath}" is inside an existing file in the object <${this.id}>.`);
+      throw ocflError('PATH_CONFLICT', `Logical path "${logicalPath}" is inside an existing file in the object <${this.id}>.`, {
+        objectId: this.id,
+        logicalPath,
+      });
     }
   }
 
@@ -615,7 +627,10 @@ class OcflObjectInventory {
     const target = normaliseLogicalPath(logicalPath);
     this.#checkNotInsideFile(target);
     if (this.#headDirectories.has(target)) {
-      throw ocflError('PATH_CONFLICT', `Logical path "${logicalPath}" is an existing directory in the object <${this.id}>.`);
+      throw ocflError('PATH_CONFLICT', `Logical path "${logicalPath}" is an existing directory in the object <${this.id}>.`, {
+        objectId: this.id,
+        logicalPath: target,
+      });
     }
   }
 
@@ -628,30 +643,40 @@ class OcflObjectInventory {
     const dest = normaliseLogicalPath(target);
     for (const logicalPath of [src, dest]) {
       if (logicalPath === '.') {
-        throw ocflError('INVALID_LOGICAL_PATH', "A logical path can't be empty");
+        throw ocflError('INVALID_LOGICAL_PATH', "A logical path can't be empty", { objectId: this.id });
       }
     }
     const srcDigest = this.getDigest(src);
     const isFile = srcDigest !== undefined;
     const sources: [string, string][] = isFile ? [[src, srcDigest]] : this.#indexFindFiles(src);
     if (sources.length === 0) {
-      throw ocflError('FILE_NOT_FOUND', `Source logical path "${source}" doesn't exist in the object <${this.id}>.`);
+      throw ocflError('FILE_NOT_FOUND', `Source logical path "${source}" doesn't exist in the object <${this.id}>.`, {
+        objectId: this.id,
+        logicalPath: src,
+      });
     }
     if (src === dest) {
       return { transfers: [], replaced: [] };
     }
     if (dest.startsWith(`${src}/`)) {
-      throw ocflError('INVALID_LOGICAL_PATH', `Target logical path "${target}" is inside the source "${source}"`);
+      throw ocflError('INVALID_LOGICAL_PATH', `Target logical path "${target}" is inside the source "${source}" in the object <${this.id}>.`, {
+        objectId: this.id,
+        logicalPath: dest,
+      });
     }
     if (!isFile) {
       this.#checkNotInsideFile(dest);
       if (this.getDigest(dest) !== undefined) {
-        throw ocflError('PATH_CONFLICT', `Target logical path "${target}" is an existing file in the object <${this.id}>.`);
+        throw ocflError('PATH_CONFLICT', `Target logical path "${target}" is an existing file in the object <${this.id}>.`, {
+          objectId: this.id,
+          logicalPath: dest,
+        });
       }
       if (!merge && this.#headDirectories.has(dest)) {
         throw ocflError(
           'TARGET_NOT_EMPTY',
           `Target logical path "${target}" already has files in the object <${this.id}>; pass { merge: true } to merge into it.`,
+          { objectId: this.id, logicalPath: dest },
         );
       }
     }
@@ -766,11 +791,14 @@ class OcflObjectInventory {
     const path = normaliseLogicalPath(logicalPath);
     const versionName = this.#committedVersionName(version);
     if (versionName === undefined) {
-      throw ocflError('VERSION_NOT_FOUND', `The object <${this.id}> has no committed version ${version}.`);
+      throw ocflError('VERSION_NOT_FOUND', `The object <${this.id}> has no committed version ${version}.`, { objectId: this.id });
     }
     const found = this.#indexFindFiles(path, versionName);
     if (found.length === 0) {
-      throw ocflError('FILE_NOT_FOUND', `Version ${version} of the object <${this.id}> has nothing at logical path "${logicalPath}".`);
+      throw ocflError('FILE_NOT_FOUND', `Version ${version} of the object <${this.id}> has nothing at logical path "${logicalPath}".`, {
+        objectId: this.id,
+        logicalPath: path,
+      });
     }
     const files = found.flatMap(([filePath, digest]) => {
       if (this.getDigest(filePath) === digest) {

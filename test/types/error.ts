@@ -1,4 +1,22 @@
-import type { OcflErrorCode } from '../../src/index.ts';
+import { isOcflError, type OcflErrorCode } from '../../src/index.ts';
+
+export function aCodeNarrowsTheError(error: unknown): Date | undefined {
+  if (isOcflError(error, 'OBJECT_LOCKED')) {
+    const code: 'OBJECT_LOCKED' = error.code;
+    return code === 'OBJECT_LOCKED' ? error.lockedAt : undefined;
+  }
+  if (isOcflError(error)) {
+    // @ts-expect-error any code, not only OBJECT_LOCKED
+    const code: 'OBJECT_LOCKED' = error.code;
+    return code === 'OBJECT_LOCKED' ? error.lockedAt : undefined;
+  }
+  return undefined;
+}
+
+export function onlyARealCodeNarrows(error: unknown): boolean {
+  // @ts-expect-error not a code
+  return isOcflError(error, 'OBJECT_NOT_LOADED');
+}
 
 // Fails to compile when a code is added or removed without this list changing
 export function everyCodeIsHandled(code: OcflErrorCode): string {

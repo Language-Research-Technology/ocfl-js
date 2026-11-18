@@ -1,6 +1,10 @@
 /**
  * Every value of {@link OcflError.code}: what causes it, and whether retrying helps. The
  * {@link https://language-research-technology.github.io/ocfl-js/guides/errors/ | errors guide} says more about each.
+ * Test one with {@link isOcflError}, which narrows `code` to it:
+ * ```ts
+ * if (isOcflError(error, 'FILE_NOT_FOUND')) console.log(`Nothing at ${error.logicalPath} in ${error.objectId}`);
+ * ```
  *
  * | Code | Cause | Retry? |
  * | --- | --- | --- |
@@ -58,12 +62,16 @@ type OcflErrorCode =
 interface OcflErrorOptions {
   ocflCode?: string | undefined;
   lockedAt?: Date | undefined;
+  objectId?: string | undefined;
+  logicalPath?: string | undefined;
+  sourcePath?: string | undefined;
   /** The error being wrapped */
   cause?: unknown;
 }
 
 /**
- * The error the library throws for anything a caller might handle; test `code`. The message isn't part of the contract.
+ * The error the library throws for anything a caller might handle; recognise it with {@link isOcflError} and test `code`.
+ * The message isn't part of the contract: read `objectId`, `logicalPath` and `sourcePath` instead.
  * A wrong call throws a plain `TypeError`, `RangeError` or `Error`, and an aborted signal rejects with its `reason`.
  * File system errors such as `ENOSPC` pass through untouched, unless the library knows what one means or it leaves a write
  * needing recovery: then the error has the code for that meaning, or `RECOVERY_NEEDED`, with the file system error as `cause`.
@@ -73,13 +81,13 @@ interface OcflErrorOptions {
  * try {
  *   await object.update(details, (draft) => draft.write('notes.txt', 'Field notes'));
  * } catch (error) {
- *   if (!(error instanceof OcflError)) throw error;
+ *   if (!isOcflError(error)) throw error;
  *   switch (error.code) {
  *     case 'OBJECT_LOCKED':
  *       console.log(`Another writer has held the lock since ${error.lockedAt?.toISOString() ?? 'an unknown time'}`);
  *       break;
  *     case 'OBJECT_OUT_OF_DATE':
- *       console.log('A version was committed since the object was opened; open it again');
+ *       console.log(`A version of ${error.objectId} was committed since it was opened; open it again`);
  *       break;
  *     default:
  *       throw error;
@@ -94,6 +102,23 @@ class OcflError extends Error {
   declare readonly ocflCode?: string;
   /** When the object's lock was taken. Set only for `OBJECT_LOCKED`, and absent when the lock couldn't be read or was released meanwhile. */
   declare readonly lockedAt?: Date;
+  /**
+   * The id of the object the error is about. Set for every code about one object; absent for those about the storage root as a
+   * whole, and for `INVALID_OBJECT` when the fault leaves the object's id unknown, such as an inventory its sidecar doesn't confirm.
+   * For a fault in an inventory its sidecar confirms, it is the id that inventory names.
+   */
+  declare readonly objectId?: string;
+  /**
+   * The logical path at fault, as the inventory lists it: the source of `FILE_NOT_FOUND`, the target of `PATH_CONFLICT` and
+   * `TARGET_NOT_EMPTY`, and the path refused with `INVALID_LOGICAL_PATH`, unless it was empty. One refused for being absolute or
+   * having a `..` segment is as it was given. Absent for every other code.
+   */
+  declare readonly logicalPath?: string;
+  /**
+   * The file `import` couldn't take, for `SOURCE_CHANGED` and `UNSUPPORTED_FILE_TYPE`: the `source` given to `import`, joined
+   * with the file's path below it as `path.join` does, and not resolved. Absent for every other code. No field names a place in the storage root.
+   */
+  declare readonly sourcePath?: string;
 
   /**
    * Makes an error; an option left out or `undefined` leaves its field absent.
@@ -107,13 +132,34 @@ class OcflError extends Error {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
     this.name = 'OcflError';
     this.code = code;
-    if (options.ocflCode !== undefined) {
-      this.ocflCode = options.ocflCode;
-    }
-    if (options.lockedAt !== undefined) {
-      this.lockedAt = options.lockedAt;
+    const { ocflCode, lockedAt, objectId, logicalPath, sourcePath } = options;
+    for (const [name, value] of Object.entries({ ocflCode, lockedAt, objectId, logicalPath, sourcePath })) {
+      if (value !== undefined) {
+        Object.assign(this, { [name]: value });
+      }
     }
   }
+}
+
+/** Shared by every installed copy of the library, so each recognises the others' errors */
+const BRAND = Symbol.for('ocfl-js.OcflError');
+Object.defineProperty(OcflError.prototype, BRAND, { value: true });
+
+/**
+ * Whether `error` is an {@link OcflError}, with `code` when given, narrowing `error.code` to it. Unlike `instanceof`, it
+ * recognises an `OcflError` from another installed copy of this release or a later one.
+ * @example
+ * ```ts
+ * if (isOcflError(error, 'SOURCE_CHANGED')) retryFile(error.sourcePath);
+ * ```
+ */
+function isOcflError<Code extends OcflErrorCode = OcflErrorCode>(error: unknown, code?: Code): error is OcflError & { readonly code: Code } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { [BRAND]?: unknown })[BRAND] === true &&
+    (code === undefined || (error as { code?: unknown }).code === code)
+  );
 }
 
 const ocflError: (code: OcflErrorCode, message: string, options?: OcflErrorOptions) => OcflError = OcflError._create;
@@ -123,7 +169,7 @@ const ocflError: (code: OcflErrorCode, message: string, options?: OcflErrorOptio
  * @param what - Completes "…places <id>, …", such as "is not empty"
  */
 function objectRootConflict(objectRoot: string, id: string, what: string): OcflError {
-  return ocflError('OBJECT_ROOT_CONFLICT', `${objectRoot}, where the storage root places <${id}>, ${what}.`);
+  return ocflError('OBJECT_ROOT_CONFLICT', `${objectRoot}, where the storage root places <${id}>, ${what}.`, { objectId: id });
 }
 
-export { OcflError, type OcflErrorCode, objectRootConflict, ocflError };
+export { isOcflError, OcflError, type OcflErrorCode, objectRootConflict, ocflError };

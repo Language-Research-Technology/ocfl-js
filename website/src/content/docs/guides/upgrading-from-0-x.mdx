@@ -55,7 +55,7 @@ The digest directories haven't changed, only the last directory, named by the en
 
 **Install only `@ocfl/ocfl-fs`.** It no longer depends on `@ocfl/ocfl`, so remove that package. Keeping it installs a second copy of the library, and `instanceof OcflError` fails for an error from the other copy.
 
-**Node.js 22.12 or later.** The package is an ES module with its own types. CommonJS code can still `require()` it, because Node.js 22.12 can load ES modules that way. It has named exports only: `createStorageRoot`, `openStorageRoot`, `OcflError` and the types. Delete any hand-written type declarations for either package.
+**Node.js 22.12 or later.** The package is an ES module with its own types. CommonJS code can still `require()` it, because Node.js 22.12 can load ES modules that way. It has named exports only: `createStorageRoot`, `openStorageRoot`, `OcflError`, `isOcflError` and the types. Delete any hand-written type declarations for either package.
 
 ## Gone, with no replacement
 

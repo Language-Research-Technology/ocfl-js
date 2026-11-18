@@ -36,7 +36,7 @@ export type {
   WriteContent,
 } from './draft.ts';
 export type { OcflErrorCode } from './error.ts';
-export { OcflError } from './error.ts';
+export { isOcflError, OcflError } from './error.ts';
 export type {
   FlatDirectLayoutConfig,
   HashAndIdNTupleLayoutConfig,

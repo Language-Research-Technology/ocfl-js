@@ -78,7 +78,9 @@ abstract class BuiltInLayout<C extends object = object> {
 
   /** @param reason - Completes "because …" */
   protected incompatibleId(id: string, reason: string): OcflError {
-    return ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> is incompatible with the ${this.name} storage layout because ${reason}.`);
+    return ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> is incompatible with the ${this.name} storage layout because ${reason}.`, {
+      objectId: id,
+    });
   }
 }
 

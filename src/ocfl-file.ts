@@ -187,9 +187,7 @@ class VersionFile implements OcflFile {
       throw ocflError(
         'INVALID_OBJECT',
         `The content of ${this.path}, ${this.#contentPath} in the object <${this.#objectId}> at ${this.#objectRoot}, is ${opened.absent}.`,
-        {
-          cause: opened.cause,
-        },
+        { objectId: this.#objectId, cause: opened.cause },
       );
     }
     return opened;

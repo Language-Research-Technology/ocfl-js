@@ -325,7 +325,9 @@ function mappedObjectPath(root: string, layout: BuiltInLayout, id: string): stri
   const relative = fileSystem.relativeWithin(root, nodePath.join(root, mapped));
   // Case-insensitive, so a case-insensitive filesystem can't map an object root into extensions/
   if (!relative || relative.split(nodePath.sep)[0]?.toLowerCase() === EXTENSIONS_DIR) {
-    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> maps to "${mapped}", which can't hold an object in this storage root.`);
+    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> maps to "${mapped}", which can't hold an object in this storage root.`, {
+      objectId: id,
+    });
   }
   return relative;
 }
@@ -352,7 +354,7 @@ async function placedObject(root: string, layout: BuiltInLayout, id: string, lon
  */
 async function fittingPlace(id: string, place: ObjectPlace, longest: (place: ObjectPlace) => string): Promise<ObjectPlace> {
   if (!(await fileSystem.pathFits(longest(place)))) {
-    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> maps to a path too long for this file system.`);
+    throw ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', `The object id <${id}> maps to a path too long for this file system.`, { objectId: id });
   }
   return place;
 }

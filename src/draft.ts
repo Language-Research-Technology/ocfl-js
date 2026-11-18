@@ -371,15 +371,15 @@ interface HashedImportFile extends ImportFile {
   digest: string;
 }
 
-/** Every file under `source`, with the logical path it becomes */
-async function listImportFiles(source: string, { target, filter }: ImportOptions): Promise<ImportFile[]> {
-  const base = target === undefined ? undefined : importTarget(target);
+/** Every file under `source`, with the logical path it becomes in the object `objectId` */
+async function listImportFiles(source: string, { target, filter }: ImportOptions, objectId: string): Promise<ImportFile[]> {
+  const base = target === undefined ? undefined : importTarget(target, objectId);
   const stat = await fs.promises.lstat(source);
   if (stat.isFile()) {
     return [{ source, logicalPath: base ?? path.basename(source) }];
   }
   if (!stat.isDirectory()) {
-    throw unsupportedFileType(source);
+    throw unsupportedFileType(source, objectId);
   }
   const files: ImportFile[] = [];
   const walk = async (dir: string, relativeDir: string): Promise<void> => {
@@ -394,7 +394,7 @@ async function listImportFiles(source: string, { target, filter }: ImportOptions
       } else if (entry.isDirectory()) {
         await walk(file, relativePath);
       } else {
-        throw unsupportedFileType(file);
+        throw unsupportedFileType(file, objectId);
       }
     }
   };
@@ -411,17 +411,24 @@ function keeps(filter: NonNullable<ImportOptions['filter']>, relativePath: strin
 }
 
 /** `target` in the form copy() and rename() store, so two spellings of one path are the same path */
-function importTarget(target: string) {
-  checkLogicalPath(target);
+function importTarget(target: string, objectId: string) {
+  checkLogicalPath(target, objectId);
   const normalised = normaliseLogicalPath(target);
   if (normalised === '.') {
-    throw ocflError('INVALID_LOGICAL_PATH', "An import target can't be empty; leave it out to import a directory's contents at the object root");
+    throw ocflError(
+      'INVALID_LOGICAL_PATH',
+      `An import target in the object <${objectId}> can't be empty; leave it out to import a directory's contents at the object root`,
+      { objectId },
+    );
   }
   return normalised;
 }
 
-function unsupportedFileType(filePath: string) {
-  return ocflError('UNSUPPORTED_FILE_TYPE', `"${filePath}" isn't a regular file or directory.`);
+function unsupportedFileType(filePath: string, objectId: string) {
+  return ocflError('UNSUPPORTED_FILE_TYPE', `"${filePath}", imported into the object <${objectId}>, isn't a regular file or directory.`, {
+    objectId,
+    sourcePath: filePath,
+  });
 }
 
 interface TrackedPromise<T> extends Promise<T> {
@@ -537,12 +544,16 @@ class ObjectDraft implements Draft {
     this.#turns = turns;
   }
 
+  #fileLogicalPath(logicalPath: string) {
+    return fileLogicalPath(logicalPath, this.#inventory.id);
+  }
+
   #getRealPath(logicalPath: string) {
-    checkLogicalPath(logicalPath);
+    checkLogicalPath(logicalPath, this.#inventory.id);
     // Defence in depth: only a Windows drive-relative path such as C:x gets past checkLogicalPath
     /* node:coverage disable */
     if (fileSystem.relativeWithin(path.resolve(this.#contentRoot), logicalPath) === undefined) {
-      throw invalidLogicalPath(logicalPath);
+      throw invalidLogicalPath(logicalPath, this.#inventory.id);
     }
     /* node:coverage enable */
     return path.join(this.#contentRoot, path.normalize(logicalPath));
@@ -668,7 +679,7 @@ class ObjectDraft implements Draft {
     // Copied now: the caller may change their buffer before this write's turn
     const content = checked instanceof Uint8Array ? new Uint8Array(checked) : checked;
     return this.#turns.run(async () => {
-      const target = fileLogicalPath(logicalPath);
+      const target = this.#fileLogicalPath(logicalPath);
       const digestAlgo = this.#inventory.digestAlgorithm;
       const staging = this.#stagingPath();
       if (isAsyncIterable(content)) {
@@ -686,13 +697,14 @@ class ObjectDraft implements Draft {
   async #stageImportedFile(source: string, staging: string, digest: string) {
     await fileSystem.copyFile(source, staging);
     if ((await Hashing.digest(this.#inventory.digestAlgorithm, fileSystem.createReadable(staging))) !== digest) {
-      throw ocflError('SOURCE_CHANGED', `"${source}" changed while it was being imported.`);
+      const objectId = this.#inventory.id;
+      throw ocflError('SOURCE_CHANGED', `"${source}" changed while it was being imported into the object <${objectId}>.`, { objectId, sourcePath: source });
     }
   }
 
   /** @returns the step that adds the prepared files, which must run in the import's turn */
   async #prepareImport(source: string, options: ImportOptions | undefined): Promise<() => Promise<void>> {
-    const files = await listImportFiles(source, importOptions(options));
+    const files = await listImportFiles(source, importOptions(options), this.#inventory.id);
     const algorithm = this.#inventory.digestAlgorithm;
     const hashed = await Promise.all(
       files.map((file) =>
@@ -770,7 +782,7 @@ class ObjectDraft implements Draft {
   async copy(source: string, target: string, options?: MergeOptions): Promise<void> {
     return this.#operate(async () => {
       const merge = mergeOption(options, 'draft.copy');
-      const plan = this.#inventory._planCopy(fileLogicalPath(source), fileLogicalPath(target), merge);
+      const plan = this.#inventory._planCopy(this.#fileLogicalPath(source), this.#fileLogicalPath(target), merge);
       await this.#applyRelist(plan);
     });
   }
@@ -779,7 +791,7 @@ class ObjectDraft implements Draft {
   async rename(source: string, target: string, options?: MergeOptions): Promise<void> {
     return this.#operate(async () => {
       const merge = mergeOption(options, 'draft.rename');
-      const plan = this.#inventory._planRename(fileLogicalPath(source), fileLogicalPath(target), merge);
+      const plan = this.#inventory._planRename(this.#fileLogicalPath(source), this.#fileLogicalPath(target), merge);
       await this.#applyRelist(plan);
     });
   }
@@ -787,7 +799,7 @@ class ObjectDraft implements Draft {
   async reinstate(logicalPath: string, version: number): Promise<void> {
     return this.#operate(async () => {
       versionArgument(version);
-      const plan = this.#inventory._planReinstate(fileLogicalPath(logicalPath), version);
+      const plan = this.#inventory._planReinstate(this.#fileLogicalPath(logicalPath), version);
       await this.#applyRelist(plan);
     });
   }
@@ -795,9 +807,13 @@ class ObjectDraft implements Draft {
   async remove(logicalPath: string): Promise<void> {
     return this.#operate(async () => {
       const inventory = this.#inventory;
-      const plan = inventory._planDelete(fileLogicalPath(logicalPath));
+      const listed = this.#fileLogicalPath(logicalPath);
+      const plan = inventory._planDelete(listed);
       if (plan.paths.length === 0) {
-        throw ocflError('FILE_NOT_FOUND', `Logical path "${logicalPath}" doesn't exist in the object <${inventory.id}>.`);
+        throw ocflError('FILE_NOT_FOUND', `Logical path "${logicalPath}" doesn't exist in the object <${inventory.id}>.`, {
+          objectId: inventory.id,
+          logicalPath: listed,
+        });
       }
       await this.#applyDelete(plan);
     });

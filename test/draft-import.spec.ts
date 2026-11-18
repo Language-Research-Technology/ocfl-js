@@ -397,7 +397,7 @@ describe('importing into a draft', () => {
         object.update(DETAILS, async (draft) => {
           await draft.import(source, { filter: (relativePath) => relativePath !== 'a.txt' });
         }),
-        ocflError('UNSUPPORTED_FILE_TYPE'),
+        ocflError('UNSUPPORTED_FILE_TYPE', { sourcePath: path.join(source, 'sub/link.txt') }),
       );
       await assertUnchanged(object, { a: 'a' });
     });
@@ -481,7 +481,7 @@ describe('importing into a draft', () => {
         root.create(id, DETAILS, async (draft) => {
           await draft.import(source);
         }),
-        ocflError('UNSUPPORTED_FILE_TYPE'),
+        ocflError('UNSUPPORTED_FILE_TYPE', { objectId: id, sourcePath: path.join(source, 'link.txt') }),
       );
       await assertNothingCreated(id);
     });
@@ -507,8 +507,8 @@ describe('importing into a draft', () => {
       await fs.promises.symlink(path.join(source, 'a.txt'), fileLink);
       const object = await createObject(root, newId(), { a: 'a' });
       const returned = await object.update(DETAILS, async (draft) => {
-        await assert.rejects(draft.import(dirLink), ocflError('UNSUPPORTED_FILE_TYPE'));
-        await assert.rejects(draft.import(fileLink, { target: 'b' }), ocflError('UNSUPPORTED_FILE_TYPE'));
+        await assert.rejects(draft.import(dirLink), ocflError('UNSUPPORTED_FILE_TYPE', { sourcePath: dirLink }));
+        await assert.rejects(draft.import(fileLink, { target: 'b' }), ocflError('UNSUPPORTED_FILE_TYPE', { sourcePath: fileLink }));
       });
       assert.strictEqual(returned, object);
       await assertUnchanged(object, { a: 'a' });
@@ -529,7 +529,8 @@ describe('importing into a draft', () => {
         object.update(DETAILS, async (draft) => {
           await draft.import(source);
         }),
-        (e) => ocflError('SOURCE_CHANGED')(e) && !(e instanceof AggregateError) && (e as Error).message.includes(file),
+        (e) =>
+          ocflError('SOURCE_CHANGED', { objectId: object.id, sourcePath: file })(e) && !(e instanceof AggregateError) && (e as Error).message.includes(file),
       );
       mock.restoreAll();
       await assertUnchanged(object, { 'a.txt': 'v1' });
@@ -549,7 +550,7 @@ describe('importing into a draft', () => {
         root.create(id, DETAILS, async (draft) => {
           await draft.import(source);
         }),
-        (e) => ocflError('SOURCE_CHANGED')(e) && (e as Error).message.includes(path.join(source, 'b.txt')),
+        (e) => ocflError('SOURCE_CHANGED', { sourcePath: path.join(source, 'b.txt') })(e) && (e as Error).message.includes(path.join(source, 'b.txt')),
       );
       mock.restoreAll();
       await assertNothingCreated(id);

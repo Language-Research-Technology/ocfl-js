@@ -106,6 +106,11 @@ export interface ImportOptions {
 }
 
 // @public
+export function isOcflError<Code extends OcflErrorCode = OcflErrorCode>(error: unknown, code?: Code): error is OcflError & {
+    readonly code: Code;
+};
+
+// @public
 export type Layout = Readonly<Required<LayoutConfig>>;
 
 // @public
@@ -137,7 +142,10 @@ export interface MergeOptions {
 export class OcflError extends Error {
     readonly code: OcflErrorCode;
     readonly lockedAt?: Date;
+    readonly logicalPath?: string;
+    readonly objectId?: string;
     readonly ocflCode?: string;
+    readonly sourcePath?: string;
 }
 
 // @public

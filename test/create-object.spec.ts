@@ -249,7 +249,7 @@ describe('creating an object', () => {
     it('throws OBJECT_ROOT_CONFLICT for a directory that holds something else', async () => {
       const root = await newRoot();
       await writeFiles(objectRootOf(root, 'not-empty'), { 'stray.txt': 'x' });
-      await assertRefused(root, 'not-empty', ocflError('OBJECT_ROOT_CONFLICT'));
+      await assertRefused(root, 'not-empty', ocflError('OBJECT_ROOT_CONFLICT', { objectId: 'not-empty' }));
     });
 
     it('throws OBJECT_ROOT_CONFLICT when its place fills while the draft is assembled, leaving what is there', async () => {
@@ -282,8 +282,8 @@ describe('creating an object', () => {
 
     it('throws ID_INCOMPATIBLE_WITH_LAYOUT for an id the layout cannot place', async () => {
       const root = await newRoot();
-      await assertRefused(root, 'has/a/slash', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
-      await assertRefused(root, 'extensions', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT'));
+      await assertRefused(root, 'has/a/slash', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', { objectId: 'has/a/slash' }));
+      await assertRefused(root, 'extensions', ocflError('ID_INCOMPATIBLE_WITH_LAYOUT', { objectId: 'extensions' }));
     });
 
     for (const id of ['../x', 'a/../../x', 'a/./b', 'extensions/foo']) {

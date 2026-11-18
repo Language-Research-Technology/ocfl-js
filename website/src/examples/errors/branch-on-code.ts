@@ -1,4 +1,4 @@
-import { OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
+import { isOcflError, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 const id = 'item-1';
@@ -9,12 +9,12 @@ try {
     await draft.write('notes.txt', 'Field notes');
   });
 } catch (error) {
-  if (!(error instanceof OcflError)) {
+  if (!isOcflError(error)) {
     throw error;
   }
   switch (error.code) {
     case 'OBJECT_NOT_FOUND':
-      console.log(`There is no object ${id}`);
+      console.log(`There is no object ${error.objectId}`);
       break;
     case 'OBJECT_LOCKED':
       console.log(`Another writer has held the lock since ${error.lockedAt?.toISOString() ?? 'an unknown time'}`);

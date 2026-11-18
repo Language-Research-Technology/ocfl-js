@@ -1,4 +1,4 @@
-import { type Draft, OcflError, openStorageRoot, type VersionDetails } from '@ocfl/ocfl-fs';
+import { type Draft, isOcflError, openStorageRoot, type VersionDetails } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 const id = 'arcp://name,corpus/item/1';
@@ -13,7 +13,7 @@ const headBefore = object.head.number;
 try {
   object = await object.update(details, change);
 } catch (error) {
-  if (!(error instanceof OcflError && error.code === 'RECOVERY_NEEDED')) {
+  if (!isOcflError(error, 'RECOVERY_NEEDED')) {
     throw error;
   }
   // Safe only because this process is the object's one writer

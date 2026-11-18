@@ -1,7 +1,7 @@
-import { OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
+import { isOcflError, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/data/fedora-root').catch((error: unknown) => {
-  if (error instanceof OcflError && (error.code === 'LAYOUT_NOT_DECLARED' || error.code === 'UNSUPPORTED_LAYOUT')) {
+  if (isOcflError(error, 'LAYOUT_NOT_DECLARED') || isOcflError(error, 'UNSUPPORTED_LAYOUT')) {
     // The message says what the storage root declares and lists the layouts this library implements
     console.error(`${error.code}: ${error.message}`);
     process.exit(1);

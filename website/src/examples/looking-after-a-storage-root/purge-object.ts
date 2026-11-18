@@ -1,4 +1,4 @@
-import { OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
+import { isOcflError, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 const id = 'arcp://name,corpus/item/1';
@@ -6,7 +6,7 @@ const id = 'arcp://name,corpus/item/1';
 try {
   await root.purge(id);
 } catch (error) {
-  if (!(error instanceof OcflError)) {
+  if (!isOcflError(error)) {
     throw error;
   }
   switch (error.code) {

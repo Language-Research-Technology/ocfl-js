@@ -31,7 +31,7 @@ async function assertHoldsObject(place: ObjectPlace, id: string): Promise<void> 
       throw objectNotFound(id);
     }
     throw contents === 'not empty' && (await hasObjectDeclaration(objectRoot))
-      ? declarationWithoutInventory(objectRoot)
+      ? declarationWithoutInventory(objectRoot, id)
       : strayContents(objectRoot, id, contents);
   }
   await confirmedVersion(place, root.inventory, id);
@@ -59,7 +59,7 @@ async function deleteObjectRoot({ storageRoot, objectRoot }: ObjectPlace): Promi
 
 /** For a purge that ended holding its lock */
 function recoveryNeeded(objectRoot: string, id: string, state: string, advice: string, cause: unknown): OcflError {
-  return lockKept(`Purging the object <${id}> at ${objectRoot} ${state}`, advice, cause);
+  return lockKept(id, `Purging the object <${id}> at ${objectRoot} ${state}`, advice, cause);
 }
 
 /**

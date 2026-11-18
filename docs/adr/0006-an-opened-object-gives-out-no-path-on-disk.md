@@ -18,6 +18,8 @@ Some things the library finds can only be fixed by hand. A damaged object root c
 - **The library names a place inside the storage root only for something it found broken, as a path from the storage root.** The path uses `/` between directories on every platform and is never absolute. There are two:
   - `ListedDamagedObjectRoot.objectRoot`, for a damaged object root. It has no opened object, so there is no opened object to go around.
   - `FixityProblem.storedFile`, for a stored file that is missing or whose content has changed. It comes with `affects`, every version and logical path that reads that stored file.
+- **`OcflError.sourcePath` names a file outside the storage root that `import` can't take.** It is set only for `SOURCE_CHANGED` and `UNSUPPORTED_FILE_TYPE`. It is the `source` the caller gave `import`, joined, as `path.join` does, with the file's path below it, and never resolved, so it is absolute only if `source` was. The caller needs it to fix or skip the file.
+- **No `OcflError` names a place inside the storage root.** Its message may, for logs, but the message isn't part of the contract (ADR 0010).
 
 ## Consequences
 
@@ -25,4 +27,4 @@ Some things the library finds can only be fixed by hand. A damaged object root c
 - A web server can't be handed a path to serve a file from directly. A read-only path can be added later without a breaking change, if a real need such as web-server offload appears.
 - Repairing a stored file means copying a good copy to `storedFile` under the storage root, by hand.
 - A path from the storage root is useful only to someone who knows where the storage root is, which every caller does: it opened it.
-- Giving out any other path, or an absolute path other than `StorageRoot.path`, contradicts this decision and needs a new ADR first.
+- Giving out any other path, or an absolute path other than `StorageRoot.path` and a `sourcePath` the caller gave as absolute, contradicts this decision and needs a new ADR first.

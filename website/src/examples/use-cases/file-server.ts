@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { pipeline } from 'node:stream/promises';
-import { OcflError, type OcflObject, openStorageRoot } from '@ocfl/ocfl-fs';
+import { isOcflError, type OcflObject, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 const opened = new Map<string, OcflObject>();
@@ -57,7 +57,7 @@ const server = createServer(async (request, response) => {
       response.destroy();
     } else if (error instanceof RangeError) {
       response.writeHead(416).end();
-    } else if (error instanceof OcflError && error.code === 'OBJECT_NOT_FOUND') {
+    } else if (isOcflError(error, 'OBJECT_NOT_FOUND')) {
       response.writeHead(404).end();
     } else {
       console.error(error);
