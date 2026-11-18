@@ -18,7 +18,7 @@
  * | `UNSUPPORTED_LAYOUT` | The storage root names a storage layout the library doesn't have. | No |
  * | `ID_INCOMPATIBLE_WITH_LAYOUT` | `create` was given an id the storage layout can't place, or `create` or `purge` an id whose lock path is too long. | No |
  * | `OBJECT_ROOT_CONFLICT` | The object root for this id holds the wrong thing. A person needs to look at it. | No |
- * | `DIRECTORY_NOT_EMPTY` | `createStorageRoot` was given a directory with something in it. | No |
+ * | `DIRECTORY_NOT_EMPTY` | `createStorageRoot` or `version.exportTo` was given a directory with something in it. | No |
  * | `OBJECT_LOCKED` | A writer holds the object's lock, or died holding it, as a write that threw `RECOVERY_NEEDED` does; see `lockedAt`. | Later, not in a loop; or recover a dead writer's unfinished write |
  * | `RECOVERY_NEEDED` | A write failed where the library can't tell or undo what happened. The object stays locked. | After recovering its unfinished write |
  * | `MUTABLE_HEAD_ACTIVE` | The object has an active mutable head, which the library doesn't support. | No |

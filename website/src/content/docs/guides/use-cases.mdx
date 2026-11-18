@@ -115,11 +115,16 @@ Both digests are lowercase, even when an object written by another tool records 
 
 ## Writing a version out
 
-This job writes a version's files to a directory, each under its logical path:
+This job writes version 1 of an object to a directory, each file under its logical path, with [`version.exportTo`](/ocfl-js/api/interfaces/version/#exportto):
 
 <Code code={writeVersionOut} lang="ts" />
 
-The library doesn't check the logical paths in an inventory it reads, so an object written by another tool, or a damaged one, can hold a path such as `../../etc/passwd`. Check that each target stays inside the directory, as the example does, before you write it.
+- The directory must be missing or empty, and outside the storage root. `exportTo` makes a missing one, with its parents, and refuses one with anything in it with [`DIRECTORY_NOT_EMPTY`](/ocfl-js/guides/errors/#directory_not_empty) before it writes anything. It writes the version's files and nothing else.
+- Each file's modification time is its [`modifiedAt`](/ocfl-js/api/interfaces/ocflfile/#modifiedat): the time of the version in which it took its content, from the inventory.
+- Every file lands inside the directory. Opening an object refuses one with a logical path that leaves it, such as `../../etc/passwd`, so you don't need to check the paths yourself. `exportTo` never writes over a file, but it makes directories by path, so export to a directory nobody else can write to while the export runs: someone who can could swap a directory for a link to somewhere else.
+- `onProgress` is called after each file is written. Aborting `signal` stops the export, which rejects with the signal's `reason`, and no stored file is still open once it has rejected.
+- An export that fails or is aborted leaves what it had written, including a file only partly written. Empty the directory before you export to it again.
+- Nothing is flushed to disk. Run the system `sync` command if you need the files to survive a crash.
 
 ## Best practices
 

@@ -64,6 +64,10 @@ _Avoid_: Transaction
 To put a file, or every file below a directory, back in a draft as it was in an earlier version, at the same logical path.
 _Avoid_: Restore (fine for fixing a stored file by hand, outside the library), revert, copy from a version
 
+**Export**:
+To write a version's files to an empty or missing directory outside the storage root, each under its logical path, with its modified-at time. The directory holds copies; nothing written there changes the OCFL object.
+_Avoid_: Checkout, materialise, restore
+
 **Workspace**:
 The library's directory inside a storage root where a new version is assembled before it is moved into its object root.
 _Avoid_: Staging area, temp directory, deposit directory

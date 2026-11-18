@@ -1,31 +1,10 @@
 import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, it, mock } from 'node:test';
+import { describe, it } from 'node:test';
 import type { FixityProgress } from '../src/index.ts';
-import { createObject, objectRootOf, useTempRoots } from './helpers/drafts.ts';
-
-/** Runs `fn`, collecting every read stream opened meanwhile */
-async function trackReadStreams<T>(fn: () => Promise<T>): Promise<{ streams: fs.ReadStream[]; outcome: PromiseSettledResult<T> }> {
-  const streams: fs.ReadStream[] = [];
-  const real = fs.createReadStream;
-  const spy = mock.method(fs, 'createReadStream', (...args: Parameters<typeof real>) => {
-    const stream = real.apply(fs, args);
-    streams.push(stream);
-    return stream;
-  });
-  try {
-    const [outcome] = await Promise.allSettled([fn()]);
-    return { streams, outcome: outcome as PromiseSettledResult<T> };
-  } finally {
-    spy.mock.restore();
-  }
-}
-
-/** Files `f0.txt` to `f<count - 1>.txt`, each with its own content */
-function manyFiles(count: number): Record<string, string> {
-  return Object.fromEntries(Array.from({ length: count }, (_, i) => [`f${i}.txt`, `content ${i}`]));
-}
+import { createObject, manyFiles, objectRootOf, useTempRoots } from './helpers/drafts.ts';
+import { isClosed, trackReadHandles } from './helpers/read-handles.ts';
 
 describe('progress and cancelling of a fixity check', () => {
   const temp = useTempRoots('ocfl-fixity-progress-');
@@ -60,9 +39,9 @@ describe('progress and cancelling of a fixity check', () => {
     const root = await temp.newRoot();
     const object = await createObject(root, 'pre-aborted', manyFiles(3));
     const reason = new Error('stop before starting');
-    const { streams, outcome } = await trackReadStreams(() => object.checkFixity({ signal: AbortSignal.abort(reason) }));
+    const { handles, outcome } = await trackReadHandles(() => object.checkFixity({ signal: AbortSignal.abort(reason) }));
     assert.deepStrictEqual(outcome, { status: 'rejected', reason });
-    assert.strictEqual(streams.length, 0);
+    assert.strictEqual(handles.length, 0);
   });
 
   it('stops when the signal is aborted part way, rejecting with its reason and leaving no stored file open', async () => {
@@ -70,7 +49,7 @@ describe('progress and cancelling of a fixity check', () => {
     const object = await createObject(root, 'aborted', manyFiles(60));
     const controller = new AbortController();
     const reason = new Error('stop part way');
-    const { streams, outcome } = await trackReadStreams(() =>
+    const { handles, outcome } = await trackReadHandles(() =>
       object.checkFixity({
         signal: controller.signal,
         onProgress: ({ checkedFiles }) => {
@@ -81,11 +60,8 @@ describe('progress and cancelling of a fixity check', () => {
       }),
     );
     assert.deepStrictEqual(outcome, { status: 'rejected', reason });
-    assert.ok(streams.length < 60, `read ${streams.length} of 60 files`);
-    assert.deepStrictEqual(
-      streams.filter((stream) => !stream.closed).map((stream) => stream.path),
-      [],
-    );
+    assert.ok(handles.length < 60, `read ${handles.length} of 60 files`);
+    assert.ok(handles.every(isClosed));
   });
 
   it('stops and rejects with the error onProgress throws, leaving no stored file open', async () => {
@@ -93,7 +69,7 @@ describe('progress and cancelling of a fixity check', () => {
     const object = await createObject(root, 'throwing', manyFiles(60));
     const thrown = new Error('progress bar broke');
     let calls = 0;
-    const { streams, outcome } = await trackReadStreams(() =>
+    const { handles, outcome } = await trackReadHandles(() =>
       object.checkFixity({
         onProgress: ({ checkedFiles }) => {
           calls++;
@@ -105,8 +81,8 @@ describe('progress and cancelling of a fixity check', () => {
     );
     assert.deepStrictEqual(outcome, { status: 'rejected', reason: thrown });
     assert.strictEqual(calls, 3, 'onProgress is not called again once it has thrown');
-    assert.ok(streams.length < 60, `read ${streams.length} of 60 files`);
-    assert.ok(streams.every((stream) => stream.closed));
+    assert.ok(handles.length < 60, `read ${handles.length} of 60 files`);
+    assert.ok(handles.every(isClosed));
   });
 
   it('stops for an aborted signal that is not an instance of this realm’s AbortSignal, such as a polyfill', async () => {
@@ -122,9 +98,9 @@ describe('progress and cancelling of a fixity check', () => {
       addEventListener() {},
       removeEventListener() {},
     };
-    const { streams, outcome } = await trackReadStreams(() => object.checkFixity({ signal: signal as never }));
+    const { handles, outcome } = await trackReadHandles(() => object.checkFixity({ signal: signal as never }));
     assert.deepStrictEqual(outcome, { status: 'rejected', reason });
-    assert.strictEqual(streams.length, 0);
+    assert.strictEqual(handles.length, 0);
   });
 
   it('resolves to the sorted problems with a signal that is never aborted', async () => {
@@ -152,11 +128,11 @@ describe('progress and cancelling of a fixity check', () => {
       it(`throws a TypeError for ${name}, reading no stored file`, async () => {
         const root = await temp.newRoot();
         const object = await createObject(root, 'refused', manyFiles(3));
-        const { streams, outcome } = await trackReadStreams(() => object.checkFixity(options as never));
+        const { handles, outcome } = await trackReadHandles(() => object.checkFixity(options as never));
         assert.strictEqual(outcome.status, 'rejected');
         const { reason } = outcome as PromiseRejectedResult;
         assert.ok(reason instanceof TypeError && message.test(reason.message), String(reason));
-        assert.strictEqual(streams.length, 0);
+        assert.strictEqual(handles.length, 0);
       });
     }
   });
