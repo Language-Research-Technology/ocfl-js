@@ -1,13 +1,18 @@
 {
   "name": "@ocfl/ocfl-fs",
   "version": "0.0.0-semantic-release",
-  "description": "Oxford Common File Layout (OCFL) JS client library for filesystem storage",
+  "description": "TypeScript library for reading and writing Oxford Common File Layout (OCFL) storage roots and objects on a local file system",
   "keywords": [
     "ocfl",
     "Oxford Common File Layout",
     "preservation",
     "storage",
-    "filesystem"
+    "filesystem",
+    "digital-preservation",
+    "archive",
+    "versioning",
+    "fixity",
+    "typescript"
   ],
   "homepage": "https://language-research-technology.github.io/ocfl-js/",
   "bugs": {
