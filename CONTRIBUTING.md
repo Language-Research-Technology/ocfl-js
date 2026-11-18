@@ -42,7 +42,7 @@ CI runs all of these on every pull request to `main`:
 | Command              | What it checks                                                                                               |
 | -------------------- | ------------------------------------------------------------------------------------------------------------ |
 | `pnpm test`          | The test suite, including that `src/spec-text.ts` matches its source                                         |
-| `pnpm coverage`      | The test suite, failing unless it covers all of `src`                                                        |
+| `pnpm coverage`      | The test suite, failing unless it covers all of `src` (needs Node.js 26 or later)                            |
 | `pnpm lint:types`    | Types, in the source, the tests and `scripts/`                                                               |
 | `pnpm lint:biome`    | Formatting and lint rules (`pnpm format` fixes what it can)                                                  |
 | `pnpm lint:knip`     | Unused files, exports and dependencies                                                                       |
@@ -55,7 +55,7 @@ Run a single test file with `node --test`, for example `node --test test/open-ob
 
 `pnpm check:ocfl-py` writes storage roots through the public API and validates every object in them with [ocfl-py](https://github.com/zimeon/ocfl-py)'s `ocfl-validate.py`. Install the version CI uses with `pip install --require-hashes -r test/ocfl-py/requirements.txt`, or point `OCFL_VALIDATE` at the validator. To move to a new version, change `test/ocfl-py/requirements.in` and run `uv pip compile --universal --python-version 3.13 --generate-hashes requirements.in -o requirements.txt` in that directory.
 
-CI runs the tests on every Node.js version that still gets updates, and on the `engines` floor, 22.12.0. When a version stops getting updates, a minor release can drop it from the matrix and from `engines`.
+CI runs the tests on every Node.js version that still gets updates, and on the `engines` floor, 22.12.0. It runs `pnpm coverage` only on Node.js 26, because older versions reject `--test-coverage-include-all`; on those, run `pnpm test` instead. When a version stops getting updates, a minor release can drop it from the matrix and from `engines`.
 
 ## The specification text
 
@@ -63,7 +63,7 @@ A new storage root gets a copy of the OCFL specification text. Its source is `re
 
 ## The API report
 
-`docs/ocfl-fs.api.md` lists the package's public API, and `pnpm lint:api` fails when the built API differs from it, when a public member has no doc comment, or when api-extractor warns, for example about a public signature that uses a type the entry point doesn't export. The build sets `isolatedDeclarations`, so an export whose type can't be read off its declaration fails to compile. If you meant to change the API, run `pnpm api:update` and commit the report's diff with the change, so reviewers can see it. If you didn't, fix the code and leave the report alone. [ADR 0002](docs/adr/0002-the-api-report-is-the-public-api-contract.md) explains the rules for the public API.
+`docs/ocfl-fs.api.md` lists the package's public API, and `pnpm lint:api` fails when the built API differs from it, when a public member has no doc comment, or when api-extractor warns, for example about a public signature that uses a type the entry point doesn't export. The build sets `isolatedDeclarations`, so an export whose type can't be read off its declaration fails to compile. If you meant to change the API, run `pnpm api:update` and commit the report's diff with the change, so reviewers can see it. If you didn't, fix the code and leave the report alone. Before a breaking change, read [docs/consumers.md](docs/consumers.md), which lists who uses the library and what they rely on. [ADR 0002](docs/adr/0002-the-api-report-is-the-public-api-contract.md) explains the rules for the public API.
 
 ## Commit messages
 
