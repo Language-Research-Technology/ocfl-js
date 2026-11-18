@@ -39,17 +39,17 @@ Installing also sets up the [Lefthook](https://lefthook.dev/) Git hooks, which r
 
 CI runs all of these on every pull request to `main`:
 
-| Command              | What it checks                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `pnpm test`          | The test suite, including that `src/spec-text.ts` matches its source                                         |
-| `pnpm coverage`      | The test suite, failing unless it covers all of `src` (needs Node.js 26 or later)                            |
-| `pnpm lint:types`    | Types, in the source, the tests and `scripts/`                                                               |
-| `pnpm lint:biome`    | Formatting and lint rules (`pnpm format` fixes what it can)                                                  |
-| `pnpm lint:knip`     | Unused files, exports and dependencies                                                                       |
-| `pnpm lint:package`  | That the packed package passes publint, installs and works, and runs the getting-started and README examples |
-| `pnpm lint:api`      | That the public API matches the API report                                                                   |
-| `pnpm lint:docs`     | That the site's examples type-check and the site builds                                                      |
-| `pnpm check:ocfl-py` | That ocfl-py finds what the library writes valid (needs ocfl-py)                                             |
+| Command              | What it checks                                                                                                        |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `pnpm test`          | The test suite, including that `src/spec-text.ts` matches its source                                                  |
+| `pnpm coverage`      | The test suite, failing unless it covers all of `src` (needs Node.js 26 or later)                                     |
+| `pnpm lint:types`    | Types, in the source, the tests and `scripts/`                                                                        |
+| `pnpm lint:biome`    | Formatting and lint rules (`pnpm format` fixes what it can)                                                           |
+| `pnpm lint:knip`     | Unused files, exports and dependencies                                                                                |
+| `pnpm lint:package`  | That the packed package passes publint and attw, installs and works, and runs the getting-started and README examples |
+| `pnpm lint:api`      | That the public API matches the API report                                                                            |
+| `pnpm lint:docs`     | That the site's examples type-check and the site builds                                                               |
+| `pnpm check:ocfl-py` | That ocfl-py finds what the library writes valid (needs ocfl-py)                                                      |
 
 Run a single test file with `node --test`, for example `node --test test/open-object.spec.ts`. Specs sit at the top of `test/`, named for the behaviour they cover, with `helpers/`, `types/` (compiled, never run), `types-dom/` (compiled the same way, with DOM typings), `ocfl-py/` and `fixtures/` beside them. Specs of the public API import only the package entry, `src/index.ts`; unit specs of internals import the module they test.
 

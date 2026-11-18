@@ -6,8 +6,8 @@
     ".": {
       // test/types: type-checked only, by test/tsconfig.json. package-smoke.js: run by check-package.sh.
       "entry": ["test/types/*.ts", "scripts/package-smoke.js"],
-      // Loaded by semantic-release (from `preset`, and the npm plugin knip takes for its bundled copy), and publint, which check-package.sh runs.
-      "ignoreDependencies": ["conventional-changelog-conventionalcommits", "@semantic-release/npm", "publint"],
+      // Loaded by semantic-release (from `preset`, and the npm plugin knip takes for its bundled copy), and publint and attw, which check-package.sh runs.
+      "ignoreDependencies": ["conventional-changelog-conventionalcommits", "@semantic-release/npm", "publint", "@arethetypeswrong/cli"],
       // A system tool the tests run to make a named pipe.
       "ignoreBinaries": ["mkfifo"]
     },
