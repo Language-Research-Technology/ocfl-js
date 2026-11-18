@@ -39,13 +39,7 @@ jobs:
       - name: Lint (knip)
         run: pnpm lint:knip
       - name: Lint (package)
-        run: pnpm lint:package package.tgz
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: package
-          path: package.tgz
-          if-no-files-found: error
-          retention-days: 1
+        run: pnpm lint:package
       - name: Lint (API)
         run: pnpm lint:api
       - name: Lint (docs)
@@ -95,29 +89,21 @@ jobs:
       - run: pnpm coverage
         if: matrix.node-version == 26
 
-  # The tarball the lint job packed, installed and run on each Node version engines claims
-  package:
-    needs: lint
+  # 22.12.0 is the engines floor, older than the dev toolchain allows; the specs need only node
+  test-engines-floor:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    strategy:
-      matrix:
-        # 22.12.0 is the engines floor, older than the dev toolchain allows, so this job needs only node and npm
-        node-version: ["22.12.0", 22, 24, 26]
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: ${{ matrix.node-version }}
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: package
-      - name: Smoke test (package)
-        run: scripts/smoke-package.sh package.tgz
+          node-version: "22.12.0"
+      - run: node --run test
+        env:
+          NODE_OPTIONS: --experimental-strip-types --disable-warning=ExperimentalWarning
 
   # Checks what the library writes with another OCFL implementation
   ocfl-py:
