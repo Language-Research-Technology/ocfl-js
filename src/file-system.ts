@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { Readable } from 'node:stream';
+import { addAbortSignal, Readable } from 'node:stream';
+import { finished } from 'node:stream/promises';
 import { createLimiter } from './utils.ts';
 
 function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
@@ -229,6 +230,36 @@ export function createReadable(filePath: string): ReadableStream {
 export async function writeFile(filePath: string, data: string | Uint8Array | AsyncIterable<Uint8Array>): Promise<void> {
   await createParents(filePath);
   await fs.promises.writeFile(filePath, data);
+}
+
+/**
+ * Writes what `open` gives to a new file at `filePath`, with its times set to `time` through the file's own handle, never through a path that could be swapped for a link.
+ * Opens the source only once the parents exist, so no source is left open if they can't be made.
+ * @throws `signal.reason` if `signal` is aborted while writing; the source and the new file are closed
+ */
+export async function writeFileFrom(filePath: string, open: () => Promise<Readable>, time: Date, signal: AbortSignal | undefined): Promise<void> {
+  await createParents(filePath);
+  const source = await open();
+  if (signal) {
+    // Destroys the source on abort, so a read that has stalled doesn't hold the write until its next chunk
+    addAbortSignal(signal, source);
+  }
+  try {
+    const handle = await fs.promises.open(filePath, 'wx');
+    try {
+      await handle.writeFile(source, { signal });
+      await handle.utimes(time, time);
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    signal?.throwIfAborted();
+    throw error;
+  } finally {
+    source.destroy();
+    // Its error is the one caught above, or a premature close from destroying it
+    await finished(source).catch(() => undefined);
+  }
 }
 
 export async function copyFile(source: string, target: string): Promise<void> {

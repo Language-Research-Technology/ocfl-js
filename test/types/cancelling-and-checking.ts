@@ -2,6 +2,8 @@ import type {
   CreateOptions,
   Draft,
   DraftFile,
+  ExportOptions,
+  ExportProgress,
   FixityOptions,
   FixityProblem,
   FixityProgress,
@@ -9,6 +11,7 @@ import type {
   OcflObject,
   StorageRoot,
   UpdateOptions,
+  Version,
   VersionDetails,
 } from '../../src/index.ts';
 
@@ -26,6 +29,22 @@ export async function fixityTakesASignalAndAProgressCallback(object: OcflObject)
   // @ts-expect-error the signal is an AbortSignal, not its controller
   await object.checkFixity({ signal: new AbortController() });
   return [await object.checkFixity(), await object.checkFixity({}), await object.checkFixity(options)];
+}
+
+export async function exportTakesADirectoryASignalAndAProgressCallback(version: Version): Promise<void> {
+  const onProgress = ({ exportedFiles, totalFiles }: ExportProgress): void => void (exportedFiles / totalFiles);
+  const options: ExportOptions = { signal: AbortSignal.timeout(1000), onProgress };
+  // @ts-expect-error read-only
+  options.onProgress = undefined;
+  // @ts-expect-error the directory is required
+  await version.exportTo();
+  // @ts-expect-error there is no option to merge into a directory that isn't empty
+  await version.exportTo('/tmp/out', { merge: true });
+  // @ts-expect-error the signal is an AbortSignal, not its controller
+  await version.exportTo('/tmp/out', { signal: new AbortController() });
+  await version.exportTo('/tmp/out');
+  await version.exportTo('/tmp/out', {});
+  await version.exportTo('/tmp/out', options);
 }
 
 export async function fixityResolvesToAReadOnlyReport(object: OcflObject): Promise<readonly FixityProblem[]> {

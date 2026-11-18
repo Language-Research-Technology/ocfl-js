@@ -45,6 +45,18 @@ export interface DraftFile {
 export type Durability = 'full' | 'none';
 
 // @public
+export interface ExportOptions {
+    readonly onProgress?: ((progress: ExportProgress) => void) | undefined;
+    readonly signal?: AbortSignal | undefined;
+}
+
+// @public
+export interface ExportProgress {
+    readonly exportedFiles: number;
+    readonly totalFiles: number;
+}
+
+// @public
 export type FixityAlgorithm = 'md5' | 'sha1' | 'sha256' | 'sha512' | 'sha512/256' | 'blake2b-512';
 
 // @public
@@ -231,6 +243,7 @@ export interface User {
 // @public
 export interface Version {
     readonly createdAt: Date;
+    exportTo(dir: string, options?: ExportOptions): Promise<void>;
     file(path: string): OcflFile;
     readonly files: ReadonlyMap<string, OcflFile>;
     readonly message?: string;

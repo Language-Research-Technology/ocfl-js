@@ -1,4 +1,6 @@
+import fs from 'node:fs';
 import nodePath from 'node:path';
+import { inspect } from 'node:util';
 import { startWrite } from './commit.ts';
 import { OcflConstants, type OcflSpecVersion } from './constants.ts';
 import { checkedDeclaration, type DeclarationsFound } from './declaration.ts';
@@ -25,9 +27,10 @@ import {
   withinRootVersion,
 } from './object-root.ts';
 import { type FileHistory, type OcflFile, VersionFile } from './ocfl-file.ts';
+import { specViolation } from './ocfl-rules.ts';
 import type { RootInventory } from './root-inventory.ts';
 import type { RootSettings, StorageRoot } from './storage-root.ts';
-import { functionOption, optionsObject, signalOption, versionArgument } from './utils.ts';
+import { functionOption, isNonEmptyString, optionsObject, signalOption, versionArgument } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 
@@ -58,6 +61,47 @@ interface Version {
    * ```
    */
   file(path: string): OcflFile;
+
+  /**
+   * Writes each of the version's files to `dir`, under its logical path, and nothing else. `dir` must be missing or empty: it is made, with its parents, if it is missing.
+   * Each file's modification and access times are set to its {@link OcflFile.modifiedAt}. Nothing is flushed to disk.
+   * No file is written over, but directories are made by path, so export only to a directory nobody else can write to while the export runs.
+   *
+   * `onProgress` is called after each file is written. Aborting `signal` stops the export, and no stored file is still open once it rejects.
+   * An export that fails or is aborted leaves what it had written, including a file only partly written and the directories it made.
+   *
+   * @throws `TypeError`, before anything is made, if `dir` is missing, empty or not a string, is the storage root or inside it, `options` is given and isn't an object,
+   * has a key other than `signal` and `onProgress`, or `signal` isn't an `AbortSignal` or `onProgress` isn't a function.
+   * @throws `signal.reason` if `signal` is aborted, before anything is made if it already is.
+   * @throws {@link OcflError} `DIRECTORY_NOT_EMPTY`, before anything is written, if `dir` holds anything.
+   * @throws {@link OcflError} `INVALID_OBJECT` if a stored file is missing or isn't a regular file.
+   * @throws The error `onProgress` throws; the export stops.
+   * @throws The file system error if `dir` or a file in it can't be made or written, or a stored file can't be read.
+   * @example
+   * ```ts
+   * await object.head.exportTo('/srv/exports/item-1', {
+   *   signal: AbortSignal.timeout(10 * 60_000),
+   *   onProgress: ({ exportedFiles, totalFiles }) => console.log(`${exportedFiles} of ${totalFiles} files written`),
+   * });
+   * ```
+   */
+  exportTo(dir: string, options?: ExportOptions): Promise<void>;
+}
+
+/** How far {@link Version.exportTo} has got. */
+interface ExportProgress {
+  /** Files written so far. */
+  readonly exportedFiles: number;
+  /** Files the export writes in all: every file of the version. */
+  readonly totalFiles: number;
+}
+
+/** Options for {@link Version.exportTo}. */
+interface ExportOptions {
+  /** Stops the export when aborted. */
+  readonly signal?: AbortSignal | undefined;
+  /** Called after each file is written. If it throws, the export stops and rejects with that error. */
+  readonly onProgress?: ((progress: ExportProgress) => void) | undefined;
 }
 
 /** An OCFL object as read at one moment. */
@@ -222,7 +266,7 @@ class OpenedObject implements OcflObject {
     this.id = inventory.id;
     this.ocflVersion = ocflVersion;
     this.digestAlgorithm = inventory.digestAlgorithm;
-    this.versions = versionsOf(inventory, place.objectRoot);
+    this.versions = versionsOf(inventory, place);
     this.head = this.versions.get(inventory.versionNumber.value) as Version;
     Object.freeze(this);
   }
@@ -270,7 +314,7 @@ class OpenedObject implements OcflObject {
   }
 
   async checkFixity(options?: FixityOptions): Promise<FixityReport> {
-    const { signal, onProgress } = fixityOptions(options);
+    const { signal, onProgress } = progressOptions<FixityOptions>(options, 'object.checkFixity');
     signal?.throwIfAborted();
     const totalFiles = Object.values(this.#rootInventory.inventory.manifest).reduce((count, contentPaths) => count + contentPaths.length, 0);
     const storedFiles = storedFilesOf(this.#rootInventory.inventory);
@@ -345,11 +389,12 @@ function affectedFiles(inventory: OcflObjectInventory, contentPaths: ReadonlySet
   return affected;
 }
 
-function fixityOptions(options: unknown): FixityOptions {
-  const checked = optionsObject(options, 'object.checkFixity', ['signal', 'onProgress'], '{ signal: AbortSignal.timeout(60_000) }');
+/** The options of a read that takes a `signal` and an `onProgress` callback, as `call` names it */
+function progressOptions<T extends FixityOptions | ExportOptions>(options: unknown, call: string): T {
+  const checked = optionsObject(options, call, ['signal', 'onProgress'], '{ signal: AbortSignal.timeout(60_000) }');
   signalOption(checked.signal);
   functionOption('onProgress', checked.onProgress);
-  return checked as FixityOptions;
+  return checked as T;
 }
 
 /** The digest of the stored file at `file`, or `undefined` if it is missing or isn't a regular file */
@@ -402,11 +447,11 @@ class ObjectVersion implements Version {
   declare readonly user?: User;
   readonly #inventory: OcflObjectInventory;
   readonly #name: string;
-  readonly #objectRoot: string;
+  readonly #place: ObjectPlace;
   readonly #history: ObjectHistory;
   #files: ReadonlyMap<string, OcflFile> | undefined;
 
-  constructor(inventory: OcflObjectInventory, number: number, name: string, objectRoot: string, history: ObjectHistory) {
+  constructor(inventory: OcflObjectInventory, number: number, name: string, place: ObjectPlace, history: ObjectHistory) {
     const { created, message, user } = inventory.versions[name] as Inventory['versions'][string];
     this.number = number;
     this.createdAt = new Date(created);
@@ -418,7 +463,7 @@ class ObjectVersion implements Version {
     }
     this.#inventory = inventory;
     this.#name = name;
-    this.#objectRoot = objectRoot;
+    this.#place = place;
     this.#history = history;
     Object.freeze(this);
   }
@@ -443,7 +488,7 @@ class ObjectVersion implements Version {
             digest,
             version: this.number,
             objectId: this.#inventory.id,
-            objectRoot: this.#objectRoot,
+            objectRoot: this.#place.objectRoot,
             contentPath,
             history: this.#history,
           }),
@@ -453,13 +498,43 @@ class ObjectVersion implements Version {
     }
     return this.#files;
   }
+
+  async exportTo(dir: string, options?: ExportOptions): Promise<void> {
+    if (!isNonEmptyString(dir)) {
+      throw new TypeError(`The directory to export to is required, not ${inspect(dir)}.`);
+    }
+    const { signal, onProgress } = progressOptions<ExportOptions>(options, 'version.exportTo');
+    signal?.throwIfAborted();
+    const target = nodePath.resolve(dir);
+    if (fileSystem.relativeWithin(this.#place.storageRoot, target) !== undefined) {
+      throw new TypeError(`Cannot export to ${target}, which is inside the storage root ${this.#place.storageRoot}.`);
+    }
+    await fs.promises.mkdir(target, { recursive: true });
+    if (!(await fileSystem.isDirEmpty(target))) {
+      throw ocflError('DIRECTORY_NOT_EMPTY', `Cannot export version ${this.number} of <${this.#inventory.id}> to ${target}, which is not empty.`);
+    }
+    const totalFiles = this.files.size;
+    let exportedFiles = 0;
+    for (const [logicalPath, file] of this.files) {
+      signal?.throwIfAborted();
+      const relative = fileSystem.relativeWithin(target, logicalPath);
+      // Opening refuses a logical path that leaves the object, so this guards only against that check changing
+      /* node:coverage disable */
+      if (!relative) {
+        throw specViolation('E052', this.#place.objectRoot, `logical path "${logicalPath}" in v${this.number} leaves the object`);
+      }
+      /* node:coverage enable */
+      await fileSystem.writeFileFrom(nodePath.join(target, relative), () => file.stream(), file.modifiedAt, signal);
+      onProgress?.({ exportedFiles: ++exportedFiles, totalFiles });
+    }
+  }
 }
 
-function versionsOf(inventory: OcflObjectInventory, objectRoot: string): ReadonlyMap<number, Version> {
+function versionsOf(inventory: OcflObjectInventory, place: ObjectPlace): ReadonlyMap<number, Version> {
   const versions = new Map<number, Version>();
   const history = new ObjectHistory(inventory, versions);
   for (const [number, name] of versionNumbers(inventory)) {
-    versions.set(number, new ObjectVersion(inventory, number, name, objectRoot, history));
+    versions.set(number, new ObjectVersion(inventory, number, name, place, history));
   }
   return versions;
 }
@@ -542,6 +617,8 @@ async function createObject(
 
 export {
   createObject,
+  type ExportOptions,
+  type ExportProgress,
   type FixityOptions,
   type FixityProblem,
   type FixityProgress,

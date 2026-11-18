@@ -119,6 +119,11 @@ export function createObject(root: StorageRoot, id: string, files: Record<string
   });
 }
 
+/** Files `f0.txt` to `f<count - 1>.txt`, each with its own content */
+export function manyFiles(count: number): Record<string, string> {
+  return Object.fromEntries(Array.from({ length: count }, (_, i) => [`f${i}.txt`, `content ${i}`]));
+}
+
 /** The root inventory of the object at `objectRoot`, as it is on disk */
 export async function readInventory(objectRoot: string): Promise<Inventory> {
   return JSON.parse(await fs.promises.readFile(path.join(objectRoot, 'inventory.json'), 'utf8'));

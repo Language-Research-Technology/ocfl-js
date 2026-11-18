@@ -48,9 +48,9 @@ None of these is retryable as it stands. Fix the call, or the file system. An ab
 
 ### `DIRECTORY_NOT_EMPTY`
 
-**Cause:** `createStorageRoot` was given a directory that already has something in it.
+**Cause:** `createStorageRoot` or `version.exportTo` was given a directory that already has something in it.
 
-**What to do:** create the storage root in an empty or missing directory. To use a storage root that already exists, call `openStorageRoot`.
+**What to do:** create the storage root, or export the version, in an empty or missing directory. To use a storage root that already exists, call `openStorageRoot`.
 
 `createStorageRoot` writes the `0=ocfl_1.1` declaration last, so one that was interrupted, by a crash or a killed process, leaves a directory with no declaration, or an empty one. `openStorageRoot` refuses it with `INVALID_STORAGE_ROOT`, and `createStorageRoot` with this code. Delete what is in the directory and call `createStorageRoot` again, but only if the directory holds nothing but some of these, any of which may be empty or cut short:
 
@@ -60,6 +60,8 @@ None of these is retryable as it stands. Fix the call, or the file system. An ab
 - `000N-path-direct-storage-layout.md`, if the storage layout is `000N-path-direct-storage-layout`
 - `extensions/<storage layout>/config.json`, or the directories on its path
 - an empty `0=ocfl_1.1`
+
+`version.exportTo` gives this code before it writes anything. An export that failed or was aborted leaves what it had written, so empty the directory before you export to it again.
 
 ### `STORAGE_ROOT_NOT_FOUND`
 
