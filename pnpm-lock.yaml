@@ -193,9 +193,6 @@ importers:
       conventional-changelog-conventionalcommits:
         specifier: ^9.3.1
         version: 9.3.1
-      esbuild:
-        specifier: ^0.28.2
-        version: 0.28.2
       knip:
         specifier: ^6.44.2
         version: 6.44.2
@@ -5926,6 +5923,7 @@ snapshots:
       '@esbuild/win32-arm64': 0.28.2
       '@esbuild/win32-ia32': 0.28.2
       '@esbuild/win32-x64': 0.28.2
+    optional: true
 
   escalade@3.2.0: {}
 

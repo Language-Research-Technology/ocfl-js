@@ -12,5 +12,5 @@ engineStrict: true
 allowBuilds:
   # Installs the git hooks.
   lefthook: true
-  # Only checks its platform binary, which pnpm installs as an optional dependency.
+  # The site's Vite pulls it in. Its build script only checks its platform binary, which pnpm installs as an optional dependency.
   esbuild: false
