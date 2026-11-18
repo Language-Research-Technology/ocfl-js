@@ -4,10 +4,16 @@ import type { Readable } from 'node:stream';
 import { ocflError } from './error.ts';
 import { openRegularFile } from './file-system.ts';
 import type { Version } from './ocfl-object.ts';
-import { optionsObject } from './utils.ts';
+import { optionsObject, signalFromOptions, signalOption } from './utils.ts';
+
+/** Options for {@link OcflFile.text} and {@link OcflFile.bytes}. */
+interface ReadOptions {
+  /** Aborting it stops the read. */
+  readonly signal?: AbortSignal | undefined;
+}
 
 /** Options for {@link OcflFile.stream}. */
-interface StreamOptions {
+interface StreamOptions extends ReadOptions {
   /** First byte to read, counting from 0. Defaults to 0. */
   readonly start?: number;
   /** Last byte to read, included as in an HTTP `Range` header. Defaults to the end of the file. */
@@ -52,16 +58,20 @@ interface OcflFile {
    * Its chunks are `Buffer`s. With DOM typings, copy one into a `new Uint8Array` before giving it to a `Blob` or `Response`. For a
    * web stream, use `Readable.toWeb(await file.stream())`, and with DOM typings cast that to the global `ReadableStream`.
    *
-   * @throws `TypeError` if `options` is given and isn't an object, or has a key other than `start` and `end`.
+   * Aborting `signal` after the stream is handed out destroys it with an `AbortError` and closes the stored file.
+   *
+   * @throws `TypeError` if `options` is given and isn't an object, has a key other than `start`, `end` and `signal`, or `signal`
+   * isn't an `AbortSignal`.
    * @throws `RangeError` if `start` or `end` isn't a whole number from 0, `start` is after `end`, or `start` is after the last
    * byte. An `end` after the last byte reads to the end.
    * @throws {@link OcflError} `INVALID_OBJECT` if the stored file is missing or isn't a regular file, such as a directory.
    * @throws The file system error, such as `EACCES` or `EIO`, if the stored file can't be read for any other reason.
+   * @throws `signal.reason` if `signal` is aborted before the stream is handed out, before the stored file is opened if it already is.
    * @example
    * ```ts
    * // `start` and `end` from the request's `Range` header, checked against the size
    * const size = await file.size();
-   * const body = await file.stream({ start, end });
+   * const body = await file.stream({ start, end, signal: request.signal });
    * reply.code(206).header('content-range', `bytes ${start}-${end}/${size}`).send(body);
    * ```
    */
@@ -69,25 +79,29 @@ interface OcflFile {
   /**
    * Reads the content as UTF-8 text.
    *
+   * @throws `TypeError` if `options` is given and isn't an object, has a key other than `signal`, or `signal` isn't an `AbortSignal`.
    * @throws {@link OcflError} `INVALID_OBJECT` if the stored file is missing or isn't a regular file, such as a directory.
    * @throws The file system error, such as `EACCES` or `EIO`, if the stored file can't be read for any other reason.
+   * @throws `signal.reason` if `signal` is aborted, before the stored file is opened if it already is. The stored file is closed.
    * @example
    * ```ts
    * const metadata = JSON.parse(await file.text());
    * ```
    */
-  text(): Promise<string>;
+  text(options?: ReadOptions): Promise<string>;
   /**
    * Reads the content into memory.
    *
+   * @throws `TypeError` if `options` is given and isn't an object, has a key other than `signal`, or `signal` isn't an `AbortSignal`.
    * @throws {@link OcflError} `INVALID_OBJECT` if the stored file is missing or isn't a regular file, such as a directory.
    * @throws The file system error, such as `EACCES` or `EIO`, if the stored file can't be read for any other reason.
+   * @throws `signal.reason` if `signal` is aborted, before the stored file is opened if it already is. The stored file is closed.
    * @example
    * ```ts
    * const checksum = createHash('md5').update(await file.bytes()).digest('base64');
    * ```
    */
-  bytes(): Promise<Uint8Array<ArrayBuffer>>;
+  bytes(options?: ReadOptions): Promise<Uint8Array<ArrayBuffer>>;
 }
 
 /** Finds the versions of an object in which a logical path of one of its versions was created and modified */
@@ -155,34 +169,46 @@ class VersionFile implements OcflFile {
   }
 
   async stream(options?: StreamOptions): Promise<Readable> {
-    const { start, end } = streamOptions(options);
-    const { handle, size } = await this.#open();
+    const { start, end, signal } = streamOptions(options);
+    const { handle, size } = await this.#open(signal);
     if (start !== undefined && start >= size) {
       await handle.close();
       throw new RangeError(`A range can't start at byte ${start} of ${this.path}, which has ${size} bytes.`);
     }
-    return handle.createReadStream({ start, end });
+    return handle.createReadStream({ start, end, signal });
   }
 
-  async text(): Promise<string> {
-    return this.#read((handle) => handle.readFile('utf8'));
+  async text(options?: ReadOptions): Promise<string> {
+    return this.#read(signalFromOptions(options, 'file.text'), (handle, signal) => handle.readFile({ encoding: 'utf8', signal }));
   }
 
-  async bytes(): Promise<Uint8Array<ArrayBuffer>> {
-    return this.#read((handle) => handle.readFile());
+  async bytes(options?: ReadOptions): Promise<Uint8Array<ArrayBuffer>> {
+    return this.#read(signalFromOptions(options, 'file.bytes'), (handle, signal) => handle.readFile({ signal }));
   }
 
-  async #read<T>(read: (handle: fs.promises.FileHandle) => Promise<T>): Promise<T> {
-    const { handle } = await this.#open();
+  async #read<T>(signal: AbortSignal | undefined, read: (handle: fs.promises.FileHandle, signal: AbortSignal | undefined) => Promise<T>): Promise<T> {
+    const { handle } = await this.#open(signal);
     try {
-      return await read(handle);
+      // Node rejects an aborted read with its own AbortError, not the reason
+      return await read(handle, signal).catch((error: unknown) => {
+        signal?.throwIfAborted();
+        throw error;
+      });
     } finally {
       await handle.close();
     }
   }
 
-  async #open(): Promise<{ handle: fs.promises.FileHandle; size: number }> {
+  /** Opens the stored file, unless `signal` is aborted before or while it opens */
+  async #open(signal?: AbortSignal): Promise<{ handle: fs.promises.FileHandle; size: number }> {
+    signal?.throwIfAborted();
     const opened = await openRegularFile(this.#storedPath);
+    if (signal?.aborted) {
+      if ('handle' in opened) {
+        await opened.handle.close();
+      }
+      signal.throwIfAborted();
+    }
     if ('absent' in opened) {
       throw ocflError(
         'INVALID_OBJECT',
@@ -195,7 +221,8 @@ class VersionFile implements OcflFile {
 }
 
 function streamOptions(options: unknown): StreamOptions {
-  const checked: StreamOptions = optionsObject(options, 'file.stream', ['start', 'end'], '{ start: 0, end: 1023 }');
+  const checked: StreamOptions = optionsObject(options, 'file.stream', ['start', 'end', 'signal'], '{ start: 0, end: 1023 }');
+  signalOption(checked.signal);
   for (const side of ['start', 'end'] as const) {
     const offset = checked[side];
     if (offset !== undefined && !(Number.isSafeInteger(offset) && offset >= 0)) {
@@ -208,4 +235,4 @@ function streamOptions(options: unknown): StreamOptions {
   return checked;
 }
 
-export { type FileHistory, type OcflFile, type StreamOptions, VersionFile };
+export { type FileHistory, type OcflFile, type ReadOptions, type StreamOptions, VersionFile };

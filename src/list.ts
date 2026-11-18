@@ -31,6 +31,12 @@ interface ListedDamagedObjectRoot {
   readonly id?: string;
 }
 
+/** Options for {@link StorageRoot.objects}. */
+interface ListOptions {
+  /** Aborting it stops the listing. */
+  readonly signal?: AbortSignal | undefined;
+}
+
 /**
  * What {@link StorageRoot.objects} yields for each object root: the object, or why a damaged object root can't be opened.
  * Tell them apart by `status`, and keep a fallback: a later release may add a status. {@link StorageRoot.objects} shows how.
@@ -73,8 +79,9 @@ async function listedObjectAt(place: ObjectPlace, declared: DeclarationsFound, r
 }
 
 /** A directory with an object declaration is an object, valid or not, and isn't searched: OCFL allows no object inside another */
-async function* objectsUnder(storageRoot: string, rootSettings: RootSettings, dir: fs.Dir): AsyncGenerator<ListedObject> {
+async function* objectsUnder(storageRoot: string, rootSettings: RootSettings, dir: fs.Dir, signal: AbortSignal | undefined): AsyncGenerator<ListedObject> {
   for await (const entry of dir) {
+    signal?.throwIfAborted();
     if (!entry.isDirectory() || (dir.path === storageRoot && entry.name === EXTENSIONS_DIR)) {
       continue;
     }
@@ -83,11 +90,12 @@ async function* objectsUnder(storageRoot: string, rootSettings: RootSettings, di
     if (declared === undefined) {
       const subdirectory = await openListedDirectory(entryPath);
       if (subdirectory) {
-        yield* objectsUnder(storageRoot, rootSettings, subdirectory);
+        yield* objectsUnder(storageRoot, rootSettings, subdirectory, signal);
       }
       continue;
     }
     const found = await listedObjectAt(objectPlace(storageRoot, entryPath), declared, rootSettings);
+    signal?.throwIfAborted();
     if (found) {
       yield found;
     }
@@ -98,8 +106,9 @@ async function* objectsUnder(storageRoot: string, rootSettings: RootSettings, di
  * Every object root in the storage root at `storageRoot`, with the settings `rootSettings`, each read when the listing reaches it.
  * @throws The file system error that stopped the listing
  */
-async function* listObjects(storageRoot: string, rootSettings: RootSettings): AsyncGenerator<ListedObject> {
-  yield* objectsUnder(storageRoot, rootSettings, await fs.promises.opendir(storageRoot));
+async function* listObjects(storageRoot: string, rootSettings: RootSettings, signal: AbortSignal | undefined): AsyncGenerator<ListedObject> {
+  signal?.throwIfAborted();
+  yield* objectsUnder(storageRoot, rootSettings, await fs.promises.opendir(storageRoot), signal);
 }
 
-export { type ListedDamagedObjectRoot, type ListedObject, type ListedOpenedObject, listObjects };
+export { type ListedDamagedObjectRoot, type ListedObject, type ListedOpenedObject, type ListOptions, listObjects };
