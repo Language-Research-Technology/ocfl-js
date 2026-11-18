@@ -8,7 +8,7 @@ import * as fileSystem from './file-system.ts';
 import type { ContentRelease, DeletePlan, OcflObjectInventory, RelistPlan } from './inventory.ts';
 import { checkLogicalPath, fileLogicalPath, invalidLogicalPath, normaliseLogicalPath } from './logical-path.ts';
 import type { RootInventory } from './root-inventory.ts';
-import { createLimiter, functionOption, isJsonObject, isNonEmptyString, optionsObject, rejectUnknownKeys, signalOption } from './utils.ts';
+import { createLimiter, functionOption, isJsonObject, isNonEmptyString, optionsObject, rejectUnknownKeys, signalOption, versionArgument } from './utils.ts';
 
 /** The person or system responsible for a version. */
 interface User {
@@ -786,9 +786,7 @@ class ObjectDraft implements Draft {
 
   async reinstate(logicalPath: string, version: number): Promise<void> {
     return this.#operate(async () => {
-      if (typeof version !== 'number') {
-        throw new TypeError(`The version must be a number, such as 1, not ${inspect(version)}`);
-      }
+      versionArgument(version);
       const plan = this.#inventory._planReinstate(fileLogicalPath(logicalPath), version);
       await this.#applyRelist(plan);
     });

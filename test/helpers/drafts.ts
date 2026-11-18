@@ -132,7 +132,7 @@ export async function sidecarMatches(objectRoot: string): Promise<boolean> {
 }
 
 /** The text of each file of `version`, keyed by logical path */
-export async function textFiles(version: Version): Promise<Record<string, string>> {
+export async function textFiles(version: Pick<Version, 'files'>): Promise<Record<string, string>> {
   return Object.fromEntries(await Promise.all(Array.from(version.files, async ([logicalPath, file]) => [logicalPath, await file.text()])));
 }
 

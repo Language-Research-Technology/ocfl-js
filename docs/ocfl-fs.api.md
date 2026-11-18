@@ -166,6 +166,7 @@ export interface OcflObject {
     isCurrent(): Promise<boolean>;
     readonly ocflVersion: OcflSpecVersion;
     update(options: UpdateOptions, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
+    version(number: number): Version;
     readonly versions: ReadonlyMap<number, Version>;
 }
 
@@ -230,6 +231,7 @@ export interface User {
 // @public
 export interface Version {
     readonly createdAt: Date;
+    file(path: string): OcflFile;
     readonly files: ReadonlyMap<string, OcflFile>;
     readonly message?: string;
     readonly number: number;

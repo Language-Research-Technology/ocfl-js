@@ -35,6 +35,15 @@ export function objectPropertiesAreNarrow(object: OcflObject): [number, Date, st
   return [number + ocflVersion.length + digestAlgorithm.length + (missing ? 1 : 0), createdAt, message, user];
 }
 
+export function versionAndFileGiveNoUndefined(object: OcflObject): OcflFile {
+  const version: Version = object.version(2);
+  // @ts-expect-error the version is a number
+  object.version('2');
+  // @ts-expect-error the logical path is a string
+  version.file(1);
+  return version.file('a.txt');
+}
+
 export function fileDatesComeFromVersions(file: OcflFile): [Date, Date, Version, Version] {
   // @ts-expect-error read-only
   file.createdAt = new Date();

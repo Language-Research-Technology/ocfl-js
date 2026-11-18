@@ -102,4 +102,22 @@ function functionOption(name: string, value: unknown): void {
   }
 }
 
-export { createLimiter, deepFreeze, functionOption, isJsonObject, isNonEmptyString, optionsObject, parseJsonObject, rejectUnknownKeys, signalOption };
+/** @throws `TypeError` if `version` isn't a number */
+function versionArgument(version: unknown): void {
+  if (typeof version !== 'number') {
+    throw new TypeError(`The version must be a number, such as 1, not ${inspect(version)}`);
+  }
+}
+
+export {
+  createLimiter,
+  deepFreeze,
+  functionOption,
+  isJsonObject,
+  isNonEmptyString,
+  optionsObject,
+  parseJsonObject,
+  rejectUnknownKeys,
+  signalOption,
+  versionArgument,
+};

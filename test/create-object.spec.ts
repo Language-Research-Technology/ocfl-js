@@ -37,7 +37,7 @@ async function described(object: OcflObject): Promise<unknown> {
         message,
         user,
         digests: Object.fromEntries(Array.from(files, ([logicalPath, file]) => [logicalPath, file.digest])),
-        texts: await textFiles({ number, createdAt, files }),
+        texts: await textFiles({ files }),
       })),
     ),
   };

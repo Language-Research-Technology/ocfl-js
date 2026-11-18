@@ -60,7 +60,7 @@ Nothing is written to the object until your function returns. The library then c
 
 [`object.head`](/ocfl-js/api/interfaces/ocflobject/#head) is the latest version. Its [`files`](/ocfl-js/api/interfaces/version/#files) map each logical path to an [`OcflFile`](/ocfl-js/api/interfaces/ocflfile/), which you can read with [`text()`](/ocfl-js/api/interfaces/ocflfile/#text), [`bytes()`](/ocfl-js/api/interfaces/ocflfile/#bytes) or [`stream()`](/ocfl-js/api/interfaces/ocflfile/#stream). A stream can cover just a byte range, which suits large files.
 
-Every earlier version stays readable too: [`object.versions`](/ocfl-js/api/interfaces/ocflobject/#versions) maps each version number to its version, so `object.versions.get(1)?.files` gives the files of version 1.
+Every earlier version stays readable too: [`object.versions`](/ocfl-js/api/interfaces/ocflobject/#versions) maps each version number to its version. To read a file as it was in version 1, use [`object.version(1)`](/ocfl-js/api/interfaces/ocflobject/#version)[`.file('hello.txt')`](/ocfl-js/api/interfaces/version/#file), which throws `VERSION_NOT_FOUND` or `FILE_NOT_FOUND` if the version or the file isn't there.
 
 An opened object is the object as it was when you opened it. It doesn't change when someone commits a later version; open it again to see that.
 

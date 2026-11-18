@@ -5,10 +5,11 @@ import { checkedDeclaration, type DeclarationsFound } from './declaration.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
 import { commitDraft, type Draft, type UpdateOptions, type User, type VersionDetails, writeOptions } from './draft.ts';
-import { OcflError, objectRootConflict } from './error.ts';
+import { OcflError, objectRootConflict, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { type Inventory, OcflObjectInventory, versionNumbers } from './inventory.ts';
 import { objectLocked } from './lock.ts';
+import { fileLogicalPath } from './logical-path.ts';
 import type { ObjectPlace } from './object-place.ts';
 import {
   assertEmptyObjectRoot,
@@ -26,7 +27,7 @@ import {
 import { type FileHistory, type OcflFile, VersionFile } from './ocfl-file.ts';
 import type { RootInventory } from './root-inventory.ts';
 import type { RootSettings, StorageRoot } from './storage-root.ts';
-import { functionOption, optionsObject, signalOption } from './utils.ts';
+import { functionOption, optionsObject, signalOption, versionArgument } from './utils.ts';
 
 const { INVENTORY_NAME } = OcflConstants;
 
@@ -44,6 +45,19 @@ interface Version {
   readonly user?: User;
   /** The version's files, keyed by logical path. */
   readonly files: ReadonlyMap<string, OcflFile>;
+
+  /**
+   * The file at this logical path, as in {@link Version.files}. The path is normalised as draft operations normalise it,
+   * so `./notes/a.txt` and `notes//a.txt` give the file at `notes/a.txt`.
+   *
+   * @throws {@link OcflError} `FILE_NOT_FOUND` if the version has no file at `path`, including when `path` is a directory.
+   * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `path` is empty or leaves the object.
+   * @example
+   * ```ts
+   * const metadata = JSON.parse(await object.head.file('ro-crate-metadata.json').text());
+   * ```
+   */
+  file(path: string): OcflFile;
 }
 
 /** An OCFL object as read at one moment. */
@@ -58,6 +72,18 @@ interface OcflObject {
   readonly versions: ReadonlyMap<number, Version>;
   /** The latest version. */
   readonly head: Version;
+
+  /**
+   * The version with this number, as in {@link OcflObject.versions}; the head is one of them.
+   *
+   * @throws {@link OcflError} `VERSION_NOT_FOUND` if the object has no version with this number, as for 0, a negative number, a fraction or `NaN`.
+   * @throws `TypeError` if `number` is not a number.
+   * @example
+   * ```ts
+   * const transcript = await object.version(2).file('transcript.txt').text();
+   * ```
+   */
+  version(number: number): Version;
 
   /**
    * Commits one new version made from the draft changed by `change`. If `change` throws, everything is discarded.
@@ -199,6 +225,15 @@ class OpenedObject implements OcflObject {
     this.versions = versionsOf(inventory, place.objectRoot);
     this.head = this.versions.get(inventory.versionNumber.value) as Version;
     Object.freeze(this);
+  }
+
+  version(number: number): Version {
+    versionArgument(number);
+    const version = this.versions.get(number);
+    if (!version) {
+      throw ocflError('VERSION_NOT_FOUND', `The object <${this.id}> has no version ${number}.`);
+    }
+    return version;
   }
 
   async update(options: UpdateOptions, change: (draft: Draft) => Promise<unknown>): Promise<OcflObject> {
@@ -386,6 +421,14 @@ class ObjectVersion implements Version {
     this.#objectRoot = objectRoot;
     this.#history = history;
     Object.freeze(this);
+  }
+
+  file(path: string): OcflFile {
+    const file = this.files.get(fileLogicalPath(path));
+    if (!file) {
+      throw ocflError('FILE_NOT_FOUND', `Version ${this.number} of the object <${this.#inventory.id}> has no file at logical path "${path}".`);
+    }
+    return file;
   }
 
   // Listed on first use: an object can have many versions of many files, and most readers want only the head

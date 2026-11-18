@@ -119,6 +119,26 @@ describe('opening an object', () => {
       assert.strictEqual(object.versions.get(0), undefined);
     });
 
+    it('gives a version by its number, the head included', async () => {
+      const object = await root.open(SPEC_EX_FULL_ID);
+      assert.strictEqual(object.version(1), object.versions.get(1));
+      assert.strictEqual(object.version(3), object.head);
+    });
+
+    it('throws VERSION_NOT_FOUND, naming the object and the number, for a number that is not a version', async () => {
+      const object = await root.open(SPEC_EX_FULL_ID);
+      for (const number of [0, -1, 1.5, 4, Number.NaN]) {
+        assert.throws(() => object.version(number), ocflError('VERSION_NOT_FOUND'), String(number));
+      }
+      assert.throws(() => object.version(99), { message: `The object <${SPEC_EX_FULL_ID}> has no version 99.` });
+    });
+
+    it('throws a TypeError for a version that is not a number', async () => {
+      const object = await root.open(SPEC_EX_FULL_ID);
+      assert.throws(() => object.version('2' as unknown as number), TypeError);
+      assert.throws(() => object.version(undefined as unknown as number), TypeError);
+    });
+
     it('gives when each version was created as a Date', async () => {
       const object = await root.open(SPEC_EX_FULL_ID);
       const created = object.versions.get(2)!.createdAt;
@@ -161,6 +181,38 @@ describe('opening an object', () => {
       const object = await root.open(SPEC_EX_FULL_ID);
       assert.strictEqual(object.head.files, object.head.files);
       assert.strictEqual(object.head.files.get('foo/bar.xml'), object.versions.get(3)!.files.get('foo/bar.xml'));
+    });
+
+    it('gives a file of a version by its logical path, however the path is spelled', async () => {
+      const object = await root.open(SPEC_EX_FULL_ID);
+      const version = object.version(2);
+      for (const spelling of ['foo/bar.xml', './foo/bar.xml', 'foo//bar.xml', 'foo/bar.xml/']) {
+        assert.strictEqual(version.file(spelling), version.files.get('foo/bar.xml'), spelling);
+      }
+    });
+
+    it('gives the file as it was in that version, not as it is in the head', async () => {
+      const object = await root.open(SPEC_EX_FULL_ID);
+      assert.match(object.version(1).file('foo/bar.xml').digest, /^7dcc352f96c5/);
+      assert.match(object.head.file('foo/bar.xml').digest, /^4d27c86b026f/);
+      assert.strictEqual(await object.version(2).file('empty.txt').text(), '');
+    });
+
+    it('throws FILE_NOT_FOUND, naming the version, the object and the path, for a logical path with no file', async () => {
+      const object = await root.open(SPEC_EX_FULL_ID);
+      for (const missing of ['foo', 'foo/', 'v1/content/empty.txt']) {
+        assert.throws(() => object.head.file(missing), ocflError('FILE_NOT_FOUND'), missing);
+      }
+      assert.throws(() => object.head.file('empty.txt'), {
+        message: `Version 3 of the object <${SPEC_EX_FULL_ID}> has no file at logical path "empty.txt".`,
+      });
+    });
+
+    it('throws INVALID_LOGICAL_PATH for a logical path that is empty or leaves the object', async () => {
+      const object = await root.open(SPEC_EX_FULL_ID);
+      for (const invalid of ['', '.', '/foo/bar.xml', '../foo/bar.xml', 'foo/../../bar.xml']) {
+        assert.throws(() => object.head.file(invalid), ocflError('INVALID_LOGICAL_PATH'), invalid);
+      }
     });
 
     it('has no file for a logical path the version does not have', async () => {
