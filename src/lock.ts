@@ -192,7 +192,7 @@ async function linkLock(staged: string, lock: string, id: string): Promise<void>
       throw ocflError(
         'UNSUPPORTED_FILESYSTEM',
         `Couldn't hard-link the lock ${lock} of the object <${id}>: the storage root's file system doesn't support hard links, which locks need, or refused this one.`,
-        { cause: error },
+        { objectId: id, cause: error },
       );
     }
     throw error;
@@ -202,7 +202,10 @@ async function linkLock(staged: string, lock: string, id: string): Promise<void>
 /** The `OBJECT_LOCKED` for the object `id`, whose lock is held, with `lockedAt` if the lock can still be read */
 async function objectLocked(workspace: string, id: string): Promise<OcflError> {
   const lock = lockPath(workspace);
-  return ocflError('OBJECT_LOCKED', `A writer holds the lock ${lock} of the object <${id}>, or died holding it.`, { lockedAt: await readLockedAt(lock) });
+  return ocflError('OBJECT_LOCKED', `A writer holds the lock ${lock} of the object <${id}>, or died holding it.`, {
+    objectId: id,
+    lockedAt: await readLockedAt(lock),
+  });
 }
 
 /**
@@ -260,16 +263,16 @@ function isStagedLock(name: string): boolean {
 }
 
 /**
- * The `RECOVERY_NEEDED` for a writer that ended holding the object's lock.
+ * The `RECOVERY_NEEDED` for a writer of the object `id` that ended holding its lock.
  * @param outcome - What became of it, as a sentence without its full stop
  * @param advice - What recovering the object does, or what to do next, continuing "recover its unfinished write, "
  * @param cause - What the writer failed with
  */
-function lockKept(outcome: string, advice: string, cause: unknown): OcflError {
+function lockKept(id: string, outcome: string, advice: string, cause: unknown): OcflError {
   return ocflError(
     'RECOVERY_NEEDED',
     `${outcome}. The object stays locked until it is recovered: once no writer of it is alive, recover its unfinished write, ${advice}.`,
-    { cause },
+    { objectId: id, cause },
   );
 }
 

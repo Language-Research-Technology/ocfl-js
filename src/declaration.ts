@@ -1,6 +1,6 @@
 import { OcflConstants, type OcflSpecVersion } from './constants.ts';
 import { readIfPresent } from './file-system.ts';
-import { specViolation } from './ocfl-rules.ts';
+import { type FaultAt, specViolation } from './ocfl-rules.ts';
 
 const { OBJECT_DECLARATION_PREFIX } = OcflConstants;
 
@@ -30,26 +30,27 @@ async function findDeclaredVersion(prefix: string, rootPath: string): Promise<De
 }
 
 /**
- * The OCFL version the declaration `declared`, found in `objectRoot`, gives
+ * The OCFL version the declaration `declared`, found where `where` says, gives
  * @throws {@link OcflError} `INVALID_OBJECT` with `E003` for more than one declaration, or `E007` for one with the wrong contents
  */
-function checkedDeclaration(objectRoot: string, declared: DeclarationsFound): OcflSpecVersion {
+function checkedDeclaration(where: FaultAt, declared: DeclarationsFound): OcflSpecVersion {
   if (declared === SEVERAL_DECLARATIONS) {
-    throw specViolation('E003', objectRoot, 'it has more than one object declaration');
+    throw specViolation('E003', where, 'it has more than one object declaration');
   }
   if (declared === '') {
-    throw specViolation('E007', objectRoot);
+    throw specViolation('E007', where);
   }
   return declared;
 }
 
 /**
  * The OCFL version the object declaration in `objectRoot` gives, or `undefined` if it has none
+ * @param where - The object root, and the id it is given if known, for the error
  * @throws {@link OcflError} `INVALID_OBJECT` as {@link checkedDeclaration} does
  */
-async function objectDeclaration(objectRoot: string): Promise<OcflSpecVersion | undefined> {
+async function objectDeclaration(objectRoot: string, where: FaultAt = objectRoot): Promise<OcflSpecVersion | undefined> {
   const declared = await findDeclaredVersion(OBJECT_DECLARATION_PREFIX, objectRoot);
-  return declared === undefined ? undefined : checkedDeclaration(objectRoot, declared);
+  return declared === undefined ? undefined : checkedDeclaration(where, declared);
 }
 
 /** Whether `dir` has an object declaration file, whatever it holds */

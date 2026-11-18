@@ -32,7 +32,7 @@ interface WriteSettings {
  * @throws {@link OcflError} `INVALID_OBJECT` with `E007` for an invalid declaration, or `E003` for more than one or if an update finds none; `OBJECT_ROOT_CONFLICT` if a create finds none in a directory that isn't empty
  */
 async function ensureObjectDeclaration(root: string, id: string, ocflVersion: OcflSpecVersion, creating: boolean): Promise<string | undefined> {
-  if (await objectDeclaration(root)) {
+  if (await objectDeclaration(root, { objectId: id, file: root })) {
     return;
   }
   if (!creating) {
@@ -92,7 +92,7 @@ async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory
  * @param cause - What the update failed with
  */
 function recoveryNeeded(objectRoot: string, id: string, state: string, cause: unknown) {
-  return lockKept(`The update of the object <${id}> at ${objectRoot} ${state}`, 'then open the object again before retrying', cause);
+  return lockKept(id, `The update of the object <${id}> at ${objectRoot} ${state}`, 'then open the object again before retrying', cause);
 }
 
 /** Renames the staged sidecar of the root inventory over its sidecar */
@@ -247,9 +247,7 @@ class ObjectWrite {
         ? ocflError(
             'CROSS_FILESYSTEM_MOVE',
             `Can't move the new version of the object <${inventory.id}> into ${objectRoot}: it is on a different file system from the workspace.`,
-            {
-              cause: error,
-            },
+            { objectId: inventory.id, cause: error },
           )
         : error;
     }
@@ -315,6 +313,7 @@ async function startWrite(place: ObjectPlace, settings: WriteSettings, inventory
     // Kept locked, so that what an earlier writer left there never becomes part of a version
     if (fileSystem.isAlreadyExists(error)) {
       throw lockKept(
+        inventory.id,
         `The object <${inventory.id}> at ${objectRoot} can't be updated: an earlier update left ${versionPath} behind`,
         'then open the object again before retrying',
         error,
@@ -327,11 +326,7 @@ async function startWrite(place: ObjectPlace, settings: WriteSettings, inventory
 
 /** The name an update of `inventory` gives its version, or `undefined` if there can be no further version */
 function nextVersionName(inventory: OcflObjectInventory): string | undefined {
-  try {
-    return inventory.versionNumber.next().toString();
-  } catch {
-    return undefined;
-  }
+  return inventory.versionNumber.next()?.toString();
 }
 
 /** Replaces the sidecar of the root inventory if it doesn't record that inventory's digest */
@@ -368,7 +363,7 @@ async function recoverWrite(place: ObjectPlace, lock: Lock, flusher: fileSystem.
   // A create writes the declaration before anything else in the object root, so without one nothing there is its
   const createLeft = !root && declarations.length > 0;
   if (createLeft && rootNames.some((name) => isVersionName(name) && name !== FIRST_VERSION)) {
-    throw declarationWithoutInventory(objectRoot);
+    throw declarationWithoutInventory(objectRoot, lock.id);
   }
 
   await clearWorkspace(workspace);

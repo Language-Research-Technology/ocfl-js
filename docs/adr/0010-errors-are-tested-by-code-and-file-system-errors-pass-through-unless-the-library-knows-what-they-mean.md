@@ -9,6 +9,12 @@ The library works on a local file system, often an NFS mount. Most file system e
 ## Decision
 
 - **One class, tested by `code`.** A failure the library detects is an `OcflError` (ADR 0002: no subclasses, made only by the library). Callers branch on `code`. The message names the object or path involved and helps in logs, but isn't part of the contract and may change in a patch release.
+- **`isOcflError(error, code?)` tells an `OcflError` without `instanceof`.** Every `OcflError` carries the `Symbol.for('ocfl-js.OcflError')` brand, so two installed copies of the package, from the release that added it, recognise each other's errors, and nothing else matches by name. Errors from `@ocfl/ocfl` 0.x carry no brand. Given a code, it narrows `error.code` to that code. `instanceof` still works within one copy.
+- **What a caller's code needs is a field, never only text in the message.** Each field is absent where it doesn't apply, and its doc comment names the codes that set it:
+  - `objectId`, the object id, on every error about one OCFL object whose id is known. For a fault in an inventory whose sidecar confirms it, that is the id the inventory names, which is the one its message names too. Errors about the storage root as a whole, such as `STORAGE_ROOT_NOT_FOUND` or `LAYOUT_NOT_DECLARED`, have none.
+  - `logicalPath`, the logical path at fault: the source for `FILE_NOT_FOUND`, the target for `TARGET_NOT_EMPTY` and `PATH_CONFLICT`, the path refused for `INVALID_LOGICAL_PATH`.
+  - `sourcePath`, the file `import` couldn't take, for `SOURCE_CHANGED` and `UNSUPPORTED_FILE_TYPE` (ADR 0006).
+  - `lockedAt`, for `OBJECT_LOCKED`, and `ocflCode`, below.
 - **Some errors aren't an `OcflError`.** A wrong call throws `TypeError` for a missing or wrongly typed argument, an unknown option, or a storage layout or parameter `createStorageRoot` refuses; `RangeError` for a byte range `OcflFile.stream()` can't serve; and a plain `Error` for a draft used after its update finished, or an update that ends with draft operations still running. An aborted `signal` rejects with the signal's `reason`, whatever it is. Callers must not test any of these for a `code`.
 - **A file system error takes one of three paths:**
   1. Where the library expects it and knows what it means, it becomes the `OcflError` for that meaning, such as `CROSS_FILESYSTEM_MOVE`, `UNSUPPORTED_FILESYSTEM` or `INVALID_OBJECT` for a stored file that is missing, with the file system error as `cause`.
@@ -20,7 +26,8 @@ The library works on a local file system, often an NFS mount. Most file system e
 
 ## Consequences
 
-- A caller's `catch` checks `instanceof OcflError` and switches on `code`, with a `default` branch for codes added later. Anything else is a wrong call, an abort, or a file system error the library had nothing to add to.
+- A caller's `catch` checks `isOcflError(error)` and switches on `code`, with a `default` branch for codes added later. Anything else is a wrong call, an abort, or a file system error the library had nothing to add to.
+- Setting a field on a code that didn't set it before is a minor change. Taking a field away from a code, or changing what it holds, is breaking.
 - A caller that handles `ENOSPC` or `EACCES` itself can rely on getting the plain Node error, except inside `RECOVERY_NEEDED`, where the caller must recover first anyway.
 - Code that turns a new file system error into an `OcflError` picks the code for its meaning, or adds one, and sets `cause`.
 - Renaming or removing a code, moving a failure from one code to another, or moving a file system error from one path to another changes what callers' `catch` blocks see, and is a breaking change. That includes giving a new code to an error that passed through, since a caller handling the plain error stops seeing it. Making a wrong call throw an `OcflError`, or the reverse, is breaking too.

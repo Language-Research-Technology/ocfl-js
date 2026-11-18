@@ -15,23 +15,27 @@ export function parentDirectories(logicalPath: string): string[] {
   return directories;
 }
 
-export function invalidLogicalPath(logicalPath: string): OcflError {
-  return ocflError('INVALID_LOGICAL_PATH', `Logical path "${logicalPath}" must be a relative path without \`..\``);
+/** For `logicalPath`, given for the object `objectId`, which is absolute or has a `..` segment */
+export function invalidLogicalPath(logicalPath: string, objectId: string): OcflError {
+  return ocflError('INVALID_LOGICAL_PATH', `Logical path "${logicalPath}" in the object <${objectId}> must be a relative path without \`..\``, {
+    objectId,
+    logicalPath,
+  });
 }
 
 // Backslash counts as a separator because path.normalize treats it as one on Windows
-export function checkLogicalPath(logicalPath: string): void {
+export function checkLogicalPath(logicalPath: string, objectId: string): void {
   if (logicalPath.startsWith('/') || path.isAbsolute(logicalPath) || logicalPath.split(/[/\\]/).includes('..')) {
-    throw invalidLogicalPath(logicalPath);
+    throw invalidLogicalPath(logicalPath, objectId);
   }
 }
 
-/** A file's logical path in the form the inventory lists, so two spellings of one path are the same path */
-export function fileLogicalPath(logicalPath: string): string {
-  checkLogicalPath(logicalPath);
+/** A file's logical path, given for the object `objectId`, in the form the inventory lists, so two spellings of one path are the same path */
+export function fileLogicalPath(logicalPath: string, objectId: string): string {
+  checkLogicalPath(logicalPath, objectId);
   const normalised = normaliseLogicalPath(logicalPath);
   if (normalised === '.') {
-    throw ocflError('INVALID_LOGICAL_PATH', "A file's logical path can't be empty");
+    throw ocflError('INVALID_LOGICAL_PATH', `A file's logical path in the object <${objectId}> can't be empty`, { objectId });
   }
   return normalised;
 }

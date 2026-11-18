@@ -1,4 +1,4 @@
-import { OcflError, openStorageRoot } from '@ocfl/ocfl-fs';
+import { isOcflError, openStorageRoot } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 const object = await root.open('arcp://name,corpus/item/1');
@@ -8,7 +8,7 @@ try {
     await draft.write('notes.txt', 'Recorded in the field');
   });
 } catch (error) {
-  if (!(error instanceof OcflError && error.code === 'OBJECT_LOCKED')) {
+  if (!isOcflError(error, 'OBJECT_LOCKED')) {
     throw error;
   }
   const since = error.lockedAt?.toISOString() ?? 'an unknown time';

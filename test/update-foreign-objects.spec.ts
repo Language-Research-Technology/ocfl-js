@@ -237,7 +237,7 @@ describe('updating an object made by another tool', () => {
         );
         const initial = await snapshot(root.path);
         const { result, called } = await attemptUpdate(object);
-        await assert.rejects(result, ocflError('VERSION_LIMIT_REACHED'));
+        await assert.rejects(result, ocflError('VERSION_LIMIT_REACHED', { objectId: `full-${width}-${head}` }));
         assert.strictEqual(called(), false);
         assert.deepStrictEqual(await snapshot(root.path), initial);
         assert.ok(!fs.existsSync(workspaceOf(root)));

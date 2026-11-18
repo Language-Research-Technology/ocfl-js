@@ -128,7 +128,7 @@ describe('opening an object', () => {
     it('throws VERSION_NOT_FOUND, naming the object and the number, for a number that is not a version', async () => {
       const object = await root.open(SPEC_EX_FULL_ID);
       for (const number of [0, -1, 1.5, 4, Number.NaN]) {
-        assert.throws(() => object.version(number), ocflError('VERSION_NOT_FOUND'), String(number));
+        assert.throws(() => object.version(number), ocflError('VERSION_NOT_FOUND', { objectId: SPEC_EX_FULL_ID }), String(number));
       }
       assert.throws(() => object.version(99), { message: `The object <${SPEC_EX_FULL_ID}> has no version 99.` });
     });
@@ -200,8 +200,12 @@ describe('opening an object', () => {
 
     it('throws FILE_NOT_FOUND, naming the version, the object and the path, for a logical path with no file', async () => {
       const object = await root.open(SPEC_EX_FULL_ID);
-      for (const missing of ['foo', 'foo/', 'v1/content/empty.txt']) {
-        assert.throws(() => object.head.file(missing), ocflError('FILE_NOT_FOUND'), missing);
+      for (const [missing, logicalPath] of [
+        ['foo', 'foo'],
+        ['foo/', 'foo'],
+        ['v1/content/empty.txt', 'v1/content/empty.txt'],
+      ] as const) {
+        assert.throws(() => object.head.file(missing), ocflError('FILE_NOT_FOUND', { objectId: SPEC_EX_FULL_ID, logicalPath }), missing);
       }
       assert.throws(() => object.head.file('empty.txt'), {
         message: `Version 3 of the object <${SPEC_EX_FULL_ID}> has no file at logical path "empty.txt".`,
@@ -210,8 +214,11 @@ describe('opening an object', () => {
 
     it('throws INVALID_LOGICAL_PATH for a logical path that is empty or leaves the object', async () => {
       const object = await root.open(SPEC_EX_FULL_ID);
-      for (const invalid of ['', '.', '/foo/bar.xml', '../foo/bar.xml', 'foo/../../bar.xml']) {
-        assert.throws(() => object.head.file(invalid), ocflError('INVALID_LOGICAL_PATH'), invalid);
+      for (const invalid of ['', '.']) {
+        assert.throws(() => object.head.file(invalid), ocflError('INVALID_LOGICAL_PATH', { objectId: SPEC_EX_FULL_ID, logicalPath: undefined }), invalid);
+      }
+      for (const invalid of ['/foo/bar.xml', '../foo/bar.xml', 'foo/../../bar.xml']) {
+        assert.throws(() => object.head.file(invalid), ocflError('INVALID_LOGICAL_PATH', { objectId: SPEC_EX_FULL_ID, logicalPath: invalid }), invalid);
       }
     });
 

@@ -6,7 +6,7 @@ Callers build on the published types, so they should change only on purpose, and
 
 ## Decision
 
-- **The entry point exports an explicit list.** `src/index.ts` names every export: the functions `createStorageRoot()` and `openStorageRoot()`, the class `OcflError`, and types. It has no default export and no `export *`. Everything else is reached through those two functions.
+- **The entry point exports an explicit list.** `src/index.ts` names every export: the functions `createStorageRoot()` and `openStorageRoot()`, the class `OcflError` and its guard `isOcflError()`, and types. It has no default export and no `export *`. Everything else is reached through `createStorageRoot()` and `openStorageRoot()`.
 - **The objects a storage root gives are published as interfaces.** `StorageRoot`, `OcflObject`, `Version`, `OcflFile`, `Draft` and `UnfinishedWrite` are interfaces, and the classes behind them aren't exported. Only the library implements them.
 - **`OcflError` is the only published class, and only the library makes one.** It is a class so callers can use `instanceof`. It has no subclasses: callers test `code`. Its constructor is private, and the factory the library uses isn't in the published types.
 - **The API report is the contract.** `docs/ocfl-fs.api.md`, generated from the built types, lists the public API, and CI fails when the two differ.

@@ -1,5 +1,3 @@
-import { ocflError } from './error.ts';
-
 class VersionNumber {
   readonly value: number;
   readonly zeroPaddingLength: number | undefined;
@@ -10,14 +8,11 @@ class VersionNumber {
   toString(): string {
     return `v${this.zeroPaddingLength ? `${this.value}`.padStart(this.zeroPaddingLength, '0') : this.value}`;
   }
-  /** @throws {@link OcflError} `VERSION_LIMIT_REACHED` if the next name, padded, wouldn't start with a zero (E011) */
-  next(): VersionNumber {
+  /** The version after this one, or `undefined` if its name, padded, wouldn't start with a zero (E011) */
+  next(): VersionNumber | undefined {
     const next = new VersionNumber(this.value + 1, this.zeroPaddingLength);
     if (this.zeroPaddingLength && `${next.value}`.length >= this.zeroPaddingLength) {
-      throw ocflError(
-        'VERSION_LIMIT_REACHED',
-        `There can be no version after ${this}: a zero-padded version name must start with a zero (E011), and one of ${this.zeroPaddingLength} digits can't for ${next.value}.`,
-      );
+      return undefined;
     }
     return next;
   }

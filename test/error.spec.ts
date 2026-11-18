@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import { describe, it } from 'node:test';
 import { ocflError as makeError, OcflError } from '../src/error.ts';
+import { isOcflError } from '../src/index.ts';
 import { ocflError } from './helpers/ocfl-error.ts';
 
 describe('OcflError', () => {
@@ -77,5 +78,34 @@ describe('ocflError matcher', () => {
     assert.equal(ocflError('INVALID_OBJECT', 'E060')(damaged), true);
     assert.equal(ocflError('INVALID_OBJECT', 'E036')(damaged), false);
     assert.equal(ocflError('INVALID_OBJECT', 'E060')(makeError('INVALID_OBJECT', 'damaged')), false);
+  });
+});
+
+describe('isOcflError', () => {
+  const notFound = makeError('OBJECT_NOT_FOUND', 'missing');
+  const lookalike = () => Object.assign(new Error('missing'), { name: 'OcflError', code: 'OBJECT_NOT_FOUND' });
+
+  it('recognises an error the library made', () => {
+    assert.equal(isOcflError(notFound), true);
+  });
+
+  it("recognises an error made by another copy of the library, which instanceof doesn't", () => {
+    const fromAnotherCopy = lookalike();
+    Object.defineProperty(fromAnotherCopy, Symbol.for('ocfl-js.OcflError'), { value: true });
+    assert.equal(fromAnotherCopy instanceof OcflError, false);
+    assert.equal(isOcflError(fromAnotherCopy), true);
+    assert.equal(isOcflError(fromAnotherCopy, 'OBJECT_NOT_FOUND'), true);
+  });
+
+  it('does not recognise anything else, even with the name and a code', () => {
+    for (const value of [new Error('missing'), lookalike(), { name: 'OcflError', code: 'OBJECT_NOT_FOUND' }, null, undefined, 'OcflError']) {
+      assert.equal(isOcflError(value), false, String(value));
+      assert.equal(isOcflError(value, 'OBJECT_NOT_FOUND'), false, String(value));
+    }
+  });
+
+  it('given a code, recognises only an error with that code', () => {
+    assert.equal(isOcflError(notFound, 'OBJECT_NOT_FOUND'), true);
+    assert.equal(isOcflError(notFound, 'OBJECT_EXISTS'), false);
   });
 });

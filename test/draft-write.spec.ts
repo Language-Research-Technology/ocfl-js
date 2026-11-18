@@ -215,10 +215,11 @@ describe('writing a file to a draft', () => {
     }
 
     it('throws PATH_CONFLICT onto a directory written in the same draft, keeping its files', async () => {
-      const object = await root.create(newId(), DETAILS, async (draft) => {
+      const id = newId();
+      const object = await root.create(id, DETAILS, async (draft) => {
         await draft.write('d/x', 'x');
-        await assert.rejects(draft.write('d', 'new'), ocflError('PATH_CONFLICT'));
-        await assert.rejects(draft.write('d/x/y', 'new'), ocflError('PATH_CONFLICT'));
+        await assert.rejects(draft.write('d', 'new'), ocflError('PATH_CONFLICT', { objectId: id, logicalPath: 'd' }));
+        await assert.rejects(draft.write('d/x/y', 'new'), ocflError('PATH_CONFLICT', { logicalPath: 'd/x/y' }));
       });
       await assertHolds(root, object, { 'd/x': 'x' });
     });

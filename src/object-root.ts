@@ -12,10 +12,10 @@ import { type RootInventory, readInventory } from './root-inventory.ts';
 const { EXTENSIONS_DIR, INVENTORY_NAME, OBJECT_DECLARATION_PREFIX } = OcflConstants;
 const MUTABLE_HEAD_INVENTORY = nodePath.join(EXTENSIONS_DIR, '0005-mutable-head', 'head', INVENTORY_NAME);
 
-/** @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE`, with `message`, if the object has an active mutable head (extension 0005) */
-async function assertNoMutableHead(objectRoot: string, message: string): Promise<void> {
+/** @throws {@link OcflError} `MUTABLE_HEAD_ACTIVE`, with `message`, if the object `id` has an active mutable head (extension 0005) */
+async function assertNoMutableHead(objectRoot: string, id: string, message: string): Promise<void> {
   if (await fileSystem.pathExists(nodePath.join(objectRoot, MUTABLE_HEAD_INVENTORY))) {
-    throw ocflError('MUTABLE_HEAD_ACTIVE', message);
+    throw ocflError('MUTABLE_HEAD_ACTIVE', message, { objectId: id });
   }
 }
 
@@ -58,7 +58,7 @@ async function objectState(place: ObjectPlace): Promise<'committed' | 'creating'
 async function declaredVersion(place: ObjectPlace, id: string): Promise<OcflSpecVersion> {
   const { objectRoot } = place;
   const where: FaultAt = { objectId: id, file: objectRoot };
-  const [ocflVersion, outer] = await Promise.all([objectDeclaration(objectRoot), enclosingObject(place)]);
+  const [ocflVersion, outer] = await Promise.all([objectDeclaration(objectRoot, where), enclosingObject(place)]);
   if (!ocflVersion) {
     throw specViolation('E003', where, 'it has an inventory but no object declaration');
   }
@@ -100,14 +100,13 @@ function nestedObject(where: FaultAt, outer: string): OcflError {
 /** @param unplaceable - The layout's refusal of `id`, if that is why there is no object */
 function objectNotFound(id: string, unplaceable?: OcflError): OcflError {
   const message = `There is no object <${id}> in the storage root`;
-  return unplaceable === undefined
-    ? ocflError('OBJECT_NOT_FOUND', `${message}.`)
-    : ocflError('OBJECT_NOT_FOUND', `${message}: its storage layout can't place this id.`, { cause: unplaceable });
+  const why = unplaceable === undefined ? '' : ": its storage layout can't place this id";
+  return ocflError('OBJECT_NOT_FOUND', `${message}${why}.`, { objectId: id, cause: unplaceable });
 }
 
 /** For a create of the object `id`, which already exists */
 function objectExists(id: string): OcflError {
-  return ocflError('OBJECT_EXISTS', `The object <${id}> already exists in the storage root.`);
+  return ocflError('OBJECT_EXISTS', `The object <${id}> already exists in the storage root.`, { objectId: id });
 }
 
 /**
@@ -115,20 +114,21 @@ function objectExists(id: string): OcflError {
  * @param since - What became of it, continuing "…was opened at v1, and "
  */
 function objectOutOfDate(id: string, opened: string | undefined, since: string): OcflError {
-  return ocflError('OBJECT_OUT_OF_DATE', `The object <${id}> was opened at ${opened}, and ${since}. Open it again and retry.`);
+  return ocflError('OBJECT_OUT_OF_DATE', `The object <${id}> was opened at ${opened}, and ${since}. Open it again and retry.`, { objectId: id });
 }
 
 /** For an `objectRoot` with an object declaration and no inventory, which no writer is working on */
-function declarationWithoutInventory(objectRoot: string): OcflError {
-  return specViolation('E063', objectRoot, 'an object declaration but no inventory');
+function declarationWithoutInventory(objectRoot: string, id?: string): OcflError {
+  return specViolation('E063', id === undefined ? objectRoot : { objectId: id, file: objectRoot }, 'an object declaration but no inventory');
 }
 
 /**
  * The root inventory of the object at `place`.
  * @returns `undefined` if it has no inventory and its lock is held, a create that isn't committed; or if it has neither an inventory nor an object declaration
+ * @param id - The id `place` is given to, if known, for the error
  * @throws {@link OcflError} `INVALID_OBJECT` with E063 if it has a declaration, no inventory and no lock held
  */
-async function committedInventory(place: ObjectPlace): Promise<RootInventory | undefined> {
+async function committedInventory(place: ObjectPlace, id?: string): Promise<RootInventory | undefined> {
   const { objectRoot } = place;
   const read = await readInventory(place);
   if (read || !(await hasObjectDeclaration(objectRoot)) || (await isLocked(place.workspace))) {
@@ -137,7 +137,7 @@ async function committedInventory(place: ObjectPlace): Promise<RootInventory | u
   // Its writer may have finished between the two: a create by committing, a purge by deleting it
   const reread = await readInventory(place);
   if (!reread && (await hasObjectDeclaration(objectRoot))) {
-    throw declarationWithoutInventory(objectRoot);
+    throw declarationWithoutInventory(objectRoot, id);
   }
   return reread;
 }

@@ -256,7 +256,7 @@ describe('merging a directory into another in a draft', () => {
       it('accepts options without merge as not merging', async () => {
         const object = await createObject(root, newId(), { 'src/a': 'A', 'dst/b': 'B' });
         const updated = await object.update(DETAILS, async (draft) => {
-          await assert.rejects(transfer(draft, 'src', 'dst', {} as never), ocflError('TARGET_NOT_EMPTY'));
+          await assert.rejects(transfer(draft, 'src', 'dst', {} as never), ocflError('TARGET_NOT_EMPTY', { objectId: object.id, logicalPath: 'dst' }));
           await transfer(draft, 'src', 'new', { merge: undefined } as never);
         });
         await assertHolds(root, updated, { ...without({ 'src/a': 'A' }, sourceGone), 'dst/b': 'B', 'new/a': 'A' });

@@ -114,6 +114,7 @@ export type FaultAt = string | { objectId: string; file?: string };
  */
 export function specViolation(code: ValidationCode, where: FaultAt, detail?: string, options: { cause?: unknown } = {}): OcflError {
   const [violated, description] = RULES[code];
-  const at = typeof where === 'string' ? `At ${where}` : `${where.file === undefined ? 'In' : `At ${where.file}, in`} the object <${where.objectId}>`;
-  return ocflError(violated, `${code}: ${description} ${at}${detail ? ` (${detail})` : ''}`, { ...options, ocflCode: code });
+  const { file, objectId } = typeof where === 'string' ? { file: where, objectId: undefined } : where;
+  const at = objectId === undefined ? `At ${file}` : `${file === undefined ? 'In' : `At ${file}, in`} the object <${objectId}>`;
+  return ocflError(violated, `${code}: ${description} ${at}${detail ? ` (${detail})` : ''}`, { ...options, ocflCode: code, objectId });
 }

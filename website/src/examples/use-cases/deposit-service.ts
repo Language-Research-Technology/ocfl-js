@@ -1,4 +1,4 @@
-import { OcflError, type OcflObject, openStorageRoot, type User } from '@ocfl/ocfl-fs';
+import { isOcflError, type OcflObject, openStorageRoot, type User } from '@ocfl/ocfl-fs';
 
 const root = await openStorageRoot('/srv/ocfl');
 
@@ -8,7 +8,7 @@ async function deposit(id: string, directory: string, user: User): Promise<OcflO
     try {
       return await depositOnce(id, directory, user);
     } catch (error) {
-      const raced = error instanceof OcflError && (error.code === 'OBJECT_NOT_FOUND' || error.code === 'OBJECT_OUT_OF_DATE');
+      const raced = isOcflError(error, 'OBJECT_NOT_FOUND') || isOcflError(error, 'OBJECT_OUT_OF_DATE');
       if (!raced || attempt === 3) {
         throw error;
       }
@@ -22,7 +22,7 @@ async function depositOnce(id: string, directory: string, user: User): Promise<O
       await draft.import(directory);
     });
   } catch (error) {
-    if (!(error instanceof OcflError && error.code === 'OBJECT_EXISTS')) {
+    if (!isOcflError(error, 'OBJECT_EXISTS')) {
       throw error;
     }
   }

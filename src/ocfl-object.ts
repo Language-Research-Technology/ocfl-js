@@ -231,7 +231,7 @@ class OpenedObject implements OcflObject {
     versionArgument(number);
     const version = this.versions.get(number);
     if (!version) {
-      throw ocflError('VERSION_NOT_FOUND', `The object <${this.id}> has no version ${number}.`);
+      throw ocflError('VERSION_NOT_FOUND', `The object <${this.id}> has no version ${number}.`, { objectId: this.id });
     }
     return version;
   }
@@ -248,6 +248,7 @@ class OpenedObject implements OcflObject {
     withinRootVersion({ objectId: this.id, file: this.#place.objectRoot }, declared, this.#rootSettings.ocflVersion);
     await assertNoMutableHead(
       this.#place.objectRoot,
+      this.id,
       `The object <${this.id}> has an active mutable head (extension 0005), which this library doesn't support; it can't be updated until the head is committed or removed.`,
     );
     const inventory = OcflObjectInventory._newVersion(this.#rootInventory.inventory);
@@ -424,9 +425,14 @@ class ObjectVersion implements Version {
   }
 
   file(path: string): OcflFile {
-    const file = this.files.get(fileLogicalPath(path));
+    const objectId = this.#inventory.id;
+    const logicalPath = fileLogicalPath(path, objectId);
+    const file = this.files.get(logicalPath);
     if (!file) {
-      throw ocflError('FILE_NOT_FOUND', `Version ${this.number} of the object <${this.#inventory.id}> has no file at logical path "${path}".`);
+      throw ocflError('FILE_NOT_FOUND', `Version ${this.number} of the object <${objectId}> has no file at logical path "${path}".`, {
+        objectId,
+        logicalPath,
+      });
     }
     return file;
   }
@@ -471,7 +477,7 @@ function versionsOf(inventory: OcflObjectInventory, objectRoot: string): Readonl
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it holds an object with another id, or, with no declaration, inventory or lock, holds anything else, is a file or is below one
  */
 async function openObject(place: ObjectPlace, id: string, rootSettings: RootSettings): Promise<OcflObject> {
-  const root = await committedInventory(place);
+  const root = await committedInventory(place, id);
   if (!root) {
     throw await noCommittedObject(place, id);
   }
