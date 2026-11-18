@@ -46,7 +46,10 @@ interface UpdateOptions extends VersionDetails {
    *
    * @example
    * ```ts
-   * await object.update({ message, user, signal: request.signal }, (draft) => draft.import(dir));
+   * await object.update({ message, user, signal: request.signal }, async (draft) => {
+   *   await draft.clear();
+   *   await draft.import(dir);
+   * });
    * ```
    */
   readonly signal?: AbortSignal | undefined;
@@ -127,6 +130,7 @@ interface Draft {
 
   /**
    * Copies a file or directory from disk into the draft, at the `target` option or at the top. Files already there are replaced; the rest stay.
+   * An update's draft starts with the head's files, so files no longer in `source` stay: to drop them, call {@link Draft.clear} first, or {@link Draft.remove} on the `target`.
    *
    * Without a `target`, a directory's contents go at the top and a file keeps its own name there.
    * Everything below a directory is copied, including hidden files, except entries the `filter` option leaves out.
@@ -245,6 +249,7 @@ interface Draft {
    * @example
    * ```ts
    * await object.update(details, async (draft) => {
+   *   // Merges: the head's other files stay
    *   await draft.import(dir);
    *   const files = await draft.files();
    *   if (!files.has('ro-crate-metadata.json')) await draft.write('ro-crate-metadata.json', stub);
