@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, before, describe, it, mock } from 'node:test';
-import type { Draft, OcflObject, StorageRoot } from '../src/index.ts';
+import type { Draft, ImportProgress, OcflObject, StorageRoot } from '../src/index.ts';
 import {
   assertHolds,
   assertVersionValid,
@@ -21,6 +21,7 @@ import {
 import { withFsFailure } from './helpers/fs-failures.ts';
 import { makeTree } from './helpers/import-sources.ts';
 import { ocflError } from './helpers/ocfl-error.ts';
+import { trackReadStreams } from './helpers/read-streams.ts';
 import { writeFiles } from './helpers/storage-roots.ts';
 
 const CONCURRENCY_LIMIT = 10;
@@ -451,21 +452,117 @@ describe('importing into a draft', () => {
     });
   });
 
+  describe('reporting progress', () => {
+    function recordProgress() {
+      const seen: ImportProgress[] = [];
+      return { seen, onProgress: (progress: ImportProgress) => void seen.push({ ...progress }) };
+    }
+
+    it('reports each file of a directory once, counting up to the total in order', async () => {
+      const source = path.join(temp.dir, `tree-${count++}`);
+      await makeTree(source, 2, 5);
+      const { seen, onProgress } = recordProgress();
+      await root.create(newId(), DETAILS, async (draft) => {
+        await draft.import(source, { onProgress });
+      });
+      assert.deepStrictEqual(
+        seen,
+        Array.from({ length: 25 }, (_, i) => ({ importedFiles: i + 1, totalFiles: 25 })),
+      );
+    });
+
+    it('reports a file named as the source once', async () => {
+      const source = await newSource({ 'a.txt': 'a' });
+      const { seen, onProgress } = recordProgress();
+      await root.create(newId(), DETAILS, async (draft) => {
+        await draft.import(path.join(source, 'a.txt'), { onProgress });
+      });
+      assert.deepStrictEqual(seen, [{ importedFiles: 1, totalFiles: 1 }]);
+    });
+
+    it('counts the files the filter keeps, including those whose content the object already holds', async () => {
+      const source = await newSource({ 'held.txt': 'a', 'new.txt': 'new', '.DS_Store': 'x' });
+      const object = await createObject(root, newId(), { a: 'a' });
+      const { seen, onProgress } = recordProgress();
+      await object.update(DETAILS, async (draft) => {
+        await draft.import(source, { filter: (relativePath) => relativePath !== '.DS_Store', onProgress });
+        assert.deepStrictEqual(seen, [
+          { importedFiles: 1, totalFiles: 2 },
+          { importedFiles: 2, totalFiles: 2 },
+        ]);
+      });
+    });
+
+    it('rejects with the error onProgress throws once every read has settled, calling it no more, and the draft is left as it was', async () => {
+      const source = path.join(temp.dir, `tree-${count++}`);
+      await makeTree(source, 2, 8);
+      const object = await createObject(root, newId(), { a: 'a' });
+      const thrown = new Error('progress bar broke');
+      let calls = 0;
+      await object.update(DETAILS, async (draft) => {
+        const { streams, outcome } = await trackReadStreams(() =>
+          draft.import(source, {
+            onProgress: () => {
+              calls++;
+              throw thrown;
+            },
+          }),
+        );
+        assert.deepStrictEqual(outcome, { status: 'rejected', reason: thrown });
+        assert.strictEqual(calls, 1, 'onProgress is not called again once it has thrown');
+        assert.ok(streams.length < 64, `read ${streams.length} of 64 files`);
+        assert.deepStrictEqual(
+          streams.filter((stream) => !stream.closed).map((stream) => stream.path),
+          [],
+        );
+      });
+      await assertUnchanged(object, { a: 'a' });
+    });
+
+    it("isn't called once the update's signal is aborted", async () => {
+      const source = path.join(temp.dir, `tree-${count++}`);
+      await makeTree(source, 2, 8);
+      const object = await createObject(root, newId(), { a: 'a' });
+      const controller = new AbortController();
+      const reason = new Error('stop part way');
+      let calls = 0;
+      await assert.rejects(
+        object.update({ ...DETAILS, signal: controller.signal }, (draft) =>
+          draft.import(source, {
+            onProgress: () => {
+              if (++calls === 3) {
+                controller.abort(reason);
+              }
+            },
+          }),
+        ),
+        (error) => error === reason,
+      );
+      assert.strictEqual(calls, 3);
+      await assertUnchanged(object, { a: 'a' });
+    });
+  });
+
   describe('options of the wrong type', () => {
     for (const [name, options, message] of [
       ['a string, as the target was before 1.0', 'raw', /Options must be an object, such as \{ target: 'raw' \}, not 'raw'/],
       ['null', null, /Options must be an object, such as \{ target: 'raw' \}, not null/],
       ['a target that is a number', { target: 1 }, /The target option must be a string, not 1/],
       ['a filter that is a string', { filter: '.git' }, /The filter option must be a function, not '.git'/],
+      ['an onProgress that is not a function', { onProgress: 'log' }, /^The onProgress option must be a function, not 'log'$/],
       ['an unknown option', { taget: 'raw' }, /^draft\.import has no option 'taget'\.$/],
       ['an unknown option set to undefined', { taget: undefined }, /^draft\.import has no option 'taget'\.$/],
       ['two unknown options', { target: 'raw', taget: 'raw', filtr: () => true }, /^draft\.import has no option 'taget' or 'filtr'\.$/],
     ] as const) {
-      it(`throws a TypeError for ${name}, adding nothing`, async () => {
+      it(`throws a TypeError for ${name}, reading and adding nothing`, async () => {
         const source = await newSource({ 'a.txt': 'a' });
         const object = await createObject(root, newId(), { a: 'a' });
         await object.update(DETAILS, async (draft) => {
-          await assert.rejects(draft.import(source, options as never), (e) => e instanceof TypeError && message.test(e.message));
+          const { streams, outcome } = await trackReadStreams(() => draft.import(source, options as never));
+          assert.strictEqual(outcome.status, 'rejected');
+          const { reason } = outcome as PromiseRejectedResult;
+          assert.ok(reason instanceof TypeError && message.test(reason.message), String(reason));
+          assert.strictEqual(streams.length, 0);
         });
         await assertUnchanged(object, { a: 'a' });
       });

@@ -29,6 +29,7 @@ export type {
   Draft,
   DraftFile,
   ImportOptions,
+  ImportProgress,
   MergeOptions,
   UpdateOptions,
   User,

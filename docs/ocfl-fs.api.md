@@ -114,7 +114,14 @@ export interface HashedNTupleLayoutConfig {
 // @public
 export interface ImportOptions {
     readonly filter?: ((relativePath: string, entry: Dirent) => boolean) | undefined;
+    readonly onProgress?: ((progress: ImportProgress) => void) | undefined;
     readonly target?: string | undefined;
+}
+
+// @public
+export interface ImportProgress {
+    readonly importedFiles: number;
+    readonly totalFiles: number;
 }
 
 // @public

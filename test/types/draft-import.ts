@@ -1,5 +1,5 @@
 import type fs from 'node:fs';
-import type { Draft, ImportOptions } from '../../src/index.ts';
+import type { Draft, ImportOptions, ImportProgress } from '../../src/index.ts';
 
 export async function importTakesOneSourceAndOptionalOptions(draft: Draft): Promise<void> {
   await draft.import('/data/dir');
@@ -51,4 +51,18 @@ export async function theFilterSeesEachEntryAndKeepsItWithTrue(draft: Draft): Pr
   const options: ImportOptions = { target: 'raw' };
   // @ts-expect-error options can't be changed once made
   options.target = 'other';
+}
+
+export async function progressIsReportedAsFilesImportedOfTheTotal(draft: Draft): Promise<void> {
+  const onProgress = ({ importedFiles, totalFiles }: ImportProgress): void => void (importedFiles / totalFiles);
+  await draft.import('/data/dir', { target: 'raw', onProgress });
+
+  // @ts-expect-error progress counts files, not bytes
+  await draft.import('/data/dir', { onProgress: (progress: ImportProgress) => progress.importedBytes });
+  // @ts-expect-error onProgress is a function
+  await draft.import('/data/dir', { onProgress: true });
+
+  const progress: ImportProgress = { importedFiles: 1, totalFiles: 2 };
+  // @ts-expect-error progress can't be changed
+  progress.importedFiles = 2;
 }
