@@ -29,5 +29,3 @@ Every issue labelled `enhancement` carries exactly one priority label:
 - When choosing what to work on next, take `must-have` before `should-have` before `nice-to-have`. Under a parent issue, the order of its sub-issues decides within a priority.
 
 `1.0-blocker` marks what must be settled before 1.0 is released. It goes with `must-have`, and is retired once 1.0 is out.
-
-Edit the right-hand column to match whatever vocabulary you actually use.
