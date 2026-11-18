@@ -37,7 +37,7 @@ const FIXITY_CONCURRENCY = 10;
 interface Version {
   /** Version number, starting at 1. */
   readonly number: number;
-  /** When the version was committed. */
+  /** When the version was committed. A new `Date` on each read, so compare times with `getTime()`, not `===`. */
   readonly createdAt: Date;
   /** Why the version was made. Absent if whatever wrote the version recorded none. */
   readonly message?: string;
@@ -397,7 +397,7 @@ class ObjectHistory implements FileHistory {
 
 class ObjectVersion implements Version {
   readonly number: number;
-  readonly createdAt: Date;
+  declare readonly createdAt: Date;
   declare readonly message?: string;
   declare readonly user?: User;
   readonly #inventory: OcflObjectInventory;
@@ -409,7 +409,9 @@ class ObjectVersion implements Version {
   constructor(inventory: OcflObjectInventory, number: number, name: string, objectRoot: string, history: ObjectHistory) {
     const { created, message, user } = inventory.versions[name] as Inventory['versions'][string];
     this.number = number;
-    this.createdAt = new Date(created);
+    const time = Date.parse(created);
+    // Own and enumerable so JSON and spread keep it; a copy per read so no holder can change it
+    Object.defineProperty(this, 'createdAt', { enumerable: true, get: () => new Date(time) });
     if (typeof message === 'string') {
       this.message = message;
     }

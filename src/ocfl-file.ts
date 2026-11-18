@@ -30,9 +30,9 @@ interface OcflFile {
    * have it with this digest. Content changed and later changed back is modified again.
    */
   readonly modifiedIn: Version;
-  /** When {@link OcflFile.createdIn} was committed. From the inventory, never from the stored file, whose times change when it is copied or restored. */
+  /** When {@link OcflFile.createdIn} was committed. From the inventory, never from the stored file, whose times change when it is copied or restored. A new `Date` on each read. */
   readonly createdAt: Date;
-  /** When {@link OcflFile.modifiedIn} was committed, such as for an HTTP `Last-Modified` header. From the inventory, never from the stored file. */
+  /** When {@link OcflFile.modifiedIn} was committed, such as for an HTTP `Last-Modified` header. From the inventory, never from the stored file. A new `Date` on each read. */
   readonly modifiedAt: Date;
   /**
    * Size in bytes.
