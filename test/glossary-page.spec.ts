@@ -21,13 +21,17 @@ describe('glossaryPage', () => {
   });
 
   it('replaces the first heading with frontmatter and keeps the rest', () => {
-    assert.match(page, /^---\ntitle: Glossary\ndescription: [^\n]+\n---\n/);
+    assert.match(page, /^---\ntitle: Glossary\ndescription: [^\n]+\neditUrl: [^\n]+\n---\n/);
     assert.doesNotMatch(page, /^# /m);
     assert.match(page, /\n\nTerms used by this library\.\n\n## Language\n/);
   });
 
   it('says where to edit it', () => {
     assert.match(page, /<!-- Generated from GLOSSARY\.md[^>]*-->/);
+  });
+
+  it('links "Edit page" to GLOSSARY.md, since the page itself is not in git', () => {
+    assert.match(page, /^editUrl: https:\/\/github\.com\/Language-Research-Technology\/ocfl-js\/edit\/main\/GLOSSARY\.md$/m);
   });
 
   it('puts the words to avoid in a paragraph of their own', () => {

@@ -2,7 +2,9 @@ import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 import starlightLinksValidator from 'starlight-links-validator';
 import starlightTypeDoc, { typeDocSidebarGroup } from 'starlight-typedoc';
+import packageJson from '../package.json' with { type: 'json' };
 import { glossarySource, writeGlossaryPage } from './glossary.ts';
+import { editBaseUrl, repoUrl } from './repo.ts';
 
 export default defineConfig({
   site: 'https://language-research-technology.github.io',
@@ -19,7 +21,10 @@ export default defineConfig({
     },
     starlight({
       title: 'ocfl-fs',
-      social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/Language-Research-Technology/ocfl-js' }],
+      description: packageJson.description,
+      social: [{ icon: 'github', label: 'GitHub', href: repoUrl }],
+      editLink: { baseUrl: `${editBaseUrl}website/` },
+      components: { SiteTitle: './src/components/SiteTitle.astro' },
       plugins: [
         starlightLinksValidator(),
         starlightTypeDoc({

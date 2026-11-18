@@ -1,4 +1,5 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { editBaseUrl } from './repo.ts';
 
 export const glossarySource: URL = new URL('../GLOSSARY.md', import.meta.url);
 const glossaryPagePath = new URL('src/content/docs/glossary.md', import.meta.url);
@@ -6,6 +7,7 @@ const glossaryPagePath = new URL('src/content/docs/glossary.md', import.meta.url
 const frontmatter = `---
 title: Glossary
 description: The terms ocfl-fs and its documentation use, and the words they avoid.
+editUrl: ${editBaseUrl}GLOSSARY.md
 ---
 
 <!-- Generated from GLOSSARY.md when the site is built; edit that file instead. -->
