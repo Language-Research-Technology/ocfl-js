@@ -94,6 +94,20 @@ interface ImportOptions {
    * ```
    */
   readonly filter?: ((relativePath: string, entry: Dirent) => boolean) | undefined;
+  /**
+   * Called after each file's digest is calculated, whether or not the object already holds its content.
+   * `importedFiles` reaches `totalFiles` before new content is copied, so there can be a wait after the last call.
+   * If it throws, the import stops and rejects with that error. A promise it returns is not awaited.
+   */
+  readonly onProgress?: ((progress: ImportProgress) => void) | undefined;
+}
+
+/** How far {@link Draft.import} has got. */
+interface ImportProgress {
+  /** Files whose digest has been calculated so far. */
+  readonly importedFiles: number;
+  /** Files the import reads in all: those the `filter` keeps, or 1 when `source` is a file. */
+  readonly totalFiles: number;
 }
 
 /** A file in a draft, as {@link Draft.files} lists it. */
@@ -140,14 +154,23 @@ interface Draft {
    * @throws {@link OcflError} `SOURCE_CHANGED` if a file changed while it was being read.
    * @throws {@link OcflError} `INVALID_LOGICAL_PATH` if `target` is empty or leaves the object.
    * @throws {@link OcflError} `PATH_CONFLICT` if a path would become both a file and a directory.
-   * @throws `TypeError` if `options` is not an object, has a key other than `target` and `filter`, `target` is not a string, `filter` is not a function or it returns anything but `true` or `false`.
+   * @throws `TypeError` if `options` is not an object, has a key other than `target`, `filter` and `onProgress`, `target` is not a string,
+   * `filter` or `onProgress` is not a function, or `filter` returns anything but `true` or `false`.
    * @throws `Error` if the update this draft belongs to has finished.
-   * @throws The error `filter` throws.
+   * @throws The error `filter` or `onProgress` throws.
    * @throws The file system error if `source`, or something below it, is missing or can't be read.
    * @example
    * ```ts
    * await object.update(details, async (draft) => {
    *   await draft.import('/data/incoming/item-1', { target: 'raw' });
+   * });
+   * ```
+   * @example
+   * ```ts
+   * await object.update(details, async (draft) => {
+   *   await draft.import('/data/incoming/item-1', {
+   *     onProgress: ({ importedFiles, totalFiles }) => bar.update(importedFiles / totalFiles),
+   *   });
    * });
    * ```
    */
@@ -335,11 +358,12 @@ function mergeOption(options: unknown, call: string): boolean {
 }
 
 function importOptions(options: unknown): ImportOptions {
-  const checked = optionsObject(options, 'draft.import', ['target', 'filter'], "{ target: 'raw' }");
+  const checked = optionsObject(options, 'draft.import', ['target', 'filter', 'onProgress'], "{ target: 'raw' }");
   if (checked.target !== undefined && typeof checked.target !== 'string') {
     throw new TypeError(`The target option must be a string, not ${inspect(checked.target)}`);
   }
   functionOption('filter', checked.filter);
+  functionOption('onProgress', checked.onProgress);
   return checked as ImportOptions;
 }
 
@@ -478,6 +502,10 @@ class Turns {
 
   throwIfAborted() {
     this.#signal?.throwIfAborted();
+  }
+
+  get aborted() {
+    return this.#signal?.aborted === true;
   }
 
   assertOpen() {
@@ -704,16 +732,39 @@ class ObjectDraft implements Draft {
 
   /** @returns the step that adds the prepared files, which must run in the import's turn */
   async #prepareImport(source: string, options: ImportOptions | undefined): Promise<() => Promise<void>> {
-    const files = await listImportFiles(source, importOptions(options), this.#inventory.id);
+    const { onProgress, ...listing } = importOptions(options);
+    const files = await listImportFiles(source, listing, this.#inventory.id);
     const algorithm = this.#inventory.digestAlgorithm;
+    const totalFiles = files.length;
+    let importedFiles = 0;
+    // Wrapped so that onProgress throwing undefined still stops the import
+    let stopped: { reason: unknown } | undefined;
+    // Settled, not raced, so no file is still being read when the import rejects
     const hashed = await Promise.all(
       files.map((file) =>
-        this.#limited(() => Hashing.digest(algorithm, fileSystem.createReadable(file.source))).then(
-          (digest) => ({ ...file, digest }),
+        this.#limited(async () => {
+          if (stopped) {
+            throw stopped.reason;
+          }
+          return Hashing.digest(algorithm, fileSystem.createReadable(file.source));
+        }).then(
+          (digest) => {
+            if (onProgress && !stopped && !this.#turns.aborted) {
+              try {
+                onProgress({ importedFiles: ++importedFiles, totalFiles });
+              } catch (error) {
+                stopped = { reason: error };
+              }
+            }
+            return { ...file, digest };
+          },
           (error: unknown) => ({ ...file, error }),
         ),
       ),
     );
+    if (stopped) {
+      throw stopped.reason;
+    }
     return async () => {
       for (const { logicalPath } of files) {
         this.#inventory._checkFilePath(logicalPath);
@@ -904,6 +955,7 @@ export {
   type Draft,
   type DraftFile,
   type ImportOptions,
+  type ImportProgress,
   type MergeOptions,
   type UpdateOptions,
   type User,

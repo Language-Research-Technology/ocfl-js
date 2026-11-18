@@ -15,6 +15,7 @@ import noChange from '../../../examples/updating-objects/no-change.ts?raw';
 import versionDetails from '../../../examples/updating-objects/version-details.ts?raw';
 import draftFiles from '../../../examples/updating-objects/draft-files.ts?raw';
 import importFilter from '../../../examples/updating-objects/import-filter.ts?raw';
+import importProgress from '../../../examples/updating-objects/import-progress.ts?raw';
 import cancelUpdate from '../../../examples/updating-objects/cancel-update.ts?raw';
 import unattendedWriter from '../../../examples/updating-objects/unattended-writer.ts?raw';
 import keepDates from '../../../examples/updating-objects/keep-dates.ts?raw';
@@ -73,6 +74,17 @@ There's no separate replace operation. Writing, importing, copying, renaming or 
 <Code code={importFilter} lang="ts" />
 
 The filter isn't called for the source itself: a source that is a file is imported, and one that is a symbolic link still throws `UNSUPPORTED_FILE_TYPE`.
+
+#### Showing progress
+
+An import reads every file to calculate its digest, then copies in the content the object doesn't hold yet. `onProgress` is called after each file is read, with `importedFiles` and `totalFiles`:
+
+<Code code={importProgress} lang="ts" />
+
+- `totalFiles` is the number of files the import reads: those the filter keeps, or 1 for a source that is a file.
+- Every file is counted, including those whose content the object already holds.
+- `importedFiles` reaches `totalFiles` before the new content is copied, so there can be a wait after the last call.
+- If `onProgress` throws, the import stops and rejects with that error, and the draft is left as it was before the import. It isn't called again after it throws, or after the update's `signal` is aborted.
 
 ### copy and rename
 
