@@ -98,7 +98,7 @@ None of these is retryable as it stands. Fix the call, or the file system. An ab
 
 **Cause:** there is no object with this id: nothing is in the directory the storage layout maps it to, or the storage layout can't place an object with this id at all, so none can exist (`cause` is then the storage layout's [`ID_INCOMPATIBLE_WITH_LAYOUT`](#id_incompatible_with_layout)). `open` also throws it for an object another writer is creating and hasn't committed.
 
-**What to do:** catch it instead of checking whether the object exists first; a check can be out of date by the time you act on it. To make the object, call `create`, unless `cause` is `ID_INCOMPATIBLE_WITH_LAYOUT`: then no object can have the id, and `create` refuses it too.
+**What to do:** catch it instead of checking whether the object exists first; a check can be out of date by the time you act on it. To make the object, call `create`, unless `cause` is `ID_INCOMPATIBLE_WITH_LAYOUT`: then no object can have the id, and `create` refuses it too. To create or update it, whichever applies, call `createOrUpdate`. When `createOrUpdate` throws `OBJECT_NOT_FOUND` for its own object, another writer purged the object in each of its three attempts.
 
 ### `OBJECT_EXISTS`
 
@@ -158,7 +158,7 @@ These are checks the library makes before it uses an inventory's values as file 
 
 **Cause:** `update` found that a later version was committed after you opened the object, or the object was purged, whether or not it was created again. It is checked before your change runs and again just before commit. Nothing is committed.
 
-**What to do:** open the object again and repeat the update against the new head. If the object was purged, opening it throws `OBJECT_NOT_FOUND`. See [`OBJECT_OUT_OF_DATE` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_out_of_date-the-object-changed-since-you-opened-it) for a retry loop.
+**What to do:** open the object again and repeat the update against the new head. If the object was purged, opening it throws `OBJECT_NOT_FOUND`. See [`OBJECT_OUT_OF_DATE` in Concurrent writers and recovery](/ocfl-js/guides/concurrent-writers/#object_out_of_date-the-object-changed-since-you-opened-it) for a retry loop. `createOrUpdate` has already retried three times before it throws `OBJECT_OUT_OF_DATE`: the object is being written often, so wait before trying again.
 
 ### `RECOVERY_NEEDED`
 
