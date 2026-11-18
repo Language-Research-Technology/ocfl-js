@@ -14,8 +14,8 @@ describe('when a file was created and modified', () => {
     const file: OcflFile = object.head.files.get('a.txt')!;
     assert.strictEqual(file.createdIn, object.head);
     assert.strictEqual(file.modifiedIn, object.head);
-    assert.strictEqual(file.createdAt, object.head.createdAt);
-    assert.strictEqual(file.modifiedAt, object.head.createdAt);
+    assert.deepStrictEqual(file.createdAt, object.head.createdAt);
+    assert.deepStrictEqual(file.modifiedAt, object.head.createdAt);
   });
 
   it('counts content changed back to an earlier content as modified again', async () => {
@@ -69,8 +69,8 @@ describe('when a file was created and modified', () => {
     const file = object.head.files.get('a.txt')!;
     assert.strictEqual(file.createdIn, object.versions.get(1));
     assert.strictEqual(file.modifiedIn, object.versions.get(2));
-    assert.strictEqual(file.createdAt, object.versions.get(1)!.createdAt);
-    assert.strictEqual(file.modifiedAt, object.versions.get(2)!.createdAt);
+    assert.deepStrictEqual(file.createdAt, object.versions.get(1)!.createdAt);
+    assert.deepStrictEqual(file.modifiedAt, object.versions.get(2)!.createdAt);
   });
 
   it('takes no time from the stored file, even when it is replaced and touched', async () => {

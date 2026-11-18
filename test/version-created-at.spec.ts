@@ -62,4 +62,39 @@ describe('dating a version', () => {
     });
     assert.strictEqual(object.head.createdAt.getTime(), MARCH_2019.getTime());
   });
+
+  it("keeps a version's date, though a Date read from it is changed", async () => {
+    const root = await temp.newRoot();
+    const object = await root.create('read', { ...DETAILS, createdAt: MARCH_2019 }, writeB);
+    object.head.createdAt.setFullYear(2030);
+    assert.strictEqual(object.head.createdAt.getTime(), MARCH_2019.getTime());
+  });
+
+  it("keeps a version's date, though a Date read from one of its files is changed", async () => {
+    const root = await temp.newRoot();
+    const object = await root.create('file', { ...DETAILS, createdAt: MARCH_2019 }, writeB);
+    const file = object.head.files.get('b.txt')!;
+    file.createdAt.setFullYear(2030);
+    file.modifiedAt.setFullYear(2030);
+    assert.strictEqual(object.head.createdAt.getTime(), MARCH_2019.getTime());
+    assert.strictEqual(file.createdAt.getTime(), MARCH_2019.getTime());
+    assert.strictEqual(file.modifiedAt.getTime(), MARCH_2019.getTime());
+  });
+
+  it("compares an update's date with the head's committed date, though a Date read from the head is changed", async () => {
+    const root = await temp.newRoot();
+    const object = await root.create('checked', { ...DETAILS, createdAt: MARCH_2019 }, writeB);
+    object.head.createdAt.setFullYear(2000);
+    await assert.rejects(object.update({ ...DETAILS, createdAt: new Date('2010-01-01T00:00:00Z') }, writeC), TypeError);
+    object.head.createdAt.setFullYear(2099);
+    const updated = await object.update({ ...DETAILS, createdAt: new Date('2020-01-01T00:00:00Z') }, writeC);
+    assert.strictEqual(updated.head.number, 2);
+  });
+
+  it("serialises a version's date, as an own property", async () => {
+    const root = await temp.newRoot();
+    const object = await root.create('serialised', { ...DETAILS, createdAt: MARCH_2019 }, writeB);
+    assert.strictEqual(JSON.parse(JSON.stringify(object.head)).createdAt, '2019-03-01T00:00:00.000Z');
+    assert.strictEqual({ ...object.head }.createdAt.getTime(), MARCH_2019.getTime());
+  });
 });
