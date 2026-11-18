@@ -438,17 +438,19 @@ describe('root.recover', () => {
       return { ...existing, object, committed: await snapshot(existing.objectRoot) };
     }
 
-    it('is kept, with INVALID_OBJECT, in a locked object of several versions that lost its root inventory', async () => {
-      const { root, objectRoot, lock } = await objectAt(2);
-      await fs.promises.rm(path.join(objectRoot, 'inventory.json'));
-      await lockObject(root, ID);
-      const damaged = await snapshot(root.path);
+    for (const head of [1, 2]) {
+      it(`is kept, with INVALID_OBJECT, in an object at v${head} that lost its root inventory, locked by an update`, async () => {
+        const { root, objectRoot, lock } = await objectAt(head);
+        await fs.promises.rm(path.join(objectRoot, 'inventory.json'));
+        await lockObject(root, ID);
+        const damaged = await snapshot(root.path);
 
-      await assert.rejects(recover(root, ID), ocflError('INVALID_OBJECT', 'E063'));
+        await assert.rejects(recover(root, ID), ocflError('INVALID_OBJECT', 'E063'));
 
-      assert.deepStrictEqual(await snapshot(root.path), damaged);
-      assert.ok(fs.existsSync(lock));
-    });
+        assert.deepStrictEqual(await snapshot(root.path), damaged);
+        assert.ok(fs.existsSync(lock));
+      });
+    }
 
     it('is kept when it is not the version after the head', async () => {
       const { root, objectRoot, lock } = await objectAt(3);
@@ -536,7 +538,7 @@ describe('root.recover', () => {
     /** Leaves in the workspace of <corpus>, below its version name v1, another object's lock and unfinished version, as its live writer would */
     const foreignWorkspaceBelowVersion = async (root: StorageRoot, below: string) => {
       const foreign = path.join(workspaceOf(root), 'corpus', '__object__', 'v1', below);
-      const lock = JSON.stringify({ id: 'foreign', lockedAt: new Date().toISOString(), objectRootExisted: true });
+      const lock = JSON.stringify({ id: 'foreign', operation: 'update', lockedAt: new Date().toISOString(), objectRootExisted: true });
       await writeFiles(foreign, { lock, 'v2/content/b.txt': 'b' });
     };
 

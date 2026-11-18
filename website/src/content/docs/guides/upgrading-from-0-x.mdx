@@ -133,4 +133,4 @@ The library doesn't repair damaged objects. To repair one, create a new object f
 
 ## From a 1.0 beta
 
-`root.remove(id)` in the 1.0 betas is `root.purge(id)` in 1.0, and an unfinished write's `operation` is `'purge'` instead of `'remove'`. A lock a beta left behind still lists and recovers as a purge. A beta can't list or recover a purge that 1.0 left unfinished, so don't write to one storage root from both at once.
+`root.remove(id)` in the 1.0 betas is `root.purge(id)` in 1.0, and an unfinished write's `operation` is `'purge'` instead of `'remove'`. A beta can't list or recover a purge that 1.0 left unfinished, and 1.0 can't list or recover a write a beta left unfinished: recover it with the beta before upgrading, and don't write to one storage root from both at once.

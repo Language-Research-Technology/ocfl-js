@@ -20,10 +20,6 @@ export interface UnfinishedWrite {
   /**
    * What its writer is doing to the object: `root.create`, `object.update` or `root.purge`. {@link UnfinishedWrite.recover} says what
    * recovering each does. A major release may add more operations; handle each by name.
-   *
-   * A lock left by a release before this field existed doesn't record its operation, and is given the likeliest: a create into an
-   * existing directory, and a purge that hadn't begun deleting, are given as `'update'`. A lock that records `'remove'`, as releases
-   * before `root.purge` wrote, is given as `'purge'`.
    */
   readonly operation: 'create' | 'update' | 'purge';
 
@@ -36,16 +32,16 @@ export interface UnfinishedWrite {
    * **Recover a write from one process at a time.** Two recoveries of the same write at once, on any hosts or in one process,
    * aren't kept apart: if a new writer takes the lock between them, the later one destroys that writer's update.
    *
-   * A purge that had begun deleting the object is finished; one that hadn't is recovered as an update that wasn't committed, which for an object that can be opened only releases its lock. An update that wasn't committed is discarded: its unfinished version in the workspace, the directory of the version after the head
+   * A purge that had begun deleting the object is finished; one that hadn't has its lock released, and the object root is left alone. An update that wasn't committed is discarded: its unfinished version in the workspace, the directory of the version after the head
    * in the object, and staged inventory files are removed. A create that wasn't committed is discarded: the declaration and first version of an object that never
    * got an inventory, and its directory if the create made it. An update that was committed is completed by writing the root inventory's sidecar.
-   * A version is never made the head, and no other version directory is removed, except the first version of an object that has lost its root inventory, which is taken for a dead create whatever the operation. If the write's directory holds another id's object, or is inside
+   * A version is never made the head, and no other version directory is removed. If the write's directory holds another id's object, or is inside
    * another object, its writer was refused before it wrote anything there: only the lock and what is left in the workspace are removed.
    *
    * After `RECOVERY_NEEDED`, recover the write and then open the object again before retrying: the head shows whether the update was committed.
    *
    * @throws {@link OcflError} `OBJECT_LOCKED` if another writer has taken the object's lock since; `lockedAt` says when. Nothing is changed.
-   * @throws {@link OcflError} `INVALID_OBJECT` if the object's inventory is corrupt or inconsistent, or it has a declaration and no inventory and a version other than the first, which a dead create never leaves. Nothing is changed.
+   * @throws {@link OcflError} `INVALID_OBJECT` if, for a create or update, the object's inventory is corrupt or inconsistent, or it has a declaration and no inventory and isn't what a dead create leaves: the write is an update, or there is a version other than the first. Nothing is changed.
    * @throws The file system error that stopped it; the object stays locked, and the write can be recovered again.
    * @example
    * ```ts
@@ -77,7 +73,7 @@ function unfinishedWrite(place: ObjectPlace, flusher: Flusher, seen: Lock): Unfi
       if (!sameWriter(lock, seen)) {
         throw await objectLocked(workspace, seen.id);
       }
-      await (lock.removing ? recoverPurge(place) : recoverWrite(place, lock, flusher));
+      await (lock.operation === 'purge' ? recoverPurge(place, lock.removing) : recoverWrite(place, lock, flusher));
     },
   });
 }

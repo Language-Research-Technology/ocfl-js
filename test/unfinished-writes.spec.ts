@@ -220,7 +220,7 @@ describe('root.unfinishedWrites', () => {
   const lockedAt = '2026-11-10T22:01:44.000Z';
   it("lists a lock with a field it doesn't know, as a later release may write, and recovers it", async () => {
     const root = await newRoot();
-    await writeLock(root, 'a', JSON.stringify({ id: 'a', lockedAt, objectRootExisted: false, owner: 'x' }));
+    await writeLock(root, 'a', JSON.stringify({ id: 'a', operation: 'create', lockedAt, objectRootExisted: false, owner: 'x' }));
 
     const writes = await listed(root);
     assert.deepStrictEqual(
@@ -233,39 +233,16 @@ describe('root.unfinishedWrites', () => {
     assert.strictEqual(await root.unfinishedWrite('a'), undefined);
   });
 
-  for (const [what, content, operation] of [
-    ['with no operation, for an object root that existed', { id: 'a', lockedAt, objectRootExisted: true }, 'update'],
-    ['with no operation, for no object root', { id: 'a', lockedAt, objectRootExisted: false }, 'create'],
-    ['with no operation, for a purge that had begun deleting', { id: 'a', lockedAt, objectRootExisted: true, removing: true }, 'purge'],
-    ['whose operation is remove', { id: 'a', operation: 'remove', lockedAt, objectRootExisted: true }, 'purge'],
-    [
-      'whose operation is remove, for a purge that had begun deleting',
-      { id: 'a', operation: 'remove', lockedAt, objectRootExisted: true, removing: true },
-      'purge',
-    ],
-  ] as const) {
-    it(`lists a lock ${what}, as earlier releases wrote, as a ${operation}, and recovers it`, async () => {
-      const root = await newRoot();
-      await writeLock(root, 'a', JSON.stringify(content));
-
-      assert.deepStrictEqual(
-        (await listed(root)).map((write) => [write.id, write.operation]),
-        [['a', operation]],
-      );
-      assert.strictEqual((await root.unfinishedWrite('a'))?.operation, operation);
-      await recover(root, 'a');
-
-      assert.ok(!fs.existsSync(workspaceOf(root)));
-    });
-  }
-
   for (const [what, content] of [
+    ['no operation', { id: 'a', lockedAt, objectRootExisted: true }],
+    ['no operation, removing', { id: 'a', lockedAt, objectRootExisted: true, removing: true }],
     ['an unknown operation', { id: 'a', operation: 'delete', lockedAt, objectRootExisted: true }],
+    ['the operation remove', { id: 'a', operation: 'remove', lockedAt, objectRootExisted: true }],
     ['removing for an update', { id: 'a', operation: 'update', lockedAt, objectRootExisted: true, removing: true }],
-    ['removing false', { id: 'a', lockedAt, objectRootExisted: true, removing: false }],
-    ['a time that is not ISO 8601', { id: 'a', lockedAt: 'Tue, 10 Nov 2026 22:01:44 GMT', objectRootExisted: true }],
-    ['an invalid time', { id: 'a', lockedAt: 'never', objectRootExisted: true }],
-    ['an empty id', { id: '', lockedAt, objectRootExisted: true }],
+    ['removing false', { id: 'a', operation: 'purge', lockedAt, objectRootExisted: true, removing: false }],
+    ['a time that is not ISO 8601', { id: 'a', operation: 'update', lockedAt: 'Tue, 10 Nov 2026 22:01:44 GMT', objectRootExisted: true }],
+    ['an invalid time', { id: 'a', operation: 'update', lockedAt: 'never', objectRootExisted: true }],
+    ['an empty id', { id: '', operation: 'update', lockedAt, objectRootExisted: true }],
   ] as const) {
     it(`doesn't list a file at a lock with ${what}, which this library didn't write`, async () => {
       const root = await newRoot();
@@ -290,7 +267,10 @@ describe('root.unfinishedWrites', () => {
       const root = await newRoot();
       const { workspace } = placesOf(root, 'a');
       await fs.promises.mkdir(workspace, { recursive: true });
-      await fs.promises.writeFile(path.join(workspace, '.lock-0'), JSON.stringify({ id: 'a', lockedAt: new Date().toISOString(), objectRootExisted: false }));
+      await fs.promises.writeFile(
+        path.join(workspace, '.lock-0'),
+        JSON.stringify({ id: 'a', operation: 'create', lockedAt: new Date().toISOString(), objectRootExisted: false }),
+      );
 
       assert.deepStrictEqual(await listed(root), []);
       assert.strictEqual(await root.unfinishedWrite('a'), undefined);
@@ -373,6 +353,20 @@ describe('write.recover', () => {
     assert.strictEqual((await update.finish()).head.number, 2);
   });
 
+  it('throws OBJECT_LOCKED, changing nothing, if a writer of another operation has taken the lock since, at the same time', async () => {
+    const root = await newRoot();
+    await createObject(root, 'a', { 'a.txt': 'a' });
+    const taken = { id: 'a', operation: 'update', lockedAt: '2026-11-10T22:01:44.000Z', objectRootExisted: true };
+    const lock = await writeLock(root, 'a', JSON.stringify(taken));
+    const [write] = await listed(root);
+    await fs.promises.writeFile(lock, JSON.stringify({ ...taken, operation: 'purge' }));
+    const before = await snapshot(root.path);
+
+    await rejection(write?.recover() ?? Promise.resolve(), 'OBJECT_LOCKED');
+
+    assert.deepStrictEqual(await snapshot(root.path), before);
+  });
+
   it('does nothing if the lock has been released since it was listed', async () => {
     const root = await newRoot();
     await createObject(root, 'a', { 'a.txt': 'a' });
@@ -386,25 +380,19 @@ describe('write.recover', () => {
     assert.deepStrictEqual(await snapshot(root.path), before);
   });
 
-  for (const [what, recorded] of [
-    ['', { operation: 'purge' }],
-    [', from a lock whose operation is remove, as releases before purge wrote', { operation: 'remove' }],
-    [', from a lock with no operation, as earlier releases wrote', {}],
-  ] as const) {
-    it(`finishes a purge listed before it began deleting, as the same writer${what}`, async () => {
-      const root = await newRoot();
-      await createObject(root, 'a', { 'a.txt': 'a' });
-      const taken = { id: 'a', ...recorded, lockedAt: '2026-11-10T22:01:44.000Z', objectRootExisted: true };
-      const lock = await writeLock(root, 'a', JSON.stringify(taken));
-      const [write] = await listed(root);
-      await fs.promises.writeFile(lock, JSON.stringify({ ...taken, removing: true }));
+  it('finishes a purge listed before it began deleting, as the same writer', async () => {
+    const root = await newRoot();
+    await createObject(root, 'a', { 'a.txt': 'a' });
+    const taken = { id: 'a', operation: 'purge', lockedAt: '2026-11-10T22:01:44.000Z', objectRootExisted: true };
+    const lock = await writeLock(root, 'a', JSON.stringify(taken));
+    const [write] = await listed(root);
+    await fs.promises.writeFile(lock, JSON.stringify({ ...taken, removing: true }));
 
-      await write?.recover();
+    await write?.recover();
 
-      await assert.rejects(root.open('a'), ocflError('OBJECT_NOT_FOUND'));
-      assert.ok(!fs.existsSync(workspaceOf(root)));
-    });
-  }
+    await assert.rejects(root.open('a'), ocflError('OBJECT_NOT_FOUND'));
+    assert.ok(!fs.existsSync(workspaceOf(root)));
+  });
 
   it('is unaffected by the caller changing the lockedAt it was given', async () => {
     const root = await newRoot();
@@ -492,7 +480,7 @@ describe('with a layout whose object paths are deep', () => {
   it("doesn't list a copy of a lock in a version left in the workspace with no lock", async () => {
     const root = await newRoot({ extensionName: PATH_DIRECT });
     await createObject(root, 'corpus/item', { 'a.txt': 'a' });
-    const copy = JSON.stringify({ id: 'corpus/item', lockedAt: new Date().toISOString(), objectRootExisted: true });
+    const copy = JSON.stringify({ id: 'corpus/item', operation: 'update', lockedAt: new Date().toISOString(), objectRootExisted: true });
     await fs.promises.mkdir(path.join(workspaceOf(root), 'corpus', 'item', '__object__', 'v2', 'content'), { recursive: true });
     await fs.promises.writeFile(path.join(workspaceOf(root), 'corpus', 'item', '__object__', 'v2', 'content', 'lock'), copy);
 

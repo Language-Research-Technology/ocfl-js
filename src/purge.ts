@@ -94,11 +94,14 @@ export async function purgeObject(place: ObjectPlace, id: string): Promise<void>
 }
 
 /**
- * Finishes the purge that the dead writer holding the lock of the object at `place` had begun, and releases the lock.
+ * Finishes the purge of the dead writer holding the lock of the object at `place` if it had begun deleting, and releases the lock.
+ * One that hadn't begun has changed nothing in the object root, so the object root is left alone.
  * The lock goes last, so a failure keeps the object locked.
  */
-export async function recoverPurge(place: ObjectPlace): Promise<void> {
+export async function recoverPurge(place: ObjectPlace, begunDeleting: boolean): Promise<void> {
   await clearWorkspace(place.workspace);
-  await deleteObjectRoot(place);
+  if (begunDeleting) {
+    await deleteObjectRoot(place);
+  }
   await releaseLock(place.workspace, place.storageRoot);
 }

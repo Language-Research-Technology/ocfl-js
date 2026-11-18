@@ -52,50 +52,25 @@ function formatLock({ id, operation, lockedAt, objectRootExisted, removing }: Lo
   return JSON.stringify({ id, operation, lockedAt: lockedAt.toISOString(), objectRootExisted, ...(removing ? { removing } : {}) });
 }
 
-/** The operation of a lock written before locks recorded one */
-function inferredOperation(objectRootExisted: boolean, removing: boolean): Operation {
-  if (removing) {
-    return 'purge';
-  }
-  return objectRootExisted ? 'update' : 'create';
-}
-
-/**
- * What `content` records if it has the fields {@link formatLock} gives, or `undefined`. Other fields, which a later release may add, are ignored.
- * A lock with no `operation`, as earlier releases wrote, is given the likeliest one, and one recording `'remove'`, as releases
- * before `purge` wrote, is given `'purge'`.
- */
+/** What `content` records if it has the fields {@link formatLock} gives, or `undefined`. Other fields, which a later release may add, are ignored. */
 function parseLock(content: string): Lock | undefined {
-  const { id, operation: recorded, lockedAt, objectRootExisted, removing } = parseJsonObject(content) ?? {};
-  const operation = recorded === 'remove' ? 'purge' : recorded;
-  if (typeof id !== 'string' || id === '' || typeof lockedAt !== 'string' || typeof objectRootExisted !== 'boolean') {
+  const { id, operation, lockedAt, objectRootExisted, removing } = parseJsonObject(content) ?? {};
+  if (typeof id !== 'string' || id === '' || !isOperation(operation) || typeof lockedAt !== 'string' || typeof objectRootExisted !== 'boolean') {
     return undefined;
   }
-  if ((removing !== undefined && removing !== true) || (operation !== undefined && !isOperation(operation))) {
-    return undefined;
-  }
-  if (removing === true && operation !== undefined && operation !== 'purge') {
+  if (removing !== undefined && (removing !== true || operation !== 'purge')) {
     return undefined;
   }
   const time = new Date(lockedAt);
   if (Number.isNaN(time.getTime()) || time.toISOString() !== lockedAt) {
     return undefined;
   }
-  return {
-    id,
-    operation: isOperation(operation) ? operation : inferredOperation(objectRootExisted, removing === true),
-    lockedAt: time,
-    objectRootExisted,
-    removing: removing === true,
-  };
+  return { id, operation, lockedAt: time, objectRootExisted, removing: removing === true };
 }
 
-/**
- * Whether two locks were taken by the same writer, whether or not it has since begun deleting the object.
- * `operation` isn't compared: a purge from a release before locks recorded one has none, and is read as another operation until it begins deleting.
- */
+/** Whether two locks were taken by the same writer, whether or not it has since begun deleting the object */
 export function sameWriter(a: Lock, b: Lock): boolean {
-  return a.id === b.id && a.lockedAt.getTime() === b.lockedAt.getTime() && a.objectRootExisted === b.objectRootExisted;
+  return a.id === b.id && a.operation === b.operation && a.lockedAt.getTime() === b.lockedAt.getTime() && a.objectRootExisted === b.objectRootExisted;
 }
 
 /** What the file `file` records if it is a lock, or `undefined` if it isn't one or nothing is there */
