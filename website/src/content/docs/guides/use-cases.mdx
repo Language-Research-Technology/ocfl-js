@@ -55,6 +55,7 @@ A file server reads files from OCFL objects and sends them over HTTP. It never w
 - `file.modifiedAt` is when the version that gave the file its current content was committed, which makes a good `Last-Modified`. It comes from the inventory, not the stored file, so copying or restoring the storage root doesn't change it. Content changed back to an earlier content counts as a change, so the date is that of the change back, not the earlier version's.
 - `await file.stream({ start, end })` opens and checks the stored file before it resolves. One that is missing or isn't a regular file rejects with `INVALID_OBJECT`, and one that can't be read rejects with the file system error, all before any headers are sent, so the server answers `500`. A stored file removed once the stream is open is still read in full.
 - The stream holds the stored file open until it ends. `pipeline` destroys it if the client goes away; code that gets a stream and doesn't read it should `destroy()` it.
+- The `signal` covers the time before `pipeline` starts: a client that goes away while the stored file is being opened makes `stream` reject with the signal's `reason`, with the stored file closed. `text()` and `bytes()` take a `signal` too.
 - To serve an earlier version, read its files from `object.version(number).files` instead of `object.head.files`. Convert the number from the request with `Number()` first, since a string throws a `TypeError`. A number that isn't a version, `NaN` among them, throws `VERSION_NOT_FOUND`, which the server can answer with a 404.
 
 ## A file's history
@@ -74,7 +75,7 @@ An indexing job lists every OCFL object in a storage root and records what it fi
 
 <Code code={indexingJob} lang="ts" />
 
-- `root.objects()` yields each object as it finds it, in no particular order. Reading it lazily keeps memory use flat however large the storage root is, and breaking out of the loop stops the walk.
+- `root.objects()` yields each object as it finds it, in no particular order. Reading it lazily keeps memory use flat however large the storage root is, and breaking out of the loop stops the walk. So does aborting the signal of `root.objects({ signal })`, which rejects the loop with the signal's `reason`.
 - An object it can't open is yielded as `{ status: 'damaged', error, objectRoot, id? }`, where `error` is an [`OcflError`](/ocfl-js/api/classes/ocflerror/) with code [`INVALID_OBJECT`](/ocfl-js/guides/errors/#invalid_object), and the listing carries on. The job keeps these errors and reports them at the end, so one damaged object root doesn't stop the index or go unnoticed. Their `ocflCode`, when present, names the OCFL rule the object breaks.
 - A file system error, such as a directory it can't read, is thrown, not yielded, and ends the listing.
 - The listing leaves out an object that has lost its declaration and [a create whose writer died](/ocfl-js/guides/concurrent-writers/#a-create-whose-writer-died), without an error. See [what the library doesn't check or do](/ocfl-js/#what-it-doesnt-check-or-do).

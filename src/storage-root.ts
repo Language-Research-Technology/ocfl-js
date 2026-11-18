@@ -8,7 +8,7 @@ import { OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import type { BuiltInLayout } from './layouts/built-in-layout.ts';
 import { builtInLayoutClass, createLayout, IMPLEMENTED_LAYOUTS, type Layout, type LayoutConfig } from './layouts/index.ts';
-import { type ListedObject, listObjects } from './list.ts';
+import { type ListedObject, type ListOptions, listObjects } from './list.ts';
 import { longestWriterPath, type ObjectPlace, objectPlace } from './object-place.ts';
 import { objectNotFound, objectState } from './object-root.ts';
 import { createObject, type OcflObject, openObject } from './ocfl-object.ts';
@@ -16,7 +16,7 @@ import { specViolation } from './ocfl-rules.ts';
 import { purgeObject } from './purge.ts';
 import { SPEC_TEXT } from './spec-text.ts';
 import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from './unfinished-write.ts';
-import { deepFreeze, isNonEmptyString, optionsObject, parseJsonObject } from './utils.ts';
+import { deepFreeze, isNonEmptyString, optionsObject, parseJsonObject, signalFromOptions } from './utils.ts';
 import { writeWorkspaceDocumentation } from './workspace-documentation.ts';
 
 const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, STORAGE_ROOT_DECLARATION_PREFIX, DECLARATION_TAG } = OcflConstants;
@@ -243,9 +243,11 @@ interface StorageRoot {
    * A directory with an invalid object declaration is a damaged object root: it isn't searched for objects. So is an object whose OCFL version is later than the storage root's (E081).
    *
    * An object that another writer is creating and hasn't committed is left out, and so is the `extensions` directory.
-   * Leaving the loop early closes every directory the listing opened.
+   * Leaving the loop early closes every directory the listing opened, and so does aborting `signal`, which stops the listing between object roots.
    *
+   * @throws `TypeError`, when called, if `options` is given and isn't an object, has a key other than `signal`, or `signal` isn't an `AbortSignal`.
    * @throws The file system error that stopped the listing.
+   * @throws `signal.reason` from the iteration pending when `signal` is aborted, or from the first, before anything is read, if it already is.
    * @example
    * ```ts
    * for await (const entry of root.objects()) {
@@ -262,7 +264,7 @@ interface StorageRoot {
    * }
    * ```
    */
-  objects(): AsyncIterable<ListedObject>;
+  objects(options?: ListOptions): AsyncIterable<ListedObject>;
 
   /**
    * Purges an object: deletes it and all its versions for good, and the parent directories that leaves empty. The object's lock is held while it is deleted. To take a file out of only the next version, use {@link Draft.remove}.
@@ -399,8 +401,8 @@ function storageRoot(root: string, ocflVersion: OcflSpecVersion, layout: BuiltIn
       signal?.throwIfAborted();
       return createObject(await placedObject(root, layout, objectId, longestWriterPath), objectId, settings, details, build, signal);
     },
-    objects() {
-      return listObjects(root, settings);
+    objects(options?: ListOptions) {
+      return listObjects(root, settings, signalFromOptions(options, 'root.objects'));
     },
     async purge(id: string) {
       const objectId = checkedId(id);

@@ -2,7 +2,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, it, mock } from 'node:test';
-import type { ListedDamagedObjectRoot, OcflObject, StorageRoot } from '../src/index.ts';
+import type { ListedDamagedObjectRoot, ListedObject, OcflObject, StorageRoot } from '../src/index.ts';
 import { openStorageRoot } from '../src/index.ts';
 import { createObject, DETAILS, objectRootOf, placesOf, textFiles, useTempRoots, writeB } from './helpers/drafts.ts';
 import { stillOpen, trackOpendir, withFsFailure } from './helpers/fs-failures.ts';
@@ -399,5 +399,83 @@ describe('root.objects', () => {
       assert.ok(opened.length > 1);
       assert.deepStrictEqual(await stillOpen(opened), []);
     });
+  });
+
+  describe('with a signal', () => {
+    async function listing(root: StorageRoot, signal: AbortSignal) {
+      const entries: ListedObject[] = [];
+      for await (const entry of root.objects({ signal })) {
+        entries.push(entry);
+      }
+      return entries;
+    }
+
+    it('rejects with the reason of a signal already aborted, opening no directory', async () => {
+      const root = await threeObjects();
+      const reason = new Error('request ended');
+
+      const opened = await trackOpendir(() => assert.rejects(listing(root, AbortSignal.abort(reason)), (error) => error === reason));
+
+      assert.deepStrictEqual(opened, []);
+    });
+
+    it('stops when the signal is aborted part way, rejecting with its reason and closing every directory', async () => {
+      const root = await threeObjects();
+      const reason = new Error('request ended');
+      const controller = new AbortController();
+      let listedCount = 0;
+
+      const opened = await trackOpendir(() =>
+        assert.rejects(
+          async () => {
+            for await (const _found of root.objects({ signal: controller.signal })) {
+              listedCount++;
+              controller.abort(reason);
+            }
+          },
+          (error) => error === reason,
+        ),
+      );
+
+      assert.strictEqual(listedCount, 1);
+      assert.ok(opened.length > 1);
+      assert.deepStrictEqual(await stillOpen(opened), []);
+    });
+
+    it('stops with its reason when the signal is aborted while an object is being read', async () => {
+      const root = await threeObjects();
+      const reason = new Error('request ended');
+      const controller = new AbortController();
+      const real = fs.promises.readFile;
+      mock.method(fs.promises, 'readFile', async (...args: Parameters<typeof real>) => {
+        controller.abort(reason);
+        return real.apply(fs.promises, args);
+      });
+
+      await assert.rejects(listing(root, controller.signal), (error) => error === reason);
+    });
+
+    it('lists every object with a signal that is never aborted', async () => {
+      const root = await threeObjects();
+      const entries = await listing(root, new AbortController().signal);
+      assert.deepStrictEqual(entries.map((entry) => (entry.status === 'opened' ? entry.object.id : entry.objectRoot)).sort(), ['a', 'b', 'c']);
+    });
+
+    for (const [name, options, message] of [
+      ['a signal that is not an AbortSignal', { signal: { aborted: false } }, /^The signal option must be an AbortSignal, not \{ aborted: false \}$/],
+      ['an unknown option', { singal: 1 }, /^root\.objects has no option 'singal'\.$/],
+      ['options that are not an object', 'all', /^Options must be an object, such as \{ signal: AbortSignal\.timeout\(60_000\) \}, not 'all'$/],
+    ] as const) {
+      it(`throws TypeError for ${name} when called, before anything is read`, async () => {
+        const root = await threeObjects();
+        const opened = await trackOpendir(async () => {
+          assert.throws(
+            () => root.objects(options as never),
+            (e) => e instanceof TypeError && message.test(e.message),
+          );
+        });
+        assert.deepStrictEqual(opened, []);
+      });
+    }
   });
 });

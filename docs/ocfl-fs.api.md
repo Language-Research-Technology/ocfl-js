@@ -146,6 +146,11 @@ export interface ListedOpenedObject {
 }
 
 // @public
+export interface ListOptions {
+    readonly signal?: AbortSignal | undefined;
+}
+
+// @public
 export interface MergeOptions {
     readonly merge?: boolean | undefined;
 }
@@ -165,7 +170,7 @@ export type OcflErrorCode = 'OBJECT_NOT_FOUND' | 'OBJECT_EXISTS' | 'OBJECT_OUT_O
 
 // @public
 export interface OcflFile {
-    bytes(): Promise<Uint8Array<ArrayBuffer>>;
+    bytes(options?: ReadOptions): Promise<Uint8Array<ArrayBuffer>>;
     readonly createdAt: Date;
     readonly createdIn: Version;
     readonly digest: string;
@@ -174,7 +179,7 @@ export interface OcflFile {
     readonly path: string;
     size(): Promise<number>;
     stream(options?: StreamOptions): Promise<Readable>;
-    text(): Promise<string>;
+    text(options?: ReadOptions): Promise<string>;
 }
 
 // @public
@@ -210,11 +215,16 @@ export interface PathDirectLayoutConfig {
 }
 
 // @public
+export interface ReadOptions {
+    readonly signal?: AbortSignal | undefined;
+}
+
+// @public
 export interface StorageRoot {
     create(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
     has(id: string): Promise<boolean>;
     readonly layout: Layout;
-    objects(): AsyncIterable<ListedObject>;
+    objects(options?: ListOptions): AsyncIterable<ListedObject>;
     readonly ocflVersion: OcflSpecVersion;
     open(id: string): Promise<OcflObject>;
     readonly path: string;
@@ -224,7 +234,7 @@ export interface StorageRoot {
 }
 
 // @public
-export interface StreamOptions {
+export interface StreamOptions extends ReadOptions {
     readonly end?: number;
     readonly start?: number;
 }

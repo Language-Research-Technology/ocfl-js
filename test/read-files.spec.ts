@@ -7,8 +7,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
-import { after, before, describe, it } from 'node:test';
+import { after, afterEach, before, describe, it, mock } from 'node:test';
 import { createStorageRoot, type OcflFile, type OcflObject, openStorageRoot, type StorageRoot } from '../src/index.ts';
+import { beforeOpening, fsError } from './helpers/fs-failures.ts';
 import { ocflError, rejection } from './helpers/ocfl-error.ts';
 import { SPEC_EX_FULL, SPEC_EX_FULL_ID, writeSpecExFullRoot, writeVersions } from './helpers/storage-roots.ts';
 
@@ -152,7 +153,7 @@ describe('reading the files of an object', () => {
 
     for (const [name, range, message] of [
       ['with an unknown key', { strat: 1 }, /^file\.stream has no option 'strat'\.$/],
-      ['with two unknown keys', { start: 1, strat: 1, signal: undefined }, /^file\.stream has no option 'strat' or 'signal'\.$/],
+      ['with two unknown keys', { start: 1, strat: 1, signl: undefined }, /^file\.stream has no option 'strat' or 'signl'\.$/],
       ['that is a string', 'bytes=0-1', /^Options must be an object, such as \{ start: 0, end: 1023 \}, not 'bytes=0-1'$/],
       ['that is null', null, /^Options must be an object, such as \{ start: 0, end: 1023 \}, not null$/],
     ] as const) {
@@ -312,5 +313,142 @@ describe('reading the files of an object', () => {
     it('rejects an invalid range before it opens the stored file', async () => {
       await assert.rejects(object.head.files.get('a.txt')!.stream({ start: 3, end: 1 }), RangeError);
     });
+  });
+
+  describe('a read with a signal', () => {
+    let objectRoot: string;
+    let file: OcflFile;
+    const storedFile = () => path.join(objectRoot, 'v1/content/a.txt');
+    before(async () => {
+      objectRoot = await writeVersions(root.path, 'signalled', [{ 'a.txt': 'abcdef' }]);
+      file = (await root.open('signalled')).head.files.get('a.txt')!;
+    });
+    afterEach(() => {
+      mock.restoreAll();
+    });
+
+    const readers = {
+      stream: (f: OcflFile, options: unknown) => f.stream(options as never),
+      text: (f: OcflFile, options: unknown) => f.text(options as never),
+      bytes: (f: OcflFile, options: unknown) => f.bytes(options as never),
+    };
+    const entries = Object.entries(readers);
+    const wholeReads = entries.filter(([method]) => method !== 'stream');
+
+    /** Asserts that `read` rejects as `expected` says, without opening the stored file */
+    async function assertRejectsUnopened(read: () => Promise<unknown>, expected: (error: unknown) => boolean) {
+      const opens = mock.method(fs.promises, 'open');
+      await assert.rejects(read(), expected);
+      assert.ok(opens.mock.calls.every((call) => call.arguments[0] !== storedFile()));
+    }
+
+    /** Runs `fn` with each `FileHandle.readFile` call going through `replacement`, which is given the real call */
+    async function replacingHandleReadFile<T>(replacement: (real: () => Promise<unknown>) => Promise<unknown>, fn: () => Promise<T>): Promise<T> {
+      const probe = await fs.promises.open(storedFile());
+      const prototype = Object.getPrototypeOf(probe) as { readFile: (...args: unknown[]) => Promise<unknown> };
+      await probe.close();
+      const real = prototype.readFile;
+      const spy = mock.method(prototype, 'readFile', function (this: unknown, ...args: unknown[]) {
+        return replacement(() => real.apply(this, args));
+      });
+      try {
+        return await fn();
+      } finally {
+        spy.mock.restore();
+      }
+    }
+
+    for (const [method, read] of entries) {
+      it(`file.${method} rejects with the reason of a signal already aborted, opening no stored file`, async () => {
+        const reason = new Error('client went away');
+        await assertRejectsUnopened(
+          () => read(file, { signal: AbortSignal.abort(reason) }),
+          (error) => error === reason,
+        );
+      });
+
+      it(`file.${method} rejects with the signal's reason when it is aborted while the stored file opens, and closes it`, async () => {
+        const reason = new Error('client went away');
+        const controller = new AbortController();
+        await beforeOpening(
+          storedFile(),
+          async () => controller.abort(reason),
+          () => assert.rejects(read(file, { signal: controller.signal }), (error) => error === reason),
+        );
+        assert.strictEqual(timesOpen(storedFile()), 0);
+      });
+
+      it(`file.${method} rejects with TypeError a signal that is not an AbortSignal, opening no stored file`, async () => {
+        await assertRejectsUnopened(
+          () => read(file, { signal: { aborted: false } }),
+          (e) => e instanceof TypeError && e.message === 'The signal option must be an AbortSignal, not { aborted: false }',
+        );
+      });
+    }
+
+    for (const [method, read] of wholeReads) {
+      it(`file.${method} rejects with TypeError an unknown option or options that are not an object`, async () => {
+        await assert.rejects(read(file, { singal: 1 }), (e) => e instanceof TypeError && e.message === `file.${method} has no option 'singal'.`);
+        await assert.rejects(
+          read(file, 'utf8'),
+          (e) => e instanceof TypeError && e.message === "Options must be an object, such as { signal: AbortSignal.timeout(60_000) }, not 'utf8'",
+        );
+      });
+
+      it(`file.${method} reads in full with a signal that is never aborted`, async () => {
+        const content = await read(file, { signal: new AbortController().signal });
+        assert.strictEqual(typeof content === 'string' ? content : new TextDecoder().decode(content as Uint8Array), 'abcdef');
+      });
+    }
+
+    it(`rejects with the signal's reason, not as missing, a stored file that is missing when the signal is aborted while it opens`, async () => {
+      const missingRoot = await writeVersions(root.path, 'signalled-missing', [{ 'gone.txt': 'abc' }]);
+      const missing = path.join(missingRoot, 'v1/content/gone.txt');
+      await fs.promises.rm(missing);
+      const gone = (await root.open('signalled-missing')).head.files.get('gone.txt')!;
+      const reason = new Error('client went away');
+      const controller = new AbortController();
+      await beforeOpening(
+        missing,
+        async () => controller.abort(reason),
+        () => assert.rejects(gone.text({ signal: controller.signal }), (error) => error === reason),
+      );
+    });
+
+    it('destroys a stream it handed out when the signal is aborted, closing the stored file', async () => {
+      const controller = new AbortController();
+      const stream = await file.stream({ signal: controller.signal });
+      stream.on('error', () => {});
+      const closed = new Promise((resolve) => stream.once('close', resolve));
+      controller.abort(new Error('client went away'));
+      await closed;
+      assert.ok(stream.destroyed);
+      assert.strictEqual(timesOpen(storedFile()), 0);
+    });
+
+    for (const [method, read] of wholeReads) {
+      it(`file.${method} rejects with the signal's reason when it is aborted during the read, and closes the stored file`, async () => {
+        const reason = new Error('client went away');
+        const controller = new AbortController();
+        await replacingHandleReadFile(
+          (real) => {
+            controller.abort(reason);
+            return real();
+          },
+          () => assert.rejects(read(file, { signal: controller.signal }), (error) => error === reason),
+        );
+        assert.strictEqual(timesOpen(storedFile()), 0);
+      });
+
+      it(`file.${method} rejects with the file system error of a read that fails with no aborted signal, and closes the stored file`, async () => {
+        await replacingHandleReadFile(
+          async () => {
+            throw fsError('EIO');
+          },
+          () => assert.rejects(read(file, undefined), { code: 'EIO' }),
+        );
+        assert.strictEqual(timesOpen(storedFile()), 0);
+      });
+    }
   });
 });

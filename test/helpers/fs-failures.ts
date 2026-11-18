@@ -57,7 +57,13 @@ export function withLostReply<T>(method: FsMethod, failing: string | Fails, fn: 
 }
 
 /** Runs `fn` with `before` called once, just before the first call of `method` whose path argument at `position` is `file` */
-async function beforeCalling<T>(method: 'link' | 'rename', position: 0 | 1, file: string, before: () => Promise<unknown>, fn: () => Promise<T>): Promise<T> {
+async function beforeCalling<T>(
+  method: 'link' | 'rename' | 'open',
+  position: 0 | 1,
+  file: string,
+  before: () => Promise<unknown>,
+  fn: () => Promise<T>,
+): Promise<T> {
   const fsp = fs.promises as unknown as Record<string, (...args: unknown[]) => Promise<unknown>>;
   const real = fsp[method] as (...args: unknown[]) => Promise<unknown>;
   let called = false;
@@ -85,6 +91,11 @@ export function beforeLinkingTo<T>(target: string, beforeLink: () => Promise<unk
 /** Runs `fn` with `beforeRename` called once, just before something is first renamed to `target` */
 export function beforeRenamingTo<T>(target: string, beforeRename: () => Promise<unknown>, fn: () => Promise<T>): Promise<T> {
   return beforeCalling('rename', 1, target, beforeRename, fn);
+}
+
+/** Runs `fn` with `beforeOpen` called once, just before `file` is first opened */
+export function beforeOpening<T>(file: string, beforeOpen: () => Promise<unknown>, fn: () => Promise<T>): Promise<T> {
+  return beforeCalling('open', 0, file, beforeOpen, fn);
 }
 
 export async function trackOpendir(fn: () => Promise<unknown>) {

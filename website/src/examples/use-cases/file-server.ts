@@ -33,6 +33,12 @@ const server = createServer(async (request, response) => {
     response.writeHead(400).end();
     return;
   }
+  const clientGone = new AbortController();
+  response.on('close', () => {
+    if (!response.writableFinished) {
+      clientGone.abort();
+    }
+  });
   try {
     const object = await current(id);
     const file = object.head.files.get(path);
@@ -44,7 +50,7 @@ const server = createServer(async (request, response) => {
     const size = await file.size();
     const range = parseRange(request.headers.range, size);
     // Rejects before any headers are sent
-    const body = await file.stream(range);
+    const body = await file.stream({ ...range, signal: clientGone.signal });
     response.writeHead(range ? 206 : 200, {
       etag: `"${file.digest}"`,
       'last-modified': file.modifiedAt.toUTCString(),
@@ -53,7 +59,7 @@ const server = createServer(async (request, response) => {
     });
     await pipeline(body, response);
   } catch (error) {
-    if (response.headersSent) {
+    if (response.headersSent || clientGone.signal.aborted) {
       response.destroy();
     } else if (error instanceof RangeError) {
       response.writeHead(416).end();

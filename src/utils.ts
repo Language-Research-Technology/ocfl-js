@@ -95,6 +95,15 @@ function signalOption(signal: unknown): AbortSignal | undefined {
   return signal as AbortSignal | undefined;
 }
 
+/**
+ * The signal of options whose only key is `signal`
+ * @param call - The call as a caller writes it, e.g. `file.text`
+ * @throws `TypeError` if `options` is given and isn't an object, has a key other than `signal`, or its signal isn't an `AbortSignal`
+ */
+function signalFromOptions(options: unknown, call: string): AbortSignal | undefined {
+  return signalOption(optionsObject(options, call, ['signal'], '{ signal: AbortSignal.timeout(60_000) }').signal);
+}
+
 /** @throws `TypeError` if the option `name` is given and isn't a function */
 function functionOption(name: string, value: unknown): void {
   if (value !== undefined && typeof value !== 'function') {
@@ -118,6 +127,7 @@ export {
   optionsObject,
   parseJsonObject,
   rejectUnknownKeys,
+  signalFromOptions,
   signalOption,
   versionArgument,
 };

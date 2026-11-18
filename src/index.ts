@@ -45,8 +45,8 @@ export type {
   LayoutConfig,
   PathDirectLayoutConfig,
 } from './layouts/index.ts';
-export type { ListedDamagedObjectRoot, ListedObject, ListedOpenedObject } from './list.ts';
-export type { OcflFile, StreamOptions } from './ocfl-file.ts';
+export type { ListedDamagedObjectRoot, ListedObject, ListedOpenedObject, ListOptions } from './list.ts';
+export type { OcflFile, ReadOptions, StreamOptions } from './ocfl-file.ts';
 export type {
   ExportOptions,
   ExportProgress,
