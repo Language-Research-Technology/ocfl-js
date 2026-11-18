@@ -4,13 +4,13 @@ import crypto from 'node:crypto';
  * A fixity algorithm this library supports: the five every OCFL client must (spec E027), and `sha512/256` (extension 0009).
  * A hashed storage layout hashes object ids with one. The library doesn't read or write an inventory's `fixity` block.
  */
-type FixityAlgorithm = 'md5' | 'sha1' | 'sha256' | 'sha512' | 'sha512/256' | 'blake2b-512';
+export type FixityAlgorithm = 'md5' | 'sha1' | 'sha256' | 'sha512' | 'sha512/256' | 'blake2b-512';
 
 /**
  * The algorithm of an OCFL object's digests, of its content and of its inventory: its inventory's `digestAlgorithm` (spec E025, E039).
  * Of the fixity algorithms, only these two may be an object's.
  */
-type DigestAlgorithm = 'sha256' | 'sha512';
+export type DigestAlgorithm = 'sha256' | 'sha512';
 
 type DataType = string | ArrayBufferView | ArrayBufferLike;
 
@@ -25,7 +25,7 @@ const encoder = new TextEncoder();
  * A string becomes its UTF-8 bytes; a view or buffer is wrapped, not copied.
  * @throws TypeError for anything else
  */
-function toBytes(data: unknown): Uint8Array {
+export function toBytes(data: unknown): Uint8Array {
   if (typeof data === 'string') {
     return encoder.encode(data);
   }
@@ -52,14 +52,14 @@ const ALGORITHMS: Record<FixityAlgorithm, { hexLength: number; nodeName: string 
 };
 
 /** Whether `name` is a fixity algorithm this library supports, written exactly so */
-function isFixityAlgorithm(name: string): name is FixityAlgorithm {
+export function isFixityAlgorithm(name: string): name is FixityAlgorithm {
   return Object.hasOwn(ALGORITHMS, name);
 }
 
 /**
  * Create a hasher instance for the given algorithm.
  */
-function createHasher(algorithm: FixityAlgorithm): Hasher {
+export function createHasher(algorithm: FixityAlgorithm): Hasher {
   const hash = crypto.createHash(ALGORITHMS[algorithm].nodeName);
   let hex: string | undefined;
   return {
@@ -75,7 +75,7 @@ function createHasher(algorithm: FixityAlgorithm): Hasher {
   };
 }
 
-async function digest(algorithm: FixityAlgorithm, input: DataType | AsyncIterable<DataType>): Promise<string> {
+export async function digest(algorithm: FixityAlgorithm, input: DataType | AsyncIterable<DataType>): Promise<string> {
   const hash = createHasher(algorithm);
   if (typeof input === 'object' && Symbol.asyncIterator in input) {
     for await (const chunk of input) {
@@ -87,17 +87,15 @@ async function digest(algorithm: FixityAlgorithm, input: DataType | AsyncIterabl
   return hash.digest();
 }
 
-function digestSync(algorithm: FixityAlgorithm, input: DataType): string {
+export function digestSync(algorithm: FixityAlgorithm, input: DataType): string {
   return createHasher(algorithm).update(input).digest();
 }
 
 /** The form digests are compared and written in: hex digests are case-insensitive, and the library writes them in lowercase */
-function normaliseDigest(digest: string): string {
+export function normaliseDigest(digest: string): string {
   return digest.toLowerCase();
 }
 
-function getHexDigestLength(algorithm: FixityAlgorithm): number {
+export function getHexDigestLength(algorithm: FixityAlgorithm): number {
   return ALGORITHMS[algorithm].hexLength;
 }
-
-export { createHasher, type DigestAlgorithm, digest, digestSync, type FixityAlgorithm, getHexDigestLength, isFixityAlgorithm, normaliseDigest, toBytes };

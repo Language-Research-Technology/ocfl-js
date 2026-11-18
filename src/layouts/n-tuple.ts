@@ -21,7 +21,7 @@ function checkTupleParameter(name: string, value: number) {
  * @returns The length of the hex encoded digest
  * @throws `TypeError` if a parameter breaks the extension's constraints
  */
-function checkNTupleParameters({ digestAlgorithm, tupleSize, numberOfTuples }: NTupleParameters): number {
+export function checkNTupleParameters({ digestAlgorithm, tupleSize, numberOfTuples }: NTupleParameters): number {
   if (!Hashing.isFixityAlgorithm(digestAlgorithm)) {
     throw new TypeError(`Layout parameter digestAlgorithm must name a supported fixity algorithm, not ${inspect(digestAlgorithm)}.`);
   }
@@ -39,4 +39,7 @@ function checkNTupleParameters({ digestAlgorithm, tupleSize, numberOfTuples }: N
   return digestLength;
 }
 
-export { checkNTupleParameters };
+/** The first `numberOfTuples` pieces of `digest`, each `tupleSize` characters long */
+export function tupleSegments(digest: string, { tupleSize, numberOfTuples }: Omit<NTupleParameters, 'digestAlgorithm'>): string[] {
+  return Array.from({ length: numberOfTuples }, (_, i) => digest.slice(tupleSize * i, tupleSize * (i + 1)));
+}

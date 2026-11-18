@@ -1,6 +1,6 @@
 import fs from 'node:fs';
-import nodePath from 'node:path';
-import { OcflConstants } from './constants.ts';
+import path from 'node:path';
+import { OCFL_CONSTANTS } from './constants.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
 import type { OcflError } from './error.ts';
@@ -12,10 +12,10 @@ import { type FaultAt, specViolation } from './ocfl-rules.ts';
 import { isJsonObject, parseJsonObject } from './utils.ts';
 import { isVersionName, VersionNumber } from './version-number.ts';
 
-const { INVENTORY_NAME } = OcflConstants;
+const { INVENTORY_NAME } = OCFL_CONSTANTS;
 
 /** An object's root inventory as stored: read from its object root, or committed there */
-interface RootInventory {
+export interface RootInventory {
   readonly inventory: OcflObjectInventory;
   /** Of the inventory's bytes, as its sidecar records it */
   readonly digest: string;
@@ -24,25 +24,25 @@ interface RootInventory {
 }
 
 /** The digest an inventory sidecar records, normalised, if it records one */
-function sidecarDigest(sidecar: string | undefined): string | undefined {
+export function sidecarDigest(sidecar: string | undefined): string | undefined {
   const recorded = sidecar?.match(/\S+/)?.[0];
   return recorded === undefined ? undefined : Hashing.normaliseDigest(recorded);
 }
 
 /** What the sidecar of an inventory of digest `digest` holds */
-function sidecarContent(digest: string): string {
+export function sidecarContent(digest: string): string {
   return `${digest} ${INVENTORY_NAME}`;
 }
 
 /** The root inventory and its sidecar, and where a commit stages each before renaming it into place */
-function rootInventoryPaths(objectRoot: string, digestAlgorithm: string): Record<'inventory' | 'sidecar' | 'stagedInventory' | 'stagedSidecar', string> {
-  const inventory = nodePath.join(objectRoot, INVENTORY_NAME);
+export function rootInventoryPaths(objectRoot: string, digestAlgorithm: string): Record<'inventory' | 'sidecar' | 'stagedInventory' | 'stagedSidecar', string> {
+  const inventory = path.join(objectRoot, INVENTORY_NAME);
   const sidecar = `${inventory}.${digestAlgorithm}`;
   return { inventory, sidecar, stagedInventory: `${inventory}.tmp`, stagedSidecar: `${sidecar}.tmp` };
 }
 
 /** Whether `name` is a staged file of {@link rootInventoryPaths}, for any digest algorithm */
-function isStagedRootInventory(name: string): boolean {
+export function isStagedRootInventory(name: string): boolean {
   return /^inventory\.json(\.[^.]+)?\.tmp$/.test(name);
 }
 
@@ -84,17 +84,36 @@ async function isHeadVersionInventory(objectRoot: string, head: unknown, text: s
   if (typeof head !== 'string' || !isVersionName(head)) {
     return false;
   }
-  const file = nodePath.join(objectRoot, head, INVENTORY_NAME);
+  const file = path.join(objectRoot, head, INVENTORY_NAME);
   const [inventory, sidecar] = await Promise.all([fileSystem.readIfPresent(file), fileSystem.readIfPresent(`${file}.${digestAlgorithm}`)]);
   return inventory === text && sidecarDigest(sidecar) === digest;
+}
+
+/** The head the root inventory `content` names: `undefined` if there is no root inventory, `null` if it names none */
+export function headOf(content: string | undefined): string | null | undefined {
+  if (content === undefined) {
+    return undefined;
+  }
+  const head = parseJsonObject(content)?.head;
+  return typeof head === 'string' ? head : null;
+}
+
+/** The text of the root inventory of the object at `objectRoot`, unchecked, or `undefined` if there is none */
+export function readRootInventoryText(objectRoot: string): Promise<string | undefined> {
+  return fileSystem.readIfExists(path.join(objectRoot, INVENTORY_NAME));
+}
+
+/** The head the root inventory on disk names, as {@link headOf} gives it */
+export async function headOnDisk(objectRoot: string): Promise<string | null | undefined> {
+  return headOf(await readRootInventoryText(objectRoot));
 }
 
 /**
  * The id the root inventory of the object at `objectRoot` names, unchecked, for an object that can't be opened.
  * @returns `undefined` if the inventory can't be read, isn't JSON, or its `id` isn't a string
  */
-async function idInRootInventory(objectRoot: string): Promise<string | undefined> {
-  const text = await fs.promises.readFile(nodePath.join(objectRoot, INVENTORY_NAME), 'utf8').catch(() => undefined);
+export async function idInRootInventory(objectRoot: string): Promise<string | undefined> {
+  const text = await fs.promises.readFile(path.join(objectRoot, INVENTORY_NAME), 'utf8').catch(() => undefined);
   const id = text === undefined ? undefined : parseJsonObject(text)?.id;
   return typeof id === 'string' ? id : undefined;
 }
@@ -107,7 +126,7 @@ async function idInRootInventory(objectRoot: string): Promise<string | undefined
  * @throws {@link OcflError} `INVALID_OBJECT` if the inventory or its sidecar is missing, corrupt or inconsistent, its id is missing or
  * empty (`E036`), or its versions break a rule {@link checkVersions} checks
  */
-function readInventory(place: ObjectPlace, options: { callerHoldsLock?: boolean } = {}): Promise<RootInventory | undefined> {
+export function readInventory(place: ObjectPlace, options: { callerHoldsLock?: boolean } = {}): Promise<RootInventory | undefined> {
   return readInventoryAttempt(place, options.callerHoldsLock ? 'own lock' : 'first read');
 }
 
@@ -124,7 +143,7 @@ function sidecarRefusal(file: string, digestAlgorithm: DigestAlgorithm, sidecar:
  */
 async function readInventoryAttempt(place: ObjectPlace, attempt: 'first read' | 'second read' | 'own lock'): Promise<RootInventory | undefined> {
   const { objectRoot } = place;
-  const file = nodePath.join(objectRoot, INVENTORY_NAME);
+  const file = path.join(objectRoot, INVENTORY_NAME);
   const read = await fileSystem.readWithIdentity(file);
   if (read === undefined) {
     return undefined;
@@ -182,5 +201,3 @@ async function readInventoryAttempt(place: ObjectPlace, attempt: 'first read' | 
   checkVersions(inventory, { objectId: inventory.id, file });
   return { inventory, digest: actual, identity };
 }
-
-export { idInRootInventory, isStagedRootInventory, type RootInventory, readInventory, rootInventoryPaths, sidecarContent, sidecarDigest };

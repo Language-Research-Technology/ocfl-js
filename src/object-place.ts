@@ -1,10 +1,10 @@
 import path from 'node:path';
-import { OcflConstants } from './constants.ts';
+import { OCFL_CONSTANTS } from './constants.ts';
 import { stagedLockPath } from './lock.ts';
 import { workspaceRoot } from './workspace.ts';
 
 /** Where an object is, or would be */
-interface ObjectPlace {
+export interface ObjectPlace {
   /** Absolute path of the storage root, where removing empty directories stops */
   readonly storageRoot: string;
   /** Absolute path of the object root, inside the storage root */
@@ -17,7 +17,7 @@ interface ObjectPlace {
  * The place of the object at `objectRoot`, in the storage root at the absolute path `storageRoot`
  * @param objectRoot - Absolute, and inside the storage root
  */
-function objectPlace(storageRoot: string, objectRoot: string): ObjectPlace {
+export function objectPlace(storageRoot: string, objectRoot: string): ObjectPlace {
   return { storageRoot, objectRoot, workspace: path.join(workspaceRoot(storageRoot), path.relative(storageRoot, objectRoot)) };
 }
 
@@ -25,8 +25,6 @@ function objectPlace(storageRoot: string, objectRoot: string): ObjectPlace {
  * The longest path a writer of the object at `place` uses, whatever the object holds: the content staged beside its lock.
  * Only paths in the object's content can be longer.
  */
-function longestWriterPath(place: ObjectPlace): string {
-  return stagedLockPath(path.join(place.workspace, OcflConstants.LOCK_NAME));
+export function longestWriterPath(place: ObjectPlace): string {
+  return stagedLockPath(path.join(place.workspace, OCFL_CONSTANTS.LOCK_NAME));
 }
-
-export { longestWriterPath, type ObjectPlace, objectPlace };

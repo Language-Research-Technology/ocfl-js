@@ -30,12 +30,20 @@ export function checkLogicalPath(logicalPath: string, objectId: string): void {
   }
 }
 
-/** A file's logical path, given for the object `objectId`, in the form the inventory lists, so two spellings of one path are the same path */
-export function fileLogicalPath(logicalPath: string, objectId: string): string {
+/**
+ * `logicalPath`, given for the object `objectId`, normalised so two spellings of one path are the same path
+ * @throws {@link OcflError} `INVALID_LOGICAL_PATH` with `emptyMessage` if it names the object root
+ */
+export function nonEmptyLogicalPath(logicalPath: string, objectId: string, emptyMessage: string): string {
   checkLogicalPath(logicalPath, objectId);
   const normalised = normaliseLogicalPath(logicalPath);
   if (normalised === '.') {
-    throw ocflError('INVALID_LOGICAL_PATH', `A file's logical path in the object <${objectId}> can't be empty`, { objectId });
+    throw ocflError('INVALID_LOGICAL_PATH', emptyMessage, { objectId });
   }
   return normalised;
+}
+
+/** A file's logical path, given for the object `objectId`, in the form the inventory lists */
+export function fileLogicalPath(logicalPath: string, objectId: string): string {
+  return nonEmptyLogicalPath(logicalPath, objectId, `A file's logical path in the object <${objectId}> can't be empty`);
 }

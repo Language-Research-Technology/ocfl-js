@@ -16,7 +16,7 @@ Upgrading to a later OCFL version is a migration across a whole storage root.
 - **An existing OCFL object keeps its OCFL version and digest algorithm.** An opened object reports the OCFL version its declaration gives and the digest algorithm its inventory names. A 1.0 object in a 1.1 storage root opens, reports 1.0, and stays 1.0 when updated. Objects that use sha256 or another content directory are read and updated as they are.
 - **An OCFL object can't be of a later OCFL version than its storage root.** Opening or updating a 1.1 object in a 1.0 storage root throws `INVALID_OBJECT` (E081). Listing yields its object root as damaged, with that error, and carries on.
 - **There is no upgrade.** The library doesn't upgrade an OCFL object or a storage root from 1.0 to 1.1. Upgrading is a job for other tooling ([out of scope](../../.out-of-scope/ocfl-version-upgrade.md)).
-- **A new OCFL version is read before it is written.** The library learns to read a new OCFL version, by adding it to `OcflSpecVersion` and `OcflConstants.OCFL_VERSIONS`, in a minor release. `createStorageRoot()` makes storage roots of the new version only from a major release.
+- **A new OCFL version is read before it is written.** The library learns to read a new OCFL version, by adding it to `OcflSpecVersion` and `OCFL_CONSTANTS.OCFL_VERSIONS`, in a minor release. `createStorageRoot()` makes storage roots of the new version only from a major release.
 
 ## Consequences
 

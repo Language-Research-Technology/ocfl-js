@@ -6,12 +6,12 @@ import * as Hashing from './digest.ts';
 import { ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import type { ContentRelease, DeletePlan, OcflObjectInventory, RelistPlan } from './inventory.ts';
-import { checkLogicalPath, fileLogicalPath, invalidLogicalPath, normaliseLogicalPath } from './logical-path.ts';
+import { checkLogicalPath, fileLogicalPath, invalidLogicalPath, nonEmptyLogicalPath } from './logical-path.ts';
 import type { RootInventory } from './root-inventory.ts';
 import { createLimiter, functionOption, isJsonObject, isNonEmptyString, optionsObject, rejectUnknownKeys, signalOption, versionArgument } from './utils.ts';
 
 /** The person or system responsible for a version. */
-interface User {
+export interface User {
   /** Display name: a person's, or the software's when no person makes the version. */
   readonly name: string;
   /** A URI for the user, such as `mailto:`, an ORCID, or the URL of software acting as the user. */
@@ -22,7 +22,7 @@ interface User {
  * What a new version records about why and by whom it was made.
  * A job with no person behind it names the software as the user, and says in the message what it did and where the content came from.
  */
-interface VersionDetails {
+export interface VersionDetails {
   /** Why the version is being made. */
   readonly message: string;
   /** Who is making it. */
@@ -39,7 +39,7 @@ interface VersionDetails {
 }
 
 /** Options for `OcflObject.update`: what the new version records, and how the update behaves. */
-interface UpdateOptions extends VersionDetails {
+export interface UpdateOptions extends VersionDetails {
   /**
    * Cancels the update when aborted: draft operations started after that reject with its reason, and the draft is discarded once the callback settles.
    * It is checked one last time just before the commit begins, and ignored after that. It isn't recorded in the version.
@@ -56,7 +56,7 @@ interface UpdateOptions extends VersionDetails {
 }
 
 /** Options for `StorageRoot.create`: what the first version records, and how the create behaves. */
-interface CreateOptions extends VersionDetails {
+export interface CreateOptions extends VersionDetails {
   /**
    * Cancels the create when aborted: draft operations started after that reject with its reason, and the draft is discarded once the callback settles.
    * It is checked one last time just before the commit begins, and ignored after that. It isn't recorded in the version.
@@ -70,16 +70,16 @@ interface CreateOptions extends VersionDetails {
 }
 
 /** Content for {@link Draft.write}: text (stored as UTF-8), bytes, or a stream of either, such as a Node or web stream. */
-type WriteContent = string | Uint8Array | AsyncIterable<string | Uint8Array>;
+export type WriteContent = string | Uint8Array | AsyncIterable<string | Uint8Array>;
 
 /** Options for {@link Draft.copy} and {@link Draft.rename}. */
-interface MergeOptions {
+export interface MergeOptions {
   /** Whether a directory goes file by file into a `target` that already has files. Defaults to `false`. */
   readonly merge?: boolean | undefined;
 }
 
 /** Options for {@link Draft.import}. */
-interface ImportOptions {
+export interface ImportOptions {
   /** Where in the draft the files go. Leave it out for the top. */
   readonly target?: string | undefined;
   /**
@@ -103,7 +103,7 @@ interface ImportOptions {
 }
 
 /** How far {@link Draft.import} has got. */
-interface ImportProgress {
+export interface ImportProgress {
   /** Files whose digest has been calculated so far. */
   readonly importedFiles: number;
   /** Files the import reads in all: those the `filter` keeps, or 1 when `source` is a file. */
@@ -111,7 +111,7 @@ interface ImportProgress {
 }
 
 /** A file in a draft, as {@link Draft.files} lists it. */
-interface DraftFile {
+export interface DraftFile {
   /** Logical path within the draft, such as `audio/1.wav`: the file's key in {@link Draft.files}. */
   readonly path: string;
   /** Lowercase hex digest of the content, in the object's `OcflObject.digestAlgorithm`. */
@@ -125,7 +125,7 @@ interface DraftFile {
  * even when started together. Every logical path is normalised first (`./raw//1.wav` is `raw/1.wav`).
  * Once the update's `signal` is aborted, every operation started after that rejects with its reason, and an import stops between files.
  */
-interface Draft {
+export interface Draft {
   /**
    * Puts one file at `path`, replacing a file already there.
    *
@@ -288,7 +288,7 @@ interface Draft {
  * @param head - The head version's date, which `createdAt` can't be earlier than, if there is a head
  * @throws `TypeError` if `options` isn't an object, has a key other than `message`, `user`, `createdAt` and `signal`, its user has one other than `name` and `address`, the message or the user's name is missing or empty, the user's address isn't a string, `createdAt` isn't a valid `Date` or is earlier than `head`, or `signal` isn't an `AbortSignal`
  */
-function writeOptions(options: unknown, call: string, head?: Date): { details: VersionDetails; signal: AbortSignal | undefined } {
+export function writeOptions(options: unknown, call: string, head?: Date): { details: VersionDetails; signal: AbortSignal | undefined } {
   const { signal, ...details } = optionsObject(options, call, ['message', 'user', 'createdAt', 'signal'], "{ message: 'Add a file', user: { name: 'Alice' } }");
   return { details: checkedDetails(details as Partial<VersionDetails>, head), signal: signalOption(signal) };
 }
@@ -436,16 +436,11 @@ function keeps(filter: NonNullable<ImportOptions['filter']>, relativePath: strin
 
 /** `target` in the form copy() and rename() store, so two spellings of one path are the same path */
 function importTarget(target: string, objectId: string) {
-  checkLogicalPath(target, objectId);
-  const normalised = normaliseLogicalPath(target);
-  if (normalised === '.') {
-    throw ocflError(
-      'INVALID_LOGICAL_PATH',
-      `An import target in the object <${objectId}> can't be empty; leave it out to import a directory's contents at the object root`,
-      { objectId },
-    );
-  }
-  return normalised;
+  return nonEmptyLogicalPath(
+    target,
+    objectId,
+    `An import target in the object <${objectId}> can't be empty; leave it out to import a directory's contents at the object root`,
+  );
 }
 
 function unsupportedFileType(filePath: string, objectId: string) {
@@ -911,7 +906,7 @@ class ObjectDraft implements Draft {
  * @param start - Begins the write, unless `signal` is already aborted
  * @returns The committed root inventory, or `undefined` if the draft ended the same as the previous version
  */
-async function commitDraft(
+export async function commitDraft(
   start: () => Promise<ObjectWrite>,
   details: VersionDetails,
   change: (draft: Draft) => Promise<unknown>,
@@ -948,18 +943,3 @@ async function commitDraft(
   // assertCommittable proved every operation settled, so the commit's own discard on failure overlaps none
   return write.commit(details);
 }
-
-export {
-  type CreateOptions,
-  commitDraft,
-  type Draft,
-  type DraftFile,
-  type ImportOptions,
-  type ImportProgress,
-  type MergeOptions,
-  type UpdateOptions,
-  type User,
-  type VersionDetails,
-  type WriteContent,
-  writeOptions,
-};

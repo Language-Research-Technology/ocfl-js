@@ -13,20 +13,42 @@ export function hasErrorCode(error: unknown, ...codes: string[]): boolean {
 }
 
 export function isAlreadyExists(error: unknown): boolean {
-  return isErrnoException(error) && error.code === 'EEXIST';
+  return hasErrorCode(error, 'EEXIST');
 }
 
 export function isNotFound(error: unknown): boolean {
-  return isErrnoException(error) && error.code === 'ENOENT';
+  return hasErrorCode(error, 'ENOENT');
 }
 
 function isNotDir(error: unknown): boolean {
-  return isErrnoException(error) && error.code === 'ENOTDIR';
+  return hasErrorCode(error, 'ENOTDIR');
 }
 
 /** Whether nothing can be at the path read: it doesn't exist, a directory above it is a file, or a name in it is too long */
 export function isNothingAtPath(error: unknown): boolean {
   return hasErrorCode(error, 'ENOENT', 'ENOTDIR', 'ENAMETOOLONG');
+}
+
+/** What `list` gives for a directory, or nothing if nothing can be at its path */
+async function listed<T>(list: () => Promise<T[]>): Promise<T[]> {
+  try {
+    return await list();
+  } catch (error) {
+    if (isNothingAtPath(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+/** The names in `dir`, or none if nothing can be at its path */
+export async function namesIn(dir: string): Promise<string[]> {
+  return listed(() => fs.promises.readdir(dir));
+}
+
+/** The entries in `dir`, or none if nothing can be at its path */
+export async function entriesIn(dir: string): Promise<fs.Dirent[]> {
+  return listed(() => fs.promises.readdir(dir, { withFileTypes: true }));
 }
 
 /** The most UTF-8 bytes common file systems allow in one file or directory name */
@@ -69,7 +91,10 @@ export async function pathExists(filePath: string): Promise<boolean> {
   }
 }
 
-/** The file's text, or `undefined` if nothing can be at its path */
+/**
+ * The file's text, or `undefined` if nothing can be at its path. For a probe where a parent that is a file, or a name too long,
+ * means only that the file isn't there; where that would hide a fault, use {@link readIfExists}.
+ */
 export async function readIfPresent(file: string): Promise<string | undefined> {
   try {
     return await fs.promises.readFile(file, 'utf8');
@@ -81,7 +106,10 @@ export async function readIfPresent(file: string): Promise<string | undefined> {
   }
 }
 
-/** The file's text, or `undefined` if it doesn't exist */
+/**
+ * The file's text, or `undefined` if it doesn't exist. A parent that is a file, or a name too long, is thrown: for a file whose
+ * absence has a meaning, such as a layout config that gives the default parameters, so a damaged directory isn't read as absent.
+ */
 export async function readIfExists(file: string): Promise<string | undefined> {
   try {
     return await fs.promises.readFile(file, 'utf8');
@@ -170,13 +198,13 @@ async function createParents(filePath: string) {
   await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
 }
 
-export interface OpenFile {
+interface OpenFile {
   readonly handle: fs.promises.FileHandle;
   readonly size: number;
 }
 
 /** Why there is no regular file at a path, with the error that said so, if any */
-export interface AbsentFile {
+interface AbsentFile {
   readonly absent: 'missing' | 'not a file';
   readonly cause?: unknown;
 }

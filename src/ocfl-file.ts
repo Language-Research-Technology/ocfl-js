@@ -7,13 +7,13 @@ import type { Version } from './ocfl-object.ts';
 import { optionsObject, signalFromOptions, signalOption } from './utils.ts';
 
 /** Options for {@link OcflFile.text} and {@link OcflFile.bytes}. */
-interface ReadOptions {
+export interface ReadOptions {
   /** Aborting it stops the read. */
   readonly signal?: AbortSignal | undefined;
 }
 
 /** Options for {@link OcflFile.stream}. */
-interface StreamOptions extends ReadOptions {
+export interface StreamOptions extends ReadOptions {
   /** First byte to read, counting from 0. Defaults to 0. */
   readonly start?: number;
   /** Last byte to read, included as in an HTTP `Range` header. Defaults to the end of the file. */
@@ -21,7 +21,7 @@ interface StreamOptions extends ReadOptions {
 }
 
 /** A file in one version of an OCFL object. */
-interface OcflFile {
+export interface OcflFile {
   /** Logical path within the version, such as `audio/1.wav`. */
   readonly path: string;
   /** Lowercase hex digest of the content, in the object's {@link OcflObject.digestAlgorithm}. */
@@ -105,7 +105,7 @@ interface OcflFile {
 }
 
 /** Finds the versions of an object in which a logical path of one of its versions was created and modified */
-interface FileHistory {
+export interface FileHistory {
   createdIn(path: string, version: number): Version;
   modifiedIn(path: string, digest: string, version: number): Version;
 }
@@ -122,7 +122,7 @@ interface VersionFileOptions {
   readonly history: FileHistory;
 }
 
-class VersionFile implements OcflFile {
+export class VersionFile implements OcflFile {
   readonly path: string;
   readonly digest: string;
   readonly #objectId: string;
@@ -234,5 +234,3 @@ function streamOptions(options: unknown): StreamOptions {
   }
   return checked;
 }
-
-export { type FileHistory, type OcflFile, type ReadOptions, type StreamOptions, VersionFile };

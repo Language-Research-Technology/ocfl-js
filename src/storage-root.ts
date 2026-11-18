@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
-import { OcflConstants, type OcflSpecVersion } from './constants.ts';
+import { OCFL_CONSTANTS, type OcflSpecVersion } from './constants.ts';
 import { findDeclaredVersion, SEVERAL_DECLARATIONS } from './declaration.ts';
 import { type CreateOptions, type Draft, writeOptions } from './draft.ts';
 import { OcflError, ocflError } from './error.ts';
@@ -19,7 +19,7 @@ import { findUnfinishedWrite, listUnfinishedWrites, type UnfinishedWrite } from 
 import { deepFreeze, isNonEmptyString, optionsObject, parseJsonObject, signalFromOptions } from './utils.ts';
 import { writeWorkspaceDocumentation } from './workspace-documentation.ts';
 
-const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, STORAGE_ROOT_DECLARATION_PREFIX, DECLARATION_TAG } = OcflConstants;
+const { OCFL_VERSION, OCFL_LAYOUT, EXTENSIONS_DIR, EXTENSION_CONFIG, STORAGE_ROOT_DECLARATION_PREFIX, DECLARATION_TAG } = OCFL_CONSTANTS;
 
 const SPEC_TEXT_FILE = 'ocfl_1.1.md';
 
@@ -134,25 +134,25 @@ async function writeStorageRoot(root: string, layout: BuiltInLayout, flusher: fi
  *   failure an object written lately can be left with empty or short files, and nothing reports it until a fixity check. Run the system
  *   `sync` command after the batch, and keep the source files until it returns.
  */
-type Durability = 'full' | 'none';
+export type Durability = 'full' | 'none';
 
 const FLUSHERS: Readonly<Record<Durability, fileSystem.Flusher>> = { full: fileSystem.FLUSHING, none: fileSystem.NOT_FLUSHING };
 
 /** What an object takes from the storage root it is opened or created through */
-interface RootSettings {
+export interface RootSettings {
   /** The storage root's OCFL version */
   readonly ocflVersion: OcflSpecVersion;
   readonly flusher: fileSystem.Flusher;
 }
 
 /** Options for {@link openStorageRoot}. */
-interface OpenStorageRootOptions {
+export interface OpenStorageRootOptions {
   /** Whether creates and updates through the storage root flush what they write to disk before they resolve. Defaults to `'full'`. */
   readonly durability?: Durability | undefined;
 }
 
 /** Options for {@link createStorageRoot}. */
-interface CreateStorageRootOptions extends OpenStorageRootOptions {
+export interface CreateStorageRootOptions extends OpenStorageRootOptions {
   /** The storage layout that maps an object id to the directory of its object. */
   readonly layout: LayoutConfig;
 }
@@ -169,7 +169,7 @@ function checkedFlusher(durability: unknown = 'full'): fileSystem.Flusher {
 }
 
 /** The base directory holding OCFL objects. */
-interface StorageRoot {
+export interface StorageRoot {
   /** Absolute path of the storage root. */
   readonly path: string;
   /** OCFL version of the storage root, and of objects created in it. */
@@ -438,7 +438,7 @@ function absolutePath(rootPath: string): string {
  * });
  * ```
  */
-async function createStorageRoot(path: string, options: CreateStorageRootOptions): Promise<StorageRoot> {
+export async function createStorageRoot(path: string, options: CreateStorageRootOptions): Promise<StorageRoot> {
   const root = absolutePath(path);
   const checked = optionsObject(options, 'createStorageRoot', ['layout', 'durability'], "{ layout: { extensionName: '0004-hashed-n-tuple-storage-layout' } }");
   const layout = createLayout(checked.layout as LayoutConfig);
@@ -471,11 +471,9 @@ async function createStorageRoot(path: string, options: CreateStorageRootOptions
  * const bulk = await openStorageRoot('/srv/ocfl', { durability: 'none' });
  * ```
  */
-async function openStorageRoot(path: string, options: OpenStorageRootOptions = {}): Promise<StorageRoot> {
+export async function openStorageRoot(path: string, options: OpenStorageRootOptions = {}): Promise<StorageRoot> {
   const root = absolutePath(path);
   const flusher = checkedFlusher(optionsObject(options, 'openStorageRoot', ['durability'], "{ durability: 'none' }").durability);
   const { ocflVersion, layout } = await readStorageRoot(root);
   return storageRoot(root, ocflVersion, layout, flusher);
 }
-
-export { type CreateStorageRootOptions, createStorageRoot, type Durability, type OpenStorageRootOptions, openStorageRoot, type RootSettings, type StorageRoot };

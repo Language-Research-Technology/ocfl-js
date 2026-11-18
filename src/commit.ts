@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { OcflConstants, type OcflSpecVersion } from './constants.ts';
+import { OCFL_CONSTANTS, type OcflSpecVersion } from './constants.ts';
 import { objectDeclaration } from './declaration.ts';
 import * as Hashing from './digest.ts';
 import type { VersionDetails } from './draft.ts';
@@ -11,12 +11,21 @@ import { type Lock, lockKept, releaseLock, takeLock } from './lock.ts';
 import type { ObjectPlace } from './object-place.ts';
 import { assertEmptyObjectRoot, declarationWithoutInventory, enclosingObject, objectExists, objectOutOfDate } from './object-root.ts';
 import { specViolation } from './ocfl-rules.ts';
-import { isStagedRootInventory, type RootInventory, readInventory, rootInventoryPaths, sidecarContent, sidecarDigest } from './root-inventory.ts';
-import { parseJsonObject } from './utils.ts';
+import {
+  headOf,
+  headOnDisk,
+  isStagedRootInventory,
+  type RootInventory,
+  readInventory,
+  readRootInventoryText,
+  rootInventoryPaths,
+  sidecarContent,
+  sidecarDigest,
+} from './root-inventory.ts';
 import { isVersionName } from './version-number.ts';
-import { clearWorkspace, namesIn, removeAll } from './workspace.ts';
+import { clearWorkspace, removeAll } from './workspace.ts';
 
-const { INVENTORY_NAME, OBJECT_DECLARATION_PREFIX, DECLARATION_TAG } = OcflConstants;
+const { INVENTORY_NAME, OBJECT_DECLARATION_PREFIX, DECLARATION_TAG } = OCFL_CONSTANTS;
 const FIRST_VERSION = 'v1';
 
 /** How a write creates or updates its object */
@@ -45,24 +54,6 @@ async function ensureObjectDeclaration(root: string, id: string, ocflVersion: Oc
   return filePath;
 }
 
-/** The head the root inventory `content` names: `undefined` if there is no root inventory, `null` if it names none */
-function headOf(content: string | undefined): string | null | undefined {
-  if (content === undefined) {
-    return undefined;
-  }
-  const head = parseJsonObject(content)?.head;
-  return typeof head === 'string' ? head : null;
-}
-
-function readRootInventory(objectRoot: string): Promise<string | undefined> {
-  return fileSystem.readIfExists(path.join(objectRoot, INVENTORY_NAME));
-}
-
-/** The head the root inventory on disk names, as {@link headOf} gives it */
-async function headOnDisk(objectRoot: string): Promise<string | null | undefined> {
-  return headOf(await readRootInventory(objectRoot));
-}
-
 /**
  * Checks that the version before the head of `inventory` is still the head on disk, in the root inventory it was made from.
  * @param inventory - Already at its new version
@@ -72,7 +63,7 @@ async function headOnDisk(objectRoot: string): Promise<string | null | undefined
  */
 async function assertUpToDate(objectRoot: string, inventory: OcflObjectInventory, madeFrom: string | undefined): Promise<void> {
   const expected = inventory.versionNumber.previous()?.toString();
-  const content = await readRootInventory(objectRoot);
+  const content = await readRootInventoryText(objectRoot);
   const actual = headOf(content);
   if (actual === expected) {
     if (content === undefined || madeFrom === undefined || (await Hashing.digest(inventory.digestAlgorithm, content)) === madeFrom) {
@@ -113,7 +104,7 @@ async function flushRemovals(flusher: fileSystem.Flusher, { objectRoot, storageR
  * happened all the same, or a failure to discard, throws `RECOVERY_NEEDED` and keeps the lock.
  * What a write that died at any of these steps leaves is cleared by {@link recoverWrite}.
  */
-class ObjectWrite {
+export class ObjectWrite {
   #place: ObjectPlace;
   #settings: WriteSettings;
   #inventory: OcflObjectInventory;
@@ -287,7 +278,7 @@ class ObjectWrite {
  * @throws {@link OcflError} `RECOVERY_NEEDED`, keeping the lock, if an earlier write left that directory behind, or the write was refused and its lock can't be released
  * @throws {@link OcflError} `OBJECT_EXISTS` or `OBJECT_OUT_OF_DATE`, as {@link assertUpToDate} does, releasing the lock
  */
-async function startWrite(place: ObjectPlace, settings: WriteSettings, inventory: OcflObjectInventory, madeFrom?: RootInventory): Promise<ObjectWrite> {
+export async function startWrite(place: ObjectPlace, settings: WriteSettings, inventory: OcflObjectInventory, madeFrom?: RootInventory): Promise<ObjectWrite> {
   const { storageRoot, objectRoot, workspace } = place;
   const rootExisted = await fs.promises.stat(objectRoot).then(
     () => true,
@@ -351,9 +342,9 @@ async function completeSidecar(objectRoot: string, { inventory, digest }: RootIn
  * object, or is inside one, was refused before it wrote anything there, so the object root is left alone.
  * @throws {@link OcflError} `INVALID_OBJECT` if the root inventory can't be used, or the object has a declaration and no root inventory but isn't what a dead create leaves; changing nothing
  */
-async function recoverWrite(place: ObjectPlace, lock: Lock, flusher: fileSystem.Flusher): Promise<void> {
+export async function recoverWrite(place: ObjectPlace, lock: Lock, flusher: fileSystem.Flusher): Promise<void> {
   const { storageRoot, objectRoot, workspace } = place;
-  const [root, rootNames, outer] = await Promise.all([readInventory(place), namesIn(objectRoot), enclosingObject(place)]);
+  const [root, rootNames, outer] = await Promise.all([readInventory(place), fileSystem.namesIn(objectRoot), enclosingObject(place)]);
   if (outer !== undefined || (root && root.inventory.id !== lock.id)) {
     await clearWorkspace(workspace);
     await releaseLock(workspace, storageRoot);
@@ -385,5 +376,3 @@ async function recoverWrite(place: ObjectPlace, lock: Lock, flusher: fileSystem.
   await flushRemovals(flusher, place);
   await releaseLock(workspace, storageRoot);
 }
-
-export { type ObjectWrite, recoverWrite, startWrite };

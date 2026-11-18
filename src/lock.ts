@@ -5,13 +5,13 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { OcflConstants } from './constants.ts';
+import { OCFL_CONSTANTS } from './constants.ts';
 import { type OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import { parseJsonObject } from './utils.ts';
 import { documentWorkspaceQuietly } from './workspace-documentation.ts';
 
-const { LOCK_NAME } = OcflConstants;
+const { LOCK_NAME } = OCFL_CONSTANTS;
 /** Prefix of the file a lock's content is written to before it is put in place, so a lock is never seen half-written */
 const STAGED_LOCK_PREFIX = '.lock-';
 const MAX_LOCK_ATTEMPTS = 3;
@@ -25,7 +25,7 @@ function isOperation(value: unknown): value is Operation {
   return typeof value === 'string' && Object.hasOwn(OPERATIONS, value);
 }
 
-interface Lock {
+export interface Lock {
   /** The id of the object its writer is creating, updating or purging */
   id: string;
   /** What its writer is doing to the object */
@@ -44,7 +44,7 @@ function lockPath(workspace: string): string {
 }
 
 /** A path beside `lock`, where no other writer stages a lock's content */
-function stagedLockPath(lock: string): string {
+export function stagedLockPath(lock: string): string {
   return path.join(path.dirname(lock), `${STAGED_LOCK_PREFIX}${randomUUID()}`);
 }
 
@@ -94,12 +94,12 @@ function parseLock(content: string): Lock | undefined {
  * Whether two locks were taken by the same writer, whether or not it has since begun deleting the object.
  * `operation` isn't compared: a purge from a release before locks recorded one has none, and is read as another operation until it begins deleting.
  */
-function sameWriter(a: Lock, b: Lock): boolean {
+export function sameWriter(a: Lock, b: Lock): boolean {
   return a.id === b.id && a.lockedAt.getTime() === b.lockedAt.getTime() && a.objectRootExisted === b.objectRootExisted;
 }
 
 /** What the file `file` records if it is a lock, or `undefined` if it isn't one or nothing is there */
-async function readLockFile(file: string): Promise<Lock | undefined> {
+export async function readLockFile(file: string): Promise<Lock | undefined> {
   let handle: fs.promises.FileHandle;
   try {
     handle = await fs.promises.open(file, 'r');
@@ -128,7 +128,7 @@ async function readLockFile(file: string): Promise<Lock | undefined> {
 }
 
 /** What the object's lock records, or `undefined` if the object isn't locked or its lock isn't one this library wrote */
-function readLock(workspace: string): Promise<Lock | undefined> {
+export function readLock(workspace: string): Promise<Lock | undefined> {
   return readLockFile(lockPath(workspace));
 }
 
@@ -200,7 +200,7 @@ async function linkLock(staged: string, lock: string, id: string): Promise<void>
 }
 
 /** The `OBJECT_LOCKED` for the object `id`, whose lock is held, with `lockedAt` if the lock can still be read */
-async function objectLocked(workspace: string, id: string): Promise<OcflError> {
+export async function objectLocked(workspace: string, id: string): Promise<OcflError> {
   const lock = lockPath(workspace);
   return ocflError('OBJECT_LOCKED', `A writer holds the lock ${lock} of the object <${id}>, or died holding it.`, {
     objectId: id,
@@ -219,7 +219,7 @@ async function objectLocked(workspace: string, id: string): Promise<OcflError> {
  * exists refuses, even if it can't be read
  * @throws {@link OcflError} `UNSUPPORTED_FILESYSTEM` if the lock can't be hard-linked into place; nothing is left behind
  */
-async function takeLock(workspace: string, storageRoot: string, id: string, objectRootExisted: boolean, operation: Operation): Promise<Lock> {
+export async function takeLock(workspace: string, storageRoot: string, id: string, objectRootExisted: boolean, operation: Operation): Promise<Lock> {
   const lock: Lock = { id, operation, lockedAt: new Date(), objectRootExisted, removing: false };
   if (!(await createLockInWorkspace(workspace, storageRoot, lock))) {
     throw await objectLocked(workspace, id);
@@ -244,7 +244,7 @@ async function createLockInWorkspace(workspace: string, storageRoot: string, loc
 }
 
 /** Removes the object's lock, and the workspace directories that leaves empty */
-async function releaseLock(workspace: string, storageRoot: string): Promise<void> {
+export async function releaseLock(workspace: string, storageRoot: string): Promise<void> {
   await fs.promises.rm(lockPath(workspace), { force: true });
   await fileSystem.removeEmptyAncestorsQuietly(workspace, storageRoot);
 }
@@ -253,12 +253,12 @@ async function releaseLock(workspace: string, storageRoot: string): Promise<void
  * Records in `held`, the object's lock that the caller took, that the object root is about to be deleted.
  * The lock is replaced whole, so it doesn't say so until this returns.
  */
-async function markRemoving(workspace: string, held: Lock): Promise<void> {
+export async function markRemoving(workspace: string, held: Lock): Promise<void> {
   await putLock(lockPath(workspace), { ...held, removing: true }, false);
 }
 
 /** Whether `name`, in an object's directory in the workspace, is a lock's content that was staged and never put in place */
-function isStagedLock(name: string): boolean {
+export function isStagedLock(name: string): boolean {
   return name.startsWith(STAGED_LOCK_PREFIX);
 }
 
@@ -268,7 +268,7 @@ function isStagedLock(name: string): boolean {
  * @param advice - What recovering the object does, or what to do next, continuing "recover its unfinished write, "
  * @param cause - What the writer failed with
  */
-function lockKept(id: string, outcome: string, advice: string, cause: unknown): OcflError {
+export function lockKept(id: string, outcome: string, advice: string, cause: unknown): OcflError {
   return ocflError(
     'RECOVERY_NEEDED',
     `${outcome}. The object stays locked until it is recovered: once no writer of it is alive, recover its unfinished write, ${advice}.`,
@@ -277,9 +277,6 @@ function lockKept(id: string, outcome: string, advice: string, cause: unknown): 
 }
 
 /** Whether the object's lock is held */
-async function isLocked(workspace: string): Promise<boolean> {
+export async function isLocked(workspace: string): Promise<boolean> {
   return fileSystem.pathExists(lockPath(workspace));
 }
-
-export type { Lock };
-export { isLocked, isStagedLock, lockKept, markRemoving, objectLocked, readLock, readLockFile, releaseLock, sameWriter, stagedLockPath, takeLock };

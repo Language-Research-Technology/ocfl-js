@@ -1,20 +1,20 @@
 import path from 'node:path';
-import { OcflConstants } from '../constants.ts';
+import { OCFL_CONSTANTS } from '../constants.ts';
 import { hasOverlongSegment, MAX_NAME_BYTES } from '../file-system.ts';
 import { BuiltInLayout } from './built-in-layout.ts';
 
 /** Object roots named by their id, directly in the storage root. */
-interface FlatDirectLayoutConfig {
+export interface FlatDirectLayoutConfig {
   /** Name of the layout's OCFL extension. */
   extensionName: '0002-flat-direct-storage-layout';
 }
 
-const { EXTENSIONS_DIR } = OcflConstants;
+const { EXTENSIONS_DIR } = OCFL_CONSTANTS;
 
 /**
  * OCFL object identifiers are mapped directly to directory names that are direct children of the OCFL storage root directory.
  */
-class FlatDirectStorageLayout extends BuiltInLayout {
+export class FlatDirectStorageLayout extends BuiltInLayout {
   readonly name = '0002-flat-direct-storage-layout';
   readonly description = 'OCFL object identifiers are mapped directly to directory names that are direct children of the OCFL storage root.';
 
@@ -36,5 +36,3 @@ class FlatDirectStorageLayout extends BuiltInLayout {
     return id;
   }
 }
-
-export { type FlatDirectLayoutConfig, FlatDirectStorageLayout };

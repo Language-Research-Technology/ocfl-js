@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import nodePath from 'node:path';
 import { inspect } from 'node:util';
 import { startWrite } from './commit.ts';
-import { OcflConstants, type OcflSpecVersion } from './constants.ts';
+import { OCFL_CONSTANTS, type OcflSpecVersion } from './constants.ts';
 import { checkedDeclaration, type DeclarationsFound } from './declaration.ts';
 import type { DigestAlgorithm } from './digest.ts';
 import * as Hashing from './digest.ts';
@@ -32,12 +32,12 @@ import type { RootInventory } from './root-inventory.ts';
 import type { RootSettings, StorageRoot } from './storage-root.ts';
 import { functionOption, isNonEmptyString, optionsObject, signalOption, versionArgument } from './utils.ts';
 
-const { INVENTORY_NAME } = OcflConstants;
+const { INVENTORY_NAME } = OCFL_CONSTANTS;
 
 const FIXITY_CONCURRENCY = 10;
 
 /** One version of an OCFL object. */
-interface Version {
+export interface Version {
   /** Version number, starting at 1. */
   readonly number: number;
   /** When the version was committed. A new `Date` on each read, so compare times with `getTime()`, not `===`. */
@@ -89,7 +89,7 @@ interface Version {
 }
 
 /** How far {@link Version.exportTo} has got. */
-interface ExportProgress {
+export interface ExportProgress {
   /** Files written so far. */
   readonly exportedFiles: number;
   /** Files the export writes in all: every file of the version. */
@@ -97,7 +97,7 @@ interface ExportProgress {
 }
 
 /** Options for {@link Version.exportTo}. */
-interface ExportOptions {
+export interface ExportOptions {
   /** Stops the export when aborted. */
   readonly signal?: AbortSignal | undefined;
   /** Called after each file is written. If it throws, the export stops and rejects with that error. */
@@ -105,7 +105,7 @@ interface ExportOptions {
 }
 
 /** An OCFL object as read at one moment. */
-interface OcflObject {
+export interface OcflObject {
   /** The object's id. */
   readonly id: string;
   /** OCFL version the object conforms to. */
@@ -207,7 +207,7 @@ interface OcflObject {
 }
 
 /** How far {@link OcflObject.checkFixity} has got. */
-interface FixityProgress {
+export interface FixityProgress {
   /** Stored files checked so far. */
   readonly checkedFiles: number;
   /** Stored files the check reads in all. */
@@ -215,7 +215,7 @@ interface FixityProgress {
 }
 
 /** Options for {@link OcflObject.checkFixity}. */
-interface FixityOptions {
+export interface FixityOptions {
   /** Stops the check when aborted. */
   readonly signal?: AbortSignal | undefined;
   /** Called after each stored file is checked. If it throws, the check stops and rejects with that error. */
@@ -223,7 +223,7 @@ interface FixityOptions {
 }
 
 /** What {@link OcflObject.checkFixity} found. */
-interface FixityReport {
+export interface FixityReport {
   /** One for each stored file that changed or is missing, sorted by stored file. Empty if the object is intact. */
   readonly problems: readonly FixityProblem[];
   /** Stored files the check read: every content path in the manifest, as {@link FixityProgress.totalFiles} counts them. */
@@ -231,7 +231,7 @@ interface FixityReport {
 }
 
 /** One stored file that failed {@link OcflObject.checkFixity}. */
-interface FixityProblem {
+export interface FixityProblem {
   /** `changed` if the content no longer matches its digest, `missing` if there is no regular file at the stored file's path. */
   readonly kind: 'changed' | 'missing';
   /** The stored file's path from the storage root, with `/` between directories, such as `a1b/c2d/item-1/v1/content/audio/1.wav`. Never absolute. */
@@ -553,7 +553,7 @@ function versionsOf(inventory: OcflObjectInventory, place: ObjectPlace): Readonl
  * @throws {@link OcflError} `INVALID_OBJECT` if it has a declaration and no inventory and isn't locked, is inside another object, is of a later OCFL version than the storage root, or its inventory can't be used
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it holds an object with another id, or, with no declaration, inventory or lock, holds anything else, is a file or is below one
  */
-async function openObject(place: ObjectPlace, id: string, rootSettings: RootSettings): Promise<OcflObject> {
+export async function openObject(place: ObjectPlace, id: string, rootSettings: RootSettings): Promise<OcflObject> {
   const root = await committedInventory(place, id);
   if (!root) {
     throw await noCommittedObject(place, id);
@@ -568,7 +568,7 @@ async function openObject(place: ObjectPlace, id: string, rootSettings: RootSett
  * @returns `undefined` if it has no inventory and its lock is held, a create that isn't committed; or if it has gone
  * @throws {@link OcflError} `INVALID_OBJECT` if it has more than one declaration (`E003`), or its declaration is invalid or of a later OCFL version than the storage root, or its inventory is missing or can't be used
  */
-async function openDeclaredObject(place: ObjectPlace, declared: DeclarationsFound, rootSettings: RootSettings): Promise<OcflObject | undefined> {
+export async function openDeclaredObject(place: ObjectPlace, declared: DeclarationsFound, rootSettings: RootSettings): Promise<OcflObject | undefined> {
   const { objectRoot } = place;
   const ocflVersion = checkedDeclaration(objectRoot, declared);
   const root = await committedInventory(place);
@@ -585,7 +585,7 @@ async function openDeclaredObject(place: ObjectPlace, declared: DeclarationsFoun
  * @throws {@link OcflError} `OBJECT_LOCKED` if it has a declaration, no inventory and a lock held: a create that isn't committed
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if it holds anything else, is below a file, or is inside another object
  */
-async function createObject(
+export async function createObject(
   place: ObjectPlace,
   id: string,
   rootSettings: RootSettings,
@@ -622,17 +622,3 @@ async function createObject(
   /* node:coverage enable */
   return new OpenedObject(place, rootSettings, ocflVersion, committed);
 }
-
-export {
-  createObject,
-  type ExportOptions,
-  type ExportProgress,
-  type FixityOptions,
-  type FixityProblem,
-  type FixityProgress,
-  type FixityReport,
-  type OcflObject,
-  openDeclaredObject,
-  openObject,
-  type Version,
-};

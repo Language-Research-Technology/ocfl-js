@@ -1,15 +1,15 @@
 import { inspect } from 'node:util';
 
-function isNonEmptyString(value: unknown): value is string {
+export function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value !== '';
 }
 
-function isJsonObject(value: unknown): value is Record<string, unknown> {
+export function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** `content` parsed as a JSON object, or `undefined` if it isn't one */
-function parseJsonObject(content: string): Record<string, unknown> | undefined {
+export function parseJsonObject(content: string): Record<string, unknown> | undefined {
   try {
     const value: unknown = JSON.parse(content);
     return isJsonObject(value) ? value : undefined;
@@ -21,7 +21,7 @@ function parseJsonObject(content: string): Record<string, unknown> | undefined {
 type Limiter = <T>(fn: () => Promise<T>) => Promise<T>;
 
 /** @returns a function that runs the functions given to it, at most `count` at once */
-function createLimiter(count: number): Limiter {
+export function createLimiter(count: number): Limiter {
   let active = 0;
   const waiting: (() => void)[] = [];
   return async (fn) => {
@@ -44,7 +44,7 @@ function createLimiter(count: number): Limiter {
 }
 
 /** `value`, with it and everything nested in it frozen */
-function deepFreeze<T>(value: T): T {
+export function deepFreeze<T>(value: T): T {
   if (typeof value === 'object' && value !== null) {
     Object.values(value).forEach(deepFreeze);
     Object.freeze(value);
@@ -56,7 +56,7 @@ function deepFreeze<T>(value: T): T {
  * @param refusal - Starts the message, e.g. `createStorageRoot has no option`
  * @throws `TypeError` naming each key of `object` not in `known`
  */
-function rejectUnknownKeys(object: object, known: readonly string[], refusal: string): void {
+export function rejectUnknownKeys(object: object, known: readonly string[], refusal: string): void {
   const unknown = Object.keys(object).filter((key) => !known.includes(key));
   if (unknown.length > 0) {
     throw new TypeError(`${refusal} ${unknown.map((key) => inspect(key)).join(' or ')}.`);
@@ -69,7 +69,7 @@ function rejectUnknownKeys(object: object, known: readonly string[], refusal: st
  * @returns A copy of the own properties of `options`, so each is read once and none is inherited
  * @throws `TypeError` if `options` is given and isn't an object, or has a key not in `known`
  */
-function optionsObject(options: unknown, call: string, known: readonly string[], example: string): Record<string, unknown> {
+export function optionsObject(options: unknown, call: string, known: readonly string[], example: string): Record<string, unknown> {
   if (options === undefined) {
     return {};
   }
@@ -84,7 +84,7 @@ function optionsObject(options: unknown, call: string, known: readonly string[],
  * Checked by shape, not `instanceof`, so a signal from another realm or a polyfill is accepted, as Node's own APIs accept it
  * @throws `TypeError` if `signal` is given and isn't an `AbortSignal`
  */
-function signalOption(signal: unknown): AbortSignal | undefined {
+export function signalOption(signal: unknown): AbortSignal | undefined {
   const candidate = signal as Partial<AbortSignal> | null;
   if (
     signal !== undefined &&
@@ -100,34 +100,20 @@ function signalOption(signal: unknown): AbortSignal | undefined {
  * @param call - The call as a caller writes it, e.g. `file.text`
  * @throws `TypeError` if `options` is given and isn't an object, has a key other than `signal`, or its signal isn't an `AbortSignal`
  */
-function signalFromOptions(options: unknown, call: string): AbortSignal | undefined {
+export function signalFromOptions(options: unknown, call: string): AbortSignal | undefined {
   return signalOption(optionsObject(options, call, ['signal'], '{ signal: AbortSignal.timeout(60_000) }').signal);
 }
 
 /** @throws `TypeError` if the option `name` is given and isn't a function */
-function functionOption(name: string, value: unknown): void {
+export function functionOption(name: string, value: unknown): void {
   if (value !== undefined && typeof value !== 'function') {
     throw new TypeError(`The ${name} option must be a function, not ${inspect(value)}`);
   }
 }
 
 /** @throws `TypeError` if `version` isn't a number */
-function versionArgument(version: unknown): void {
+export function versionArgument(version: unknown): void {
   if (typeof version !== 'number') {
     throw new TypeError(`The version must be a number, such as 1, not ${inspect(version)}`);
   }
 }
-
-export {
-  createLimiter,
-  deepFreeze,
-  functionOption,
-  isJsonObject,
-  isNonEmptyString,
-  optionsObject,
-  parseJsonObject,
-  rejectUnknownKeys,
-  signalFromOptions,
-  signalOption,
-  versionArgument,
-};

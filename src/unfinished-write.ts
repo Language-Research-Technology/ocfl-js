@@ -12,7 +12,7 @@ import { locksBelow, workspaceRoot } from './workspace.ts';
  * A create, update or purge of an object whose lock is still held: its writer is still working, or died. The library can't tell which.
  * Got from {@link StorageRoot.unfinishedWrites} or {@link StorageRoot.unfinishedWrite}, it is the write as its lock recorded it then.
  */
-interface UnfinishedWrite {
+export interface UnfinishedWrite {
   /** The id of the object being created, updated or purged. */
   readonly id: string;
   /** When its writer took the object's lock, by that writer's clock. */
@@ -86,7 +86,7 @@ function unfinishedWrite(place: ObjectPlace, flusher: Flusher, seen: Lock): Unfi
  * The unfinished write of `id`, whose object the storage root's layout places at `place`, or `undefined` if it isn't locked.
  * @throws {@link OcflError} `OBJECT_ROOT_CONFLICT` if the lock there is a writer's of another id
  */
-async function findUnfinishedWrite(place: ObjectPlace, flusher: Flusher, id: string): Promise<UnfinishedWrite | undefined> {
+export async function findUnfinishedWrite(place: ObjectPlace, flusher: Flusher, id: string): Promise<UnfinishedWrite | undefined> {
   const lock = await readLock(place.workspace);
   if (lock === undefined) {
     return undefined;
@@ -102,7 +102,7 @@ async function findUnfinishedWrite(place: ObjectPlace, flusher: Flusher, id: str
  * A file named as a lock counts only if it holds a lock, and sits where the layout places its id's directory in the workspace.
  * @param objectPathOf - The object root of an id, relative to the storage root; throws if the layout can't place it
  */
-async function* listUnfinishedWrites(storageRoot: string, flusher: Flusher, objectPathOf: (id: string) => string): AsyncGenerator<UnfinishedWrite> {
+export async function* listUnfinishedWrites(storageRoot: string, flusher: Flusher, objectPathOf: (id: string) => string): AsyncGenerator<UnfinishedWrite> {
   const workspace = workspaceRoot(storageRoot);
   for await (const { dir, lock } of locksBelow(workspace)) {
     const objectPath = path.relative(workspace, dir);
@@ -119,6 +119,3 @@ function placedAt(objectPathOf: (id: string) => string, id: string): string | un
     return undefined;
   }
 }
-
-export type { UnfinishedWrite };
-export { findUnfinishedWrite, listUnfinishedWrites };
