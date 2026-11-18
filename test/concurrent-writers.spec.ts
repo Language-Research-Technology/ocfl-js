@@ -23,7 +23,7 @@ import {
 import { emptyDirectoriesUnder } from './helpers/empty-directories.ts';
 import { beforeLinkingTo, beforeRenamingTo, withFsFailure } from './helpers/fs-failures.ts';
 import { ocflError, rejection } from './helpers/ocfl-error.ts';
-import { rewriteInventory, writeFiles } from './helpers/storage-roots.ts';
+import { moveHead, writeFiles } from './helpers/storage-roots.ts';
 
 const ID = 'contended';
 
@@ -350,11 +350,7 @@ describe('concurrent writers', () => {
       await assert.rejects(
         object.update(DETAILS, async (draft) => {
           await writeB(draft);
-          // As a writer that ignores the lock would leave it
-          await rewriteInventory(objectRoot, (inventory) => {
-            inventory.head = 'v2';
-            inventory.versions = { ...inventory.versions, v2: inventory.versions!.v1! };
-          });
+          await moveHead(objectRoot);
           moved = await snapshot(objectRoot);
         }),
         ocflError('OBJECT_OUT_OF_DATE'),

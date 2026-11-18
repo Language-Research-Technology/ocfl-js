@@ -4,7 +4,7 @@ import { inspect } from 'node:util';
 import { OCFL_CONSTANTS, type OcflSpecVersion } from './constants.ts';
 import { findDeclaredVersion, SEVERAL_DECLARATIONS } from './declaration.ts';
 import { type CreateOptions, type Draft, writeOptions } from './draft.ts';
-import { OcflError, ocflError } from './error.ts';
+import { isOcflError, OcflError, ocflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
 import type { BuiltInLayout } from './layouts/built-in-layout.ts';
 import { builtInLayoutClass, createLayout, IMPLEMENTED_LAYOUTS, type Layout, type LayoutConfig } from './layouts/index.ts';
@@ -238,6 +238,35 @@ export interface StorageRoot {
   create(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
 
   /**
+   * Creates the object as {@link StorageRoot.create} does or, if it exists, opens it and commits one new version as {@link OcflObject.update} does, with `build` as the callback.
+   * The draft is the one each step gives: empty when creating, and starting from the head's files when updating, so `draft.import` merges there. To make the head hold only what `build` adds, call `draft.clear()` first; when creating it has no effect.
+   * The create path and the update path record the same `options`. If the draft ends the same as the head, no version is committed and the object comes back at the same head, so `head.number` alone doesn't tell which path ran.
+   *
+   * Another writer can get between the steps: a purge after the create finds the object makes the open throw `OBJECT_NOT_FOUND`, and a version committed after the open makes the update throw `OBJECT_OUT_OF_DATE`.
+   * Neither commits anything, so it starts again from the create, at most three attempts in all, and then throws the last of those errors. No other error is retried, `OBJECT_LOCKED` included: the lock is never waited on. Nor is one of these codes about another object, such as `build` opening an object that isn't there.
+   * `build` can therefore run more than once, each time on a new draft, and must not depend on anything read from the object before the call. A change decided from files read earlier belongs in {@link StorageRoot.open} and {@link OcflObject.update}, whose `OBJECT_OUT_OF_DATE` says that decision may no longer hold.
+   *
+   * @throws {@link OcflError} `OBJECT_NOT_FOUND` if the object was purged between the create and the open in each of three attempts.
+   * @throws {@link OcflError} `OBJECT_OUT_OF_DATE` if a version was committed, or the object purged, between the open and the update in each of three attempts.
+   * @throws {@link OcflError} `OBJECT_LOCKED` if another writer is creating, updating or purging the object, or died doing so; `lockedAt` says since when, and is absent if the lock couldn't be read or was released meanwhile.
+   * @throws {@link OcflError} `RECOVERY_NEEDED` as {@link StorageRoot.create} or {@link OcflObject.update} throws it. Don't simply call again: recover the object's unfinished write ({@link StorageRoot.unfinishedWrite}), then open the object to see whether the version was committed.
+   * @throws {@link OcflError} `INVALID_OBJECT`, `OBJECT_ROOT_CONFLICT`, `ID_INCOMPATIBLE_WITH_LAYOUT`, `CROSS_FILESYSTEM_MOVE` or `UNSUPPORTED_FILESYSTEM` as {@link StorageRoot.create} throws them; and `INVALID_OBJECT`, `MUTABLE_HEAD_ACTIVE` or `VERSION_LIMIT_REACHED` as {@link StorageRoot.open} or {@link OcflObject.update} throws them.
+   * @throws `TypeError` as {@link StorageRoot.create} throws it, before anything is written; or, when updating, if `createdAt` is earlier than the head version's date.
+   * @throws `Error` if `build` returned while draft operations it started were still running. Await every operation.
+   * @throws `options.signal.reason` if the signal is aborted before a commit begins; nothing is committed, and the object isn't locked.
+   * @throws Whatever `build` or a draft operation throws; nothing is committed, and the object isn't locked.
+   * @throws The file system error that stopped the create or update before its root inventory was put in place; nothing is committed.
+   * @example
+   * ```ts
+   * const object = await root.createOrUpdate(id, { message: 'Deposit', user: { name: 'Alice' } }, async (draft) => {
+   *   await draft.clear();
+   *   await draft.import('/srv/uploads/item-1');
+   * });
+   * ```
+   */
+  createOrUpdate(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
+
+  /**
    * Lists every object in the storage root, in no particular order. Each object is read when the listing reaches it, and yielded as `{ status: 'opened', object }`.
    * A damaged object root, one whose object can't be opened, is yielded as `{ status: 'damaged', error, objectRoot, id? }`, and the listing carries on.
    * A directory with an invalid object declaration is a damaged object root: it isn't searched for objects. So is an object whose OCFL version is later than the storage root's (E081).
@@ -361,6 +390,12 @@ async function fittingPlace(id: string, place: ObjectPlace, longest: (place: Obj
   return place;
 }
 
+const CREATE_OR_UPDATE_ATTEMPTS = 3;
+
+/** Whether `error` is another writer purging or committing to `objectId` between a step of `createOrUpdate` and the next */
+const isRaceOn = (objectId: string, error: unknown): boolean =>
+  (isOcflError(error, 'OBJECT_NOT_FOUND') || isOcflError(error, 'OBJECT_OUT_OF_DATE')) && error.objectId === objectId;
+
 const isUnplaceable = (error: unknown): error is OcflError => error instanceof OcflError && error.code === 'ID_INCOMPATIBLE_WITH_LAYOUT';
 
 function storageRoot(root: string, ocflVersion: OcflSpecVersion, layout: BuiltInLayout, flusher: fileSystem.Flusher): StorageRoot {
@@ -384,6 +419,13 @@ function storageRoot(root: string, ocflVersion: OcflSpecVersion, layout: BuiltIn
     }
     return placed;
   };
+  /** Checks a create's id and options, refuses an aborted signal, then places the object */
+  const writeTarget = async (id: string, options: CreateOptions, call: string) => {
+    const objectId = checkedId(id);
+    const { details, signal } = writeOptions(options, call);
+    signal?.throwIfAborted();
+    return { objectId, details, signal, place: await placedObject(root, layout, objectId, longestWriterPath) };
+  };
   return deepFreeze({
     path: root,
     ocflVersion,
@@ -396,10 +438,32 @@ function storageRoot(root: string, ocflVersion: OcflSpecVersion, layout: BuiltIn
       return !(placed instanceof OcflError) && (await objectState(placed)) === 'committed';
     },
     async create(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>) {
-      const objectId = checkedId(id);
-      const { details, signal } = writeOptions(options, 'root.create');
-      signal?.throwIfAborted();
-      return createObject(await placedObject(root, layout, objectId, longestWriterPath), objectId, settings, details, build, signal);
+      const { objectId, details, signal, place } = await writeTarget(id, options, 'root.create');
+      return createObject(place, objectId, settings, details, build, signal);
+    },
+    async createOrUpdate(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>) {
+      const { objectId, details, signal, place } = await writeTarget(id, options, 'root.createOrUpdate');
+      const attempt = async () => {
+        signal?.throwIfAborted();
+        try {
+          return await createObject(place, objectId, settings, details, build, signal);
+        } catch (error) {
+          if (!(isOcflError(error, 'OBJECT_EXISTS') && error.objectId === objectId)) {
+            throw error;
+          }
+        }
+        return (await openObject(place, objectId, settings)).update(options, build);
+      };
+      for (let tries = 1; tries < CREATE_OR_UPDATE_ATTEMPTS; tries++) {
+        try {
+          return await attempt();
+        } catch (error) {
+          if (!isRaceOn(objectId, error)) {
+            throw error;
+          }
+        }
+      }
+      return attempt();
     },
     objects(options?: ListOptions) {
       return listObjects(root, settings, signalFromOptions(options, 'root.objects'));

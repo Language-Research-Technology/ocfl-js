@@ -229,6 +229,7 @@ export interface ReadOptions {
 // @public
 export interface StorageRoot {
     create(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
+    createOrUpdate(id: string, options: CreateOptions, build: (draft: Draft) => Promise<unknown>): Promise<OcflObject>;
     has(id: string): Promise<boolean>;
     readonly layout: Layout;
     objects(options?: ListOptions): AsyncIterable<ListedObject>;

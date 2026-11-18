@@ -73,7 +73,7 @@ The digest directories haven't changed, only the last directory, named by the en
 ## Compiles or looks the same, acts differently
 
 - **Opening.** `root.open(id)` throws `OBJECT_NOT_FOUND` when there's no object, instead of returning an object that fails later. An opened object never changes: `update()` returns a new one, and to see another process's commits you open it again.
-- **Creating.** 0.4 created an object on its first update. 1.0 creates it with `root.create()`, and `update()` works only on an object that exists. Try `create()` first and, on `OBJECT_EXISTS`, open and update: [A deposit service](/ocfl-js/guides/use-cases/#a-deposit-service) shows this, including starting again when another writer gets between the steps.
+- **Creating.** 0.4 created an object on its first update. 1.0 creates it with `root.create()`, and `update()` works only on an object that exists. To create an object or add a version to it, whichever applies, call `root.createOrUpdate()`. It starts again when another writer gets between the steps: [A deposit service](/ocfl-js/guides/use-cases/#a-deposit-service) shows it.
 - **Message and user.** Every new version needs a message and a user, which 0.4's `update(fn)` couldn't record. A job with no person behind it [names the software as the user](/ocfl-js/guides/updating-objects/#when-no-person-makes-the-version).
 - **Merging and replacing.** 0.4's `object.import(source)` and `update(fn)` merged by default, and a draft starts with the head's files in the same way. For `'REPLACE'`, call `draft.clear()` first.
 - **An update that changes nothing** writes no version, and `update()` returns the same object.

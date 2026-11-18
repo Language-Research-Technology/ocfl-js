@@ -1,3 +1,4 @@
+import assert from 'node:assert';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -184,4 +185,16 @@ export async function rewriteInventory(objectRoot: string, change: (inventory: P
   const inventory: Partial<Inventory> = JSON.parse(await fs.promises.readFile(path.join(objectRoot, 'inventory.json'), 'utf8'));
   change(inventory);
   await writeInventory(objectRoot, JSON.stringify(inventory, null, 2));
+}
+
+/** Commits a version on disk at `objectRoot`, holding the head's files, as a writer that ignores the lock would */
+export async function moveHead(objectRoot: string): Promise<void> {
+  await rewriteInventory(objectRoot, (inventory) => {
+    const { head, versions } = inventory;
+    const headVersion = head === undefined ? undefined : versions?.[head];
+    assert.ok(head && headVersion, `${objectRoot} has no head version`);
+    const next = `v${String(Number(head.slice(1)) + 1).padStart(head.length - 1, '0')}`;
+    inventory.head = next;
+    inventory.versions = { ...versions, [next]: headVersion };
+  });
 }
