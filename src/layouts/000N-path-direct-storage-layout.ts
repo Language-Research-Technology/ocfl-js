@@ -4,7 +4,7 @@ import { hasOverlongSegment, MAX_NAME_BYTES } from '../file-system.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from './built-in-layout.ts';
 
 /** Object roots at the path spelled by their id. */
-interface PathDirectLayoutConfig {
+export interface PathDirectLayoutConfig {
   /** Name of the layout's OCFL extension. */
   extensionName: '000N-path-direct-storage-layout';
   /** Leave the id's URI scheme out of the path. Defaults to `false`. */
@@ -17,7 +17,7 @@ interface PathDirectLayoutConfig {
 
 const isReplacePair = (pair: unknown) => Array.isArray(pair) && pair.length === 2 && typeof pair[0] === 'string' && typeof pair[1] === 'string';
 
-const DefaultConfig: Required<Omit<PathDirectLayoutConfig, 'extensionName'>> = {
+const DEFAULT_CONFIG: Required<Omit<PathDirectLayoutConfig, 'extensionName'>> = {
   omitScheme: false,
   replace: [],
   suffix: '/__object__',
@@ -37,9 +37,9 @@ Set in \`extensions/${NAME}/config.json\`. A parameter left out takes its defaul
 
 | Parameter | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| \`omitScheme\` | boolean | \`${DefaultConfig.omitScheme}\` | Leave the identifier's URI scheme out of the path. |
-| \`replace\` | array of \`[find, replacement]\` pairs of strings | \`${JSON.stringify(DefaultConfig.replace)}\` | Text to find in the identifier and what to put in its place. Only the first occurrence of each \`find\` is replaced. |
-| \`suffix\` | string | \`${DefaultConfig.suffix}\` | Added to the end of the path, as one or more path segments; leading, trailing and repeated \`/\` in it are ignored. It marks the object root, so that one identifier can be the start of another without one object sitting inside the other. It must have at least one segment, so \`''\` and \`/\` are refused. |
+| \`omitScheme\` | boolean | \`${DEFAULT_CONFIG.omitScheme}\` | Leave the identifier's URI scheme out of the path. |
+| \`replace\` | array of \`[find, replacement]\` pairs of strings | \`${JSON.stringify(DEFAULT_CONFIG.replace)}\` | Text to find in the identifier and what to put in its place. Only the first occurrence of each \`find\` is replaced. |
+| \`suffix\` | string | \`${DEFAULT_CONFIG.suffix}\` | Added to the end of the path, as one or more path segments; leading, trailing and repeated \`/\` in it are ignored. It marks the object root, so that one identifier can be the start of another without one object sitting inside the other. It must have at least one segment, so \`''\` and \`/\` are refused. |
 
 ## Mapping
 
@@ -91,7 +91,7 @@ function foldedSegments(p: string): string[] {
     .map((segment) => segment.normalize('NFC').toLowerCase());
 }
 
-class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
+export class PathDirectStorageLayout extends BuiltInLayout<typeof DEFAULT_CONFIG> {
   readonly name: typeof NAME = NAME;
   readonly description = 'OCFL object identifiers are used directly as the path.';
   override readonly documentation: string = DOCUMENTATION;
@@ -99,7 +99,7 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
   readonly #foldedSuffixSegments: string[];
 
   constructor(config?: OcflExtensionConfig) {
-    super(config, DefaultConfig);
+    super(config, DEFAULT_CONFIG);
     const invalid = this.parameters.replace.findIndex((pair) => !isReplacePair(pair));
     if (invalid !== -1) {
       throw new TypeError(`Each replace entry must be a [pattern, replacement] pair of strings, not ${inspect(this.parameters.replace[invalid])}.`);
@@ -160,5 +160,3 @@ class PathDirectStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     return objectRoot;
   }
 }
-
-export { type PathDirectLayoutConfig, PathDirectStorageLayout };

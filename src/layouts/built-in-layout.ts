@@ -4,7 +4,7 @@ import { rejectUnknownKeys } from '../utils.ts';
 import type { LayoutName } from './index.ts';
 
 /** A layout's config as callers and config.json give it, before any checking */
-interface OcflExtensionConfig {
+export interface OcflExtensionConfig {
   extensionName?: string;
   [key: string]: unknown;
 }
@@ -38,7 +38,7 @@ function mergeParameters(defaults: object | undefined, config: OcflExtensionConf
   return { parameters, setNames };
 }
 
-abstract class BuiltInLayout<C extends object = object> {
+export abstract class BuiltInLayout<C extends object = object> {
   /** Official extension name */
   abstract readonly name: LayoutName;
   abstract readonly description: string;
@@ -83,5 +83,3 @@ abstract class BuiltInLayout<C extends object = object> {
     });
   }
 }
-
-export { BuiltInLayout, type OcflExtensionConfig };

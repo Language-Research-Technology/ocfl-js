@@ -2,10 +2,10 @@ import path from 'node:path';
 import type { FixityAlgorithm } from '../digest.ts';
 import * as Hashing from '../digest.ts';
 import { BuiltInLayout, type OcflExtensionConfig } from './built-in-layout.ts';
-import { checkNTupleParameters } from './n-tuple.ts';
+import { checkNTupleParameters, tupleSegments } from './n-tuple.ts';
 
 /** Object roots named by their encoded id, nested under pieces of the id's digest. */
-interface HashAndIdNTupleLayoutConfig {
+export interface HashAndIdNTupleLayoutConfig {
   /** Name of the layout's OCFL extension. */
   extensionName: '0003-hash-and-id-n-tuple-storage-layout';
   /** Algorithm used to hash the id. Defaults to `sha256`. */
@@ -25,13 +25,13 @@ function encapsulationDirectory(id: string, digest: string) {
   return encoded.length > MAX_ENCODED_ID_LENGTH ? `${encoded.slice(0, MAX_ENCODED_ID_LENGTH)}-${digest}` : encoded;
 }
 
-const DefaultConfig: Required<Omit<HashAndIdNTupleLayoutConfig, 'extensionName'>> = {
+const DEFAULT_CONFIG: Required<Omit<HashAndIdNTupleLayoutConfig, 'extensionName'>> = {
   digestAlgorithm: 'sha256',
   tupleSize: 3,
   numberOfTuples: 3,
 };
 
-class HashAndIdNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
+export class HashAndIdNTupleStorageLayout extends BuiltInLayout<typeof DEFAULT_CONFIG> {
   readonly name = '0003-hash-and-id-n-tuple-storage-layout';
   readonly description: string =
     'OCFL object identifiers are hashed and encoded as lowercase hex strings.' +
@@ -40,22 +40,12 @@ class HashAndIdNTupleStorageLayout extends BuiltInLayout<typeof DefaultConfig> {
     ' Finally, the OCFL object identifier is percent-encoded to create a directory name for the OCFL object root.';
 
   constructor(config?: OcflExtensionConfig) {
-    super(config, DefaultConfig);
+    super(config, DEFAULT_CONFIG);
     checkNTupleParameters(this.parameters);
   }
 
   map(id: string): string {
     const digest = Hashing.digestSync(this.parameters.digestAlgorithm, id);
-    const segments = [];
-    const s = this.parameters.tupleSize;
-    const n = this.parameters.numberOfTuples;
-    let i: number;
-    for (i = 0; i < n; ++i) {
-      segments.push(digest.slice(s * i, s * i + s));
-    }
-    segments.push(encapsulationDirectory(id, digest));
-    return segments.join(path.sep);
+    return [...tupleSegments(digest, this.parameters), encapsulationDirectory(id, digest)].join(path.sep);
   }
 }
-
-export { type HashAndIdNTupleLayoutConfig, HashAndIdNTupleStorageLayout };

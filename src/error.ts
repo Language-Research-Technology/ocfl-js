@@ -33,7 +33,7 @@
  * | `SOURCE_CHANGED` | A file changed while `import` copied it. | Once nothing writes to it |
  * | `UNSUPPORTED_FILE_TYPE` | `import` found something that isn't a regular file or directory, such as a symbolic link. | No |
  */
-type OcflErrorCode =
+export type OcflErrorCode =
   | 'OBJECT_NOT_FOUND'
   | 'OBJECT_EXISTS'
   | 'OBJECT_OUT_OF_DATE'
@@ -95,7 +95,7 @@ interface OcflErrorOptions {
  * }
  * ```
  */
-class OcflError extends Error {
+export class OcflError extends Error {
   /** What went wrong: one of {@link OcflErrorCode}, whose doc says what causes each and whether retrying helps. */
   readonly code: OcflErrorCode;
   /** The code the OCFL specification gives the rule that was broken, such as `E060`, when the fault has one. */
@@ -153,7 +153,7 @@ Object.defineProperty(OcflError.prototype, BRAND, { value: true });
  * if (isOcflError(error, 'SOURCE_CHANGED')) retryFile(error.sourcePath);
  * ```
  */
-function isOcflError<Code extends OcflErrorCode = OcflErrorCode>(error: unknown, code?: Code): error is OcflError & { readonly code: Code } {
+export function isOcflError<Code extends OcflErrorCode = OcflErrorCode>(error: unknown, code?: Code): error is OcflError & { readonly code: Code } {
   return (
     typeof error === 'object' &&
     error !== null &&
@@ -162,14 +162,12 @@ function isOcflError<Code extends OcflErrorCode = OcflErrorCode>(error: unknown,
   );
 }
 
-const ocflError: (code: OcflErrorCode, message: string, options?: OcflErrorOptions) => OcflError = OcflError._create;
+export const ocflError: (code: OcflErrorCode, message: string, options?: OcflErrorOptions) => OcflError = OcflError._create;
 
 /**
  * For an `objectRoot` that the storage layout gives to the object `id`, but that holds the wrong thing.
  * @param what - Completes "…places <id>, …", such as "is not empty"
  */
-function objectRootConflict(objectRoot: string, id: string, what: string): OcflError {
+export function objectRootConflict(objectRoot: string, id: string, what: string): OcflError {
   return ocflError('OBJECT_ROOT_CONFLICT', `${objectRoot}, where the storage root places <${id}>, ${what}.`, { objectId: id });
 }
-
-export { isOcflError, OcflError, type OcflErrorCode, objectRootConflict, ocflError };

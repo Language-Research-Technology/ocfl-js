@@ -1,4 +1,4 @@
-class VersionNumber {
+export class VersionNumber {
   readonly value: number;
   readonly zeroPaddingLength: number | undefined;
   private constructor(num: number, zeroPaddingLength?: number) {
@@ -43,8 +43,6 @@ class VersionNumber {
 }
 
 /** Whether `name` is a version directory name, such as `v1` or `v001` */
-function isVersionName(name: string): boolean {
+export function isVersionName(name: string): boolean {
   return /^v(?:[1-9]\d*|0\d*[1-9]\d*)$/.test(name);
 }
-
-export { isVersionName, VersionNumber };

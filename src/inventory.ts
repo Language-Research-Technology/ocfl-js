@@ -24,7 +24,7 @@ interface InventoryVersion {
   };
 }
 
-interface Inventory {
+export interface Inventory {
   /** A unique identifier for the OCFL Object. */
   id: string;
   /** The URI of the inventory section of the specification version matching the object conformance declaration. */
@@ -91,7 +91,7 @@ function isDigestBlock(block: unknown): boolean {
  * `E017` or `E018` for the contentDirectory, `E099` or `E100` for a content path, `E052` or `E053` for a logical path in any
  * version, `E095` for logical paths of one version that repeat or conflict, `E048` or `E050` for a version's state, or `E111` or `E057` for the fixity block
  */
-function validateStoredInventory(data: Inventory, where: FaultAt): void {
+export function validateStoredInventory(data: Inventory, where: FaultAt): void {
   if (data.head === undefined) {
     throw specViolation('E036', where, 'missing head');
   }
@@ -193,7 +193,7 @@ export interface RelistPlan extends DeletePlan {
 /**
  * An OCFL object's inventory. Only a draft changes it, while it builds a new version.
  */
-class OcflObjectInventory {
+export class OcflObjectInventory {
   #data: Inventory;
   /** The manifest's key for each digest, by its normalised form */
   #manifestKeys = new Map<string, string>();
@@ -330,10 +330,6 @@ class OcflObjectInventory {
 
   toString(): string {
     return JSON.stringify(this.#data, null, 2);
-  }
-
-  toJSON(): Inventory {
-    return JSON.parse(this.toString());
   }
 
   /** The files of a version, which has none if it doesn't exist */
@@ -813,10 +809,8 @@ class OcflObjectInventory {
 }
 
 /** Each version's number and name, oldest first */
-function versionNumbers(inventory: OcflObjectInventory): [number: number, name: string][] {
+export function versionNumbers(inventory: OcflObjectInventory): [number: number, name: string][] {
   return Object.keys(inventory.versions)
     .map((name): [number, string] => [VersionNumber._fromString(name).value, name])
     .sort(([a], [b]) => a - b);
 }
-
-export { type Inventory, OcflObjectInventory, validateStoredInventory, versionNumbers };

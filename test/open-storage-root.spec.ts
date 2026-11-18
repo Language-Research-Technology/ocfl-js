@@ -151,6 +151,12 @@ describe('opening a storage root', () => {
       assert.strictEqual(await writeObject(rootPath, 'abc'), path.join('ba7', '816', 'bf8', DIGESTS_OF_ABC.sha256));
     });
 
+    it('refuses a root whose extension directory is a file, rather than taking the layout defaults', async () => {
+      const rootPath = await handMadeRoot({ layoutFile: declaring(HASHED) });
+      await writeFiles(rootPath, { [`extensions/${HASHED}`]: 'not a directory' });
+      await assert.rejects(openStorageRoot(rootPath), (error: NodeJS.ErrnoException) => error.code === 'ENOTDIR');
+    });
+
     it('uses the layout named in ocfl_layout.json when its extension config has no name', async () => {
       const rootPath = await handMadeRoot({ layoutFile: declaring(HASHED), extensionConfig: { tupleSize: 4 } });
       assert.deepStrictEqual((await openStorageRoot(rootPath)).layout, { ...HASHED_DEFAULTS, tupleSize: 4 });

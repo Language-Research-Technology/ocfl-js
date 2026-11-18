@@ -28,9 +28,14 @@ function assertHeadStateValid(inv: OcflObjectInventory) {
   assertMatchesRebuilt(inv);
 }
 
+/** The inventory's data, as its text gives it */
+function dataOf(inv: OcflObjectInventory): Inventory {
+  return JSON.parse(inv.toString());
+}
+
 /** Lookups through the indexes kept up to date by changes match an inventory built from the same data */
 function assertMatchesRebuilt(inv: OcflObjectInventory) {
-  const rebuilt = new OcflObjectInventory(inv.toJSON());
+  const rebuilt = new OcflObjectInventory(dataOf(inv));
   const paths = new Set(Object.values(inv.versions).flatMap((v) => Object.values(v.state).flat()));
   for (const version of Object.keys(inv.versions)) {
     for (const path of paths) {
@@ -93,8 +98,7 @@ describe('OcflObjectInventory class', () => {
   it('can create new version from existing', async () => {
     const data = JSON.parse(await readFile(path.join(import.meta.dirname, 'fixtures/inventory.json'), 'utf8'));
     const inv = OcflObjectInventory._newVersion(data);
-    //console.log(inv.toJSON());
-    const data2 = inv.toJSON();
+    const data2 = dataOf(inv);
     assert.strictEqual(data2.head, 'v4');
     assert.deepStrictEqual(data2.versions.v4!.state, data.versions.v3.state);
   });
@@ -102,7 +106,7 @@ describe('OcflObjectInventory class', () => {
   it('can add file to a new version', () => {
     const inv = OcflObjectInventory._newVersion(data);
     inv._add('test.txt', 'aabbccddeeff');
-    const data2 = inv.toJSON();
+    const data2 = dataOf(inv);
     assert.strictEqual(inv.head, 'v1');
     assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test.txt');
     assert.deepStrictEqual(data2.manifest, inv.manifest);
@@ -127,7 +131,7 @@ describe('OcflObjectInventory class', () => {
   it('can add file with identical content and name', () => {
     let inv = OcflObjectInventory._newVersion(data);
     inv._add('test.txt', 'aabbccddeeff');
-    inv = OcflObjectInventory._newVersion(inv.toJSON());
+    inv = OcflObjectInventory._newVersion(dataOf(inv));
     inv._add('test.txt', 'aabbccddeeff');
     assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test.txt');
     assert.strictEqual(inv.manifest.aabbccddeeff!.length, 1);
@@ -144,7 +148,7 @@ describe('OcflObjectInventory class', () => {
   it('can add file with different content but identical name', () => {
     let inv = OcflObjectInventory._newVersion(data);
     inv._add('test.txt', 'aabbccddeeff');
-    inv = OcflObjectInventory._newVersion(inv.toJSON());
+    inv = OcflObjectInventory._newVersion(dataOf(inv));
     inv._add('test.txt', 'aabbccddeeff2');
     assert.strictEqual(inv.manifest.aabbccddeeff![0], 'v1/content/test.txt');
     assert.strictEqual(inv.manifest.aabbccddeeff2![0], 'v2/content/test.txt');
@@ -159,9 +163,9 @@ describe('OcflObjectInventory class', () => {
   it('can add same file after it has been deleted', () => {
     let inv = OcflObjectInventory._newVersion(data);
     inv._add('test.txt', 'aabbccddeeff');
-    inv = OcflObjectInventory._newVersion(inv.toJSON());
+    inv = OcflObjectInventory._newVersion(dataOf(inv));
     inv._add('test.txt', 'aabbccddeeff2'); // aabbccddeeff effectively deleted from v2
-    inv = OcflObjectInventory._newVersion(inv.toJSON());
+    inv = OcflObjectInventory._newVersion(dataOf(inv));
     inv._add('test.txt', 'aabbccddeeff'); // reinstatement
     assert.strictEqual(Object.keys(inv.manifest).length, 2);
     assert.strictEqual(inv.versions.v3!.state.aabbccddeeff![0], 'test.txt');
@@ -192,10 +196,10 @@ describe('OcflObjectInventory class', () => {
     assert.strictEqual(inv._isChanged, true);
   });
 
-  it('makes an independent copy from toJSON', () => {
+  it('makes an independent copy from its text', () => {
     const inv = OcflObjectInventory._newVersion(data);
     inv._add('a', 'd1');
-    const copy = new OcflObjectInventory(inv.toJSON());
+    const copy = new OcflObjectInventory(dataOf(inv));
     inv._add('b', 'd2');
     assert.deepStrictEqual(copy.state, { d1: ['a'] });
     assert.strictEqual(copy.getDigest('a'), 'd1');
@@ -233,7 +237,7 @@ describe('OcflObjectInventory class', () => {
       assert.strictEqual(inv._add(name, 'd2'), true);
       assert.strictEqual(inv.getDigest(name), 'd2');
       assertHeadStateValid(inv);
-      inv = OcflObjectInventory._newVersion(new OcflObjectInventory(inv.toJSON()));
+      inv = OcflObjectInventory._newVersion(new OcflObjectInventory(dataOf(inv)));
       assert.strictEqual(inv.getDigest(name, 'v1'), 'd2');
       assert.strictEqual(inv._isChanged, false);
       assert.strictEqual(remove(inv, name), 1);
@@ -352,9 +356,9 @@ describe('OcflObjectInventory class', () => {
         for (const [name, files, source, target, code] of refused) {
           it(`throws ${code} for ${name}, changing nothing`, () => {
             const inv = inventoryWith(files);
-            const before = inv.toJSON();
+            const before = dataOf(inv);
             assert.throws(() => transfer(inv, source, target), { name: 'OcflError', code });
-            assert.deepStrictEqual(inv.toJSON(), before);
+            assert.deepStrictEqual(dataOf(inv), before);
             assertHeadStateValid(inv);
           });
         }
@@ -366,9 +370,9 @@ describe('OcflObjectInventory class', () => {
         ] as const) {
           it(`changes nothing for ${name}`, () => {
             const inv = inventoryWith({ a: 'd1', b: 'd1', 'x/c': 'd2' });
-            const before = inv.toJSON();
+            const before = dataOf(inv);
             transfer(inv, source, target);
-            assert.deepStrictEqual(inv.toJSON(), before);
+            assert.deepStrictEqual(dataOf(inv), before);
             assertHeadStateValid(inv);
           });
         }
@@ -421,9 +425,9 @@ describe('OcflObjectInventory class', () => {
         for (const [name, files, source, target, code] of refusedMerging) {
           it(`throws ${code} when merging ${name}, changing nothing`, () => {
             const inv = inventoryWith(files);
-            const before = inv.toJSON();
+            const before = dataOf(inv);
             assert.throws(() => transfer(inv, source, target, true), { name: 'OcflError', code });
-            assert.deepStrictEqual(inv.toJSON(), before);
+            assert.deepStrictEqual(dataOf(inv), before);
             assertHeadStateValid(inv);
           });
         }
@@ -527,9 +531,9 @@ describe('OcflObjectInventory class', () => {
       for (const [name, source, target] of [['an existing file with identical content', 'a', 'b']] as const) {
         it(`changes nothing for ${name}`, () => {
           const inv = inventoryWith({ a: 'd1', b: 'd1', 'x/c': 'd2' });
-          const before = inv.toJSON();
+          const before = dataOf(inv);
           copy(inv, source, target);
-          assert.deepStrictEqual(inv.toJSON(), before);
+          assert.deepStrictEqual(dataOf(inv), before);
           assertHeadStateValid(inv);
         });
       }
@@ -664,9 +668,9 @@ describe('OcflObjectInventory class', () => {
         const inv = OcflObjectInventory._newVersion(data);
         inv._add('a', 'd1');
         inv._add('d/x', 'd2');
-        const before = inv.toJSON();
+        const before = dataOf(inv);
         assert.throws(() => inv._add(logicalPath, 'd3'), { name: 'OcflError', code: 'PATH_CONFLICT' });
-        assert.deepStrictEqual(inv.toJSON(), before);
+        assert.deepStrictEqual(dataOf(inv), before);
         assertHeadStateValid(inv);
       });
     }
@@ -695,9 +699,9 @@ describe('OcflObjectInventory class', () => {
         inv = OcflObjectInventory._newVersion(inv);
         remove(inv, 'd');
         inv._add('d', 'd3');
-        const before = inv.toJSON();
+        const before = dataOf(inv);
         assert.throws(() => reinstate(inv, logicalPath, 1), { name: 'OcflError', code: 'PATH_CONFLICT' });
-        assert.deepStrictEqual(inv.toJSON(), before);
+        assert.deepStrictEqual(dataOf(inv), before);
         assertHeadStateValid(inv);
       });
     }
@@ -709,9 +713,9 @@ describe('OcflObjectInventory class', () => {
       remove(inv, 'x');
       inv._add('x/y', 'd2');
       inv = OcflObjectInventory._newVersion(inv);
-      const before = inv.toJSON();
+      const before = dataOf(inv);
       assert.throws(() => reinstate(inv, 'x', 1), { name: 'OcflError', code: 'PATH_CONFLICT' });
-      assert.deepStrictEqual(inv.toJSON(), before);
+      assert.deepStrictEqual(dataOf(inv), before);
       assertHeadStateValid(inv);
     });
 
@@ -736,9 +740,9 @@ describe('OcflObjectInventory class', () => {
         inv._add('x', 'd1');
         inv = OcflObjectInventory._newVersion(inv);
         inv._add('x', 'd2');
-        const before = inv.toJSON();
+        const before = dataOf(inv);
         assert.throws(() => reinstate(inv, 'x', version), { name: 'OcflError', code: 'VERSION_NOT_FOUND' });
-        assert.deepStrictEqual(inv.toJSON(), before);
+        assert.deepStrictEqual(dataOf(inv), before);
       });
     }
 
@@ -748,9 +752,9 @@ describe('OcflObjectInventory class', () => {
         inv._add('x', 'd1');
         inv = OcflObjectInventory._newVersion(inv);
         inv._add('xy', 'd2');
-        const before = inv.toJSON();
+        const before = dataOf(inv);
         assert.throws(() => reinstate(inv, logicalPath, 1), { name: 'OcflError', code: 'FILE_NOT_FOUND' });
-        assert.deepStrictEqual(inv.toJSON(), before);
+        assert.deepStrictEqual(dataOf(inv), before);
       });
     }
 

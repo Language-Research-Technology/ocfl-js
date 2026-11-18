@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { OcflConstants } from './constants.ts';
+import { OCFL_CONSTANTS } from './constants.ts';
 import * as fileSystem from './file-system.ts';
 
-const { EXTENSIONS_DIR, WORKSPACE_EXTENSION, LOCK_NAME } = OcflConstants;
+const { EXTENSIONS_DIR, WORKSPACE_EXTENSION, LOCK_NAME } = OCFL_CONSTANTS;
 
 /** A local storage root extension, documented in the root as the OCFL spec (§4.5) allows */
 const WORKSPACE_EXTENSION_TEXT = `# ${WORKSPACE_EXTENSION}
@@ -33,7 +33,7 @@ function documentationPath(storageRoot: string): string {
 }
 
 /** Documents the workspace in a new storage root */
-async function writeWorkspaceDocumentation(storageRoot: string): Promise<void> {
+export async function writeWorkspaceDocumentation(storageRoot: string): Promise<void> {
   await fileSystem.writeFile(documentationPath(storageRoot), WORKSPACE_EXTENSION_TEXT);
 }
 
@@ -41,7 +41,7 @@ async function writeWorkspaceDocumentation(storageRoot: string): Promise<void> {
  * Documents the workspace in a storage root another tool may have made, unless a file already does.
  * Any failure is ignored, since the file is only documentation, but a file this made and couldn't fill is removed.
  */
-async function documentWorkspaceQuietly(storageRoot: string): Promise<void> {
+export async function documentWorkspaceQuietly(storageRoot: string): Promise<void> {
   const file = documentationPath(storageRoot);
   const handle = await fs.promises.open(file, 'wx').catch(() => undefined);
   if (!handle) {
@@ -57,5 +57,3 @@ async function documentWorkspaceQuietly(storageRoot: string): Promise<void> {
     await fileSystem.removeQuietly(file);
   }
 }
-
-export { documentWorkspaceQuietly, writeWorkspaceDocumentation };

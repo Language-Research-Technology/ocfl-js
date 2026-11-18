@@ -382,10 +382,10 @@ describe('root.purge', () => {
   });
 
   describe('when it fails', () => {
-    /** Asserts that `purge` rejects with `RECOVERY_NEEDED` caused by an injected `EIO`, and that the object stays locked */
-    async function assertRecoveryNeeded(root: StorageRoot, purge: Promise<void>) {
+    /** Asserts that `purge` rejects with `RECOVERY_NEEDED` caused by an injected `code`, and that the object stays locked */
+    async function assertRecoveryNeeded(root: StorageRoot, purge: Promise<void>, code = 'EIO') {
       const error = await rejection(purge, 'RECOVERY_NEEDED');
-      assert.strictEqual((error.cause as NodeJS.ErrnoException).code, 'EIO');
+      assert.strictEqual((error.cause as NodeJS.ErrnoException).code, code);
       await assert.rejects(root.purge(ID), ocflError('OBJECT_LOCKED'));
     }
 
@@ -400,6 +400,14 @@ describe('root.purge', () => {
       await recover(root, ID);
       assert.ok(!fs.existsSync(objectRoot));
       assertNoWorkspace(root);
+    });
+
+    it('throws RECOVERY_NEEDED and deletes nothing when the object root has become a file since it was checked', async () => {
+      const { root, objectRoot, before } = await existingObject();
+
+      await withFsFailure('readdir', objectRoot, () => assertRecoveryNeeded(root, root.purge(ID), 'ENOTDIR'), 'ENOTDIR');
+
+      assert.deepStrictEqual(await snapshot(objectRoot), before);
     });
 
     it('throws RECOVERY_NEEDED and keeps the lock when the object root cannot be listed, deleting nothing; recover then purges it', async () => {

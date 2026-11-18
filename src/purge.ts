@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { OcflConstants } from './constants.ts';
+import { OCFL_CONSTANTS } from './constants.ts';
 import { hasObjectDeclaration } from './declaration.ts';
 import type { OcflError } from './error.ts';
 import * as fileSystem from './file-system.ts';
@@ -10,7 +10,7 @@ import { confirmedVersion, declarationWithoutInventory, objectNotFound, strayCon
 import { readInventory } from './root-inventory.ts';
 import { clearWorkspace } from './workspace.ts';
 
-const { INVENTORY_NAME, DECLARATION_TAG } = OcflConstants;
+const { INVENTORY_NAME, DECLARATION_TAG } = OCFL_CONSTANTS;
 
 /** Whether `name`, in an object root, is the object's declaration, root inventory or sidecar: what opening the object reads */
 function isNeededToOpen(name: string): boolean {
@@ -42,7 +42,8 @@ async function assertHoldsObject(place: ObjectPlace, id: string): Promise<void> 
  * What opening the object reads goes last, so that a reader meanwhile finds the object, not a damaged one.
  */
 async function deleteObjectRoot({ storageRoot, objectRoot }: ObjectPlace): Promise<void> {
-  const names = await fs.promises.readdir(objectRoot).catch((error) => {
+  // Only ENOENT: an object root replaced by a file since it was checked must not be deleted as if it were the object
+  const names = await fs.promises.readdir(objectRoot).catch((error: unknown) => {
     if (fileSystem.isNotFound(error)) {
       return [];
     }
@@ -69,7 +70,7 @@ function recoveryNeeded(objectRoot: string, id: string, state: string, advice: s
  * @throws {@link OcflError} `OBJECT_LOCKED` if the object is locked; `UNSUPPORTED_FILESYSTEM` if its lock can't be hard-linked; `OBJECT_NOT_FOUND`, `INVALID_OBJECT` or `OBJECT_ROOT_CONFLICT` if `objectRoot` doesn't hold the object. Nothing is deleted, and a lock this took is released.
  * @throws {@link OcflError} `RECOVERY_NEEDED` if deleting it failed, or its lock couldn't be released; the lock is kept
  */
-async function purgeObject(place: ObjectPlace, id: string): Promise<void> {
+export async function purgeObject(place: ObjectPlace, id: string): Promise<void> {
   const { storageRoot, objectRoot, workspace } = place;
   const lock = await takeLock(workspace, storageRoot, id, true, 'purge');
   try {
@@ -96,10 +97,8 @@ async function purgeObject(place: ObjectPlace, id: string): Promise<void> {
  * Finishes the purge that the dead writer holding the lock of the object at `place` had begun, and releases the lock.
  * The lock goes last, so a failure keeps the object locked.
  */
-async function recoverPurge(place: ObjectPlace): Promise<void> {
+export async function recoverPurge(place: ObjectPlace): Promise<void> {
   await clearWorkspace(place.workspace);
   await deleteObjectRoot(place);
   await releaseLock(place.workspace, place.storageRoot);
 }
-
-export { purgeObject, recoverPurge };

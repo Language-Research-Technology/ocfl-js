@@ -1,34 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { OcflConstants } from './constants.ts';
-import { isNothingAtPath } from './file-system.ts';
+import { OCFL_CONSTANTS } from './constants.ts';
+import { entriesIn, namesIn } from './file-system.ts';
 import { isStagedLock, type Lock, readLockFile } from './lock.ts';
 import { isVersionName } from './version-number.ts';
 
-const { EXTENSIONS_DIR, WORKSPACE_EXTENSION, LOCK_NAME } = OcflConstants;
+const { EXTENSIONS_DIR, WORKSPACE_EXTENSION, LOCK_NAME } = OCFL_CONSTANTS;
 
 /** The workspace of the storage root at the absolute path `root` */
-function workspaceRoot(root: string): string {
+export function workspaceRoot(root: string): string {
   return path.join(root, EXTENSIONS_DIR, WORKSPACE_EXTENSION);
 }
 
-/** What `list` gives for a directory, or nothing if nothing can be at its path */
-async function listed<T>(list: () => Promise<T[]>): Promise<T[]> {
-  try {
-    return await list();
-  } catch (error) {
-    if (isNothingAtPath(error)) {
-      return [];
-    }
-    throw error;
-  }
-}
-
-async function namesIn(dir: string): Promise<string[]> {
-  return listed(() => fs.promises.readdir(dir));
-}
-
-async function removeAll(dir: string, names: string[]): Promise<void> {
+export async function removeAll(dir: string, names: string[]): Promise<void> {
   for (const name of names) {
     await fs.promises.rm(path.join(dir, name), { recursive: true, force: true });
   }
@@ -38,8 +22,8 @@ async function removeAll(dir: string, names: string[]): Promise<void> {
  * Every lock at or below `dir`, with the directory holding it, as each is found. A directory holding a lock isn't searched further:
  * no layout nests object roots, so nothing below it is another object's directory in the workspace.
  */
-async function* locksBelow(dir: string): AsyncGenerator<{ dir: string; lock: Lock }> {
-  const entries = await listed(() => fs.promises.readdir(dir, { withFileTypes: true }));
+export async function* locksBelow(dir: string): AsyncGenerator<{ dir: string; lock: Lock }> {
+  const entries = await entriesIn(dir);
   const lock = entries.some((entry) => entry.name === LOCK_NAME && entry.isFile()) ? await readLockFile(path.join(dir, LOCK_NAME)) : undefined;
   if (lock) {
     yield { dir, lock };
@@ -72,9 +56,7 @@ async function unfinishedVersions(workspace: string, names: string[]): Promise<s
  * Only for a caller holding the object's lock, so no live writer is assembling a version there. A writer staging a lock meanwhile
  * fails to put it in place, and tries again.
  */
-async function clearWorkspace(workspace: string): Promise<void> {
+export async function clearWorkspace(workspace: string): Promise<void> {
   const names = await namesIn(workspace);
   await removeAll(workspace, [...(await unfinishedVersions(workspace, names)), ...names.filter(isStagedLock)]);
 }
-
-export { clearWorkspace, locksBelow, namesIn, removeAll, workspaceRoot };

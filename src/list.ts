@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { OcflConstants } from './constants.ts';
+import { OCFL_CONSTANTS } from './constants.ts';
 import { type DeclarationsFound, findDeclaredVersion } from './declaration.ts';
 import { OcflError } from './error.ts';
 import { isNothingAtPath, pathFromStorageRoot } from './file-system.ts';
@@ -9,10 +9,10 @@ import { type OcflObject, openDeclaredObject } from './ocfl-object.ts';
 import { idInRootInventory } from './root-inventory.ts';
 import type { RootSettings } from './storage-root.ts';
 
-const { EXTENSIONS_DIR, OBJECT_DECLARATION_PREFIX } = OcflConstants;
+const { EXTENSIONS_DIR, OBJECT_DECLARATION_PREFIX } = OCFL_CONSTANTS;
 
 /** An object root that {@link StorageRoot.objects} opened. */
-interface ListedOpenedObject {
+export interface ListedOpenedObject {
   /** Always `'opened'`. */
   readonly status: 'opened';
   /** The object, opened. */
@@ -20,7 +20,7 @@ interface ListedOpenedObject {
 }
 
 /** A damaged object root that {@link StorageRoot.objects} found and couldn't open. */
-interface ListedDamagedObjectRoot {
+export interface ListedDamagedObjectRoot {
   /** Always `'damaged'`. */
   readonly status: 'damaged';
   /** Why it can't be opened: always `INVALID_OBJECT`, with `ocflCode` when the fault has one. */
@@ -32,7 +32,7 @@ interface ListedDamagedObjectRoot {
 }
 
 /** Options for {@link StorageRoot.objects}. */
-interface ListOptions {
+export interface ListOptions {
   /** Aborting it stops the listing. */
   readonly signal?: AbortSignal | undefined;
 }
@@ -41,7 +41,7 @@ interface ListOptions {
  * What {@link StorageRoot.objects} yields for each object root: the object, or why a damaged object root can't be opened.
  * Tell them apart by `status`, and keep a fallback: a later release may add a status. {@link StorageRoot.objects} shows how.
  */
-type ListedObject = ListedOpenedObject | ListedDamagedObjectRoot;
+export type ListedObject = ListedOpenedObject | ListedDamagedObjectRoot;
 
 /** The directory at `dirPath`, or `undefined` if it has gone since it was listed */
 async function openListedDirectory(dirPath: string): Promise<fs.Dir | undefined> {
@@ -106,9 +106,7 @@ async function* objectsUnder(storageRoot: string, rootSettings: RootSettings, di
  * Every object root in the storage root at `storageRoot`, with the settings `rootSettings`, each read when the listing reaches it.
  * @throws The file system error that stopped the listing
  */
-async function* listObjects(storageRoot: string, rootSettings: RootSettings, signal: AbortSignal | undefined): AsyncGenerator<ListedObject> {
+export async function* listObjects(storageRoot: string, rootSettings: RootSettings, signal: AbortSignal | undefined): AsyncGenerator<ListedObject> {
   signal?.throwIfAborted();
   yield* objectsUnder(storageRoot, rootSettings, await fs.promises.opendir(storageRoot), signal);
 }
-
-export { type ListedDamagedObjectRoot, type ListedObject, type ListedOpenedObject, type ListOptions, listObjects };
