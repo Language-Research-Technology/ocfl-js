@@ -62,7 +62,7 @@ There's no separate replace operation. Writing, importing, copying, renaming or 
 - With the `target` option, `{ target: 'raw' }`, a file goes to that path and a directory's contents go below it.
 - Without one, a file keeps its own name at the top of the object, and a directory's contents go at the top. The directory itself isn't included: importing `/data/item-1` gives `a.txt`, not `item-1/a.txt`.
 - Everything below a directory is imported, including hidden files, unless the `filter` option leaves it out. See [Leaving files out](#leaving-files-out).
-- Files already at the same paths are replaced. Other files in the draft stay.
+- Files already at the same paths are replaced. Other files in the draft stay, including files of the head version that are no longer on disk. To keep only what is on disk, call `clear()` first: see [Replacing](#replacing).
 - A symbolic link, or anything else that isn't a regular file or directory, that the filter doesn't leave out throws [`UNSUPPORTED_FILE_TYPE`](/ocfl-js/guides/errors/#unsupported_file_type). A file that changes while it is being read throws [`SOURCE_CHANGED`](/ocfl-js/guides/errors/#source_changed).
 - If any file fails, the first failure is thrown and the draft is left as it was before the import.
 
@@ -140,7 +140,7 @@ If the draft ends with exactly the files of the head version, no version is writ
 
 <Code code={noChange} lang="ts" />
 
-The draft is compared as it ends, not by what you did to it. Writing a file and removing it again, or renaming a file and back, changes nothing. Importing files that are already in the object, at the same paths with the same content, changes nothing either, which makes repeating a sync safe.
+The draft is compared as it ends, not by what you did to it. Writing a file and removing it again, or renaming a file and back, changes nothing. Importing files that are already in the object, at the same paths with the same content, changes nothing either, which makes repeating a sync safe. The example clears first, so the object mirrors the directory: it changes nothing only while the directory holds exactly the head's files.
 
 The lock and the out-of-date check still happen before `change` runs, so an update that changes nothing can still throw `OBJECT_LOCKED` or `OBJECT_OUT_OF_DATE`.
 

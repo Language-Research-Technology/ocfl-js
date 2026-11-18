@@ -4,6 +4,7 @@ const root = await openStorageRoot('/srv/ocfl');
 const object = await root.open('arcp://name,corpus/item/1');
 
 const updated = await object.update({ message: 'Sync from the field laptop', user: { name: 'Alice' } }, async (draft) => {
+  await draft.clear();
   await draft.import('/data/item-1');
 });
 

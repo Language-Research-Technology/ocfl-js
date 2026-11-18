@@ -296,6 +296,22 @@ describe('importing into a draft', () => {
       });
       await assertHolds(root, object, { 'a.txt': 'two', 'b.txt': 'one', 'x/a.txt': 'two', 'x/b.txt': 'one' });
     });
+
+    it('after a clear, leaves only the files the source holds, storing only content the object lacks', async () => {
+      const source = await newSource({ 'a.txt': 'a', 'gone.txt': 'gone', 'sub/b.txt': 'b' });
+      const object = await root.create(newId(), DETAILS, async (draft) => {
+        await draft.import(source);
+      });
+      await fs.promises.rm(path.join(source, 'gone.txt'));
+      await fs.promises.writeFile(path.join(source, 'a.txt'), 'new a');
+      const updated = await object.update(DETAILS, async (draft) => {
+        await draft.clear();
+        await draft.import(source);
+      });
+      await assertHolds(root, updated, { 'a.txt': 'new a', 'sub/b.txt': 'b' });
+      assert.deepStrictEqual(await textFiles(updated.versions.get(1)!), { 'a.txt': 'a', 'gone.txt': 'gone', 'sub/b.txt': 'b' });
+      assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v2'), ['v2/content/a.txt']);
+    });
   });
 
   describe('a path that would be both a file and a directory', () => {
@@ -649,17 +665,25 @@ describe('importing into a draft', () => {
       assert.deepStrictEqual(await storedFiles(objectRootOf(root, object.id), 'v2'), []);
     });
 
-    it('writes no version when an import brings nothing new', async () => {
-      const source = await newSource({ 'a.txt': 'a', 'sub/b.txt': 'b' });
-      const object = await root.create(newId(), DETAILS, async (draft) => {
-        await draft.import(source);
+    for (const [name, clearFirst] of [
+      ['an import', false],
+      ['a clear and an import', true],
+    ] as const) {
+      it(`writes no version when ${name} of the same source brings nothing new`, async () => {
+        const source = await newSource({ 'a.txt': 'a', 'sub/b.txt': 'b' });
+        const object = await root.create(newId(), DETAILS, async (draft) => {
+          await draft.import(source);
+        });
+        const returned = await object.update(DETAILS, async (draft) => {
+          if (clearFirst) {
+            await draft.clear();
+          }
+          await draft.import(source);
+        });
+        assert.strictEqual(returned, object);
+        await assertUnchanged(object, { 'a.txt': 'a', 'sub/b.txt': 'b' });
       });
-      const returned = await object.update(DETAILS, async (draft) => {
-        await draft.import(source);
-      });
-      assert.strictEqual(returned, object);
-      await assertUnchanged(object, { 'a.txt': 'a', 'sub/b.txt': 'b' });
-    });
+    }
   });
 
   describe('the limit on open files', () => {
